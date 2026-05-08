@@ -1,7 +1,7 @@
+use core::time::Duration;
 use std::path::Path;
 use std::process::Command as Std;
 use std::str::FromStr;
-use std::time::Duration;
 
 use assert_cmd::Command;
 use tempfile::TempDir;
@@ -71,7 +71,7 @@ fn ra_upstream_clone_then_discover() {
 
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .args([
             "--config",
             cfg.to_str().unwrap(),
@@ -109,7 +109,7 @@ fn khepri_upstream_clone_then_lookup() {
 
     Command::cargo_bin("backhopper")
         .unwrap()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_mins(2))
         .args([
             "--config",
             cfg.to_str().unwrap(),
