@@ -82,12 +82,12 @@ depends only on its own crate.
 
  * `src/tokenizer.rs`: line-oriented state machine, balances
    `()` `[]` `{}` `''` `""`
- * `src/attributes.rs`: `-module` / `-export` / `-behaviour` / etc.
- * `src/specs.rs`: `-spec` / `-type` / `-callback` normalizer
+ * `src/attributes.rs`: `-module`, `-export`, `-behaviour`, and friends
+ * `src/specs.rs`: `-spec`, `-type`, and `-callback` normalizer
  * `src/records.rs`
  * `src/macros.rs`: narrow allowlist (`?MODULE`, `?LINE`,
    `-export`-list string-concat)
- * `src/cond_compile.rs`: `-ifdef` / `-if` / `-elif` / `-else`
+ * `src/cond_compile.rs`: `-ifdef`, `-if`, `-elif`, `-else`
  * `src/deprecated.rs`: collapses the four real source forms into one
  * `src/visibility.rs`: `@hidden`, `-doc(hidden)`, `internal_modules`
 
@@ -219,8 +219,8 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
 
 ## Comments
 
- * Only add very important comments, both in tests and implementation.
-   Identifier names and the diff are the documentation
+ * Only add very important comments, both in tests and implementation;
+   identifier names and the diff are the documentation
  * No multi-line comment blocks. One short line, above the line it
    describes, when needed at all
  * No comments referencing the current task, fix number, or callers

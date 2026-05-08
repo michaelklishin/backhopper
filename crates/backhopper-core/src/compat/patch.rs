@@ -159,6 +159,7 @@ impl PinFiles {
         Self::default()
     }
 
+    #[must_use]
     pub fn with(mut self, path: impl Into<PathBuf>, contents: Option<Vec<u8>>) -> Self {
         self.files.insert(path.into(), contents);
         self
@@ -166,6 +167,14 @@ impl PinFiles {
 
     pub fn get(&self, path: &Path) -> Option<&Option<Vec<u8>>> {
         self.files.get(path)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.files.len()
     }
 }
 
