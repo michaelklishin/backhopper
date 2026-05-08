@@ -19,7 +19,6 @@ const MAX_FIELD_NAME_LEN: usize = 256;
 
 const PROJECT_PATTERN: &str = "[a-z][a-z0-9_-]{0,63}";
 const SERIES_PATTERN: &str = "[a-z][a-z0-9_.-]{0,63}";
-const COMMIT_SHA_PATTERN: &str = "[0-9a-f]{40}";
 
 fn is_project_name_char(c: char) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'
@@ -314,9 +313,6 @@ impl AsRef<str> for CommitSha {
         &self.0
     }
 }
-
-#[allow(dead_code)]
-const _COMMIT_SHA_PATTERN_REFERENCE: &str = COMMIT_SHA_PATTERN;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Mfa {

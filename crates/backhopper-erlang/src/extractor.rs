@@ -7,8 +7,8 @@ use backhopper_core::model::names::{
     Arity, FieldName, FunctionName, ModuleName, RecordName, TypeName,
 };
 use backhopper_core::model::snapshot::{
-    ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FunArity, HrlFile, Module,
-    RecordDecl, RecordField, SpecSig, TypeArity, TypeDecl, Visibility,
+    ArityMatch, CallbackSig, Deprecation, HrlFile, Module, RecordDecl, RecordField, SpecSig,
+    TypeArity, TypeDecl, Visibility,
 };
 use thiserror::Error;
 use tracing::warn;
@@ -294,6 +294,3 @@ fn into_deprecation(d: ParsedDeprecation) -> Option<Deprecation> {
 fn strip_leading_components(path: &str) -> String {
     path.to_string()
 }
-
-#[allow(dead_code)]
-fn _silence(_d: DeprecationReplacement, _f: FunArity) {}

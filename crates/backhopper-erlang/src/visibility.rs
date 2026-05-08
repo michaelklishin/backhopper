@@ -5,7 +5,6 @@
 //!  * the project's config explicitly lists it as internal
 //!  * its `-export` is wrapped in `-ifdef(TEST).` (then `test_only`)
 
-use backhopper_core::Snapshot;
 use backhopper_core::model::names::ModuleName;
 use backhopper_core::model::snapshot::Visibility;
 
@@ -45,5 +44,3 @@ pub fn classify(
     }
     Visibility::Public
 }
-
-pub fn _unused_marker(_s: &Snapshot) {}

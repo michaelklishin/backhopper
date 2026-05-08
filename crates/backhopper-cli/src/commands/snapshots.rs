@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use serde::Serialize;
 use time::OffsetDateTime;
 
@@ -297,6 +295,3 @@ fn rebuild(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) 
     })?;
     Ok(0)
 }
-
-#[allow(dead_code)]
-fn _silence(_p: &Path) {}

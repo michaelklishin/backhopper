@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use backhopper_core::model::names::{Arity, FunctionName, ModuleName, TypeName};
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::snapshot::FunArity;
 
 use crate::specs::ParsedSignature;
@@ -140,6 +140,3 @@ fn strip_string(s: &str) -> String {
         .trim_end_matches('"')
         .to_string()
 }
-
-#[allow(dead_code)]
-fn _silence_unused(_t: TypeName) {}
