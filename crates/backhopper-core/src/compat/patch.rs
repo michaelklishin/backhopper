@@ -274,7 +274,7 @@ fn is_function_deprecated(
             match d.arity_match {
                 ArityMatch::Any => return true,
                 ArityMatch::Exact { arity } if arity == mfa.arity => return true,
-                _ => {}
+                ArityMatch::Exact { .. } => {}
             }
         }
     }
