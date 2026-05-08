@@ -1,12 +1,13 @@
 use serde::Serialize;
 use time::OffsetDateTime;
 
-use backhopper_core::config::{Config, Project};
+use backhopper_core::config::{Config, Language, Project};
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
+use backhopper_elixir::ElixirExtractor;
 use backhopper_erlang::ErlangExtractor;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
@@ -142,14 +143,26 @@ fn build_snapshot(
     let blobs = repo
         .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
         .map_err(|e| CliError::Core(e.into()))?;
-    let extractor = ErlangExtractor::new(p.public_modules.clone(), p.internal_modules.clone());
-    let files = blobs
-        .into_iter()
-        .map(|b| (b.path, b.bytes))
-        .collect::<Vec<_>>();
-    let extracted = extractor
-        .extract_source(files)
-        .map_err(|e| CliError::Other(e.to_string()))?;
+    let files: Vec<(std::path::PathBuf, Vec<u8>)> =
+        blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+    let extracted = match p.language {
+        Language::Erlang => {
+            let extractor =
+                ErlangExtractor::new(p.public_modules.clone(), p.internal_modules.clone());
+            let r = extractor
+                .extract_source(files)
+                .map_err(|e| CliError::Other(e.to_string()))?;
+            (r.modules, r.headers)
+        }
+        Language::Elixir => {
+            let extractor =
+                ElixirExtractor::new(p.public_modules.clone(), p.internal_modules.clone());
+            let r = extractor
+                .extract_source(files)
+                .map_err(|e| CliError::Other(e.to_string()))?;
+            (r.modules, r.headers)
+        }
+    };
     let branch = repo
         .branches_containing(&commit)
         .ok()
@@ -163,8 +176,8 @@ fn build_snapshot(
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::now_utc(),
     };
-    let snapshot =
-        Snapshot::from_extracted(header, extracted.modules, extracted.headers).into_canonical();
+    let (modules, headers) = extracted;
+    let snapshot = Snapshot::from_extracted(header, modules, headers).into_canonical();
     Ok(snapshot)
 }
 

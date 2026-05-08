@@ -1,0 +1,1 @@
+mod extractor_does_not_panic;

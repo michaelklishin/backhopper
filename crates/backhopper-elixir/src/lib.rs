@@ -1,22 +1,17 @@
-//! Elixir source surface extractor for backhopper.
+//! Elixir source surface extractor.
 //!
-//! Phase 4 placeholder: real `defmodule`/`def`/`@callback`/`@spec` extraction
-//! lands once the Erlang extractor and CLI ship. This crate exists in the
-//! workspace from day one so the dependency graph is stable.
+//! Reads `.ex`/`.exs` source and yields the `Module` records from
+//! `backhopper-core`. Recognized:
+//!  * `defmodule X.Y do ... end`         module names; nested modules become separate entries
+//!  * `def name(args)`/`def name(args) do` exported functions
+//!  * `defp ...`                          private (skipped)
+//!  * `defmacro name(args)`               exported macros (recorded as exports)
+//!  * `defmacrop ...`                     private macros (skipped)
+//!  * `@callback name(...) :: rhs`        callback signatures
+//!  * `@spec name(...) :: rhs`            specs
+//!  * `@type name(args) :: rhs`           types
+//!  * `@moduledoc false` / `@doc false`   visibility hints
 
-use serde::{Deserialize, Serialize};
+pub mod extractor;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ElixirExtractor;
-
-impl ElixirExtractor {
-    pub const fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for ElixirExtractor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub use extractor::{ElixirExtractor, ExtractError, ExtractedSource};

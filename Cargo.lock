@@ -159,8 +159,11 @@ name = "backhopper-elixir"
 version = "0.1.0"
 dependencies = [
  "backhopper-core",
+ "proptest",
+ "regex",
  "serde",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

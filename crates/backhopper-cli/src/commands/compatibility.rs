@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use backhopper_core::compat::patch::{Language, Patch};
+use backhopper_core::compat::patch::{Language, Patch, PinFiles};
 use backhopper_core::config::Config;
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
@@ -69,6 +69,41 @@ pub fn handle(args: &GlobalArgs, cmd: CompatibilityCmd) -> CliResult<i32> {
             run_compat_patch(args, &cfg, &bytes, project, tag, series)
         }
     }
+}
+
+fn build_pin_files(
+    cfg: &Config,
+    pin: &Pin,
+    touched_paths: &[std::path::PathBuf],
+) -> CliResult<PinFiles> {
+    if touched_paths.is_empty() {
+        return Ok(PinFiles::new());
+    }
+    let project = cfg
+        .project(&pin.project)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(project.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let commit = repo
+        .resolve_tag(&pin.tag)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let needed: std::collections::BTreeSet<String> = touched_paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let blobs = repo
+        .read_paths_at_commit(&commit, |p| needed.contains(p))
+        .map_err(|e| CliError::Core(e.into()))?;
+    let mut files = PinFiles::new();
+    let present: std::collections::BTreeMap<String, Vec<u8>> = blobs
+        .into_iter()
+        .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
+        .collect();
+    for path in touched_paths {
+        let key = path.to_string_lossy().into_owned();
+        let contents = present.get(&key).cloned();
+        files = files.with(path.clone(), contents);
+    }
+    Ok(files)
 }
 
 fn read_patch_input(file: Option<PathBuf>) -> CliResult<Vec<u8>> {
@@ -169,15 +204,21 @@ fn run_compat_patch(
     };
     let patch =
         Patch::parse(bytes).map_err(|e| CliError::Core(backhopper_core::Error::Patch(e)))?;
+    let touched_paths: Vec<std::path::PathBuf> = patch
+        .files
+        .iter()
+        .filter_map(|f| f.new_path.clone().or_else(|| f.old_path.clone()))
+        .collect();
     let analyzed = patch.analyze(Language::Erlang);
-    let mut snapshots = Vec::with_capacity(pins.len());
+    let mut snapshots_with_files = Vec::with_capacity(pins.len());
     for pin in &pins {
         let snap = store
             .read(&pin.project, &pin.tag)
             .map_err(|e| CliError::Core(e.into()))?;
-        snapshots.push((pin.clone(), snap));
+        let files = build_pin_files(cfg, pin, &touched_paths)?;
+        snapshots_with_files.push((pin.clone(), snap, files));
     }
-    let series_verdict = analyzed.against_series(&snapshots);
+    let series_verdict = analyzed.against_series_with_files(&snapshots_with_files);
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),

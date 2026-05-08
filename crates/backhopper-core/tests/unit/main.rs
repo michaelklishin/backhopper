@@ -1,6 +1,7 @@
 mod call_sites;
 mod compat_patch;
 mod config;
+mod context_drift;
 mod names;
 mod rabbitmq;
 mod snapshot_round_trip;

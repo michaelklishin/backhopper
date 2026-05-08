@@ -130,8 +130,48 @@ fn validate_erlang_name(kind: &'static str, value: &str, max_len: usize) -> Resu
             pattern: "lowercase-led atom or single-quoted",
         });
     }
-    for ch in value.chars() {
+    let last = value.chars().last().expect("non-empty");
+    let drop_trailing_punct = if matches!(last, '?' | '!') {
+        value.len() - last.len_utf8()
+    } else {
+        value.len()
+    };
+    for ch in value[..drop_trailing_punct].chars() {
         if !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '@') {
+            return Err(NameError::InvalidCharacter {
+                kind,
+                ch,
+                value: value.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_module_name(kind: &'static str, value: &str, max_len: usize) -> Result<(), NameError> {
+    if value.is_empty() {
+        return Err(NameError::Empty { kind });
+    }
+    if value.len() > max_len {
+        return Err(NameError::TooLong {
+            kind,
+            len: value.len(),
+            max: max_len,
+        });
+    }
+    if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+        return Ok(());
+    }
+    let first = value.chars().next().expect("non-empty");
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return Err(NameError::PatternMismatch {
+            kind,
+            value: value.to_owned(),
+            pattern: "Erlang atom or Elixir module name",
+        });
+    }
+    for ch in value.chars() {
+        if !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '.') {
             return Err(NameError::InvalidCharacter {
                 kind,
                 ch,
@@ -216,7 +256,7 @@ string_newtype!(SeriesName, "series name", MAX_SERIES_NAME_LEN, |v: &str| {
 string_newtype!(TagName, "tag", MAX_TAG_NAME_LEN, validate_tag_name);
 
 string_newtype!(ModuleName, "module name", MAX_MODULE_NAME_LEN, |v: &str| {
-    validate_erlang_name("module name", v, MAX_MODULE_NAME_LEN)
+    validate_module_name("module name", v, MAX_MODULE_NAME_LEN)
 });
 
 string_newtype!(

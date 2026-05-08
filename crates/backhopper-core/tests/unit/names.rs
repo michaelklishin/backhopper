@@ -44,12 +44,16 @@ fn tag_name_rejects_git_ref_magic() {
 }
 
 #[test]
-fn module_name_accepts_lowercase_atoms() {
-    ModuleName::new("ra").expect("valid");
-    ModuleName::new("rabbit_amqp_reader").expect("valid");
-    ModuleName::new("'Quoted Atom'").expect("valid");
-    assert!(ModuleName::new("UpperCase").is_err());
+fn module_name_accepts_erlang_and_elixir_forms() {
+    ModuleName::new("ra").expect("valid Erlang atom");
+    ModuleName::new("rabbit_amqp_reader").expect("valid Erlang atom");
+    ModuleName::new("'Quoted Atom'").expect("valid quoted");
+    ModuleName::new("Plug").expect("valid Elixir module");
+    ModuleName::new("Plug.Conn").expect("valid Elixir nested module");
+    ModuleName::new("MyApp.Foo.Bar").expect("valid Elixir deep module");
     assert!(ModuleName::new("").is_err());
+    assert!(ModuleName::new("9starts_digit").is_err());
+    assert!(ModuleName::new("has space").is_err());
 }
 
 #[test]

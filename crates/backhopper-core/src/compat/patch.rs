@@ -1,7 +1,7 @@
 //! Unified-diff parser plus `Patch<S>` typestate pipeline.
 
 use std::marker::PhantomData;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::errors::PatchError;
 use crate::model::names::{Arity, FunctionName, ModuleName};
@@ -143,6 +143,30 @@ impl Patch<Raw> {
     }
 }
 
+/// A view of one pin's filesystem state at evaluation time. Holds the
+/// content of every path the patch touches, or `None` for paths absent
+/// at that pin. Built by the caller (the CLI uses `gix`); the analyzer
+/// itself never knows about git.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PinFiles {
+    files: std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
+}
+
+impl PinFiles {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with(mut self, path: impl Into<PathBuf>, contents: Option<Vec<u8>>) -> Self {
+        self.files.insert(path.into(), contents);
+        self
+    }
+
+    pub fn get(&self, path: &Path) -> Option<&Option<Vec<u8>>> {
+        self.files.get(path)
+    }
+}
+
 impl Patch<Analyzed> {
     pub fn referenced(&self) -> &[SymbolRef] {
         &self.referenced
@@ -153,7 +177,7 @@ impl Patch<Analyzed> {
     }
 
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
-        let verdict = build_verdict(&self.referenced, &self.defined, snapshot);
+        let verdict = build_verdict(&self.files, &self.referenced, &self.defined, snapshot, None);
         let mut verdicts = self.verdicts.clone();
         verdicts.push(PinVerdict { pin, verdict });
         Patch {
@@ -168,7 +192,28 @@ impl Patch<Analyzed> {
     pub fn against_series(self, snapshots: &[(Pin, Snapshot<state::Canonical>)]) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap) in snapshots {
-            let verdict = build_verdict(&self.referenced, &self.defined, snap);
+            let verdict = build_verdict(&self.files, &self.referenced, &self.defined, snap, None);
+            results.push(PinVerdict {
+                pin: pin.clone(),
+                verdict,
+            });
+        }
+        SeriesVerdict::from_results(results)
+    }
+
+    pub fn against_series_with_files(
+        self,
+        snapshots: &[(Pin, Snapshot<state::Canonical>, PinFiles)],
+    ) -> SeriesVerdict {
+        let mut results = Vec::with_capacity(snapshots.len());
+        for (pin, snap, files) in snapshots {
+            let verdict = build_verdict(
+                &self.files,
+                &self.referenced,
+                &self.defined,
+                snap,
+                Some(files),
+            );
             results.push(PinVerdict {
                 pin: pin.clone(),
                 verdict,
@@ -185,11 +230,16 @@ impl Patch<Verdicted> {
 }
 
 fn build_verdict(
+    files: &[PatchedFile],
     referenced: &[SymbolRef],
     defined: &[SymbolRef],
     snapshot: &Snapshot<state::Canonical>,
+    pin_files: Option<&PinFiles>,
 ) -> Verdict {
     let mut reasons: Vec<Reason> = Vec::new();
+    if let Some(pf) = pin_files {
+        check_files_against_pin(files, pf, &mut reasons);
+    }
     for r in referenced {
         if defined.contains(r) {
             continue;
@@ -211,6 +261,53 @@ fn build_verdict(
         }
     }
     Verdict::from_reasons(reasons)
+}
+
+fn check_files_against_pin(files: &[PatchedFile], pin_files: &PinFiles, reasons: &mut Vec<Reason>) {
+    for file in files {
+        let path = match (&file.new_path, &file.old_path) {
+            (Some(p), _) | (None, Some(p)) => p.clone(),
+            (None, None) => continue,
+        };
+        let Some(slot) = pin_files.get(&path) else {
+            continue;
+        };
+        let Some(bytes) = slot else {
+            reasons.push(Reason::FileAbsent { path: path.clone() });
+            continue;
+        };
+        let target_lines = match std::str::from_utf8(bytes) {
+            Ok(s) => s.lines().collect::<Vec<&str>>(),
+            Err(_) => continue,
+        };
+        for (idx, hunk) in file.hunks.iter().enumerate() {
+            if !hunk_context_matches(hunk, &target_lines) {
+                reasons.push(Reason::ContextDrift {
+                    path: path.clone(),
+                    hunk_index: idx,
+                });
+            }
+        }
+    }
+}
+
+fn hunk_context_matches(hunk: &Hunk, target_lines: &[&str]) -> bool {
+    let mut row = hunk.old_start.saturating_sub(1);
+    for line in &hunk.lines {
+        match line {
+            HunkLine::Added(_) => {}
+            HunkLine::Context(text) | HunkLine::Removed(text) => {
+                let Some(actual) = target_lines.get(row) else {
+                    return false;
+                };
+                if *actual != text.as_str() {
+                    return false;
+                }
+                row += 1;
+            }
+        }
+    }
+    true
 }
 
 fn analyze_function_reference(

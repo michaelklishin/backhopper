@@ -1,7 +1,7 @@
-//! Snapshot fixtures captured from real ra, khepri, osiris, and cowboy
-//! checkouts: the 10 most recent tags of each. They serve as a regression
-//! corpus for the parser and store, and as a known-good source for the
-//! `api lookup` query.
+//! Snapshot fixtures captured from real ra, khepri, osiris, cowboy
+//! (Erlang), and plug (Elixir) checkouts: the 10 most recent GA tags of
+//! each. They serve as a regression corpus for the parser and store, and
+//! as a known-good source for the `api lookup` query.
 
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -17,8 +17,8 @@ fn fixtures_root() -> PathBuf {
         .join("real_world")
 }
 
-fn project_dirs() -> [&'static str; 4] {
-    ["ra", "khepri", "osiris", "cowboy"]
+fn project_dirs() -> [&'static str; 5] {
+    ["ra", "khepri", "osiris", "cowboy", "plug"]
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn every_fixture_parses_canonically() {
             total += 1;
         }
     }
-    assert_eq!(total, 40, "expected 40 fixtures, found {}", total);
+    assert_eq!(total, 50, "expected 50 fixtures, found {}", total);
 }
 
 #[test]
@@ -127,6 +127,54 @@ fn osiris_v1_13_1_exports_well_known_functions() {
                 .iter()
                 .any(|m| m.name.as_str() == "osiris_log"),
         "osiris v1.13.1 should at least have osiris_log module"
+    );
+}
+
+#[test]
+fn plug_v1_19_1_has_callback_and_export() {
+    let store = SnapshotStore::open(fixtures_root()).unwrap();
+    let p = ProjectName::new("plug").unwrap();
+    let t = TagName::new("v1.19.1").unwrap();
+    let snap = store.read(&p, &t).unwrap();
+    let plug_module = snap
+        .modules()
+        .iter()
+        .find(|m| m.name.as_str() == "Plug")
+        .expect("Plug module present in v1.19.1");
+    assert!(
+        plug_module
+            .callbacks
+            .iter()
+            .any(|c| c.name.as_str() == "init" && c.arity.get() == 1),
+        "Plug.init/1 callback expected"
+    );
+    assert!(
+        plug_module
+            .callbacks
+            .iter()
+            .any(|c| c.name.as_str() == "call" && c.arity.get() == 2),
+        "Plug.call/2 callback expected"
+    );
+    assert!(
+        plug_module
+            .exports
+            .iter()
+            .any(|fa| fa.name.as_str() == "run" && fa.arity.get() == 3),
+        "Plug.run/3 export expected"
+    );
+}
+
+#[test]
+fn plug_router_module_present_in_recent_tag() {
+    let store = SnapshotStore::open(fixtures_root()).unwrap();
+    let p = ProjectName::new("plug").unwrap();
+    let t = TagName::new("v1.19.1").unwrap();
+    let snap = store.read(&p, &t).unwrap();
+    assert!(
+        snap.modules()
+            .iter()
+            .any(|m| m.name.as_str() == "Plug.Router"),
+        "Plug.Router module expected"
     );
 }
 

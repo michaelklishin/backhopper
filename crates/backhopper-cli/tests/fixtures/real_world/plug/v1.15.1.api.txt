@@ -1,0 +1,336 @@
+# backhopper snapshot
+# format-version: 1
+# project: plug
+# tag: v1.15.1
+# commit: 8f1bf1cf1a0270f7b88fd66e055c910de8adb532
+# scanned-paths: lib/**/*.ex
+# generated-by: backhopper 0.1.0
+# generated-at: 2026-05-08T05:39:36.768502Z
+
+module Plug
+  export forward/4
+  export run/3
+  callback call/2 call(conn :: Plug.Conn.t(), opts) :: Plug.Conn.t()
+  callback init/1 init(opts) :: opts
+  spec forward/4 forward(Plug.Conn.t(), [String.t()], atom, Plug.opts()) :: Plug.Conn.t()
+  spec run/3 run(Plug.Conn.t(), [{module, opts} | (Plug.Conn.t() -> Plug.Conn.t())], Keyword.t()) :: Plug.Conn.t()
+  type opts/0 :: binary | tuple | atom | integer | float | [opts] | | MapSet.t()
+
+module Plug.Adapters.Cowboy
+  visibility hidden
+  export child_spec/1
+  export child_spec/4
+  export http/3
+  export https/3
+  export shutdown/1
+
+module Plug.Adapters.Test.Conn
+  visibility hidden
+  export chunk/2
+  export conn/4
+  export get_http_protocol/1
+  export get_peer_data/1
+  export inform/3
+  export push/3
+  export read_req_body/2
+  export send_chunked/3
+  export send_file/6
+  export send_resp/4
+  export upgrade/3
+
+module Plug.Application
+  visibility hidden
+  export start/2
+
+module Plug.BadRequestError
+
+module Plug.BasicAuth
+  export basic_auth/2
+
+module Plug.Builder
+  export __using__/1
+  export call/2
+  export init/1
+  type plug/0 :: module | atom
+
+module Plug.CSRFProtection
+  export dump_state/0
+  export dump_state_from_session/1
+  export load_state/2
+  export valid_state_and_csrf_token?/2
+
+module Plug.CSRFProtection.InvalidCSRFTokenError
+
+module Plug.CSRFProtection.InvalidCrossOriginRequestError
+
+module Plug.Conn
+  export assign/3
+  export async_assign/3
+  export await_assign/3
+  export merge_assigns/2
+  export merge_private/2
+  export put_private/3
+  export put_status/2
+  export send_file/5
+  export send_resp/1
+  spec assign/3 assign(t, atom, term) :: t
+  spec merge_assigns/2 merge_assigns(t, Enumerable.t()) :: t
+  spec merge_private/2 merge_private(t, Enumerable.t()) :: t
+  spec put_private/3 put_private(t, atom, term) :: t
+  spec put_status/2 put_status(t, status) :: t
+  spec send_file/5 send_file(t, status, filename :: binary, offset :: integer, length :: integer | :all) :: t | no_return
+  spec send_resp/1 send_resp(t) :: t | no_return
+  type adapter/0 :: {module, term}
+  type assigns/0 :: 
+  type body/0 :: iodata
+  type cookies/0 :: 
+  type halted/0 :: boolean
+  type headers/0 :: [{binary, binary}]
+  type host/0 :: binary
+  type int_status/0 :: non_neg_integer | nil
+  type method/0 :: binary
+  type owner/0 :: pid
+  type params/0 :: 
+  type port_number/0 :: :inet.port_number()
+  type query_param/0 :: binary |
+  type query_params/0 :: 
+  type query_string/0 :: String.t()
+  type req_cookies/0 :: 
+  type resp_cookies/0 :: 
+  type scheme/0 :: :http | :https
+  type secret_key_base/0 :: binary | nil
+  type segments/0 :: [binary]
+  type state/0 :: :unset | :set | :set_chunked | :set_file | :file | :chunked | :sent | :upgraded
+  type status/0 :: atom | int_status
+  type t/0 :: adapter: adapter, assigns: assigns, body_params: params
+       | Unfetched.t(), cookies: cookies
+       | Unfetched.t(), halted: halted, host: host, method: method, owner: owner, params: params
+       | Unfetched.t(), path_info: segments, path_params: query_params, port: :inet.port_number(), private: assigns, query_params: query_params
+       | Unfetched.t(), query_string: query_string, remote_ip: :inet.ip_address(), req_cookies: req_cookies
+       | Unfetched.t(), req_headers: headers, request_path: binary, resp_body: body
+       | nil, resp_cookies: resp_cookies, resp_headers: headers, scheme: scheme, script_name: segments, secret_key_base: secret_key_base, state: state, status: int_status }
+
+module Plug.Conn.Adapter
+  export conn/5
+  callback chunk/2 chunk(payload, body :: Conn.body()) :: :ok | {:ok, sent_body :: binary, payload} | {:error, term}
+  callback get_http_protocol/1 get_http_protocol(payload) :: http_protocol
+  callback get_peer_data/1 get_peer_data(payload) :: peer_data()
+  callback inform/3 inform(payload, status :: Conn.status(), headers :: Keyword.t()) :: :ok | {:error, term}
+  callback push/3 push(payload, path :: String.t(), headers :: Keyword.t()) :: :ok | {:error, term}
+  callback read_req_body/2 read_req_body(payload, options :: Keyword.t()) :: {:ok, data :: binary, payload}
+              | {:more, data :: binary, payload}
+              | {:error, term}
+  callback send_chunked/3 send_chunked(payload, status :: Conn.status(), headers :: Conn.headers()) :: {:ok, sent_body :: binary | nil, payload}
+  callback send_file/6 send_file(payload,
+              status :: Conn.status(),
+              headers :: Conn.headers(),
+              file :: binary,
+              offset :: integer,
+              length :: integer | :all) :: {:ok, sent_body :: binary | nil, payload}
+  callback send_resp/4 send_resp(payload,
+              status :: Conn.status(),
+              headers :: Conn.headers(),
+              body :: Conn.body()) :: {:ok, sent_body :: binary | nil, payload}
+  callback upgrade/3 upgrade(payload, protocol :: atom, opts :: term) :: {:ok, payload} | {:error, term}
+  type http_protocol/0 :: :"HTTP/1" | :"HTTP/1.1" | :"HTTP/2" | atom
+  type payload/0 :: term
+  type peer_data/0 :: address: :inet.ip_address(), port: :inet.port_number(), ssl_cert: binary | nil }
+
+module Plug.Conn.AlreadySentError
+
+module Plug.Conn.CookieOverflowError
+
+module Plug.Conn.Cookies
+  export decode/1
+  export encode/2
+
+module Plug.Conn.InvalidHeaderError
+
+module Plug.Conn.InvalidQueryError
+
+module Plug.Conn.NotSentError
+
+module Plug.Conn.Query
+  export decode/0
+  export decode/4
+  spec decode/4 decode(String.t(), keyword(), module(), boolean()) :: %{optional(String.t()) => term()}
+
+module Plug.Conn.Status
+
+module Plug.Conn.Unfetched
+  export fetch/2
+  export get/3
+  export get_and_update/3
+  export pop/2
+  type t/0 :: 
+
+module Plug.Conn.Utils
+  export content_type/1
+  export list/1
+  export media_type/1
+  export params/1
+  export token/0
+  export token/1
+  export validate_utf8!/3
+  spec content_type/1 content_type(binary) :: {:ok, type :: binary, subtype :: binary, params} | :error
+  spec list/1 list(binary) :: [binary]
+  spec media_type/1 media_type(binary) :: {:ok, type :: binary, subtype :: binary, params} | :error
+  spec params/1 params(binary) :: params
+  spec token/1 token(binary) :: binary | false
+  spec validate_utf8!/3 validate_utf8!(binary, module, binary) :: :ok | no_return
+  type params/0 :: 
+
+module Plug.Conn.WrapperError
+  export message/1
+  export reraise/1
+  export reraise/3
+  export reraise/4
+
+module Plug.Debugger
+  export __using__/1
+
+module Plug.ErrorHandler
+  export __using__/1
+  export handle_errors/2
+  callback handle_errors/2 handle_errors(Plug.Conn.t(), %{
+              kind: :error | :throw | :exit,
+              reason: Exception.t() | term(),
+              stack: Exception.stacktrace()
+            }) :: no_return()
+
+module Plug.HTML
+  export html_escape/1
+  export html_escape_to_iodata/1
+  spec html_escape/1 html_escape(String.t()) :: String.t()
+  spec html_escape_to_iodata/1 html_escape_to_iodata(String.t()) :: iodata
+
+module Plug.Head
+  export call/2
+  export init/1
+
+module Plug.Logger
+  export call/2
+  export init/1
+
+module Plug.MIME
+  visibility hidden
+  export extensions/1
+  export path/1
+  export type/1
+  export valid?/1
+
+module Plug.MethodOverride
+  export call/2
+  export init/1
+
+module Plug.Parsers
+  export init/1
+  callback init/1 init(opts :: Keyword.t()) :: Plug.opts()
+  callback parse/5 parse(conn :: Conn.t(),
+              type :: binary,
+              subtype :: binary,
+              params :: Conn.Utils.params(),
+              opts :: Plug.opts()) :: {:ok, Conn.params(), Conn.t()}
+              | {:error, :too_large, Conn.t()}
+              | {:next, Conn.t()}
+
+module Plug.Parsers.BadEncodingError
+
+module Plug.Parsers.JSON
+  export init/1
+
+module Plug.Parsers.MULTIPART
+  export init/1
+
+module Plug.Parsers.ParseError
+  export message/1
+
+module Plug.Parsers.RequestTooLargeError
+
+module Plug.Parsers.URLENCODED
+  export init/1
+  export parse/5
+
+module Plug.Parsers.UnsupportedMediaTypeError
+  export message/1
+
+module Plug.RequestId
+  export call/2
+  export init/1
+
+module Plug.RewriteOn
+  export call/2
+  export init/1
+
+module Plug.Router
+  export __using__/1
+  export dispatch/2
+  export match/2
+
+module Plug.Router.InvalidSpecError
+
+module Plug.Router.MalformedURIError
+
+module Plug.Router.Utils
+  visibility hidden
+  export build_host_match/1
+  export build_path_clause/3
+  export build_path_match/2
+  export build_path_params_match/2
+  export decode_path_info!/1
+  export normalize_method/1
+
+module Plug.SSL
+  export configure/1
+  spec configure/1 configure([:ssl.tls_server_option()]) :: {:ok, [:ssl.tls_server_option()]} | {:error, String.t()}
+
+module Plug.Session
+  export call/2
+  export init/1
+
+module Plug.Session.COOKIE
+  export delete/3
+  export get/3
+  export init/1
+  export put/4
+
+module Plug.Session.ETS
+  export delete/3
+  export get/3
+  export init/1
+  export put/4
+
+module Plug.Session.Store
+  export get/1
+  callback delete/3 delete(conn :: Plug.Conn.t(), sid, opts :: Plug.opts()) :: :ok
+  callback get/3 get(conn :: Plug.Conn.t(), cookie, opts :: Plug.opts()) :: {sid, session}
+  callback init/1 init(opts :: Plug.opts()) :: Plug.opts()
+  callback put/4 put(conn :: Plug.Conn.t(), sid, any, opts :: Plug.opts()) :: cookie
+  type cookie/0 :: binary
+  type session/0 :: map
+  type sid/0 :: term | nil
+
+module Plug.Static
+  export call/0
+  export init/1
+
+module Plug.Static.InvalidPathError
+
+module Plug.Telemetry
+  export init/1
+
+module Plug.Test
+  export __using__/1
+
+module Plug.TimeoutError
+
+module Plug.Upload
+  export give_away/3
+  export random_file/1
+  spec give_away/3 give_away(t | binary, pid, pid) :: :ok | {:error, :unknown_path}
+  spec random_file/1 random_file(binary) :: {:ok, binary}
+          | {:too_many_attempts, binary, pos_integer}
+          | {:no_tmp, [binary]}
+  type t/0 :: path: Path.t(), filename: binary, content_type: binary | nil }
+
+module Plug.UploadError
