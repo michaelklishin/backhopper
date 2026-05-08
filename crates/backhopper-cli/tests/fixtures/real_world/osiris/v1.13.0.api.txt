@@ -1,0 +1,525 @@
+# backhopper snapshot
+# format-version: 1
+# project: osiris
+# tag: v1.13.0
+# commit: 7fb3abd660286a12feb9dbc8f1310996539d70d6
+# scanned-paths: src/**/*.erl, include/**/*.hrl
+# generated-by: backhopper 0.1.0
+# generated-at: 2026-05-08T04:28:44.658383Z
+
+module osiris
+  export configure_logger/1
+  export delete_cluster/1
+  export delete_member/2
+  export fetch_writer_seq/2
+  export get_stats/1
+  export init_reader/3
+  export init_reader/4
+  export read_tracking/1
+  export read_tracking/2
+  export read_tracking/3
+  export register_offset_listener/2
+  export register_offset_listener/3
+  export resolve_offset_spec/3
+  export start_cluster/1
+  export start_replica/2
+  export start_writer/1
+  export stop_cluster/1
+  export stop_member/2
+  export update_retention/2
+  export write/2
+  export write/4
+  export write_tracking/3
+  export_type config/0
+  export_type data/0
+  export_type entry/0
+  export_type epoch/0
+  export_type name/0
+  export_type offset/0
+  export_type offset_spec/0
+  export_type retention_spec/0
+  export_type tail_info/0
+  export_type timestamp/0
+  export_type tracking_id/0
+  export_type writer_id/0
+  spec configure_logger/1 configure_logger(module()) -> ok
+  spec delete_cluster/1 delete_cluster(config()) -> ok
+  spec delete_member/2 delete_member(node(), osiris:config()) -> ok | {error, not_found}
+  spec fetch_writer_seq/2 fetch_writer_seq(pid(), binary()) -> non_neg_integer() | undefined
+  spec get_stats/1 get_stats(pid()) -> #{committed_chunk_id => integer(), first_chunk_id => integer(), last_chunk_id => integer(), committed_offset => integer()}
+  spec init_reader/3 init_reader(pid(), offset_spec(), osiris_log:counter_spec()) -> {ok, osiris_log:state()}
+       | {error, {offset_out_of_range, empty | {offset(), offset()}}}
+       | {error, {invalid_last_offset_epoch, offset(), offset()}}
+  spec init_reader/4 init_reader(pid(), offset_spec(), osiris_log:counter_spec(), reader_options()) -> {ok, osiris_log:state()}
+       | {error, {offset_out_of_range, empty | {offset(), offset()}}}
+       | {error, {invalid_last_offset_epoch, offset(), offset()}}
+  spec read_tracking/1 read_tracking(pid()) -> map()
+  spec read_tracking/2 read_tracking(pid(), binary()) -> {offset, offset()} | undefined
+  spec read_tracking/3 read_tracking(pid(), tracking_type(), binary()) -> {tracking_type(), offset() | timestamp()}
+       | undefined
+  spec register_offset_listener/2 register_offset_listener(pid(), offset()) -> ok
+  spec register_offset_listener/3 register_offset_listener(pid(), offset(), mfarg() | undefined) -> ok
+  spec resolve_offset_spec/3 resolve_offset_spec(pid(), offset_spec(), reader_options()) -> {ok, offset()}
+       | {error, no_index_file}
+       | {error, {offset_out_of_range, osiris_log:range()}}
+       | {error, retries_exhausted}
+  spec start_cluster/1 start_cluster(config()) -> {ok, config()}
+       | {error, term()}
+       | {error, term(), config()}
+  spec start_replica/2 start_replica(node(), osiris:config()) -> supervisor:startchild_ret()
+  spec start_writer/1 start_writer(osiris:config()) -> supervisor:startchild_ret()
+  spec stop_member/2 stop_member(node(), osiris:config()) -> ok
+  spec update_retention/2 update_retention(pid(), [osiris:retention_spec()]) -> ok | {error, term()}
+  spec write/2 write(Pid :: pid(), Data :: data()) -> ok
+  spec write/4 write(Pid :: pid(), WriterId :: binary() | undefined, CorrOrSeq :: non_neg_integer() | term(), Data :: data()) -> ok
+  spec write_tracking/3 write_tracking(pid(), binary(), {tracking_type(), offset() | timestamp()} | offset()) -> ok
+  type batch/0 :: {batch, NumRecords :: non_neg_integer(), compression_type(), UncompressedDataSize :: non_neg_integer(), iodata()}
+  type compression_type/0 :: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+  type config/0 :: #{name := name(), reference => term(), event_formatter => {module(), atom(), list()}, retention => [osiris:retention_spec()], features => features(), atom() => term()}
+  type data/0 :: iodata() | batch() | {filter_value(), iodata() | batch()}
+  type entry/0 :: binary() | batch()
+  type epoch/0 :: non_neg_integer()
+  type features/0 :: #{committed_offset_calculate => boolean()}
+  type filter_value/0 :: binary()
+  type mfarg/0 :: {module(), atom(), list()}
+  type milliseconds/0 :: non_neg_integer()
+  type name/0 :: string() | binary()
+  type offset/0 :: non_neg_integer()
+  type offset_spec/0 :: first | last | next | {abs, offset()} | offset() | {timestamp, timestamp()}
+  type reader_options/0 :: #{transport => tcp | ssl, chunk_selector => all | user_data, filter_spec => osiris_bloom:filter_spec(), read_ahead => boolean() | non_neg_integer() }
+  type retention_spec/0 :: {max_bytes, non_neg_integer()} | {max_age, milliseconds()}
+  type tail_info/0 :: {NextOffset :: offset(), Last :: empty | {epoch(), offset(), osiris:timestamp()}}
+  type timestamp/0 :: integer()
+  type tracking_id/0 :: osiris_tracking:tracking_id()
+  type tracking_type/0 :: osiris_tracking:tracking_type()
+  type writer_id/0 :: binary()
+
+module osiris_app
+  behaviour application
+  export start/2
+  export stop/1
+
+module osiris_bench
+  export do_metrics/1
+  export do_publish/1
+  export run/1
+  export stop/1
+  export test/1
+  export_type state/0
+  opaque state/0
+
+module osiris_bloom
+  export bit_set/2
+  export filter_size/1
+  export init/1
+  export init_matcher/1
+  export insert/2
+  export is_in_set/2
+  export is_match/2
+  export make_hash/2
+  export to_binary/1
+  export_type filter_size/0
+  export_type filter_spec/0
+  export_type mstate/0
+  export_type state/0
+  spec filter_size/1 filter_size(mstate()) -> non_neg_integer()
+  spec init/1 init(filter_size()) -> state()
+  spec init_matcher/1 init_matcher(filter_spec()) -> mstate()
+  spec insert/2 insert(binary(), state()) -> state()
+  spec is_match/2 is_match(binary(), mstate()) -> {retry_with, mstate()} | boolean()
+  spec to_binary/1 to_binary(state()) -> binary()
+  type filter_size/0 :: 16..255
+  type filter_spec/0 :: #{filters := [binary()], match_unfiltered => boolean()}
+  type hash/0 :: {1..2040, 1..2040} | {0, 0}
+  opaque mstate/0
+  opaque state/0
+
+module osiris_counters
+  export counters/2
+  export delete/1
+  export fetch/1
+  export init/0
+  export new/2
+  export overview/0
+  export overview/1
+  spec counters/2 counters(name(), [atom()]) -> #{atom() => non_neg_integer()} | undefined
+  spec delete/1 delete(term()) -> ok
+  spec fetch/1 fetch(name()) -> undefined | counters:counters_ref()
+  spec init/0 init() -> ok
+  spec new/2 new(name(), seshat:fields_spec()) -> counters:counters_ref()
+  spec overview/0 overview() -> #{name() => #{atom() => non_neg_integer()}}
+  spec overview/1 overview(name()) -> #{atom() => non_neg_integer()} | undefined
+  type name/0 :: term()
+
+module osiris_ets
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module osiris_log
+  export accept_chunk/2
+  export can_read_next/1
+  export chunk_iterator/1
+  export chunk_iterator/2
+  export chunk_iterator/3
+  export close/1
+  export committed_chunk_id/1
+  export committed_offset/1
+  export counter_fields/0
+  export counters_ref/1
+  export delete_directory/1
+  export directory/1
+  export dump_chunk/1
+  export dump_crc_check/1
+  export dump_index/1
+  export dump_init/1
+  export dump_init_idx/1
+  export evaluate_retention/2
+  export evaluate_tracking_snapshot/2
+  export first_offset/1
+  export first_timestamp/1
+  export format_status/1
+  export generate_log/4
+  export get_current_epoch/1
+  export get_current_file/1
+  export get_default_max_segment_size_bytes/0
+  export get_directory/1
+  export get_name/1
+  export get_shared/1
+  export index_files_unsorted/1
+  export init/1
+  export init/2
+  export init_acceptor/3
+  export init_data_reader/2
+  export init_offset_reader/2
+  export iterator_next/1
+  export last_chunk_id/1
+  export make_chunk/7
+  export make_counter/1
+  export next_offset/1
+  export orphaned_segments/1
+  export overview/1
+  export read_chunk/1
+  export read_chunk_parsed/1
+  export read_chunk_parsed/2
+  export read_header/1
+  export read_header0/1
+  export recover_tracking/1
+  export resolve_offset_spec/2
+  export samples/2
+  export send_file/2
+  export send_file/3
+  export set_committed_chunk_id/2
+  export set_committed_offset/2
+  export sorted_index_files/1
+  export tail_info/1
+  export update_retention/2
+  export write/2
+  export write/3
+  export write/5
+  export_type chunk_iterator/0
+  export_type config/0
+  export_type counter_spec/0
+  export_type range/0
+  export_type state/0
+  export_type transport/0
+  spec accept_chunk/2 accept_chunk(iodata(), state()) -> state()
+  spec can_read_next/1 can_read_next(state()) -> boolean()
+  spec chunk_iterator/1 chunk_iterator(state()) -> {ok, header_map(), chunk_iterator(), state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec chunk_iterator/2 chunk_iterator(state(), pos_integer() | all) -> {ok, header_map(), chunk_iterator(), state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec chunk_iterator/3 chunk_iterator(state(), pos_integer() | all, chunk_iterator() | undefined) -> {ok, header_map(), chunk_iterator(), state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec close/1 close(state()) -> ok
+  spec committed_chunk_id/1 committed_chunk_id(state()) -> integer()
+  spec committed_offset/1 committed_offset(state()) -> integer()
+  spec counter_fields/0 counter_fields() -> seshat:fields_spec()
+  spec counters_ref/1 counters_ref(state()) -> counters:counters_ref()
+  spec directory/1 directory(osiris:config() | list()) -> file:filename_all()
+  spec evaluate_retention/2 evaluate_retention(file:filename_all(), [retention_spec()]) -> {range(), FirstTimestamp :: osiris:timestamp(), NumRemainingFiles :: non_neg_integer()}
+  spec evaluate_tracking_snapshot/2 evaluate_tracking_snapshot(state(), osiris_tracking:state()) -> {state(), osiris_tracking:state()}
+  spec find_intermediate_offsets/4 find_intermediate_offsets(TargetOffsets :: [{float(), offset()}], IdxFiles :: list(), InitialResults :: [{float(), offset(), osiris:timestamp()}], LastStreamOff :: offset()) -> {ok, [{float(), offset(), osiris:timestamp()}]}
+       | {error, term()}
+  spec first_offset/1 first_offset(state()) -> offset()
+  spec first_timestamp/1 first_timestamp(state()) -> osiris:timestamp()
+  spec format_status/1 format_status(state()) -> map()
+  spec get_current_epoch/1 get_current_epoch(state()) -> non_neg_integer()
+  spec get_current_file/1 get_current_file(state()) -> file:filename_all()
+  spec get_default_max_segment_size_bytes/0 get_default_max_segment_size_bytes() -> non_neg_integer()
+  spec get_directory/1 get_directory(state()) -> file:filename_all()
+  spec get_name/1 get_name(state()) -> string()
+  spec get_shared/1 get_shared(state()) -> atomics:atomics_ref()
+  spec init/1 init(config()) -> state()
+  spec init/2 init(config(), writer | acceptor) -> state()
+  spec init_acceptor/3 init_acceptor(range(), list(), config()) -> state()
+  spec init_data_reader/2 init_data_reader(osiris:tail_info(), config()) -> {ok, state()}
+       | {error, {offset_out_of_range, empty | {offset(), offset()}}}
+       | {error, {invalid_last_offset_epoch, epoch(), offset()}}
+       | {error, file:posix()}
+  spec init_offset_reader/2 init_offset_reader(OffsetSpec :: offset_spec(), Config :: config()) -> {ok, state()}
+       | {error, {offset_out_of_range, empty | {From :: offset(), To :: offset()}}}
+       | {error, {invalid_chunk_header, term()}}
+       | {error, no_index_file}
+       | {error, retries_exhausted}
+  spec iterator_next/1 iterator_next(chunk_iterator()) -> end_of_chunk
+       | {offset_entry(), chunk_iterator()}
+  spec iterator_next/2 iterator_next(chunk_iterator(), CreditHint :: non_neg_integer()) -> end_of_chunk
+       | {offset_entry(), chunk_iterator()}
+  spec last_chunk_id/1 last_chunk_id(state()) -> integer()
+  spec make_counter/1 make_counter(osiris_log:config()) -> counters:counters_ref()
+  spec next_offset/1 next_offset(state()) -> offset()
+  spec overview/1 overview(file:filename_all()) -> {range(), [{epoch(), offset()}]}
+  spec ra/1 ra(config()) -> #ra{}
+  spec read_chunk/1 read_chunk(state()) -> {ok, binary(), state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec read_chunk_parsed/1 read_chunk_parsed(state()) -> {[record()], state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec read_chunk_parsed/2 read_chunk_parsed(state(), no_header | with_header) -> {[record()], state()}
+       | {ok, header_map(), [record()], state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec read_header/1 read_header(state()) -> {ok, header_map(), state()}
+       | {end_of_stream, state()}
+       | {error, {invalid_chunk_header, term()}}
+  spec read_header0/1 read_header0(state()) -> {ok, map(), state()} | {end_of_stream, state()}
+  spec recover_tracking/1 recover_tracking(state()) -> osiris_tracking:state()
+  spec resolve_offset_spec/2 resolve_offset_spec(OffsetSpec :: offset_spec(), Config :: config()) -> {ok, offset()}
+       | {error, no_index_file}
+       | {error, {offset_out_of_range, range()}}
+       | {error, retries_exhausted}
+  spec samples/2 samples(file:filename_all() | config(), [float()]) -> {ok, [{float(), offset(), osiris:timestamp()}]}
+       | {error, empty | term()}
+  spec samples_with_index/2 samples_with_index(Fractions :: [float()], IdxFiles :: list()) -> {ok, [{float(), offset(), osiris:timestamp()}]}
+       | {error, empty | term()}
+  spec send_file/2 send_file(gen_tcp:socket(), state()) -> {ok, state()}
+       | {error, term()}
+       | {end_of_stream, state()}
+  spec send_file/3 send_file(gen_tcp:socket() | ssl:socket(), state(), fun((header_map(), non_neg_integer()) -> binary())) -> {ok, state()}
+       | {error, term()}
+       | {end_of_stream, state()}
+  spec set_committed_chunk_id/2 set_committed_chunk_id(state(), offset()) -> ok
+  spec set_committed_offset/2 set_committed_offset(state(), offset()) -> ok
+  spec tail_info/1 tail_info(state()) -> osiris:tail_info()
+  spec update_retention/2 update_retention([retention_spec()], state()) -> state()
+  spec write/2 write([osiris:data()], state()) -> state()
+  spec write/3 write([osiris:data()], integer(), state()) -> state()
+  spec write/5 write([osiris:data()], chunk_type(), osiris:timestamp(), iodata(), state()) -> state()
+  type chunk_type/0 :: ?CHNK_USER | ?CHNK_TRK_DELTA | ?CHNK_TRK_SNAPSHOT
+  type config/0 :: osiris:config()
+       | #{dir := file:filename_all(), epoch => non_neg_integer(), shared => atomics:atomics_ref(), max_segment_size_bytes => non_neg_integer(), tracking_config => osiris_tracking:config(), counter => counters:counters_ref(), counter_spec => counter_spec(), initial_offset => osiris:offset(), index_files => [file:filename_all()], filter_size => osiris_bloom:filter_size() }
+  type counter_spec/0 :: {Tag :: term(), Fields :: seshat:fields_spec()}
+  type epoch/0 :: osiris:epoch()
+  type header_map/0 :: #{chunk_id => offset(), epoch => epoch(), type => chunk_type(), crc => integer(), num_records => non_neg_integer(), num_entries => non_neg_integer(), timestamp => osiris:timestamp(), data_size => non_neg_integer(), trailer_size => non_neg_integer(), filter_size => 16..255, header_data => binary(), position => non_neg_integer(), next_position => non_neg_integer()}
+  type offset/0 :: osiris:offset()
+  type offset_entry/0 :: {offset(), osiris:entry()}
+  type offset_spec/0 :: osiris:offset_spec()
+  type range/0 :: empty | {From :: offset(), To :: offset()}
+  type record/0 :: {offset(), osiris:entry()}
+  type retention_spec/0 :: osiris:retention_spec()
+  type transport/0 :: tcp | ssl
+  opaque chunk_iterator/0
+  opaque state/0
+
+module osiris_log_shared
+  export committed_chunk_id/1
+  export committed_offset/1
+  export first_chunk_id/1
+  export last_chunk_id/1
+  export new/0
+  export set_committed_chunk_id/2
+  export set_committed_offset/2
+  export set_first_chunk_id/2
+  export set_last_chunk_id/2
+  spec committed_chunk_id/1 committed_chunk_id(atomics:atomics_ref()) -> chunk_id()
+  spec committed_offset/1 committed_offset(atomics:atomics_ref()) -> chunk_id()
+  spec first_chunk_id/1 first_chunk_id(atomics:atomics_ref()) -> chunk_id()
+  spec last_chunk_id/1 last_chunk_id(atomics:atomics_ref()) -> chunk_id()
+  spec new/0 new() -> atomics:atomics_ref()
+  spec set_committed_chunk_id/2 set_committed_chunk_id(atomics:atomics_ref(), chunk_id()) -> ok
+  spec set_committed_offset/2 set_committed_offset(atomics:atomics_ref(), offset()) -> ok
+  spec set_first_chunk_id/2 set_first_chunk_id(atomics:atomics_ref(), chunk_id()) -> ok
+  spec set_last_chunk_id/2 set_last_chunk_id(atomics:atomics_ref(), chunk_id()) -> ok
+  type chunk_id/0 :: -1 | non_neg_integer()
+  type offset/0 :: -1 | non_neg_integer()
+
+module osiris_member
+  export delete/2
+  export start/3
+  export stop/2
+  callback start/2 start(node(), osiris:config()) -> supervisor:startchild_ret()
+  spec delete/2 delete(node(), osiris:config()) -> ok | {error, term()}
+  spec start/3 start(module(), node(), osiris:config()) -> supervisor:startchild_ret()
+  spec stop/2 stop(node(), osiris:config()) -> ok
+
+module osiris_replica
+  behaviour gen_server
+  behaviour osiris_member
+  export code_change/3
+  export combine_ips_hosts/4
+  export format_status/1
+  export get_port/1
+  export handle_call/3
+  export handle_cast/2
+  export handle_continue/2
+  export handle_info/2
+  export init/1
+  export init_fields_spec/0
+  export start/2
+  export start_link/1
+  export terminate/2
+  export_type state/0
+  spec start/2 start(node(), Config :: osiris:config()) -> supervisor:startchild_ret()
+  type parse_state/0 :: undefined | binary() | {non_neg_integer(), iolist(), non_neg_integer()}
+  opaque state/0
+
+module osiris_replica_reader
+  behaviour gen_server
+  export code_change/3
+  export formatter/1
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export init_fields_spec/0
+  export start/2
+  export start_link/1
+  export stop/1
+  export terminate/2
+
+module osiris_replica_reader_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0
+
+module osiris_retention
+  behaviour gen_batch_server
+  export eval/4
+  export handle_batch/2
+  export init/1
+  export start_link/0
+  export terminate/2
+  spec eval/4 eval(osiris:name(), file:name_all(), [osiris:retention_spec()], fun((osiris_log:range()) -> ok)) -> ok
+  spec handle_batch/2 handle_batch([gen_batch_server:op()], #state{}) -> {ok, #state{}}
+  spec init/1 init([]) -> {ok, #state{}}
+  spec start_link/0 start_link() -> {ok, pid()} | ignore | {error, term()}
+  spec terminate/2 terminate(term(), #state{}) -> ok
+
+module osiris_server_sup
+  behaviour supervisor
+  export delete_child/2
+  export init/1
+  export start_link/0
+  export stop_child/2
+
+module osiris_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0
+
+module osiris_tracking
+  export add/5
+  export append_trailer/3
+  export flush/1
+  export init/2
+  export is_empty/1
+  export max_sequences/1
+  export needs_flush/1
+  export overview/1
+  export query/3
+  export snapshot/3
+  export_type config/0
+  export_type state/0
+  export_type tracking_id/0
+  export_type tracking_type/0
+  spec add/5 add(tracking_id(), tracking_type(), tracking(), osiris:offset() | undefined, state()) -> state()
+  spec append_trailer/3 append_trailer(osiris:offset(), binary(), state()) -> state()
+  spec flush/1 flush(state()) -> {iodata(), state()}
+  spec init/2 init(undefined | binary(), config() | state()) -> state()
+  spec is_empty/1 is_empty(state()) -> boolean()
+  spec max_sequences/1 max_sequences(state()) -> non_neg_integer()
+  spec needs_flush/1 needs_flush(state()) -> boolean()
+  spec overview/1 overview(state()) -> map()
+  spec query/3 query(tracking_id(), TrkType :: tracking_type(), state()) -> {ok, term()}
+       | {error, not_found}
+  spec snapshot/3 snapshot(osiris:offset(), osiris:timestamp(), state()) -> {iodata(), state()}
+  type config/0 :: #{max_sequences => non_neg_integer()}
+  type tracking/0 :: non_neg_integer() | osiris:offset() | osiris:timestamp()
+  type tracking_id/0 :: binary()
+  type tracking_type/0 :: sequence | offset | timestamp
+  opaque state/0
+
+module osiris_util
+  export cache_reader_context/6
+  export get_reader_context/1
+  export get_replica_listener_inet_address_family/0
+  export get_replication_configuration_from_tls_dist/0
+  export get_replication_configuration_from_tls_dist/1
+  export get_replication_configuration_from_tls_dist/2
+  export hostname_from_node/0
+  export id/1
+  export inet_tls_enabled/1
+  export is_dir/1
+  export is_file/1
+  export lists_find/2
+  export normalise_name/1
+  export partition_parallel/3
+  export replication_over_tls_configuration/3
+  export to_base64uri/1
+  export validate_base64uri/1
+  spec get_replica_listener_inet_address_family/0 get_replica_listener_inet_address_family() -> inet | inet6
+  spec id/1 id(term()) -> term()
+  spec lists_find/2 lists_find(fun((term()) -> boolean()), list()) -> {ok, term()} | not_found
+  spec to_base64uri/1 to_base64uri(string() | binary()) -> string()
+  spec validate_base64uri/1 validate_base64uri(string() | binary()) -> boolean()
+
+module osiris_writer
+  visibility hidden
+  behaviour gen_batch_server
+  behaviour osiris_member
+  export ack/2
+  export delete/1
+  export delete/2
+  export format_status/1
+  export handle_batch/2
+  export handle_continue/2
+  export init/1
+  export init_data_reader/3
+  export init_fields_spec/0
+  export overview/1
+  export query_replication_state/1
+  export query_writers/2
+  export read_tracking/1
+  export read_tracking/3
+  export register_data_listener/2
+  export start/1
+  export start/2
+  export start_link/1
+  export stop/1
+  export stop/2
+  export terminate/2
+  export write/2
+  export write/5
+  export write_tracking/3
+  export_type state/0
+  spec ack/2 ack(identifier(), {osiris:offset(), osiris:timestamp()} | osiris:tail_info()) -> ok
+  spec agreed_commit/1 agreed_commit([osiris:tail_info()]) -> osiris:tail_info()
+  spec delete/2 delete(node(), osiris:config()) -> ok | {error, term()}
+  spec init/1 init(osiris:config()) -> {ok, undefined, {continue, osiris:config()}}
+  spec start/2 start(node(), Config :: osiris:config()) -> supervisor:startchild_ret()
+  spec start_link/1 start_link(Config :: map()) -> {ok, pid()} | {error, {already_started, pid()}}
+  spec stop/2 stop(node(), osiris:config()) -> ok | {error, not_found}
+  spec write/2 write(Pid :: pid(), Data :: osiris:data()) -> ok
+  spec write/5 write(Pid :: pid(), Sender :: pid(), WriterId :: binary() | undefined, CorrOrSeq :: non_neg_integer() | term(), Data :: osiris:data()) -> ok
+  spec write_tracking/3 write_tracking(pid(), binary(), {offset | timestamp, osiris:offset() | osiris:timestamp()}) -> ok
+  opaque state/0

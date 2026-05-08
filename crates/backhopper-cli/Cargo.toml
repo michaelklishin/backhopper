@@ -52,3 +52,7 @@ path = "tests/integration/main.rs"
 [[test]]
 name = "proptests"
 path = "tests/proptests/main.rs"
+
+[[test]]
+name = "online"
+path = "tests/online/main.rs"

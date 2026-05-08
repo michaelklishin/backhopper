@@ -1,0 +1,16 @@
+# Default profile: fast and offline. Skips tests marked `#[ignore]`,
+# which is the gate for tests that need network access or large clones.
+[profile.default]
+fail-fast = true
+
+# Online profile: runs only the ignored tests, used for end-to-end
+# checks that clone real upstream repos into a TempDir and exercise
+# the discover/lookup pipeline against them. Invoke with:
+#
+#   cargo nextest run --profile online --run-ignored only
+#
+# Not part of CI by default; opt in when you want to validate against
+# real ra/khepri/osiris/cowboy upstreams.
+[profile.online]
+fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 4 }

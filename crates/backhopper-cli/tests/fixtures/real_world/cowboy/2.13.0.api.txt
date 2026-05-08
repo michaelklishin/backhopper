@@ -1,0 +1,815 @@
+# backhopper snapshot
+# format-version: 1
+# project: cowboy
+# tag: 2.13.0
+# commit: 24d32de931a0c985ff7939077463fc8be939f0e9
+# scanned-paths: src/**/*.erl, include/**/*.hrl
+# generated-by: backhopper 0.1.0
+# generated-at: 2026-05-08T04:28:44.876477Z
+
+module cowboy
+  export get_env/2
+  export get_env/3
+  export log/2
+  export log/4
+  export set_env/3
+  export start_clear/3
+  export start_quic/3
+  export start_tls/3
+  export stop_listener/1
+  export_type fields/0
+  export_type http_headers/0
+  export_type http_status/0
+  export_type http_version/0
+  export_type opts/0
+  spec get_env/2 get_env(ranch:ref(), atom()) -> ok
+  spec get_env/3 get_env(ranch:ref(), atom(), any()) -> ok
+  spec log/2 log({log, logger:level(), io:format(), list()}, opts()) -> ok
+  spec log/4 log(logger:level(), io:format(), list(), opts()) -> ok
+  spec set_env/3 set_env(ranch:ref(), atom(), any()) -> ok
+  spec start_clear/3 start_clear(ranch:ref(), ranch:opts(), opts()) -> {ok, pid()} | {error, any()}
+  spec start_quic/3 start_quic(ranch:ref(), #{socket_opts => [{atom(), _}]}, cowboy_http3:opts()) -> {ok, pid()}
+  spec start_tls/3 start_tls(ranch:ref(), ranch:opts(), opts()) -> {ok, pid()} | {error, any()}
+  spec stop_listener/1 stop_listener(ranch:ref()) -> ok | {error, not_found}
+  type fields/0 :: [atom() | {atom(), cowboy_constraints:constraint() | [cowboy_constraints:constraint()]} | {atom(), cowboy_constraints:constraint() | [cowboy_constraints:constraint()], any()}]
+  type http_headers/0 :: #{binary() => iodata()}
+  type http_status/0 :: non_neg_integer() | binary()
+  type http_version/0 :: 'HTTP/2' | 'HTTP/1.1' | 'HTTP/1.0'
+  type opts/0 :: cowboy_http:opts() | cowboy_http2:opts()
+
+module cowboy_app
+  behaviour application
+  export start/2
+  export stop/1
+  spec start/2 start(_, _) -> {ok, pid()}
+  spec stop/1 stop(_) -> ok
+
+module cowboy_bstr
+  export capitalize_token/1
+  export char_to_lower/1
+  export char_to_upper/1
+  export to_lower/1
+  export to_upper/1
+  spec capitalize_token/1 capitalize_token(B) -> B when B::binary()
+  spec char_to_lower/1 char_to_lower(char()) -> char()
+  spec char_to_upper/1 char_to_upper(char()) -> char()
+  spec to_lower/1 to_lower(B) -> B when B::binary()
+  spec to_upper/1 to_upper(B) -> B when B::binary()
+
+module cowboy_children
+  export down/2
+  export handle_supervisor_call/4
+  export init/0
+  export shutdown/2
+  export shutdown_timeout/3
+  export terminate/1
+  export up/4
+  export_type children/0
+  spec count_children/1 count_children(children()) -> [{atom(), non_neg_integer()}]
+  spec down/2 down(Children, pid()) -> {ok, cowboy_stream:streamid() | undefined, Children}
+       | error when Children::children()
+  spec handle_supervisor_call/4 handle_supervisor_call(any(), {pid(), any()}, children(), module()) -> ok
+  spec init/0 init() -> []
+  spec shutdown/2 shutdown(Children, cowboy_stream:streamid()) -> Children when Children::children()
+  spec shutdown_timeout/3 shutdown_timeout(children(), reference(), pid()) -> ok
+  spec terminate/1 terminate(children()) -> ok
+  spec up/4 up(Children, pid(), cowboy_stream:streamid(), timeout()) -> Children when Children::children()
+  spec which_children/2 which_children(children(), module()) -> [{module(), pid(), worker, [module()]}]
+  type children/0 :: [#child{}]
+
+module cowboy_clear
+  behaviour ranch_protocol
+  export connection_process/4
+  export start_link/3
+  export start_link/4
+  spec connection_process/4 connection_process(pid(), ranch:ref(), module(), cowboy:opts()) -> ok
+  spec start_link/3 start_link(ranch:ref(), module(), cowboy:opts()) -> {ok, pid()}
+  spec start_link/4 start_link(ranch:ref(), inet:socket(), module(), cowboy:opts()) -> {ok, pid()}
+
+module cowboy_clock
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export rfc1123/0
+  export rfc1123/1
+  export start_link/0
+  export stop/0
+  export terminate/2
+  spec code_change/3 code_change(_, State, _) -> {ok, State} when State::#state{}
+  spec handle_call/3 handle_call(stop, from(), State) -> {stop, normal, stopped, State} when State::#state{}
+  spec handle_cast/2 handle_cast(_, State) -> {noreply, State} when State::#state{}
+  spec handle_info/2 handle_info(any(), State) -> {noreply, State} when State::#state{}
+  spec init/1 init([]) -> {ok, #state{}}
+  spec month/1 month(1..12) -> <<_:24>>
+  spec pad_int/1 pad_int(0..59) -> binary()
+  spec rfc1123/0 rfc1123() -> binary()
+  spec rfc1123/1 rfc1123(calendar:datetime()) -> binary()
+  spec start_link/0 start_link() -> {ok, pid()}
+  spec stop/0 stop() -> stopped
+  spec terminate/2 terminate(_, _) -> ok
+  spec update_rfc1123/3 update_rfc1123(binary(), undefined | calendar:datetime(), calendar:datetime()) -> binary()
+  spec weekday/1 weekday(1..7) -> <<_:24>>
+  type from/0 :: {pid(), term()}
+
+module cowboy_compress_h
+  behaviour cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export terminate/3
+  spec data/4 data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec early_error/5 early_error(cowboy_stream:streamid(), cowboy_stream:reason(), cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp when Resp::cowboy_stream:resp_command()
+  spec info/3 info(cowboy_stream:streamid(), any(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec init/3 init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> {cowboy_stream:commands(), #state{}}
+  spec terminate/3 terminate(cowboy_stream:streamid(), cowboy_stream:reason(), #state{}) -> any()
+
+module cowboy_constraints
+  export format_error/1
+  export reverse/2
+  export validate/2
+  export_type constraint/0
+  export_type reason/0
+  spec format_error/1 format_error(reason()) -> iodata()
+  spec reverse/2 reverse(any(), constraint() | [constraint()]) -> {ok, binary()}
+       | {error, reason()}
+  spec validate/2 validate(binary(), constraint() | [constraint()]) -> {ok, any()}
+       | {error, reason()}
+  type constraint/0 :: int | nonempty | fun()
+  type reason/0 :: {constraint(), any(), any()}
+
+module cowboy_decompress_h
+  behaviour cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export terminate/3
+  spec data/4 data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec early_error/5 early_error(cowboy_stream:streamid(), cowboy_stream:reason(), cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp when Resp::cowboy_stream:resp_command()
+  spec info/3 info(cowboy_stream:streamid(), any(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec init/3 init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> {cowboy_stream:commands(), #state{}}
+  spec terminate/3 terminate(cowboy_stream:streamid(), cowboy_stream:reason(), #state{}) -> any()
+
+module cowboy_handler
+  behaviour cowboy_middleware
+  export execute/2
+  export terminate/4
+  callback init/2 init(Req, any()) -> {ok | module(), Req, any()}
+       | {module(), Req, any(), any()} when Req::cowboy_req:req()
+  callback terminate/3 terminate(any(), map(), any()) -> ok
+  optional_callback terminate/3
+  spec execute/2 execute(Req, Env) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec terminate/4 terminate(any(), Req | undefined, any(), module()) -> ok when Req::cowboy_req:req()
+
+module cowboy_http
+  export init/6
+  export loop/1
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  export_type opts/0
+  spec default_port/1 default_port(boolean()) -> 80 | 443
+  spec error_terminate/3 error_terminate(cowboy:http_status(), #state{}, _) -> no_return()
+  spec init/6 init(pid(), ranch:ref(), inet:socket(), module(), ranch_proxy_header:proxy_info(), cowboy:opts()) -> ok
+  spec loop/1 loop(#state{}) -> ok
+  spec parse_request/3 parse_request(Buffer, State, non_neg_integer()) -> {request, cowboy_req:req(), State}
+       | {data, cowboy_stream:streamid(), cowboy_stream:fin(), binary(), State}
+       | {more, State} when Buffer::binary(), State::#state{}
+  spec system_code_change/4 system_code_change(Misc, _, _, _) -> {ok, Misc} when Misc::{#state{}, binary()}
+  spec system_continue/3 system_continue(_, _, #state{}) -> ok
+  spec system_terminate/4 system_terminate(any(), _, _, #state{}) -> no_return()
+  spec terminate/2 terminate(#state{} | undefined, _) -> no_return()
+  spec timeout/2 timeout(_, _) -> no_return()
+  type opts/0 :: #{ active_n => pos_integer(), alpn_default_protocol => http | http2, chunked => boolean(), compress_buffering => boolean(), compress_threshold => non_neg_integer(), connection_type => worker | supervisor, dynamic_buffer => false | {pos_integer(), pos_integer()}, dynamic_buffer_initial_average => non_neg_integer(), dynamic_buffer_initial_size => pos_integer(), env => cowboy_middleware:env(), hibernate => boolean(), http10_keepalive => boolean(), idle_timeout => timeout(), inactivity_timeout => timeout(), initial_stream_flow_size => non_neg_integer(), linger_timeout => timeout(), logger => module(), max_authority_length => non_neg_integer(), max_empty_lines => non_neg_integer(), max_header_name_length => non_neg_integer(), max_header_value_length => non_neg_integer(), max_headers => non_neg_integer(), max_keepalive => non_neg_integer(), max_method_length => non_neg_integer(), max_request_line_length => non_neg_integer(), metrics_callback => cowboy_metrics_h:metrics_callback(), metrics_req_filter => fun((cowboy_req:req()) -> map()), metrics_resp_headers_filter => fun((cowboy:http_headers()) -> cowboy:http_headers()), middlewares => [module()], protocols => [http | http2], proxy_header => boolean(), request_timeout => timeout(), reset_idle_timeout_on_send => boolean(), sendfile => boolean(), shutdown_timeout => timeout(), stream_handlers => [module()], tracer_callback => cowboy_tracer_h:tracer_callback(), tracer_flags => [atom()], tracer_match_specs => cowboy_tracer_h:tracer_match_specs(), _ => _ }
+  type stream/0 :: #stream{}
+
+module cowboy_http2
+  export init/6
+  export init/10
+  export init/12
+  export loop/2
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  export_type opts/0
+  spec closing/2 closing(#state{}, Reason :: term()) -> #state{}
+  spec init/6 init(pid(), ranch:ref(), inet:socket(), module(), ranch_proxy_header:proxy_info() | undefined, cowboy:opts()) -> ok
+  spec init/10 init(pid(), ranch:ref(), inet:socket(), module(), ranch_proxy_header:proxy_info() | undefined, cowboy:opts(), {inet:ip_address(), inet:port_number()}, {inet:ip_address(), inet:port_number()}, binary() | undefined, binary()) -> ok
+  spec init/12 init(pid(), ranch:ref(), inet:socket(), module(), ranch_proxy_header:proxy_info() | undefined, cowboy:opts(), {inet:ip_address(), inet:port_number()}, {inet:ip_address(), inet:port_number()}, binary() | undefined, binary(), map() | undefined, cowboy_req:req()) -> ok
+  spec initiate_closing/2 initiate_closing(#state{}, _) -> #state{}
+  spec loop/2 loop(#state{}, binary()) -> ok
+  spec system_code_change/4 system_code_change(Misc, _, _, _) -> {ok, Misc} when Misc::{#state{}, binary()}
+  spec system_continue/3 system_continue(_, _, {#state{}, binary()}) -> ok
+  spec system_terminate/4 system_terminate(any(), _, _, {#state{}, binary()}) -> no_return()
+  spec terminate/2 terminate(#state{} | undefined, _) -> no_return()
+  type opts/0 :: #{ active_n => pos_integer(), alpn_default_protocol => http | http2, compress_buffering => boolean(), compress_threshold => non_neg_integer(), connection_type => worker | supervisor, connection_window_margin_size => 0..16#7fffffff, connection_window_update_threshold => 0..16#7fffffff, dynamic_buffer => false | {pos_integer(), pos_integer()}, dynamic_buffer_initial_average => non_neg_integer(), dynamic_buffer_initial_size => pos_integer(), enable_connect_protocol => boolean(), env => cowboy_middleware:env(), goaway_initial_timeout => timeout(), goaway_complete_timeout => timeout(), hibernate => boolean(), idle_timeout => timeout(), inactivity_timeout => timeout(), initial_connection_window_size => 65535..16#7fffffff, initial_stream_window_size => 0..16#7fffffff, linger_timeout => timeout(), logger => module(), max_concurrent_streams => non_neg_integer() | infinity, max_connection_buffer_size => non_neg_integer(), max_connection_window_size => 0..16#7fffffff, max_decode_table_size => non_neg_integer(), max_encode_table_size => non_neg_integer(), max_fragmented_header_block_size => 16384..16#7fffffff, max_frame_size_received => 16384..16777215, max_frame_size_sent => 16384..16777215 | infinity, max_received_frame_rate => {pos_integer(), timeout()}, max_reset_stream_rate => {pos_integer(), timeout()}, max_cancel_stream_rate => {pos_integer(), timeout()}, max_stream_buffer_size => non_neg_integer(), max_stream_window_size => 0..16#7fffffff, metrics_callback => cowboy_metrics_h:metrics_callback(), metrics_req_filter => fun((cowboy_req:req()) -> map()), metrics_resp_headers_filter => fun((cowboy:http_headers()) -> cowboy:http_headers()), middlewares => [module()], preface_timeout => timeout(), protocols => [http | http2], proxy_header => boolean(), reset_idle_timeout_on_send => boolean(), sendfile => boolean(), settings_timeout => timeout(), shutdown_timeout => timeout(), stream_handlers => [module()], stream_window_data_threshold => 0..16#7fffffff, stream_window_margin_size => 0..16#7fffffff, stream_window_update_threshold => 0..16#7fffffff, tracer_callback => cowboy_tracer_h:tracer_callback(), tracer_flags => [atom()], tracer_match_specs => cowboy_tracer_h:tracer_match_specs(), _ => _ }
+
+module cowboy_http3
+  export init/4
+  export send/2
+  export_type opts/0
+  spec goaway/2 goaway(#state{}, {goaway, _}) -> no_return()
+  spec init/4 init(pid(), ranch:ref(), cowboy_quicer:quicer_connection_handle(), opts()) -> no_return()
+  spec send/2 send({cowboy_quicer:quicer_connection_handle(), cow_http3:stream_id()}, iodata()) -> ok
+       | {error, any()}
+  spec terminate/2 terminate(#state{} | undefined, _) -> no_return()
+  type opts/0 :: #{ compress_buffering => boolean(), compress_threshold => non_neg_integer(), connection_type => worker | supervisor, enable_connect_protocol => boolean(), env => cowboy_middleware:env(), logger => module(), max_decode_blocked_streams => 0..16#3fffffffffffffff, max_decode_table_size => 0..16#3fffffffffffffff, max_encode_blocked_streams => 0..16#3fffffffffffffff, max_encode_table_size => 0..16#3fffffffffffffff, max_ignored_frame_size_received => non_neg_integer() | infinity, metrics_callback => cowboy_metrics_h:metrics_callback(), metrics_req_filter => fun((cowboy_req:req()) -> map()), metrics_resp_headers_filter => fun((cowboy:http_headers()) -> cowboy:http_headers()), middlewares => [module()], shutdown_timeout => timeout(), stream_handlers => [module()], tracer_callback => cowboy_tracer_h:tracer_callback(), tracer_flags => [atom()], tracer_match_specs => cowboy_tracer_h:tracer_match_specs(), _ => _ }
+
+module cowboy_loop
+  behaviour cowboy_sub_protocol
+  export loop/5
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  export upgrade/4
+  export upgrade/5
+  callback info/3 info(any(), Req, State) -> {ok, Req, State}
+       | {ok, Req, State, hibernate}
+       | {stop, Req, State} when Req::cowboy_req:req(), State::any()
+  callback init/2 init(Req, any()) -> {ok | module(), Req, any()}
+       | {module(), Req, any(), any()} when Req::cowboy_req:req()
+  callback terminate/3 terminate(any(), cowboy_req:req(), any()) -> ok
+  optional_callback terminate/3
+  spec loop/5 loop(Req, Env, module(), any(), timeout()) -> {ok, Req, Env}
+       | {suspend, ?MODULE, loop, [any()]} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec system_code_change/4 system_code_change(Misc, _, _, _) -> {ok, Misc} when Misc::{cowboy_req:req(), cowboy_middleware:env(), module(), any()}
+  spec system_continue/3 system_continue(_, _, {Req, Env, module(), any(), timeout()}) -> {ok, Req, Env}
+       | {suspend, ?MODULE, loop, [any()]} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec system_terminate/4 system_terminate(any(), _, _, {Req, Env, module(), any(), timeout()}) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec upgrade/4 upgrade(Req, Env, module(), any()) -> {ok, Req, Env}
+       | {suspend, ?MODULE, loop, [any()]} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec upgrade/5 upgrade(Req, Env, module(), any(), hibernate | timeout()) -> {suspend, ?MODULE, loop, [any()]} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+
+module cowboy_metrics_h
+  behaviour cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export terminate/3
+  export_type metrics/0
+  export_type metrics_callback/0
+  spec data/4 data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec early_error/5 early_error(cowboy_stream:streamid(), cowboy_stream:reason(), cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp when Resp::cowboy_stream:resp_command()
+  spec info/3 info(cowboy_stream:streamid(), any(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec init/3 init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> {[{spawn, pid(), timeout()}], #state{}}
+  spec terminate/3 terminate(cowboy_stream:streamid(), cowboy_stream:reason(), #state{}) -> any()
+  type informational_metrics/0 :: #{ status := cowboy:http_status(), headers := cowboy:http_headers(), time := integer() }
+  type metrics/0 :: #{ ref := ranch:ref(), pid := pid(), streamid := cowboy_stream:streamid(), reason := cowboy_stream:reason(), req => cowboy_req:req(), partial_req => cowboy_stream:partial_req(), resp_status := cowboy:http_status(), resp_headers := cowboy:http_headers(), req_start => integer(), req_end => integer(), req_body_start => integer(), req_body_end => integer(), resp_start => integer(), resp_end => integer(), early_error_time => integer(), procs => proc_metrics(), informational => [informational_metrics()], req_body_length => non_neg_integer(), resp_body_length => non_neg_integer(), user_data => map() }
+  type metrics_callback/0 :: fun((metrics()) -> any())
+  type proc_metrics/0 :: #{pid() => #{ spawn := integer(), exit => integer(), reason => any() }}
+
+module cowboy_middleware
+  export_type env/0
+  callback execute/2 execute(Req, Env) -> {ok, Req, Env}
+       | {suspend, module(), atom(), [any()]}
+       | {stop, Req} when Req::cowboy_req:req(), Env::env()
+  type env/0 :: #{atom() => any()}
+
+module cowboy_quicer
+  export handle/1
+  export peercert/1
+  export peername/1
+  export send/3
+  export send/4
+  export shutdown/2
+  export shutdown_stream/4
+  export sockname/1
+  export start_unidi_stream/2
+  export_type quicer_connection_handle/0
+  spec handle/1 handle(_) -> no_return()
+  spec handle/1 handle({quic, _, _, _}) -> {data, cow_http3:stream_id(), cow_http:fin(), binary()}
+       | {stream_started, cow_http3:stream_id(), unidi | bidi}
+       | {stream_closed, cow_http3:stream_id(), quicer_app_errno()}
+       | closed
+       | ok
+       | unknown
+       | {socket_error, any()}
+  spec peercert/1 peercert(_) -> no_return()
+  spec peercert/1 peercert(quicer_connection_handle()) -> {ok, public_key:der_encoded()}
+       | {error, any()}
+  spec peername/1 peername(_) -> no_return()
+  spec peername/1 peername(quicer_connection_handle()) -> {ok, {inet:ip_address(), inet:port_number()}}
+       | {error, any()}
+  spec send/3 send(_, _, _) -> no_return()
+  spec send/3 send(quicer_connection_handle(), cow_http3:stream_id(), iodata()) -> ok
+       | {error, any()}
+  spec send/4 send(_, _, _, _) -> no_return()
+  spec send/4 send(quicer_connection_handle(), cow_http3:stream_id(), iodata(), cow_http:fin()) -> ok
+       | {error, any()}
+  spec shutdown/2 shutdown(_, _) -> no_return()
+  spec shutdown/2 shutdown(quicer_connection_handle(), quicer_app_errno()) -> ok | {error, any()}
+  spec shutdown_stream/4 shutdown_stream(_, _, _, _) -> no_return()
+  spec shutdown_stream/4 shutdown_stream(quicer_connection_handle(), cow_http3:stream_id(), both | receiving, quicer_app_errno()) -> ok
+  spec sockname/1 sockname(_) -> no_return()
+  spec sockname/1 sockname(quicer_connection_handle()) -> {ok, {inet:ip_address(), inet:port_number()}}
+       | {error, any()}
+  spec start_unidi_stream/2 start_unidi_stream(_, _) -> no_return()
+  spec start_unidi_stream/2 start_unidi_stream(quicer_connection_handle(), iodata()) -> {ok, cow_http3:stream_id()}
+       | {error, any()}
+  type quicer_app_errno/0 :: non_neg_integer()
+  type quicer_connection_handle/0 :: reference()
+
+module cowboy_req
+  export binding/2
+  export binding/3
+  export bindings/1
+  export body_length/1
+  export cast/2
+  export cert/1
+  export delete_resp_header/2
+  export filter_cookies/2
+  export has_body/1
+  export has_resp_body/1
+  export has_resp_header/2
+  export header/2
+  export header/3
+  export headers/1
+  export host/1
+  export host_info/1
+  export inform/2
+  export inform/3
+  export match_cookies/2
+  export match_qs/2
+  export method/1
+  export parse_cookies/1
+  export parse_header/2
+  export parse_header/3
+  export parse_qs/1
+  export path/1
+  export path_info/1
+  export peer/1
+  export port/1
+  export push/3
+  export push/4
+  export qs/1
+  export read_and_match_urlencoded_body/2
+  export read_and_match_urlencoded_body/3
+  export read_body/1
+  export read_body/2
+  export read_part/1
+  export read_part/2
+  export read_part_body/1
+  export read_part_body/2
+  export read_urlencoded_body/1
+  export read_urlencoded_body/2
+  export reply/2
+  export reply/3
+  export reply/4
+  export resp_header/2
+  export resp_header/3
+  export resp_headers/1
+  export response_headers/2
+  export scheme/1
+  export set_resp_body/2
+  export set_resp_cookie/3
+  export set_resp_cookie/4
+  export set_resp_header/3
+  export set_resp_headers/2
+  export sock/1
+  export stream_body/3
+  export stream_events/3
+  export stream_reply/2
+  export stream_reply/3
+  export stream_trailers/2
+  export uri/1
+  export uri/2
+  export version/1
+  export_type push_opts/0
+  export_type read_body_opts/0
+  export_type req/0
+  export_type resp_body/0
+  spec binding/2 binding(atom(), req()) -> any() | undefined
+  spec binding/3 binding(atom(), req(), Default) -> any() | Default when Default::any()
+  spec bindings/1 bindings(req()) -> cowboy_router:bindings()
+  spec body_length/1 body_length(req()) -> undefined | non_neg_integer()
+  spec cast/2 cast(any(), req()) -> ok
+  spec cert/1 cert(req()) -> binary() | undefined
+  spec delete_resp_header/2 delete_resp_header(binary(), Req) -> Req when Req::req()
+  spec filter_cookies/2 filter_cookies([atom() | binary()], Req) -> Req when Req::req()
+  spec has_body/1 has_body(req()) -> boolean()
+  spec has_resp_body/1 has_resp_body(req()) -> boolean()
+  spec has_resp_header/2 has_resp_header(binary(), req()) -> boolean()
+  spec header/2 header(binary(), req()) -> binary() | undefined
+  spec header/3 header(binary(), req(), Default) -> binary() | Default when Default::any()
+  spec headers/1 headers(req()) -> cowboy:http_headers()
+  spec host/1 host(req()) -> binary()
+  spec host_info/1 host_info(req()) -> cowboy_router:tokens() | undefined
+  spec inform/2 inform(cowboy:http_status(), req()) -> ok
+  spec inform/3 inform(cowboy:http_status(), cowboy:http_headers(), req()) -> ok
+  spec match_cookies/2 match_cookies(cowboy:fields(), req()) -> map()
+  spec match_qs/2 match_qs(cowboy:fields(), req()) -> map()
+  spec method/1 method(req()) -> binary()
+  spec parse_cookies/1 parse_cookies(req()) -> [{binary(), binary()}]
+  spec parse_header/2 parse_header(binary(), Req) -> any() when Req::req()
+  spec parse_header/3 parse_header(binary(), Req, any()) -> any() when Req::req()
+  spec parse_qs/1 parse_qs(req()) -> [{binary(), binary() | true}]
+  spec path/1 path(req()) -> binary()
+  spec path_info/1 path_info(req()) -> cowboy_router:tokens() | undefined
+  spec peer/1 peer(req()) -> {inet:ip_address(), inet:port_number()}
+  spec port/1 port(req()) -> inet:port_number()
+  spec push/3 push(iodata(), cowboy:http_headers(), req()) -> ok
+  spec push/4 push(iodata(), cowboy:http_headers(), req(), push_opts()) -> ok
+  spec qs/1 qs(req()) -> binary()
+  spec read_and_match_urlencoded_body/2 read_and_match_urlencoded_body(cowboy:fields(), Req) -> {ok, map(), Req} when Req::req()
+  spec read_and_match_urlencoded_body/3 read_and_match_urlencoded_body(cowboy:fields(), Req, read_body_opts()) -> {ok, map(), Req} when Req::req()
+  spec read_body/1 read_body(Req) -> {ok, binary(), Req} | {more, binary(), Req} when Req::req()
+  spec read_body/2 read_body(Req, read_body_opts()) -> {ok, binary(), Req}
+       | {more, binary(), Req} when Req::req()
+  spec read_part/1 read_part(Req) -> {ok, cowboy:http_headers(), Req} | {done, Req} when Req::req()
+  spec read_part/2 read_part(Req, read_body_opts()) -> {ok, cowboy:http_headers(), Req}
+       | {done, Req} when Req::req()
+  spec read_part_body/1 read_part_body(Req) -> {ok, binary(), Req}
+       | {more, binary(), Req} when Req::req()
+  spec read_part_body/2 read_part_body(Req, read_body_opts()) -> {ok, binary(), Req}
+       | {more, binary(), Req} when Req::req()
+  spec read_urlencoded_body/1 read_urlencoded_body(Req) -> {ok, [{binary(), binary() | true}], Req} when Req::req()
+  spec read_urlencoded_body/2 read_urlencoded_body(Req, read_body_opts()) -> {ok, [{binary(), binary() | true}], Req} when Req::req()
+  spec reply/2 reply(cowboy:http_status(), Req) -> Req when Req::req()
+  spec reply/3 reply(cowboy:http_status(), cowboy:http_headers(), Req) -> Req when Req::req()
+  spec reply/4 reply(cowboy:http_status(), cowboy:http_headers(), resp_body(), Req) -> Req when Req::req()
+  spec resp_header/2 resp_header(binary(), req()) -> binary() | undefined
+  spec resp_header/3 resp_header(binary(), req(), Default) -> binary() | Default when Default::any()
+  spec resp_headers/1 resp_headers(req()) -> cowboy:http_headers()
+  spec response_headers/2 response_headers(Headers, req()) -> Headers when Headers::cowboy:http_headers()
+  spec scheme/1 scheme(req()) -> binary()
+  spec set_resp_body/2 set_resp_body(resp_body(), Req) -> Req when Req::req()
+  spec set_resp_cookie/3 set_resp_cookie(iodata(), iodata(), Req) -> Req when Req::req()
+  spec set_resp_cookie/4 set_resp_cookie(binary(), iodata(), Req, cow_cookie:cookie_opts()) -> Req when Req::req()
+  spec set_resp_header/3 set_resp_header(binary(), iodata(), Req) -> Req when Req::req()
+  spec set_resp_headers/2 set_resp_headers(cowboy:http_headers() | [{binary(), iodata()}], Req) -> Req when Req::req()
+  spec sock/1 sock(req()) -> {inet:ip_address(), inet:port_number()}
+  spec stream_body/3 stream_body(resp_body(), fin | nofin, req()) -> ok
+  spec stream_events/3 stream_events(cow_sse:event() | [cow_sse:event()], fin | nofin, req()) -> ok
+  spec stream_reply/2 stream_reply(cowboy:http_status(), Req) -> Req when Req::req()
+  spec stream_reply/3 stream_reply(cowboy:http_status(), cowboy:http_headers(), Req) -> Req when Req::req()
+  spec stream_trailers/2 stream_trailers(cowboy:http_headers(), req()) -> ok
+  spec uri/1 uri(req()) -> iodata()
+  spec uri/2 uri(req(), map()) -> iodata()
+  spec version/1 version(req()) -> cowboy:http_version()
+  type push_opts/0 :: #{ method => binary(), scheme => binary(), host => binary(), port => inet:port_number(), qs => binary() }
+  type read_body_opts/0 :: #{ length => non_neg_integer() | infinity, period => non_neg_integer(), timeout => timeout() }
+  type req/0 :: #{ method := binary(), version := cowboy:http_version() | atom(), scheme := binary(), host := binary(), port := inet:port_number(), path := binary(), qs := binary(), headers := cowboy:http_headers(), peer := {inet:ip_address(), inet:port_number()}, sock := {inet:ip_address(), inet:port_number()}, cert := binary() | undefined, ref := ranch:ref(), pid := pid(), streamid := cowboy_stream:streamid(), host_info => cowboy_router:tokens(), path_info => cowboy_router:tokens(), bindings => cowboy_router:bindings(), has_body := boolean(), body_length := non_neg_integer() | undefined, has_read_body => true, multipart => {binary(), binary()} | done, has_sent_resp => headers | true, resp_cookies => #{iodata() => iodata()}, resp_headers => #{binary() => iodata()}, resp_body => resp_body(), proxy_header => ranch_proxy_header:proxy_info(), media_type => {binary(), binary(), [{binary(), binary()}]}, language => binary() | undefined, charset => binary() | undefined, range => {binary(), binary() | [{non_neg_integer(), non_neg_integer() | infinity} | neg_integer()]}, websocket_version => 7 | 8 | 13, _ => _ }
+  type resp_body/0 :: iodata() | {sendfile, non_neg_integer(), non_neg_integer(), file:name_all()}
+
+module cowboy_rest
+  behaviour cowboy_sub_protocol
+  export upgrade/4
+  export upgrade/5
+  callback allow_missing_post/2 allow_missing_post(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback allowed_methods/2 allowed_methods(Req, State) -> {[binary()], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback charsets_provided/2 charsets_provided(Req, State) -> {[binary()], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback content_types_accepted/2 content_types_accepted(Req, State) -> {[{'*' | binary() | {binary(), binary(), '*' | [{binary(), binary()}]}, atom()}], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback content_types_provided/2 content_types_provided(Req, State) -> {[{binary() | {binary(), binary(), '*' | [{binary(), binary()}]}, atom()}], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback delete_completed/2 delete_completed(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback delete_resource/2 delete_resource(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback expires/2 expires(Req, State) -> {calendar:datetime() | binary() | undefined, Req, State} when Req::cowboy_req:req(), State::any()
+  callback forbidden/2 forbidden(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback generate_etag/2 generate_etag(Req, State) -> {binary() | {weak | strong, binary()} | undefined, Req, State} when Req::cowboy_req:req(), State::any()
+  callback init/2 init(Req, any()) -> {ok | module(), Req, any()}
+       | {module(), Req, any(), any()} when Req::cowboy_req:req()
+  callback is_authorized/2 is_authorized(Req, State) -> {true | {false, iodata()}, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback is_conflict/2 is_conflict(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback known_methods/2 known_methods(Req, State) -> {[binary()], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback languages_provided/2 languages_provided(Req, State) -> {[binary()], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback last_modified/2 last_modified(Req, State) -> {calendar:datetime(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback malformed_request/2 malformed_request(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback moved_permanently/2 moved_permanently(Req, State) -> {{true, iodata()} | false, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback moved_temporarily/2 moved_temporarily(Req, State) -> {{true, iodata()} | false, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback multiple_choices/2 multiple_choices(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback options/2 options(Req, State) -> {ok, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback previously_existed/2 previously_existed(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback range_satisfiable/2 range_satisfiable(Req, State) -> {boolean() | {false, non_neg_integer() | iodata()}, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback ranges_provided/2 ranges_provided(Req, State) -> {[{binary(), atom()}], Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback rate_limited/2 rate_limited(Req, State) -> {{true, non_neg_integer() | calendar:datetime()} | false, Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback resource_exists/2 resource_exists(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback service_available/2 service_available(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback terminate/3 terminate(any(), cowboy_req:req(), any()) -> ok
+  callback uri_too_long/2 uri_too_long(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback valid_content_headers/2 valid_content_headers(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback valid_entity_length/2 valid_entity_length(Req, State) -> {boolean(), Req, State}
+       | {stop, Req, State}
+       | {switch_handler(), Req, State} when Req::cowboy_req:req(), State::any()
+  callback variances/2 variances(Req, State) -> {[binary()], Req, State} when Req::cowboy_req:req(), State::any()
+  optional_callback allow_missing_post/2
+  optional_callback allowed_methods/2
+  optional_callback charsets_provided/2
+  optional_callback content_types_accepted/2
+  optional_callback content_types_provided/2
+  optional_callback delete_completed/2
+  optional_callback delete_resource/2
+  optional_callback expires/2
+  optional_callback forbidden/2
+  optional_callback generate_etag/2
+  optional_callback is_authorized/2
+  optional_callback is_conflict/2
+  optional_callback known_methods/2
+  optional_callback languages_provided/2
+  optional_callback last_modified/2
+  optional_callback malformed_request/2
+  optional_callback moved_permanently/2
+  optional_callback moved_temporarily/2
+  optional_callback multiple_choices/2
+  optional_callback options/2
+  optional_callback previously_existed/2
+  optional_callback range_satisfiable/2
+  optional_callback ranges_provided/2
+  optional_callback rate_limited/2
+  optional_callback resource_exists/2
+  optional_callback service_available/2
+  optional_callback terminate/3
+  optional_callback uri_too_long/2
+  optional_callback valid_content_headers/2
+  optional_callback valid_entity_length/2
+  optional_callback variances/2
+  spec encode_etag/1 encode_etag({strong | weak, binary()}) -> iolist()
+  spec error_terminate/5 error_terminate(cowboy_req:req(), #state{}, atom(), any(), any()) -> no_return()
+  spec upgrade/4 upgrade(Req, Env, module(), any()) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec upgrade/5 upgrade(Req, Env, module(), any(), any()) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  type switch_handler/0 :: {switch_handler, module()} | {switch_handler, module(), any()}
+
+module cowboy_router
+  behaviour cowboy_middleware
+  export compile/1
+  export execute/2
+  export_type bindings/0
+  export_type dispatch_rules/0
+  export_type routes/0
+  export_type tokens/0
+  spec compile/1 compile(routes()) -> dispatch_rules()
+  spec execute/2 execute(Req, Env) -> {ok, Req, Env}
+       | {stop, Req} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec list_match/3 list_match(tokens(), dispatch_match(), bindings()) -> {true, bindings(), undefined | tokens()}
+       | false
+  spec match/3 match(dispatch_rules(), Host::binary() | tokens(), Path::binary()) -> {ok, module(), any(), bindings(), HostInfo::undefined | tokens(), PathInfo::undefined | tokens()}
+       | {error, notfound, host}
+       | {error, notfound, path}
+       | {error, badrequest, path}
+  spec match_path/4 match_path([dispatch_path()], HostInfo::undefined | tokens(), binary() | tokens(), bindings()) -> {ok, module(), any(), bindings(), HostInfo::undefined | tokens(), PathInfo::undefined | tokens()}
+       | {error, notfound, path}
+       | {error, badrequest, path}
+  spec split_host/1 split_host(binary()) -> tokens()
+  spec split_path/1 split_path(binary()) -> tokens() | badrequest
+  type bindings/0 :: #{atom() => any()}
+  type dispatch_match/0 :: '_' | <<_:8>> | [binary() | '_' | '...' | atom()]
+  type dispatch_path/0 :: {dispatch_match(), cowboy:fields(), module(), any()}
+  type dispatch_rule/0 :: {Host::dispatch_match(), cowboy:fields(), Paths::[dispatch_path()]}
+  type route_match/0 :: '_' | iodata()
+  type route_path/0 :: {Path::route_match(), Handler::module(), Opts::any()}
+       | {Path::route_match(), cowboy:fields(), Handler::module(), Opts::any()}
+  type route_rule/0 :: {Host::route_match(), Paths::[route_path()]}
+       | {Host::route_match(), cowboy:fields(), Paths::[route_path()]}
+  type routes/0 :: [route_rule()]
+  type tokens/0 :: [binary()]
+  opaque dispatch_rules/0
+
+module cowboy_static
+  export charsets_provided/2
+  export content_types_provided/2
+  export forbidden/2
+  export generate_etag/2
+  export get_file/2
+  export init/2
+  export last_modified/2
+  export malformed_request/2
+  export ranges_provided/2
+  export resource_exists/2
+  export_type opts/0
+  spec charsets_provided/2 charsets_provided(Req, State) -> {[binary()], Req, State}
+       | no_call when State::state()
+  spec content_types_provided/2 content_types_provided(Req, State) -> {[{binary() | {binary(), binary(), '*' | [{binary(), binary()}]}, get_file}], Req, State} when State::state()
+  spec forbidden/2 forbidden(Req, State) -> {boolean(), Req, State} when State::state()
+  spec generate_etag/2 generate_etag(Req, State) -> {{strong | weak, binary() | undefined}, Req, State} when State::state()
+  spec get_file/2 get_file(Req, State) -> {{sendfile, 0, non_neg_integer(), binary()} | binary(), Req, State} when State::state()
+  spec init/2 init(Req, opts()) -> {cowboy_rest, Req, error | state()} when Req::cowboy_req:req()
+  spec last_modified/2 last_modified(Req, State) -> {calendar:datetime(), Req, State} when State::state()
+  spec malformed_request/2 malformed_request(Req, State) -> {boolean(), Req, State}
+  spec ranges_provided/2 ranges_provided(Req, State) -> {[{binary(), auto}], Req, State} when State::state()
+  spec resource_exists/2 resource_exists(Req, State) -> {boolean(), Req, State} when State::state()
+  type extra/0 :: [extra_charset() | extra_etag() | extra_mimetypes()]
+  type extra_charset/0 :: {charset, module(), function()} | {charset, binary()}
+  type extra_etag/0 :: {etag, module(), function()} | {etag, false}
+  type extra_mimetypes/0 :: {mimetypes, module(), function()}
+       | {mimetypes, binary() | {binary(), binary(), '*' | [{binary(), binary()}]}}
+  type opts/0 :: {file | dir, string() | binary()}
+       | {file | dir, string() | binary(), extra()}
+       | {priv_file | priv_dir, atom(), string() | binary()}
+       | {priv_file | priv_dir, atom(), string() | binary(), extra()}
+  type state/0 :: {binary(), {direct | archive, #file_info{}} | {error, atom()}, extra()}
+
+module cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export make_error_log/5
+  export terminate/3
+  export_type commands/0
+  export_type fin/0
+  export_type partial_req/0
+  export_type reason/0
+  export_type resp_command/0
+  export_type streamid/0
+  callback data/4 data(streamid(), fin(), binary(), State) -> {commands(), State} when State::state()
+  callback early_error/5 early_error(streamid(), reason(), partial_req(), Resp, cowboy:opts()) -> Resp when Resp::resp_command()
+  callback info/3 info(streamid(), any(), State) -> {commands(), State} when State::state()
+  callback init/3 init(streamid(), cowboy_req:req(), cowboy:opts()) -> {commands(), state()}
+  callback terminate/3 terminate(streamid(), reason(), state()) -> any()
+  spec data/4 data(streamid(), fin(), binary(), {Handler, State} | undefined) -> {commands(), {Handler, State} | undefined} when Handler::module(), State::state()
+  spec early_error/5 early_error(streamid(), reason(), partial_req(), Resp, cowboy:opts()) -> Resp when Resp::resp_command()
+  spec info/3 info(streamid(), any(), {Handler, State} | undefined) -> {commands(), {Handler, State} | undefined} when Handler::module(), State::state()
+  spec init/3 init(streamid(), cowboy_req:req(), cowboy:opts()) -> {commands(), {module(), state()} | undefined}
+  spec make_error_log/5 make_error_log(init | data | info | terminate | early_error, list(), error | exit | throw, any(), list()) -> {log, error, string(), list()}
+  spec terminate/3 terminate(streamid(), reason(), {module(), state()} | undefined) -> ok
+  type commands/0 :: [{inform, cowboy:http_status(), cowboy:http_headers()} | resp_command() | {headers, cowboy:http_status(), cowboy:http_headers()} | {data, fin(), cowboy_req:resp_body()} | {trailers, cowboy:http_headers()} | {push, binary(), binary(), binary(), inet:port_number(), binary(), binary(), cowboy:http_headers()} | {flow, pos_integer()} | {spawn, pid(), timeout()} | {error_response, cowboy:http_status(), cowboy:http_headers(), iodata()} | {switch_protocol, cowboy:http_headers(), module(), state()} | {internal_error, any(), human_reason()} | {set_options, map()} | {log, logger:level(), io:format(), list()} | stop]
+  type fin/0 :: fin | nofin
+  type human_reason/0 :: atom()
+  type partial_req/0 :: map()
+  type reason/0 :: normal
+       | switch_protocol
+       | {internal_error, timeout | {error | exit | throw, any()}, human_reason()}
+       | {socket_error, closed | atom(), human_reason()}
+       | {stream_error, cow_http2:error(), human_reason()}
+       | {connection_error, cow_http2:error(), human_reason()}
+       | {stop, cow_http2:frame() | {exit, any()}, human_reason()}
+  type resp_command/0 :: {response, cowboy:http_status(), cowboy:http_headers(), cowboy_req:resp_body()}
+  type state/0 :: any()
+  type streamid/0 :: any()
+
+module cowboy_stream_h
+  behaviour cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export request_process/3
+  export resume/5
+  export terminate/3
+  spec data/4 data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec early_error/5 early_error(cowboy_stream:streamid(), cowboy_stream:reason(), cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp when Resp::cowboy_stream:resp_command()
+  spec info/3 info(cowboy_stream:streamid(), any(), State) -> {cowboy_stream:commands(), State} when State::#state{}
+  spec init/3 init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> {[{spawn, pid(), timeout()}], #state{}}
+  spec request_process/3 request_process(cowboy_req:req(), cowboy_middleware:env(), [module()]) -> ok
+  spec resume/5 resume(cowboy_middleware:env(), [module()], module(), atom(), [any()]) -> ok
+  spec terminate/3 terminate(cowboy_stream:streamid(), cowboy_stream:reason(), #state{}) -> ok
+
+module cowboy_sub_protocol
+  callback upgrade/4 upgrade(Req, Env, module(), any()) -> {ok, Req, Env}
+       | {suspend, module(), atom(), [any()]}
+       | {stop, Req} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  callback upgrade/5 upgrade(Req, Env, module(), any(), any()) -> {ok, Req, Env}
+       | {suspend, module(), atom(), [any()]}
+       | {stop, Req} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+
+module cowboy_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0
+  spec init/1 init([]) -> {ok, {{supervisor:strategy(), 10, 10}, [supervisor:child_spec()]}}
+  spec start_link/0 start_link() -> {ok, pid()}
+
+module cowboy_tls
+  behaviour ranch_protocol
+  export connection_process/4
+  export start_link/3
+  export start_link/4
+  spec connection_process/4 connection_process(pid(), ranch:ref(), module(), cowboy:opts()) -> ok
+  spec start_link/3 start_link(ranch:ref(), module(), cowboy:opts()) -> {ok, pid()}
+  spec start_link/4 start_link(ranch:ref(), ssl:sslsocket(), module(), cowboy:opts()) -> {ok, pid()}
+
+module cowboy_tracer_h
+  behaviour cowboy_stream
+  export data/4
+  export early_error/5
+  export info/3
+  export init/3
+  export set_trace_patterns/0
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  export terminate/3
+  export tracer_process/3
+  export_type tracer_callback/0
+  export_type tracer_match_specs/0
+  spec data/4 data(cowboy_stream:streamid(), cowboy_stream:fin(), cowboy_req:resp_body(), State) -> {cowboy_stream:commands(), State} when State::any()
+  spec early_error/5 early_error(cowboy_stream:streamid(), cowboy_stream:reason(), cowboy_stream:partial_req(), Resp, cowboy:opts()) -> Resp when Resp::cowboy_stream:resp_command()
+  spec info/3 info(cowboy_stream:streamid(), any(), State) -> {cowboy_stream:commands(), State} when State::any()
+  spec init/3 init(cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> {cowboy_stream:commands(), any()}
+  spec set_trace_patterns/0 set_trace_patterns() -> ok
+  spec system_code_change/4 system_code_change(Misc, _, _, _) -> {ok, Misc} when Misc::any()
+  spec system_continue/3 system_continue(pid(), _, {cowboy:opts(), any()}) -> no_return()
+  spec system_terminate/4 system_terminate(any(), _, _, _) -> no_return()
+  spec terminate/3 terminate(cowboy_stream:streamid(), cowboy_stream:reason(), any()) -> any()
+  spec tracer_process/3 tracer_process(_, _, _) -> no_return()
+  spec tracer_terminate/3 tracer_terminate(_, _, _) -> no_return()
+  type match_predicate/0 :: fun((cowboy_stream:streamid(), cowboy_req:req(), cowboy:opts()) -> boolean())
+  type tracer_callback/0 :: fun((init | terminate | tuple(), any()) -> any())
+  type tracer_match_specs/0 :: [match_predicate() | {method, binary()} | {host, binary()} | {path, binary()} | {path_start, binary()} | {header, binary()} | {header, binary(), binary()} | {peer_ip, inet:ip_address()} ]
+
+module cowboy_websocket
+  behaviour cowboy_sub_protocol
+  export is_upgrade_request/1
+  export loop/3
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  export takeover/7
+  export upgrade/4
+  export upgrade/5
+  export_type commands/0
+  export_type opts/0
+  callback init/2 init(Req, any()) -> {ok | module(), Req, any()}
+       | {module(), Req, any(), any()} when Req::cowboy_req:req()
+  callback terminate/3 terminate(any(), cowboy_req:req(), any()) -> ok
+  callback websocket_handle/2 websocket_handle(ping | pong | {text | binary | ping | pong, binary()}, State) -> call_result(State)
+       | deprecated_call_result(State) when State::any()
+  callback websocket_info/2 websocket_info(any(), State) -> call_result(State)
+       | deprecated_call_result(State) when State::any()
+  callback websocket_init/1 websocket_init(State) -> call_result(State)
+       | deprecated_call_result(State) when State::any()
+  optional_callback terminate/3
+  optional_callback websocket_init/1
+  spec handler_call_result/5 handler_call_result(#state{}, any(), parse_state(), fun(), commands()) -> no_return()
+  spec is_upgrade_request/1 is_upgrade_request(cowboy_req:req()) -> boolean()
+  spec loop/3 loop(#state{}, any(), parse_state()) -> no_return()
+  spec set_idle_timeout/2 set_idle_timeout(#state{}, 0..?IDLE_TIMEOUT_TICKS) -> #state{}
+  spec system_code_change/4 system_code_change(Misc, _, _, _) -> {ok, Misc} when Misc::{#state{}, any(), parse_state()}
+  spec system_continue/3 system_continue(_, _, {#state{}, any(), parse_state()}) -> no_return()
+  spec system_terminate/4 system_terminate(any(), _, _, {#state{}, any(), parse_state()}) -> no_return()
+  spec takeover/7 takeover(pid(), ranch:ref(), inet:socket() | {pid(), cowboy_stream:streamid()}, module() | undefined, any(), binary(), {#state{}, any()}) -> no_return()
+  spec terminate/3 terminate(#state{}, any(), terminate_reason()) -> no_return()
+  spec upgrade/4 upgrade(Req, Env, module(), any()) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec upgrade/5 upgrade(Req, Env, module(), any(), opts()) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec websocket_close/3 websocket_close(#state{}, any(), terminate_reason()) -> no_return()
+  spec websocket_handshake/4 websocket_handshake(#state{}, Req, any(), Env) -> {ok, Req, Env} when Req::cowboy_req:req(), Env::cowboy_middleware:env()
+  spec websocket_send/2 websocket_send(cow_ws:frame(), #state{}) -> ok | stop | {error, atom()}
+  type call_result/1 :: {commands(), State} | {commands(), State, hibernate}
+  type commands/0 :: [cow_ws:frame() | {active, boolean()} | {deflate, boolean()} | {set_options, map()} | {shutdown_reason, any()} ]
+  type deprecated_call_result/1 :: {ok, State}
+       | {ok, State, hibernate}
+       | {reply, cow_ws:frame() | [cow_ws:frame()], State}
+       | {reply, cow_ws:frame() | [cow_ws:frame()], State, hibernate}
+       | {stop, State}
+  type opts/0 :: #{ active_n => pos_integer(), compress => boolean(), deflate_opts => cow_ws:deflate_opts(), dynamic_buffer => false | {pos_integer(), pos_integer()}, dynamic_buffer_initial_average => non_neg_integer(), dynamic_buffer_initial_size => pos_integer(), idle_timeout => timeout(), max_frame_size => non_neg_integer() | infinity, req_filter => fun((cowboy_req:req()) -> map()), validate_utf8 => boolean() }
+  type parse_state/0 :: #ps_header{} | #ps_payload{}
+  type terminate_reason/0 :: normal
+       | stop
+       | timeout
+       | remote
+       | {remote, cow_ws:close_code(), binary()}
+       | {error, badencoding | badframe | closed | atom()}
+       | {crash, error | exit | throw, any()}

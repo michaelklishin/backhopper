@@ -144,6 +144,8 @@ We deliberately do *not* take `tokio`, `tar`, `walkdir`, `unidiff`,
  * Use top-level `use` statements (imports) to fully-qualified names,
    e.g. `use std::fmt::Display` then write `Display`. Never use
    function-local `use` statements
+ * Avoid fully-qualified type names as much as possible; always use a
+   module-level `use` if there is no ambiguity in the scope
  * Add unit/integration/property tests under `tests/{unit,integration,proptests}/`,
    never inline in implementation files
  * At the end of each task, run `cargo fmt --all`

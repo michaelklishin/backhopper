@@ -27,7 +27,9 @@ pub struct BlobAtPath {
 impl GitRepo {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, GitError> {
         let path = path.into();
-        let repo = gix::open(&path).map_err(|e| GitError::OpenFailed(e.to_string()))?;
+        let repo = gix::open(&path)
+            .or_else(|_| gix::discover(&path))
+            .map_err(|e| GitError::OpenFailed(e.to_string()))?;
         Ok(Self { repo, path })
     }
 

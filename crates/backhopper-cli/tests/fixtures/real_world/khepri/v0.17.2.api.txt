@@ -1,0 +1,1767 @@
+# backhopper snapshot
+# format-version: 1
+# project: khepri
+# tag: v0.17.2
+# commit: 06262e0e27a79c0cae2435225af01f5c315286cc
+# scanned-paths: src/**/*.erl, include/**/*.hrl
+# generated-by: backhopper 0.1.0
+# generated-at: 2026-05-08T04:28:44.408274Z
+
+module khepri
+  export 'clear_many_payloads!'/1
+  export 'clear_many_payloads!'/2
+  export 'clear_many_payloads!'/3
+  export 'clear_payload!'/1
+  export 'clear_payload!'/2
+  export 'clear_payload!'/3
+  export 'compare_and_swap!'/3
+  export 'compare_and_swap!'/4
+  export 'compare_and_swap!'/5
+  export 'count!'/1
+  export 'count!'/2
+  export 'count!'/3
+  export 'create!'/2
+  export 'create!'/3
+  export 'create!'/4
+  export 'delete!'/1
+  export 'delete!'/2
+  export 'delete!'/3
+  export 'delete_many!'/1
+  export 'delete_many!'/2
+  export 'delete_many!'/3
+  export 'exists!'/1
+  export 'exists!'/2
+  export 'exists!'/3
+  export 'get!'/2
+  export 'get!'/3
+  export 'get_many!'/1
+  export 'get_many!'/2
+  export 'get_many!'/3
+  export 'get_many_or!'/2
+  export 'get_many_or!'/3
+  export 'get_many_or!'/4
+  export 'get_or!'/2
+  export 'get_or!'/3
+  export 'get_or!'/4
+  export 'has_data!'/1
+  export 'has_data!'/2
+  export 'has_data!'/3
+  export 'is_sproc!'/1
+  export 'is_sproc!'/2
+  export 'is_sproc!'/3
+  export 'put!'/2
+  export 'put!'/3
+  export 'put!'/4
+  export 'put_many!'/2
+  export 'put_many!'/3
+  export 'put_many!'/4
+  export 'update!'/2
+  export 'update!'/3
+  export 'update!'/4
+  export export/2
+  export export/3
+  export export/4
+  export fence/0
+  export fence/1
+  export fence/2
+  export handle_async_ret/1
+  export handle_async_ret/2
+  export import/2
+  export import/3
+  export info/0
+  export info/1
+  export info/2
+  export transaction/2
+  export transaction/3
+  export transaction/4
+  export transaction/5
+  export_type async_option/0
+  export_type async_ret/0
+  export_type child_list_length/0
+  export_type child_list_version/0
+  export_type command_options/0
+  export_type data/0
+  export_type delete_reason/0
+  export_type error/0
+  export_type error/1
+  export_type favor_option/0
+  export_type filter_fun/0
+  export_type fold_acc/0
+  export_type fold_fun/0
+  export_type foreach_fun/0
+  export_type many_payloads_ret/0
+  export_type many_payloads_ret/1
+  export_type map_fun/0
+  export_type map_fun_ret/0
+  export_type minimal_ret/0
+  export_type node_props/0
+  export_type node_props_map/0
+  export_type ok/1
+  export_type payload_ret/0
+  export_type payload_ret/1
+  export_type payload_version/0
+  export_type put_options/0
+  export_type query_options/0
+  export_type reply_from_option/0
+  export_type store_id/0
+  export_type tree_options/0
+  export_type trigger_id/0
+  export_type unwrapped_many_payloads_ret/0
+  export_type unwrapped_many_payloads_ret/1
+  export_type unwrapped_minimal_ret/0
+  export_type unwrapped_payload_ret/0
+  export_type unwrapped_payload_ret/1
+  spec clear_many_payloads/1 clear_many_payloads(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_many_payloads/2 clear_many_payloads(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_many_payloads/3 clear_many_payloads(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec clear_payload/1 clear_payload(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_payload/2 clear_payload(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_payload/3 clear_payload(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec compare_and_swap/3 compare_and_swap(PathPattern, DataPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec compare_and_swap/4 compare_and_swap(StoreId, PathPattern, DataPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec compare_and_swap/5 compare_and_swap(StoreId, PathPattern, DataPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec count/1 count(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: ok(Count)
+       | error(), Count :: non_neg_integer()
+  spec count/2 count(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: ok(Count)
+       | error(), Count :: non_neg_integer(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: ok(Count)
+       | error(), Count :: non_neg_integer()
+  spec count/3 count(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: ok(Count)
+       | error(), Count :: non_neg_integer()
+  spec create/2 create(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec create/3 create(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec create/4 create(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec delete/1 delete(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec delete/2 delete(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri:minimal_ret()
+  spec delete/3 delete(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec delete_many/1 delete_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec delete_many/2 delete_many(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri:minimal_ret()
+  spec delete_many/3 delete_many(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec exists/1 exists(PathPattern) -> Exists
+       | Error when PathPattern :: khepri_path:pattern(), Exists :: boolean(), Error :: khepri:error()
+  spec exists/2 exists(StoreId, PathPattern) -> Exists
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Exists :: boolean(), Error :: khepri:error(); (PathPattern, Options) -> Exists
+       | Error when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Exists :: boolean(), Error :: khepri:error()
+  spec exists/3 exists(StoreId, PathPattern, Options) -> Exists
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Exists :: boolean(), Error :: khepri:error()
+  spec export/2 export(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec export/3 export(StoreId | PathPattern, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec export/4 export(StoreId, PathPattern, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec fence/0 fence() -> Ret when Ret :: ok | khepri:error()
+  spec fence/1 fence(StoreId | Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec fence/2 fence(StoreId, Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec filter/2 filter(PathPattern, Pred) -> Ret when PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Ret :: khepri:many_payloads_ret()
+  spec filter/3 filter(StoreId, PathPattern, Pred) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Ret :: khepri:many_payloads_ret(); (PathPattern, Pred, Options) -> Ret when PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec filter/4 filter(StoreId, PathPattern, Pred, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec fold/3 fold(PathPattern, Fun, Acc) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec fold/4 fold(StoreId, PathPattern, Fun, Acc) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc; (PathPattern, Fun, Acc, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec fold/5 fold(StoreId, PathPattern, Fun, Acc, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec foreach/2 foreach(PathPattern, Fun) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Ret :: ok
+       | khepri:error()
+  spec foreach/3 foreach(StoreId, PathPattern, Fun) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Ret :: ok
+       | khepri:error(); (PathPattern, Fun, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: ok
+       | khepri:error()
+  spec foreach/4 foreach(StoreId, PathPattern, Fun, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: ok
+       | khepri:error()
+  spec get/1 get(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:payload_ret()
+  spec get/2 get(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:payload_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:payload_ret()
+  spec get/3 get(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:payload_ret()
+  spec get_many/1 get_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:many_payloads_ret()
+  spec get_many/2 get_many(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri:many_payloads_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec get_many/3 get_many(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec get_many_or/2 get_many_or(PathPattern, Default) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:many_payloads_ret(Default)
+  spec get_many_or/3 get_many_or(StoreId, PathPattern, Default) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:many_payloads_ret(Default); (PathPattern, Default, Options) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret(Default)
+  spec get_many_or/4 get_many_or(StoreId, PathPattern, Default, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:many_payloads_ret(Default)
+  spec get_or/2 get_or(PathPattern, Default) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:payload_ret(Default)
+  spec get_or/3 get_or(StoreId, PathPattern, Default) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:payload_ret(Default); (PathPattern, Default, Options) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:payload_ret(Default)
+  spec get_or/4 get_or(StoreId, PathPattern, Default, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:payload_ret(Default)
+  spec get_store_ids/0 get_store_ids() -> [StoreId] when StoreId :: store_id()
+  spec handle_async_ret/1 handle_async_ret(RaEvent) -> Ret when RaEvent :: ra_server_proc:ra_event(), Ret :: [{CorrelationId, AsyncRet}, ...], CorrelationId :: ra_server:command_correlation(), AsyncRet :: khepri:async_ret()
+  spec handle_async_ret/2 handle_async_ret(StoreId, RaEvent) -> Ret when StoreId :: khepri:store_id(), RaEvent :: ra_server_proc:ra_event(), Ret :: [{CorrelationId, AsyncRet}, ...], CorrelationId :: ra_server:command_correlation(), AsyncRet :: khepri:async_ret()
+  spec has_data/1 has_data(PathPattern) -> HasData
+       | Error when PathPattern :: khepri_path:pattern(), HasData :: boolean(), Error :: khepri:error()
+  spec has_data/2 has_data(StoreId, PathPattern) -> HasData
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), HasData :: boolean(), Error :: khepri:error(); (PathPattern, Options) -> HasData
+       | Error when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), HasData :: boolean(), Error :: khepri:error()
+  spec has_data/3 has_data(StoreId, PathPattern, Options) -> HasData
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), HasData :: boolean(), Error :: khepri:error()
+  spec has_projection/1 has_projection(ProjectionName) -> Ret when ProjectionName :: khepri_projection:name(), Ret :: boolean()
+       | khepri:error()
+  spec has_projection/2 has_projection(StoreId, ProjectionName) -> Ret when StoreId :: khepri:store_id(), ProjectionName :: khepri_projection:name(), Ret :: boolean()
+       | khepri:error(); (ProjectionName, Options) -> Ret when ProjectionName :: khepri_projection:name(), Options :: khepri:query_options(), Ret :: boolean()
+       | khepri:error()
+  spec has_projection/3 has_projection(StoreId, ProjectionName, Options) -> Ret when StoreId :: khepri:store_id(), ProjectionName :: khepri_projection:name(), Options :: khepri:query_options(), Ret :: boolean()
+       | khepri:error()
+  spec import/2 import(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec import/3 import(StoreId, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec info/0 info() -> ok
+  spec info/1 info(StoreId) -> ok when StoreId :: store_id()
+  spec info/2 info(StoreId, Options) -> ok when StoreId :: khepri:store_id(), Options :: khepri:query_options()
+  spec is_empty/0 is_empty() -> IsEmpty | Error when IsEmpty :: boolean(), Error :: khepri:error()
+  spec is_empty/1 is_empty(StoreId) -> IsEmpty
+       | Error when StoreId :: khepri:store_id(), IsEmpty :: boolean(), Error :: khepri:error(); (Options) -> IsEmpty
+       | Error when Options :: khepri:query_options()
+       | khepri:tree_options(), IsEmpty :: boolean(), Error :: khepri:error()
+  spec is_empty/2 is_empty(StoreId, Options) -> IsEmpty
+       | Error when StoreId :: khepri:store_id(), Options :: khepri:query_options()
+       | khepri:tree_options(), IsEmpty :: boolean(), Error :: khepri:error()
+  spec is_sproc/1 is_sproc(PathPattern) -> IsSproc
+       | Error when PathPattern :: khepri_path:pattern(), IsSproc :: boolean(), Error :: khepri:error()
+  spec is_sproc/2 is_sproc(StoreId, PathPattern) -> IsSproc
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), IsSproc :: boolean(), Error :: khepri:error(); (PathPattern, Options) -> IsSproc
+       | Error when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), IsSproc :: boolean(), Error :: khepri:error()
+  spec is_sproc/3 is_sproc(StoreId, PathPattern, Options) -> IsSproc
+       | Error when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), IsSproc :: boolean(), Error :: khepri:error()
+  spec map/2 map(PathPattern, Fun) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}
+  spec map/3 map(StoreId, PathPattern, Fun) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}; (PathPattern, Fun, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}
+  spec map/4 map(StoreId, PathPattern, Fun, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}
+  spec put/2 put(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put/3 put(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put/4 put(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec put_many/2 put_many(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put_many/3 put_many(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put_many/4 put_many(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  spec register_projection/2 register_projection(PathPattern, Projection) -> Ret when PathPattern :: khepri_path:pattern(), Projection :: khepri_projection:projection(), Ret :: ok
+       | khepri:error()
+  spec register_projection/3 register_projection(StoreId, PathPattern, Projection) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Projection :: khepri_projection:projection(), Ret :: ok
+       | khepri:error(); (PathPattern, Projection, Options) -> Ret when PathPattern :: khepri_path:pattern(), Projection :: khepri_projection:projection(), Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec register_projection/4 register_projection(StoreId, PathPattern, Projection, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Projection :: khepri_projection:projection(), Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec register_trigger/3 register_trigger(TriggerId, EventFilter, StoredProcPath) -> Ret when TriggerId :: trigger_id(), EventFilter :: khepri_evf:event_filter()
+       | khepri_path:pattern(), StoredProcPath :: khepri_path:path(), Ret :: ok
+       | error()
+  spec register_trigger/4 register_trigger(StoreId, TriggerId, EventFilter, StoredProcPath) -> Ret when StoreId :: khepri:store_id(), TriggerId :: trigger_id(), EventFilter :: khepri_evf:event_filter()
+       | khepri_path:pattern(), StoredProcPath :: khepri_path:path(), Ret :: ok
+       | error(); (TriggerId, EventFilter, StoredProcPath, Options) -> Ret when TriggerId :: trigger_id(), EventFilter :: khepri_evf:event_filter()
+       | khepri_path:pattern(), StoredProcPath :: khepri_path:path(), Options :: command_options()
+       | khepri:tree_options(), Ret :: ok
+       | error()
+  spec register_trigger/5 register_trigger(StoreId, TriggerId, EventFilter, StoredProcPath, Options) -> Ret when StoreId :: khepri:store_id(), TriggerId :: trigger_id(), EventFilter :: khepri_evf:event_filter()
+       | khepri_path:pattern(), StoredProcPath :: khepri_path:path(), Options :: command_options()
+       | khepri:tree_options(), Ret :: ok
+       | error()
+  spec reset/0 reset() -> Ret when Ret :: ok | error()
+  spec reset/1 reset(StoreId | Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec reset/2 reset(StoreId, Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | error()
+  spec run_sproc/2 run_sproc(PathPattern, Args) -> Ret when PathPattern :: khepri_path:pattern(), Args :: list(), Ret :: any()
+  spec run_sproc/3 run_sproc(StoreId, PathPattern, Args) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Args :: list(), Ret :: any(); (PathPattern, Args, Options) -> Ret when PathPattern :: khepri_path:pattern(), Args :: list(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: any()
+  spec run_sproc/4 run_sproc(StoreId, PathPattern, Args, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Args :: list(), Options :: khepri:query_options(), Ret :: any()
+  spec start/0 start() -> Ret when Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec start/1 start(RaSystem | DataDir) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec start/2 start(RaSystem | DataDir, StoreId | RaServerConfig) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), StoreId :: store_id(), RaServerConfig :: khepri_cluster:incomplete_ra_server_config(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec start/3 start(RaSystem | DataDir, StoreId | RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), StoreId :: store_id(), RaServerConfig :: khepri_cluster:incomplete_ra_server_config(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec stop/0 stop() -> Ret when Ret :: ok | khepri:error()
+  spec stop/1 stop(StoreId) -> Ret when StoreId :: khepri:store_id(), Ret :: ok
+       | khepri:error()
+  spec transaction/1 transaction(FunOrPath) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:tx_ret()
+  spec transaction/2 transaction(StoreId, FunOrPath) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:tx_ret(); (FunOrPath, Args) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), Ret :: khepri_machine:tx_ret(); (FunOrPath, ReadWriteOrOptions) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), ReadWriteOrOptions :: ReadWrite
+       | Options, ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec transaction/3 transaction(StoreId, FunOrPath, Args) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), Ret :: khepri_machine:tx_ret(); (StoreId, FunOrPath, ReadWriteOrOptions) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), ReadWriteOrOptions :: ReadWrite
+       | Options, ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret(); (FunOrPath, Args, ReadWriteOrOptions) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), ReadWriteOrOptions :: ReadWrite
+       | Options, ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret(); (FunOrPath, ReadWrite, Options) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec transaction/4 transaction(StoreId, FunOrPath, Args, ReadWrite) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), ReadWrite :: ro
+       | rw
+       | auto, Ret :: khepri_machine:tx_ret(); (StoreId, FunOrPath, Args, Options) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret(); (StoreId, FunOrPath, ReadWrite, Options) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret(); (FunOrPath, Args, ReadWrite, Options) -> Ret when FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), ReadWrite :: ro
+       | rw
+       | auto, Options :: command_options()
+       | query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec transaction/5 transaction(StoreId, FunOrPath, Args, ReadWrite, Options) -> Ret when StoreId :: store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), ReadWrite :: ro
+       | rw
+       | auto, Options :: khepri:command_options()
+       | khepri:query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec unregister_projections/1 unregister_projections(Names) -> Ret when Names :: all
+       | [khepri_projection:name()], Ret :: ok
+       | khepri:error()
+  spec unregister_projections/2 unregister_projections(StoreId, Names) -> Ret when StoreId :: khepri:store_id(), Names :: all
+       | [khepri_projection:name()], Ret :: ok
+       | khepri:error(); (Names, Options) -> Ret when Names :: all
+       | [khepri_projection:name()], Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec unregister_projections/3 unregister_projections(StoreId, Names, Options) -> Ret when StoreId :: khepri:store_id(), Names :: all
+       | [khepri_projection:name()], Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec update/2 update(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec update/3 update(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec update/4 update(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:async_ret()
+  type async_option/0 :: boolean()
+       | ra_server:command_correlation()
+       | ra_server:command_priority()
+       | {ra_server:command_correlation(), ra_server:command_priority()}
+  type async_ret/0 :: khepri_machine:write_ret()
+       | khepri_tx:tx_fun_result()
+       | khepri:error({not_leader, ra:server_id()})
+  type child_list_length/0 :: non_neg_integer()
+  type child_list_version/0 :: pos_integer()
+  type command_options/0 :: #{timeout => timeout(), async => async_option(), reply_from => reply_from_option(), protect_against_dups => boolean()}
+  type data/0 :: any()
+  type delete_reason/0 :: explicit | keep_while
+  type error/0 :: error(any())
+  type error/1 :: {error, Type}
+  type favor_option/0 :: consistency | low_latency
+  type filter_fun/0 :: fun((khepri_path:native_path(), khepri:node_props()) -> boolean())
+  type fold_acc/0 :: any()
+  type fold_fun/0 :: fun((khepri_path:native_path(), khepri:node_props(), khepri:fold_acc()) -> khepri:fold_acc())
+  type foreach_fun/0 :: fun((khepri_path:native_path(), khepri:node_props()) -> any())
+  type known_prop_to_return/0 :: payload_version
+       | child_list_version
+       | child_list_length
+       | child_names
+       | payload
+       | has_payload
+       | raw_payload
+       | delete_reason
+  type many_payloads_ret/0 :: many_payloads_ret(undefined)
+  type many_payloads_ret/1 :: khepri:ok(#{khepri_path:path() => khepri:data() | horus:horus_fun() | Default})
+       | khepri:error()
+  type map_fun/0 :: fun((khepri_path:native_path(), khepri:node_props()) -> khepri:map_fun_ret())
+  type map_fun_ret/0 :: any()
+  type minimal_ret/0 :: ok | khepri:error()
+  type node_props/0 :: #{data => khepri:data(), has_data => boolean(), sproc => horus:horus_fun(), is_sproc => boolean(), payload_version => khepri:payload_version(), child_list_version => khepri:child_list_version(), child_list_length => khepri:child_list_length(), child_names => [khepri_path:node_id()], delete_reason => khepri:delete_reason()}
+  type node_props_map/0 :: #{khepri_path:native_path() => khepri:node_props()}
+  type ok/1 :: {ok, Type}
+  type payload_ret/0 :: payload_ret(undefined)
+  type payload_ret/1 :: khepri:ok(khepri:data() | horus:horus_fun() | Default) | khepri:error()
+  type payload_version/0 :: pos_integer()
+  type put_options/0 :: #{keep_while => khepri_condition:keep_while()}
+  type query_options/0 :: #{condition => ra:query_condition(), timeout => timeout(), favor => favor_option()}
+  type reply_from_option/0 :: leader | local | {member, ra:server_id()}
+  type store_id/0 :: atom()
+  type tree_options/0 :: #{expect_specific_node => boolean(), props_to_return => [known_prop_to_return() | unknown_prop_to_return()], include_root_props => boolean(), return_indirect_deletes => boolean()}
+  type trigger_id/0 :: atom()
+  type unknown_prop_to_return/0 :: atom()
+
+module khepri_adv
+  export clear_many_payloads/1
+  export clear_many_payloads/2
+  export clear_many_payloads/3
+  export clear_payload/1
+  export clear_payload/2
+  export clear_payload/3
+  export compare_and_swap/3
+  export compare_and_swap/4
+  export compare_and_swap/5
+  export create/2
+  export create/3
+  export create/4
+  export delete/1
+  export delete/2
+  export delete/3
+  export delete_many/1
+  export delete_many/2
+  export delete_many/3
+  export get/1
+  export get/2
+  export get/3
+  export get_many/1
+  export get_many/2
+  export get_many/3
+  export put/2
+  export put/3
+  export put/4
+  export put_many/2
+  export put_many/3
+  export put_many/4
+  export unregister_projections/1
+  export unregister_projections/2
+  export unregister_projections/3
+  export update/2
+  export update/3
+  export update/4
+  spec clear_many_payloads/1 clear_many_payloads(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec clear_many_payloads/2 clear_many_payloads(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec clear_many_payloads/3 clear_many_payloads(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec clear_payload/1 clear_payload(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec clear_payload/2 clear_payload(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec clear_payload/3 clear_payload(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec compare_and_swap/3 compare_and_swap(PathPattern, DataPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec compare_and_swap/4 compare_and_swap(StoreId, PathPattern, DataPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec compare_and_swap/5 compare_and_swap(StoreId, PathPattern, DataPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec create/2 create(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec create/3 create(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec create/4 create(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec delete/1 delete(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec delete/2 delete(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec delete/3 delete(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec delete_many/1 delete_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec delete_many/2 delete_many(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec delete_many/3 delete_many(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec do_put/4 do_put(StoreId, PathPattern, Payload, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Payload :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec get/1 get(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec get/2 get(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec get/3 get(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec get_many/1 get_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec get_many/2 get_many(StoreId, PathPattern) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret(); (PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec get_many/3 get_many(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec put/2 put(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+       | khepri_machine:write_ret()
+  spec put/3 put(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+       | khepri_machine:write_ret()
+  spec put/4 put(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+       | khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec put_many/2 put_many(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec put_many/3 put_many(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec put_many/4 put_many(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec unregister_projections/1 unregister_projections(Names) -> Ret when Names :: all
+       | [khepri_projection:name()], Ret :: khepri:ok(khepri_machine:projection_map())
+       | khepri:error()
+  spec unregister_projections/2 unregister_projections(StoreId, Names) -> Ret when StoreId :: khepri:store_id(), Names :: all
+       | [khepri_projection:name()], Ret :: khepri:ok(khepri_machine:projection_map())
+       | khepri:error(); (Names, Options) -> Ret when Names :: all
+       | [khepri_projection:name()], Options :: khepri:command_options(), Ret :: khepri:ok(khepri_machine:projection_map())
+       | khepri:error()
+  spec unregister_projections/3 unregister_projections(StoreId, Names, Options) -> Ret when StoreId :: khepri:store_id(), Names :: all
+       | [khepri_projection:name()], Options :: khepri:command_options(), Ret :: khepri:ok(khepri_machine:projection_map())
+       | khepri:error()
+  spec update/2 update(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec update/3 update(StoreId, PathPattern, Data) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec update/4 update(StoreId, PathPattern, Data, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+
+module khepri_app
+  visibility hidden
+  behaviour application
+  export config_change/3
+  export get_default_timeout/0
+  export start/2
+  export stop/1
+
+module khepri_cluster
+  export generate_default_data_dir/0
+  export get_default_ra_system_or_data_dir/0
+  export get_default_store_id/0
+  export get_store_ids/0
+  export is_store_running/1
+  export join/1
+  export join/2
+  export members/0
+  export members/1
+  export members/2
+  export node_to_member/2
+  export nodes/0
+  export nodes/1
+  export nodes/2
+  export reset/0
+  export reset/1
+  export reset/2
+  export start/0
+  export start/1
+  export start/2
+  export start/3
+  export stop/0
+  export stop/1
+  export this_member/1
+  export wait_for_leader/0
+  export wait_for_leader/1
+  export wait_for_leader/2
+  export wait_for_ra_server_exit/1
+  export_type incomplete_ra_server_config/0
+  spec check_status_and_join_locked/3 check_status_and_join_locked(StoreId, RemoteNode, Timeout) -> Ret when StoreId :: khepri:store_id(), RemoteNode :: node(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec do_join_locked/4 do_join_locked(StoreId, ThisMember, RemoteNode, Timeout) -> Ret when StoreId :: khepri:store_id(), ThisMember :: ra:server_id(), RemoteNode :: node(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec do_query_members/4 do_query_members(StoreId, RaServer, QueryType, Timeout) -> Ret when StoreId :: khepri:store_id(), RaServer :: ra:server_id(), QueryType :: leader
+       | local, Timeout :: timeout(), Ret :: khepri:ok(Members)
+       | khepri:error(), Members :: [ra:server_id(), ...]
+  spec do_start_server/2 do_start_server(RaSystem, RaServerConfig) -> Ret when RaSystem :: atom(), RaServerConfig :: ra_server_config_with_id_and_cn(), Ret :: ok
+       | khepri:error()
+  spec ensure_ra_server_config_and_start/3 ensure_ra_server_config_and_start(RaSystem | DataDir, StoreId | RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), StoreId :: khepri:store_id(), RaServerConfig :: incomplete_ra_server_config(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error()
+  spec ensure_server_started/3 ensure_server_started(RaSystem, RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), RaServerConfig :: ra_server_config_with_cluster_name(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec ensure_server_started_locked/3 ensure_server_started_locked(RaSystem, RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), RaServerConfig :: ra_server_config_with_cluster_name(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec forget_store/1 forget_store(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec get_default_ra_system_or_data_dir/0 get_default_ra_system_or_data_dir() -> RaSystem
+       | DataDir when RaSystem :: atom(), DataDir :: file:filename_all()
+  spec get_default_store_id/0 get_default_store_id() -> StoreId when StoreId :: khepri:store_id()
+  spec get_store_ids/0 get_store_ids() -> [StoreId] when StoreId :: khepri:store_id()
+  spec get_store_prop/2 get_store_prop(StoreId, PropName) -> Ret when StoreId :: khepri:store_id(), PropName :: ra_system
+       | ra_server_config, PropValue :: any(), Ret :: khepri:ok(PropValue)
+       | khepri:error(?khepri_error( not_a_khepri_store, #{store_id := StoreId}))
+  spec is_store_running/1 is_store_running(StoreId) -> IsRunning when StoreId :: khepri:store_id(), IsRunning :: boolean()
+  spec join/1 join(RemoteMember | RemoteNode) -> Ret when RemoteMember :: ra:server_id(), RemoteNode :: node(), Ret :: ok
+       | khepri:error()
+  spec join/2 join(RemoteMember | RemoteNode | StoreId, Timeout | RemoteNode) -> Ret when RemoteMember :: ra:server_id(), RemoteNode :: node(), StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec join/3 join(StoreId, RemoteMember | RemoteNode, Timeout) -> Ret when StoreId :: khepri:store_id(), RemoteMember :: ra:server_id(), RemoteNode :: node(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec members/0 members() -> Ret when Ret :: khepri:ok(Members)
+       | khepri:error(), Members :: [ra:server_id(), ...]
+  spec members/1 members(StoreId | Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(Members)
+       | khepri:error(), Members :: [ra:server_id(), ...]
+  spec members/2 members(StoreId, Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(Members)
+       | khepri:error(), Members :: [ra:server_id(), ...]
+  spec node_to_member/2 node_to_member(StoreId, Node) -> Member when StoreId :: khepri:store_id(), Node :: node(), Member :: ra:server_id()
+  spec nodes/0 nodes() -> Ret when Ret :: khepri:ok(Nodes)
+       | khepri:error(), Nodes :: [node(), ...]
+  spec nodes/1 nodes(StoreId | Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(Nodes)
+       | khepri:error(), Nodes :: [node(), ...]
+  spec nodes/2 nodes(StoreId, Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(Nodes)
+       | khepri:error(), Nodes :: [node(), ...]
+  spec remember_store/2 remember_store(RaSystem, RaServerConfig) -> ok when RaSystem :: atom(), RaServerConfig :: ra_server:ra_server_config()
+  spec reset/0 reset() -> Ret when Ret :: ok | khepri:error()
+  spec reset/1 reset(StoreId | Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec reset/2 reset(StoreId, Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec reset_locally_and_join_locked/6 reset_locally_and_join_locked(StoreId, ThisMember, RaSystem, RaServerConfig, RemoteNode, Timeout) -> Ret when StoreId :: khepri:store_id(), ThisMember :: ra:server_id(), RaSystem :: atom(), RaServerConfig :: ra_server:config(), RemoteNode :: node(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec reset_remotely_and_join_locked/6 reset_remotely_and_join_locked(StoreId, ThisMember, RaSystem, RaServerConfig, RemoteNode, Timeout) -> Ret when StoreId :: khepri:store_id(), ThisMember :: ra:server_id(), RaSystem :: atom(), RaServerConfig :: ra_server:config(), RemoteNode :: node(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec start/0 start() -> Ret when Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec start/1 start(RaSystem | DataDir) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec start/2 start(RaSystem | DataDir, StoreId | RaServerConfig) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), StoreId :: khepri:store_id(), RaServerConfig :: incomplete_ra_server_config(), Ret :: khepri:ok(StoreId)
+       | khepri:error()
+  spec start/3 start(RaSystem | DataDir, StoreId | RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), StoreId :: khepri:store_id(), RaServerConfig :: incomplete_ra_server_config(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error()
+  spec stop/0 stop() -> Ret when Ret :: ok | khepri:error()
+  spec stop/1 stop(StoreId) -> Ret when StoreId :: khepri:store_id(), Ret :: ok
+       | khepri:error()
+  spec stop_locked/1 stop_locked(StoreId) -> Ret when StoreId :: khepri:store_id(), Ret :: ok
+       | khepri:error()
+  spec this_member/1 this_member(StoreId) -> Member when StoreId :: khepri:store_id(), Member :: ra:server_id()
+  spec trigger_election/2 trigger_election(Member | RaServerConfig, Timeout) -> ok when Member :: ra:server_id(), RaServerConfig :: ra_server_config_with_id_and_cn(), Timeout :: timeout()
+  spec verify_ra_system_and_start/3 verify_ra_system_and_start(RaSystem | DataDir, RaServerConfig, Timeout) -> Ret when RaSystem :: atom(), DataDir :: file:filename_all(), RaServerConfig :: ra_server_config_with_cluster_name(), Timeout :: timeout(), Ret :: khepri:ok(StoreId)
+       | khepri:error(), StoreId :: khepri:store_id()
+  spec wait_for_leader/0 wait_for_leader() -> Ret when Ret :: ok | khepri:error()
+  spec wait_for_leader/1 wait_for_leader(StoreIdOrRaServer) -> Ret when StoreIdOrRaServer :: StoreId
+       | RaServer, StoreId :: khepri:store_id(), RaServer :: ra:server_id(), Ret :: ok
+       | khepri:error()
+  spec wait_for_leader/2 wait_for_leader(StoreIdOrRaServer, Timeout) -> Ret when StoreIdOrRaServer :: StoreId
+       | RaServer, StoreId :: khepri:store_id(), RaServer :: ra:server_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec wait_for_ra_server_exit/1 wait_for_ra_server_exit(Member) -> ok when Member :: ra:server_id()
+  type incomplete_ra_server_config/0 :: map()
+  type ra_server_config_with_cluster_name/0 :: #{cluster_name := khepri:store_id()}
+  type ra_server_config_with_id_and_cn/0 :: #{id := ra:server_id(), cluster_name := khepri:store_id()}
+
+module khepri_condition
+  visibility hidden
+  export applies_to_grandchildren/1
+  export compare_numerical_values/2
+  export compile/1
+  export ensure_native_keep_while/1
+  export eval_regex/4
+  export is_met/3
+  export is_valid/1
+  export_type comparison_op/1
+  export_type condition/0
+  export_type keep_while/0
+  export_type native_keep_while/0
+  export_type re_compile_ret/0
+  spec applies_to_grandchildren/1 applies_to_grandchildren(condition()) -> boolean()
+  spec compare_numerical_values/2 compare_numerical_values(ValueA, ValueB) -> Equal when ValueA :: non_neg_integer(), ValueB :: non_neg_integer()
+       | comparison_op(non_neg_integer()), Equal :: boolean()
+  spec compare_numerical_values/3 compare_numerical_values(Cond, ValueA, ValueB) -> Equal when Cond :: condition_using_comparison_op(), ValueA :: non_neg_integer(), ValueB :: non_neg_integer()
+       | comparison_op(non_neg_integer()), Equal :: true
+       | {false, condition_using_comparison_op()}
+  spec compile/1 compile(Condition) -> Condition when Condition :: khepri_path:pattern_component()
+  spec ensure_native_keep_while/1 ensure_native_keep_while(KeepWhile) -> NativeKeepWhile when KeepWhile :: keep_while(), NativeKeepWhile :: native_keep_while()
+  spec eval_regex/4 eval_regex(Condition, SourceRegex, CompiledRegex, Value) -> Ret when Condition :: condition_using_regex(), SourceRegex :: any
+       | iodata()
+       | unicode:charlist(), CompiledRegex :: khepri_condition:re_compile_ret()
+       | undefined, Value :: atom()
+       | iodata()
+       | unicode:charlist(), Ret :: true
+       | {false, condition_using_regex()}
+       | {false, {condition_using_regex(), {error, match_limit | match_limit_recursion | {string(), non_neg_integer()}}}}
+  spec is_met/3 is_met(Condition, PathOrChildName, Child) -> IsMet when Condition :: khepri_path:pattern_component(), PathOrChildName :: khepri_path:native_path()
+       | khepri_path:component(), Child :: khepri_tree:tree_node()
+       | khepri:node_props(), IsMet :: true
+       | IsNotMet1
+       | IsNotMet2, IsNotMet1 :: {false, khepri_path:pattern_component()}, IsNotMet2 :: {false, {condition(), any()}}
+  spec is_valid/1 is_valid(Condition) -> IsValid when Condition :: khepri_path:pattern_component(), IsValid :: true
+       | {false, khepri_path:pattern_component()}
+  spec optimize_if_all_conditions/1 optimize_if_all_conditions([condition()]) -> [condition()]
+  spec optimize_if_any_conditions/1 optimize_if_any_conditions([condition()]) -> [condition()]
+  spec term_matches/2 term_matches(Term, MatchSpec) -> Matches when Term :: khepri:data(), MatchSpec :: ets:comp_match_spec(), Matches :: boolean()
+  type comparison_op/1 :: {eq, Type} | {ne, Type} | {lt, Type} | {le, Type} | {gt, Type} | {ge, Type}
+  type condition/0 :: if_name_matches()
+       | if_path_matches()
+       | if_has_payload()
+       | if_has_data()
+       | if_has_sproc()
+       | if_data_matches()
+       | if_node_exists()
+       | if_payload_version()
+       | if_child_list_version()
+       | if_child_list_length()
+       | if_not()
+       | if_all()
+       | if_any()
+  type condition_using_comparison_op/0 :: if_payload_version() | if_child_list_version() | if_child_list_length()
+  type condition_using_regex/0 :: if_name_matches() | if_path_matches()
+  type if_all/0 :: #if_all{}
+  type if_any/0 :: #if_any{}
+  type if_child_list_length/0 :: #if_child_list_length{}
+  type if_child_list_version/0 :: #if_child_list_version{}
+  type if_data_matches/0 :: #if_data_matches{}
+  type if_has_data/0 :: #if_has_data{}
+  type if_has_payload/0 :: #if_has_payload{}
+  type if_has_sproc/0 :: #if_has_sproc{}
+  type if_name_matches/0 :: #if_name_matches{}
+  type if_node_exists/0 :: #if_node_exists{}
+  type if_not/0 :: #if_not{}
+  type if_path_matches/0 :: #if_path_matches{}
+  type if_payload_version/0 :: #if_payload_version{}
+  type keep_while/0 :: #{khepri_path:path() => condition()}
+  type native_keep_while/0 :: #{khepri_path:native_path() => condition()}
+  type re_compile_ret/0 :: {ok, {re_pattern, term(), term(), term(), term()}}
+       | {error, {string(), non_neg_integer()}}
+
+module khepri_event_handler
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export handle_triggered_sprocs/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module khepri_evf
+  export get_priority/1
+  export set_priority/2
+  export tree/1
+  export tree/2
+  export wrap/1
+  export_type event_filter/0
+  export_type priority/0
+  export_type tree_event_filter/0
+  export_type tree_event_filter_props/0
+  spec get_priority/1 get_priority(EventFilter) -> Priority when EventFilter :: event_filter(), Priority :: priority()
+  spec set_priority/2 set_priority(EventFilter, Priority) -> EventFilter when EventFilter :: event_filter(), Priority :: priority()
+  spec tree/1 tree(PathPattern) -> EventFilter when PathPattern :: khepri_path:pattern()
+       | string(), EventFilter :: tree_event_filter()
+  spec tree/2 tree(PathPattern, Props) -> EventFilter when PathPattern :: khepri_path:pattern()
+       | string(), Props :: tree_event_filter_props(), EventFilter :: tree_event_filter()
+  spec wrap/1 wrap(Input) -> EventFilter when Input :: event_filter()
+       | khepri_path:pattern()
+       | string(), EventFilter :: event_filter()
+  type event_filter/0 :: tree_event_filter()
+  type priority/0 :: integer()
+  type tree_event_filter/0 :: #evf_tree{}
+  type tree_event_filter_props/0 :: #{on_actions => [create | update | delete], priority => khepri_evf:priority()}
+
+module khepri_export_erlang
+  behaviour khepri_import_export
+  export abort_write/1
+  export close_read/1
+  export commit_write/1
+  export open_read/1
+  export open_write/1
+  export read/1
+  export write/2
+  spec abort_write/1 abort_write(WriteState) -> Ret when WriteState :: write_state(), Ret :: ok
+  spec close_read/1 close_read(ReadState) -> Ret when ReadState :: read_state(), Ret :: ok
+       | {error, any()}
+  spec commit_write/1 commit_write(WriteState) -> Ret when WriteState :: write_state(), Ret :: ok
+       | {error, any()}
+  spec do_read/2 do_read(ReadState, BackupItems) -> Ret when ReadState :: read_state(), BackupItems :: [khepri_import_export:backup_item()], Ret :: {ok, BackupItems, ReadState}
+       | {error, any()}
+  spec open_read/1 open_read(Filename | Fd) -> Ret when Filename :: file:name_all(), Fd :: file:io_device(), Ret :: {ok, ReadState}
+       | {error, any()}, ReadState :: read_state()
+  spec open_write/1 open_write(Filename | Fd) -> Ret when Filename :: file:name_all(), Fd :: file:io_device(), Ret :: {ok, WriteState}
+       | {error, any()}, WriteState :: write_state()
+  spec read/1 read(ReadState) -> Ret when ReadState :: read_state(), Ret :: {ok, BackupItems, ReadState}
+       | {error, any()}, BackupItems :: [khepri_import_export:backup_item()]
+  spec write/2 write(WriteState, BackupItems) -> Ret when WriteState :: write_state(), BackupItems :: [khepri_import_export:backup_item()], Ret :: {ok, WriteState}
+       | {error, any()}
+  type read_state/0 :: #{fd := file:io_device(), max_chunk := non_neg_integer(), location := erl_anno:location(), start_pos => integer(), filename => file:name_all()}
+  type write_state/0 :: #{fd := file:io_device(), filename => file:name_all()}
+
+module khepri_import_export
+  export export/4
+  export import/3
+  export_type backup_item/0
+  export_type module_priv/0
+  callback abort_write/1 abort_write(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {error, any()}
+  callback close_read/1 close_read(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  callback commit_write/1 commit_write(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  callback open_read/1 open_read(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, ModulePriv}
+       | {error, any()}
+  callback open_write/1 open_write(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, ModulePriv}
+       | {error, any()}
+  callback read/1 read(ModulePriv) -> Ret when ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, BackupItems, ModulePriv}
+       | {error, any()}, BackupItems :: [khepri_import_export:backup_item()]
+  callback write/2 write(ModulePriv, BackupItems) -> Ret when ModulePriv :: khepri_import_export:module_priv(), BackupItems :: [khepri_import_export:backup_item()], Ret :: {ok, ModulePriv}
+       | {error, any()}
+  spec abort_write/2 abort_write(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {error, any()}
+  spec close_read/2 close_read(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec commit_write/2 commit_write(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec do_export/4 do_export(MachineState, PathPattern, Module, ModulePriv) -> Ret when MachineState :: khepri_machine:state(), PathPattern :: khepri_path:native_pattern(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec do_import/3 do_import(StoreId, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec export/4 export(StoreId, PathPattern, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec handle_backup_items/2 handle_backup_items(StoreId, BackupItems) -> Ret when StoreId :: khepri:store_id(), BackupItems :: [khepri_import_export:backup_item()], Ret :: ok
+       | {error, any()}
+  spec import/3 import(StoreId, Module, ModulePriv) -> Ret when StoreId :: khepri:store_id(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: ok
+       | {ok, ModulePriv}
+       | {error, any()}
+  spec open_read/2 open_read(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, ModulePriv}
+       | {error, any()}
+  spec open_write/2 open_write(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, ModulePriv}
+       | {error, any()}
+  spec read/2 read(Module, ModulePriv) -> Ret when Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, BackupItems, ModulePriv}
+       | {error, any()}, BackupItems :: [khepri_import_export:backup_item()]
+  spec write/5 write(MachineState, Path, Node, Module, ModulePriv) -> Ret when MachineState :: khepri_machine:state(), Path :: khepri_path:native_path(), Node :: khepri_tree:tree_node(), Module :: module(), ModulePriv :: khepri_import_export:module_priv(), Ret :: {ok, ModulePriv}
+       | {error, any()}
+  type backup_item/0 :: term()
+  type module_priv/0 :: any()
+
+module khepri_machine
+  behaviour ra_machine
+  export ack_triggers_execution/2
+  export apply/3
+  export clear_cache/1
+  export convert_state/3
+  export delete/3
+  export delete_matching_nodes/4
+  export do_process_sync_command/3
+  export does_api_comply_with/2
+  export ensure_is_state/1
+  export fence/2
+  export fold/5
+  export get_dedups/1
+  export get_emitted_triggers/1
+  export get_keep_while_conds/1
+  export get_keep_while_conds_state/2
+  export get_metrics/1
+  export get_projections/1
+  export get_projections_state/2
+  export get_root/1
+  export get_store_id/1
+  export get_tree/1
+  export get_triggers/1
+  export handle_aux/5
+  export handle_tx_exception/1
+  export has_projection/2
+  export init/1
+  export init_aux/1
+  export insert_or_update_node/6
+  export is_state/1
+  export make_virgin_state/1
+  export overview/1
+  export process_command/3
+  export process_query/3
+  export put/4
+  export register_projection/4
+  export register_trigger/5
+  export set_tree/2
+  export snapshot_installed/4
+  export split_command_options/2
+  export split_put_options/1
+  export split_query_options/2
+  export state_enter/2
+  export transaction/5
+  export unregister_projections/3
+  export version/0
+  export which_module/1
+  export_type api_behaviour/0
+  export_type async_ret/0
+  export_type command/0
+  export_type dedups_map/0
+  export_type delayed_aux_query/0
+  export_type machine_config/0
+  export_type machine_init_args/0
+  export_type metrics/0
+  export_type old_command/0
+  export_type projection_map/0
+  export_type projection_tree/0
+  export_type props/0
+  export_type state/0
+  export_type state_v1/0
+  export_type triggered/0
+  export_type triggers_map/0
+  export_type tx_ret/0
+  export_type write_ret/0
+  spec ack_triggers_execution/2 ack_triggers_execution(StoreId, TriggeredStoredProcs) -> Ret when StoreId :: khepri:store_id(), TriggeredStoredProcs :: [triggered()], Ret :: ok
+       | khepri:error()
+  spec add_applied_condition/2 add_applied_condition(StoreId, Options) -> NewOptions when StoreId :: khepri:store_id(), Options :: khepri:query_options(), NewOptions :: khepri:ok(khepri:query_options())
+       | khepri:error()
+  spec apply/3 apply(Meta, Command, State) -> {State, Ret, SideEffects} when Meta :: ra_machine:command_meta_data(), Command :: command()
+       | old_command(), State :: state(), Ret :: any(), SideEffects :: ra_machine:effects()
+  spec ask_fence_preliminary_query/1 ask_fence_preliminary_query(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec assert_equal/2 assert_equal(State1, State2) -> ok when State1 :: khepri_machine:state(), State2 :: khepri_machine:state()
+  spec bump_applied_command_count/2 bump_applied_command_count(ApplyRet, Meta) -> {State, Result, SideEffects} when ApplyRet :: {State, Result, SideEffects}, State :: state(), Result :: any(), Meta :: ra_machine:command_meta_data(), SideEffects :: ra_machine:effects()
+  spec can_skip_fence_preliminary_query/1 can_skip_fence_preliminary_query(StoreId) -> LastMsgWasSync when StoreId :: khepri:store_id(), LastMsgWasSync :: boolean()
+  spec clear_cache/1 clear_cache(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec clear_compiled_projection_tree/0 clear_compiled_projection_tree() -> ok
+  spec convert_state/3 convert_state(OldState, OldMacVer, NewMacVer) -> NewState when OldState :: khepri_machine:state(), OldMacVer :: ra_machine:version(), NewMacVer :: ra_machine:version(), NewState :: khepri_machine:state()
+  spec delete/3 delete(StoreId, PathPattern, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Options :: khepri:command_options()
+       | khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec delete_matching_nodes/4 delete_matching_nodes(State, PathPattern, TreeOptions, SideEffects) -> Ret when State :: state(), PathPattern :: khepri_path:native_pattern(), TreeOptions :: khepri:tree_options(), SideEffects :: ra_machine:effects(), Ret :: {State, Result, ra_machine:effects()}, Result :: khepri_machine:write_ret()
+  spec diff_matching_nodes/2 diff_matching_nodes(OldNodeProps, NewNodeProps) -> Changes when OldNodeProps :: khepri:node_props_map(), NewNodeProps :: khepri:node_props_map(), OldProps :: khepri:node_props(), NewProps :: khepri:node_props(), Changes :: #{khepri_path:native_path() => {OldProps, NewProps}}
+  spec does_api_comply_with/2 does_api_comply_with(Behaviour, MacVer | StoreId) -> DoesUse when Behaviour :: khepri_machine:api_behaviour(), MacVer :: ra_machine:version(), StoreId :: khepri:store_id(), DoesUse :: boolean()
+  spec drop_expired_dedups/2 drop_expired_dedups(ApplyRet, Meta) -> {State, Result, SideEffects} when ApplyRet :: {State, Result, SideEffects}, State :: state(), Result :: any(), Meta :: ra_machine:command_meta_data(), SideEffects :: ra_machine:effects()
+  spec effective_version/1 effective_version(StoreId) -> Ret when StoreId :: khepri:store_id(), Ret :: khepri:ok(EffectiveMacVer)
+       | khepri:error(), EffectiveMacVer :: ra_machine:version()
+  spec ensure_is_state/1 ensure_is_state(State) -> ok when State :: khepri_machine:state()
+  spec evaluate_projection/5 evaluate_projection(InitialTree, NewTree, Path, Projection, Effects) -> Ret when InitialTree :: khepri_tree:tree(), NewTree :: khepri_tree:tree(), Path :: khepri_path:native_path(), Projection :: khepri_projection:projection(), Effects :: ra_machine:effects(), Ret :: ra_machine:effects()
+  spec failed_to_locate_sproc/1 failed_to_locate_sproc(Reason) -> no_return() when Reason :: any()
+  spec fence/2 fence(StoreId, Timeout) -> Ret when StoreId :: khepri:store_id(), Timeout :: timeout(), Ret :: ok
+       | khepri:error()
+  spec fold/5 fold(StoreId, PathPattern, Fun, Acc, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Options :: khepri:query_options()
+       | khepri:tree_options(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec get_compiled_projection_tree/1 get_compiled_projection_tree(ProjectionTree) -> CompiledProjectionTree when ProjectionTree :: khepri_machine:projection_tree(), CompiledProjectionTree :: khepri_machine:projection_tree()
+  spec get_config/1 get_config(State) -> Config when State :: khepri_machine:state(), Config :: khepri_machine:machine_config()
+  spec get_dedups/1 get_dedups(State) -> Dedups when State :: khepri_machine:state(), Dedups :: khepri_machine:dedups_map()
+  spec get_emitted_triggers/1 get_emitted_triggers(State) -> EmittedTriggers when State :: khepri_machine:state(), EmittedTriggers :: [khepri_machine:triggered()]
+  spec get_keep_while_conds/1 get_keep_while_conds(State) -> KeepWhileConds when State :: khepri_machine:state(), KeepWhileConds :: khepri_tree:keep_while_conds_map()
+  spec get_keep_while_conds_state/2 get_keep_while_conds_state(StoreId, Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(khepri_tree:keep_while_conds_map())
+       | khepri:error()
+  spec get_metrics/1 get_metrics(State) -> Metrics when State :: khepri_machine:state(), Metrics :: khepri_machine:metrics()
+  spec get_projections/1 get_projections(State) -> Projections when State :: khepri_machine:state(), Projections :: khepri_machine:projection_tree()
+  spec get_projections_state/2 get_projections_state(StoreId, Options) -> Ret when StoreId :: khepri:store_id(), Options :: khepri:query_options(), Ret :: khepri:ok(ProjectionState)
+       | khepri:error(), ProjectionState :: khepri_pattern_tree:tree(Projection), Projection :: khepri_projection:projection()
+  spec get_root/1 get_root(State) -> Root when State :: khepri_machine:state(), Root :: khepri_tree:tree_node()
+  spec get_store_id/1 get_store_id(State) -> StoreId when State :: khepri_machine:state(), StoreId :: khepri:store_id()
+  spec get_timeout/1 get_timeout(Options) -> Timeout when Options :: khepri:command_options()
+       | khepri:query_options(), Timeout :: timeout()
+  spec get_tree/1 get_tree(State) -> Tree when State :: khepri_machine:state(), Tree :: khepri_tree:tree()
+  spec get_triggers/1 get_triggers(State) -> Triggers when State :: khepri_machine:state(), Triggers :: khepri_machine:triggers_map()
+  spec handle_aux/5 handle_aux(RaState, Type, Command, AuxState, IntState) -> Ret when RaState :: ra_server:ra_state(), Type :: {call, ra:from()}
+       | cast, Command :: term(), AuxState :: aux_state(), IntState :: ra_aux:internal_state(), Ret :: {no_reply, AuxState, IntState}
+       | {no_reply, AuxState, IntState, Effects}, Effects :: ra_machine:effects()
+  spec has_projection/2 has_projection(ProjectionTree, ProjectionName) -> boolean() when ProjectionTree :: khepri_machine:projection_tree(), ProjectionName :: khepri_projection:name()
+  spec init/1 init(Params) -> State when Params :: machine_init_args(), State :: khepri_machine_v0:state()
+  spec init_aux/1 init_aux(StoreId :: khepri:store_id()) -> aux_state()
+  spec insert_or_update_node/6 insert_or_update_node(State, PathPattern, Payload, PutOptions, TreeOptions, SideEffects) -> Ret when State :: state(), PathPattern :: khepri_path:native_pattern(), Payload :: khepri_payload:payload(), PutOptions :: khepri:put_options(), TreeOptions :: khepri:tree_options(), SideEffects :: ra_machine:effects(), Ret :: {State, Result, ra_machine:effects()}, Result :: khepri_machine:write_ret()
+  spec is_state/1 is_state(State) -> IsState when State :: khepri_machine:state(), IsState :: boolean()
+  spec make_virgin_state/1 make_virgin_state(Params) -> State when Params :: khepri_machine:machine_init_args(), State :: khepri_machine_v0:state()
+  spec overview/1 overview(State) -> Overview when State :: khepri_machine:state(), Overview :: #{store_id := StoreId, tree := NodeTree, triggers := Triggers, keep_while_conds := KeepWhileConds}, StoreId :: khepri:store_id(), NodeTree :: khepri_utils:display_tree(), Triggers :: khepri_machine:triggers_map(), KeepWhileConds :: khepri_tree:keep_while_conds_map()
+  spec post_apply/2 post_apply(ApplyRet, Meta) -> {State, Result, SideEffects} when ApplyRet :: {State, Result}
+       | {State, Result, SideEffects}, State :: state(), Result :: any(), Meta :: ra_machine:command_meta_data(), SideEffects :: ra_machine:effects()
+  spec process_command/3 process_command(StoreId, Command, Options) -> Ret when StoreId :: khepri:store_id(), Command :: command(), Options :: khepri:command_options(), Ret :: any()
+  spec process_query/3 process_query(StoreId, QueryFun, Options) -> Ret when StoreId :: khepri:store_id(), QueryFun :: query_fun(), Options :: khepri:query_options(), Ret :: any()
+  spec put/4 put(StoreId, PathPattern, Payload, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Payload :: khepri_payload:payload(), Options :: khepri:command_options()
+       | khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | khepri_machine:async_ret()
+  spec readonly_transaction/4 readonly_transaction(StoreId, FunOrPath, Args, Options) -> Ret when StoreId :: khepri:store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), Options :: khepri:query_options(), Ret :: khepri_machine:tx_ret()
+  spec readwrite_transaction/4 readwrite_transaction(StoreId, FunOrPath, Args, Options) -> Ret when StoreId :: khepri:store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: horus:horus_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), Options :: khepri:command_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec register_projection/4 register_projection(StoreId, PathPattern, Projection, Options) -> Ret when StoreId :: khepri:store_id(), PathPattern :: khepri_path:pattern(), Projection :: khepri_projection:projection(), Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec register_trigger/5 register_trigger(StoreId, TriggerId, EventFilter, StoredProcPath, Options) -> Ret when StoreId :: khepri:store_id(), TriggerId :: khepri:trigger_id(), EventFilter :: khepri_evf:event_filter()
+       | khepri_path:pattern(), StoredProcPath :: khepri_path:path(), Options :: khepri:command_options(), Ret :: ok
+       | khepri:error()
+  spec select_command_type/1 select_command_type(Options) -> CommandType when Options :: khepri:command_options(), CommandType :: sync
+       | {async, Correlation, Priority}, Correlation :: ra_server:command_correlation()
+       | ?DEFAULT_RA_COMMAND_CORRELATION, Priority :: ra_server:command_priority()
+  spec sending_async_command_locally/1 sending_async_command_locally(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec sending_command_remotely/1 sending_command_remotely(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec sending_query_locally/1 sending_query_locally(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec sending_sync_command_locally/1 sending_sync_command_locally(StoreId) -> ok when StoreId :: khepri:store_id()
+  spec set_dedups/2 set_dedups(State, Dedups) -> NewState when State :: khepri_machine:state(), Dedups :: khepri_machine:dedups_map(), NewState :: khepri_machine:state()
+  spec set_emitted_triggers/2 set_emitted_triggers(State, EmittedTriggers) -> NewState when State :: khepri_machine:state(), EmittedTriggers :: [khepri_machine:triggered()], NewState :: khepri_machine:state()
+  spec set_metrics/2 set_metrics(State, Metrics) -> NewState when State :: khepri_machine:state(), Metrics :: khepri_machine:metrics(), NewState :: khepri_machine:state()
+  spec set_of_projections/1 set_of_projections(ProjectionTree) -> Projections when ProjectionTree :: khepri_machine:projection_tree(), Element :: {khepri_path:native_pattern(), khepri_projection:projection()}, Projections :: sets:set(Element)
+  spec set_projections/2 set_projections(State, Projections) -> NewState when State :: khepri_machine:state(), Projections :: khepri_machine:projection_tree(), NewState :: khepri_machine:state()
+  spec set_tree/2 set_tree(State, Tree) -> NewState when State :: khepri_machine:state(), Tree :: khepri_tree:tree(), NewState :: khepri_machine:state()
+  spec set_triggers/2 set_triggers(State, Triggers) -> NewState when State :: khepri_machine:state(), Triggers :: khepri_machine:triggers_map(), NewState :: khepri_machine:state()
+  spec split_command_options/2 split_command_options(StoreId, Options) -> {CommandOptions, TreeAndPutOptions} when StoreId :: khepri:store_id(), Options :: CommandOptions
+       | TreeAndPutOptions, CommandOptions :: khepri:command_options(), TreeAndPutOptions :: khepri:tree_options()
+       | khepri:put_options()
+  spec split_put_options/1 split_put_options(TreeAndPutOptions) -> {TreeOptions, PutOptions} when TreeAndPutOptions :: TreeOptions
+       | PutOptions, TreeOptions :: khepri:tree_options(), PutOptions :: khepri:put_options()
+  spec split_query_options/2 split_query_options(StoreId, Options) -> {QueryOptions, TreeOptions} when StoreId :: khepri:store_id(), Options :: QueryOptions
+       | TreeOptions, QueryOptions :: khepri:query_options(), TreeOptions :: khepri:tree_options()
+  spec transaction/5 transaction(StoreId, FunOrPath, Args, ReadWrite, Options) -> Ret when StoreId :: khepri:store_id(), FunOrPath :: Fun
+       | PathPattern, Fun :: khepri_tx:tx_fun(), PathPattern :: khepri_path:pattern(), Args :: list(), ReadWrite :: ro
+       | rw
+       | auto, Options :: khepri:command_options()
+       | khepri:query_options(), Ret :: khepri_machine:tx_ret()
+       | khepri_machine:async_ret()
+  spec trigger_delayed_aux_queries_eval/2 trigger_delayed_aux_queries_eval(ApplyRet, Meta) -> {State, Result, SideEffects} when ApplyRet :: {State, Result, SideEffects}, State :: state(), Result :: any(), Meta :: ra_machine:command_meta_data(), SideEffects :: ra_machine:effects()
+  spec unregister_projections/3 unregister_projections(StoreId, Names, Options) -> Ret when StoreId :: khepri:store_id(), Names :: all
+       | [khepri_projection:name()], Options :: khepri:command_options(), Ret :: khepri:ok(khepri_machine:projection_map())
+       | khepri:error()
+  spec update_projections/2 update_projections(OldState, NewState) -> ok when OldState :: khepri_machine:state(), NewState :: khepri_machine:state()
+  spec version/0 version() -> MacVer when MacVer :: 2
+  spec which_module/1 which_module(MacVer) -> Module when MacVer :: 0..2, Module :: ?MODULE
+  type api_behaviour/0 :: dedup_protection
+       | delete_reason_in_node_props
+       | indirect_deletes_in_ret
+       | uniform_write_ret
+       | atom()
+  type async_ret/0 :: ok
+  type aux_query/0 :: {query, query_fun(), khepri:query_options()}
+  type aux_state/0 :: #khepri_machine_aux{}
+  type command/0 :: #put{}
+       | #delete{}
+       | #tx{}
+       | #register_trigger{}
+       | #ack_triggered{}
+       | #register_projection{}
+       | #unregister_projections{}
+       | #dedup{}
+       | #dedup_ack{}
+  type dedups_map/0 :: #{reference() => {any(), integer()}}
+  type delayed_aux_query/0 :: {aux_query(), gen_statem:from(), ra:query_condition() | none}
+  type machine_config/0 :: #config{}
+  type machine_init_args/0 :: #{store_id := khepri:store_id(), member := ra:server_id(), snapshot_interval => non_neg_integer(), commands => [command()], atom() => any()}
+  type metrics/0 :: #{applied_command_count => non_neg_integer()}
+  type old_command/0 :: #unregister_projection{}
+  type projection_map/0 :: #{khepri_projection:name() => khepri_path:pattern()}
+  type projection_tree/0 :: khepri_pattern_tree:tree( [khepri_projection:projection()])
+  type props/0 :: #{payload_version := khepri:payload_version(), child_list_version := khepri:child_list_version()}
+  type query_fun/0 :: fun((state()) -> any())
+       | fun((ra_machine:command_meta_data(), state()) -> any())
+  type state/0 :: state_v1() | khepri_machine_v0:state()
+  type triggered/0 :: #triggered{}
+  type triggers_map/0 :: #{khepri:trigger_id() => #{sproc := khepri_path:native_path(), event_filter := khepri_evf:event_filter()}}
+  type tx_ret/0 :: khepri:ok(khepri_tx:tx_fun_result()) | khepri_tx:tx_abort() | no_return()
+  type write_ret/0 :: khepri:ok(khepri:node_props_map()) | khepri:error()
+  opaque state_v1/0
+
+module khepri_machine_v0
+  visibility hidden
+  export assert_equal/2
+  export get_config/1
+  export get_emitted_triggers/1
+  export get_metrics/1
+  export get_projections/1
+  export get_tree/1
+  export get_triggers/1
+  export init/1
+  export is_state/1
+  export set_emitted_triggers/2
+  export set_metrics/2
+  export set_projections/2
+  export set_tree/2
+  export set_triggers/2
+  export state_to_list/1
+  export_type state/0
+  spec assert_equal/2 assert_equal(State1, State2) -> ok when State1 :: khepri_machine:state(), State2 :: khepri_machine:state()
+  spec get_config/1 get_config(State) -> Config when State :: khepri_machine_v0:state(), Config :: khepri_machine:machine_config()
+  spec get_emitted_triggers/1 get_emitted_triggers(State) -> EmittedTriggers when State :: khepri_machine_v0:state(), EmittedTriggers :: [khepri_machine:triggered()]
+  spec get_metrics/1 get_metrics(State) -> Metrics when State :: khepri_machine_v0:state(), Metrics :: khepri_machine:metrics()
+  spec get_projections/1 get_projections(State) -> Projections when State :: khepri_machine_v0:state(), Projections :: khepri_machine:projection_tree()
+  spec get_tree/1 get_tree(State) -> Tree when State :: khepri_machine_v0:state(), Tree :: khepri_tree:tree_v0()
+  spec get_triggers/1 get_triggers(State) -> Triggers when State :: khepri_machine_v0:state(), Triggers :: khepri_machine:triggers_map()
+  spec init/1 init(Params) -> State when Params :: khepri_machine:machine_init_args(), State :: state()
+  spec is_state/1 is_state(State) -> IsState when State :: khepri_machine_v0:state(), IsState :: boolean()
+  spec set_emitted_triggers/2 set_emitted_triggers(State, EmittedTriggers) -> NewState when State :: khepri_machine_v0:state(), EmittedTriggers :: [khepri_machine:triggered()], NewState :: khepri_machine_v0:state()
+  spec set_metrics/2 set_metrics(State, Metrics) -> NewState when State :: khepri_machine_v0:state(), Metrics :: khepri_machine:metrics(), NewState :: khepri_machine_v0:state()
+  spec set_projections/2 set_projections(State, Projections) -> NewState when State :: khepri_machine_v0:state(), Projections :: khepri_machine:projection_tree(), NewState :: khepri_machine_v0:state()
+  spec set_tree/2 set_tree(State, Tree) -> NewState when State :: khepri_machine_v0:state(), Tree :: khepri_tree:tree(), NewState :: khepri_machine_v0:state()
+  spec set_triggers/2 set_triggers(State, Triggers) -> NewState when State :: khepri_machine_v0:state(), Triggers :: khepri_machine:triggers_map(), NewState :: khepri_machine_v0:state()
+  spec state_to_list/1 state_to_list(State) -> Fields when State :: khepri_machine_v0:state(), Fields :: [any()]
+  opaque state/0
+
+module khepri_path
+  export abspath/2
+  export combine_with_conditions/2
+  export compile/1
+  export component_targets_specific_node/1
+  export component_to_string/1
+  export ensure_is_valid/1
+  export from_binary/1
+  export from_string/1
+  export is_valid/1
+  export pattern_includes_root_node/1
+  export realpath/1
+  export sigil_P/2
+  export sigil_p/2
+  export targets_specific_node/1
+  export to_binary/1
+  export to_string/1
+  export_type component/0
+  export_type native_path/0
+  export_type native_pattern/0
+  export_type node_id/0
+  export_type path/0
+  export_type pattern/0
+  export_type pattern_component/0
+  export_type unix_path/0
+  export_type unix_pattern/0
+  spec abspath/2 abspath(Path, BasePath) -> Path when Path :: native_pattern(), BasePath :: native_pattern()
+  spec combine_with_conditions/2 combine_with_conditions(PathPattern, Conditions) -> PathPattern when PathPattern :: native_pattern(), Conditions :: [khepri_condition:condition()]
+  spec compile/1 compile(PathPattern) -> PathPattern when PathPattern :: native_pattern()
+  spec component_targets_specific_node/1 component_targets_specific_node(ComponentPattern) -> Ret when ComponentPattern :: pattern_component(), Ret :: {true, Component}
+       | false, Component :: component()
+  spec component_to_string/1 component_to_string(component()) -> string()
+  spec ensure_is_valid/1 ensure_is_valid(PathPattern) -> ok
+       | no_return() when PathPattern :: native_pattern()
+  spec from_binary/1 from_binary(String) -> PathPattern when String :: pattern(), PathPattern :: native_pattern()
+  spec from_string/1 from_string(String) -> PathPattern when String :: pattern(), PathPattern :: native_pattern()
+  spec is_valid/1 is_valid(PathPattern) -> IsValid when PathPattern :: native_pattern(), IsValid :: true
+       | {false, ComponentPattern}, ComponentPattern :: pattern_component()
+  spec realpath/1 realpath(Path) -> NewPath when Path :: native_pattern(), NewPath :: native_pattern()
+  spec sigil_P/2 sigil_P(PathPattern, Options) -> NativePathPattern when PathPattern :: pattern(), Options :: [char()], NativePathPattern :: native_pattern()
+  spec sigil_p/2 sigil_p(PathPattern, Options) -> NativePathPattern when PathPattern :: pattern(), Options :: [char()], NativePathPattern :: native_pattern()
+  spec targets_specific_node/1 targets_specific_node(PathPattern) -> Ret when PathPattern :: native_pattern(), Ret :: {true, Path}
+       | false, Path :: native_path()
+  spec to_binary/1 to_binary(NativePath) -> UnixPath when NativePath :: native_path(), UnixPath :: binary()
+  spec to_string/1 to_string(NativePath) -> UnixPath when NativePath :: native_path(), UnixPath :: string()
+  type component/0 :: node_id() | ?KHEPRI_ROOT_NODE | ?THIS_KHEPRI_NODE | ?PARENT_KHEPRI_NODE
+  type native_path/0 :: [component()]
+  type native_pattern/0 :: [pattern_component()]
+  type node_id/0 :: atom() | binary()
+  type path/0 :: native_path() | unix_path()
+  type pattern/0 :: native_pattern() | unix_pattern()
+  type pattern_component/0 :: component() | khepri_condition:condition()
+  type unix_path/0 :: string() | binary()
+  type unix_pattern/0 :: string() | binary()
+
+module khepri_pattern_tree
+  visibility hidden
+  export any/2
+  export compile/1
+  export empty/0
+  export fold/3
+  export fold_matching/5
+  export foreach/2
+  export is_empty/1
+  export map_fold/3
+  export update/3
+  export_type tree/1
+  export_type tree_node/1
+  spec any/2 any(PatternTree, FindFun) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), FindFun :: find_fun(Payload), Ret :: payload()
+       | undefined, Payload :: payload()
+  spec compile/1 compile(PatternTree) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Ret :: khepri_pattern_tree:tree(Payload), Payload :: payload()
+  spec empty/0 empty() -> TreeNode when TreeNode :: khepri_pattern_tree:tree(Payload), Payload :: ?NO_PAYLOAD
+  spec fold/3 fold(PatternTree, Fun, Acc) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Fun :: fold_fun(Payload), Acc :: fold_acc(), Ret :: fold_acc(), Payload :: payload()
+  spec fold_data/4 fold_data(PatternTreeNode, CurrentPath, FoldFun, Acc) -> Ret when PatternTreeNode :: khepri_pattern_tree:tree_node(Payload), CurrentPath :: khepri_path:native_path(), FoldFun :: fold_fun(Payload), Acc :: fold_acc(), Ret :: fold_acc(), Payload :: payload()
+  spec fold_matching/5 fold_matching(PatternTree, Tree, Path, FoldFun, Acc) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Tree :: khepri_tree:tree(), Path :: khepri_path:native_path(), FoldFun :: fold_fun(Payload), Acc :: fold_acc(), Ret :: fold_acc(), Payload :: payload()
+  spec fold_matching1/6 fold_matching1(PatternTree, Node, Path, FoldFun, Acc, ReversedPath) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Node :: khepri_tree:tree_node(), Path :: khepri_path:native_path(), FoldFun :: fold_fun(Payload), Acc :: fold_acc(), ReversedPath :: khepri_path:native_path(), Ret :: fold_acc(), Payload :: payload()
+  spec foreach/2 foreach(PatternTree, Fun) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Fun :: fun((khepri_path:native_pattern(), Payload) -> any()), Payload :: payload(), Ret :: ok
+  spec is_empty/1 is_empty(PatternTree) -> IsEmpty when PatternTree :: khepri_pattern_tree:tree(Payload), IsEmpty :: boolean(), Payload :: payload()
+  spec map_fold/3 map_fold(Fun, Acc, PatternTree) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), Fun :: fun((Pattern, Payload, Acc) -> {NewPayload, NewAcc}), Pattern :: khepri_path:native_pattern(), Acc :: fold_acc(), NewAcc :: fold_acc(), NewPatternTree :: khepri_pattern_tree:tree(NewPayload), Ret :: {NewPatternTree, NewAcc}, Payload :: payload(), NewPayload :: payload()
+       | ?NO_PAYLOAD
+  spec update/3 update(PatternTree, PathPattern, UpdateFun) -> Ret when PatternTree :: khepri_pattern_tree:tree(Payload), PathPattern :: khepri_path:native_pattern(), UpdateFun :: update_fun(Payload), Ret :: khepri_pattern_tree:tree(Payload), Payload :: payload()
+  spec update_payload/2 update_payload(PatternTreeNode, UpdateFun) -> Ret when PatternTreeNode :: khepri_pattern_tree:tree_node(Payload), UpdateFun :: update_fun(Payload), Ret :: khepri_pattern_tree:tree_node(Payload), Payload :: payload()
+  type find_fun/1 :: fun((Payload) -> boolean())
+  type fold_acc/0 :: term()
+  type fold_fun/1 :: fun((khepri_path:native_pattern(), Payload, fold_acc()) -> fold_acc())
+  type payload/0 :: any()
+  type update_fun/1 :: fun((Payload) -> Payload)
+  opaque tree/1
+  opaque tree_node/1
+
+module khepri_payload
+  export data/1
+  export none/0
+  export prepare/1
+  export sproc/1
+  export wrap/1
+  export_type data/0
+  export_type no_payload/0
+  export_type payload/0
+  export_type sproc/0
+  spec data/1 data(Term) -> Payload when Term :: khepri:data(), Payload :: data()
+  spec none/0 none() -> no_payload()
+  spec prepare/1 prepare(Payload) -> Payload when Payload :: payload()
+  spec sproc/1 sproc(Fun) -> Payload when Fun :: horus:horus_fun() | fun(), Payload :: sproc()
+  spec wrap/1 wrap(Payload) -> WrappedPayload when Payload :: payload()
+       | khepri:data()
+       | fun(), WrappedPayload :: payload()
+  type data/0 :: #p_data{}
+  type no_payload/0 :: ?NO_PAYLOAD
+  type payload/0 :: no_payload() | data() | sproc()
+  type sproc/0 :: #p_sproc{}
+
+module khepri_prefix_tree
+  export empty/0
+  export find_path/2
+  export fold_prefixes_of/4
+  export from_map/1
+  export is_prefix_tree/1
+  export update/3
+  export_type tree/1
+  spec empty/0 empty() -> tree(_)
+  spec find_path/2 find_path(Path, Tree) -> Ret when Path :: khepri_path:native_path(), Tree :: khepri_prefix_tree:tree(Payload), Payload :: term(), Ret :: {ok, Payload}
+       | error
+  spec fold_prefixes_of/4 fold_prefixes_of(Fun, Acc, Path, Tree) -> Ret when Fun :: fun((Payload, Acc) -> Acc1), Acc :: term(), Acc1 :: term(), Path :: khepri_path:native_path(), Tree :: khepri_prefix_tree:tree(Payload), Payload :: term(), Ret :: Acc1
+  spec from_map/1 from_map(Map) -> Tree when Map :: #{khepri_path:native_path() => Payload}, Tree :: khepri_prefix_tree:tree(Payload), Payload :: term()
+  spec is_prefix_tree/1 is_prefix_tree(tree(_)) -> true; (term()) -> false
+  spec update/3 update(Fun, Path, Tree) -> Ret when Fun :: fun((Payload | ?NO_PAYLOAD) -> Payload | ?NO_PAYLOAD), Path :: khepri_path:native_path(), Tree :: khepri_prefix_tree:tree(Payload), Payload :: term(), Ret :: khepri_prefix_tree:tree(Payload)
+  type child_nodes/1 :: #{khepri_path:node_id() => tree(Payload)}
+  opaque tree/1
+
+module khepri_projection
+  visibility hidden
+  export delete/1
+  export init/1
+  export name/1
+  export new/2
+  export new/3
+  export trigger/4
+  export_type name/0
+  export_type options/0
+  export_type projection/0
+  export_type projection_fun/0
+  spec delete/1 delete(Projection) -> Ret when Projection :: projection(), Ret :: ok
+       | {error, does_not_exist}
+  spec init/1 init(Projection) -> Ret when Projection :: projection(), Ret :: ok
+       | {error, exists}
+  spec name/1 name(Projection) -> Name when Projection :: projection(), Name :: khepri_projection:name()
+  spec new/2 new(Name, ProjectionFun) -> Projection when Name :: khepri_projection:name(), ProjectionFun :: khepri_projection:projection_fun(), Projection :: khepri_projection:projection()
+  spec new/3 new(Name, ProjectionFun, Options) -> Projection when Name :: khepri_projection:name(), ProjectionFun :: khepri_projection:projection_fun(), Options :: khepri_projection:options(), Projection :: khepri_projection:projection()
+  spec to_ets_options/3 to_ets_options(Key, Value, Acc) -> Acc when Key :: atom(), Value :: atom()
+       | pos_integer()
+       | boolean(), Acc :: [tuple() | atom()]
+  spec trigger/4 trigger(Projection, Path, OldProps, NewProps) -> Ret when Projection :: projection(), Path :: khepri_path:native_path(), OldProps :: khepri:node_props(), NewProps :: khepri:node_props(), Ret :: ok
+  spec trigger_copy_projection/4 trigger_copy_projection(Name, Table, OldProps, NewProps) -> Ret when Name :: khepri_projection:name(), Table :: ets:tid(), OldProps :: khepri:node_props(), NewProps :: khepri:node_props(), Ret :: ok
+  spec trigger_extended_projection/6 trigger_extended_projection(Table, Name, StandaloneFun, Path, OldProps, NewProps) -> Ret when Table :: ets:tid(), Name :: khepri_projection:name(), StandaloneFun :: horus:horus_fun(), Path :: khepri_path:native_path(), OldProps :: khepri:node_props(), NewProps :: khepri:node_props(), Ret :: ok
+  spec trigger_simple_projection/6 trigger_simple_projection(Table, Name, StandaloneFun, Path, OldProps, NewProps) -> Ret when Table :: ets:tid(), Name :: khepri_projection:name(), StandaloneFun :: horus:horus_fun(), Path :: khepri_path:native_path(), OldProps :: khepri:node_props(), NewProps :: khepri:node_props(), Ret :: ok
+  spec try_ets_delete_object/3 try_ets_delete_object(Name, Table, Record) -> ok when Name :: khepri_projection:name(), Table :: ets:tid(), Record :: term()
+  spec try_ets_insert/3 try_ets_insert(Name, Table, Record) -> ok when Name :: khepri_projection:name(), Table :: ets:tid(), Record :: term()
+  type extended_projection_fun/0 :: fun((Table :: ets:tid(), Path :: khepri_path:native_path(), OldPayload :: khepri:node_props(), NewPayload :: khepri:node_props()) -> any())
+  type name/0 :: atom()
+  type options/0 :: #{type => ets:table_type(), keypos => pos_integer(), read_concurrency => boolean(), write_concurrency => boolean() | auto, compressed => boolean(), standalone_fun_options => horus:options()}
+  type projection/0 :: #khepri_projection{}
+  type projection_fun/0 :: copy | simple_projection_fun() | extended_projection_fun()
+  type simple_projection_fun/0 :: fun((Path :: khepri_path:native_path(), Payload :: khepri:data()) -> Record :: tuple())
+
+module khepri_sproc
+  visibility hidden
+  export run/2
+  export to_standalone_fun/1
+  spec run/2 run(StandaloneFun, Args) -> Ret when StandaloneFun :: horus:horus_fun(), Args :: [any()], Ret :: any()
+  spec to_standalone_fun/1 to_standalone_fun(Fun) -> StandaloneFun
+       | no_return() when Fun :: fun(), StandaloneFun :: horus:horus_fun()
+
+module khepri_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/0
+
+module khepri_tree
+  visibility hidden
+  export are_keep_while_conditions_met/2
+  export assert_equal/2
+  export collect_node_props_cb/3
+  export convert_tree/3
+  export count_node_cb/3
+  export delete_matching_nodes/4
+  export does_path_match/3
+  export find_matching_nodes/3
+  export fold/5
+  export get_keep_while_conds/1
+  export get_root/1
+  export insert_or_update_node/5
+  export new/0
+  export walk_down_the_tree/5
+  export_type applied_changes/0
+  export_type keep_while_conds_map/0
+  export_type keep_while_conds_revidx/0
+  export_type keep_while_conds_revidx_v0/0
+  export_type keep_while_conds_revidx_v1/0
+  export_type tree/0
+  export_type tree_node/0
+  export_type tree_v0/0
+  export_type tree_v1/0
+  spec add_node_child/3 add_node_child(Node, ChildName, Child) -> Node when Node :: tree_node(), Child :: tree_node(), ChildName :: khepri_path:component()
+  spec are_keep_while_conditions_met/2 are_keep_while_conditions_met(Tree, KeepWhile) -> Ret when Tree :: tree(), KeepWhile :: khepri_condition:native_keep_while(), Ret :: true
+       | {false, any()}
+  spec assert_equal/2 assert_equal(Tree1, Tree2) -> ok when Tree1 :: khepri_tree:tree(), Tree2 :: khepri_tree:tree()
+  spec collect_node_props_cb/3 collect_node_props_cb(Path, NodeProps, Map) -> Ret when Path :: khepri_path:native_path(), NodeProps :: khepri:node_props(), Map :: khepri:node_props_map(), Ret :: Map
+  spec count_node_cb/3 count_node_cb(Path, NodeProps, Count) -> Ret when Path :: khepri_path:native_path(), NodeProps :: khepri:node_props(), Count :: non_neg_integer(), Ret :: Count
+  spec create_node_record/1 create_node_record(Payload) -> Node when Payload :: khepri_payload:payload(), Node :: tree_node()
+  spec delete_matching_nodes/4 delete_matching_nodes(Tree, PathPattern, AppliedChanges, TreeOptions) -> Ret when Tree :: khepri_tree:tree(), PathPattern :: khepri_path:pattern(), AppliedChanges :: applied_changes(), TreeOptions :: khepri:tree_options(), Ret :: {ok, NewTree, NewAppliedChanges, Result}
+       | khepri:error(), NewTree :: khepri_tree:tree(), NewAppliedChanges :: applied_changes(), Result :: any()
+  spec find_matching_nodes/3 find_matching_nodes(Tree, PathPattern, TreeOptions) -> Ret when Tree :: tree(), PathPattern :: khepri_path:native_pattern(), TreeOptions :: khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec fold/5 fold(Tree, PathPattern, Fun, Acc, TreeOptions) -> Ret when Tree :: tree(), PathPattern :: khepri_path:native_pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), TreeOptions :: khepri:tree_options(), Ret :: khepri:ok(Acc)
+       | khepri:error()
+  spec gather_node_props/2 gather_node_props(Node, TreeOptions) -> NodeProps when Node :: tree_node(), TreeOptions :: khepri:tree_options(), NodeProps :: khepri:node_props()
+  spec get_keep_while_conds/1 get_keep_while_conds(Tree) -> KeepWhileConds when Tree :: khepri_tree:tree(), KeepWhileConds :: khepri_tree:keep_while_conds_map()
+  spec get_root/1 get_root(Tree) -> Root when Tree :: khepri_tree:tree(), Root :: khepri_tree:tree_node()
+  spec handle_branch/3 handle_branch(Walk, ChildName, Child) -> Ret when Walk :: #walk{}, ChildName :: khepri_path:component(), Child :: tree_node(), Ret :: khepri:ok(Walk)
+       | khepri:error()
+  spec insert_or_update_node/5 insert_or_update_node(Tree, PathPattern, Payload, PutOptions, TreeOptions) -> Ret when Tree :: khepri_tree:tree(), PathPattern :: khepri_path:native_pattern(), Payload :: khepri_payload:payload(), PutOptions :: khepri:put_options(), TreeOptions :: khepri:tree_options(), NodeProps :: khepri:node_props_map(), AppliedChanges :: applied_changes(), Ret :: ok(Tree, AppliedChanges, NodeProps)
+       | khepri:error()
+  spec interrupted_walk_down/3 interrupted_walk_down(Walk, Reason, Info) -> Ret when Walk :: #walk{}, Reason :: mismatching_node
+       | node_not_found, Info :: map(), Ret :: khepri:ok(Walk)
+       | khepri:error()
+  spec new/0 new() -> tree()
+  spec remove_node_child/2 remove_node_child(Node, ChildName) -> Node when Node :: tree_node(), ChildName :: khepri_path:component()
+  spec remove_node_child_nodes/1 remove_node_child_nodes(Node) -> Node when Node :: tree_node()
+  spec remove_node_payload/1 remove_node_payload(Node) -> Node when Node :: tree_node()
+  spec reset_versions/1 reset_versions(Node) -> Node when Node :: tree_node()
+  spec set_node_payload/2 set_node_payload(Node, Payload) -> Node when Node :: tree_node(), Payload :: khepri_payload:payload()
+  spec special_component_to_node_name/2 special_component_to_node_name(SpecialComponent, ReversedPath) -> NodeName when SpecialComponent :: ?KHEPRI_ROOT_NODE
+       | ?THIS_KHEPRI_NODE, ReversedPath :: khepri_path:native_path(), NodeName :: khepri_path:component()
+  spec squash_version_bumps/2 squash_version_bumps(OldNode, NewNode) -> Node when OldNode :: tree_node(), NewNode :: tree_node(), Node :: tree_node()
+  spec starting_node_in_rev_parent_tree/1 starting_node_in_rev_parent_tree(ReversedParentTree) -> Node when Node :: tree_node(), ReversedParentTree :: [Node]
+  spec starting_node_in_rev_parent_tree/2 starting_node_in_rev_parent_tree(ReversedParentTree, Node) -> Node when Node :: tree_node(), ReversedParentTree :: [Node]
+  spec to_absolute_keep_while/2 to_absolute_keep_while(BasePath, KeepWhile) -> AbsKeepWhile when BasePath :: khepri_path:native_path(), KeepWhile :: khepri_condition:native_keep_while(), AbsKeepWhile :: khepri_condition:native_keep_while()
+  spec update_keep_while_conds/3 update_keep_while_conds(Tree, Watcher, KeepWhile) -> NewTree when Tree :: khepri_tree:tree(), Watcher :: khepri_path:native_path(), KeepWhile :: khepri_condition:native_keep_while(), NewTree :: khepri_tree:tree()
+  spec update_keep_while_conds_revidx/3 update_keep_while_conds_revidx(Tree, Watcher, KeepWhile) -> NewTree when Tree :: tree(), Watcher :: khepri_path:native_path(), KeepWhile :: khepri_condition:native_keep_while(), NewTree :: tree()
+  spec update_node_child/3 update_node_child(Node, ChildName, Child) -> Node when Node :: tree_node(), Child :: tree_node(), ChildName :: khepri_path:component()
+  spec walk_back_up_the_tree/1 walk_back_up_the_tree(Walk) -> Ret when Walk :: #walk{}, Ret :: khepri:ok(Walk)
+  spec walk_back_up_the_tree/2 walk_back_up_the_tree(Walk, AppliedChangesAcc) -> Ret when Walk :: #walk{}, AppliedChangesAcc :: applied_changes(), Ret :: khepri:ok(Walk)
+  spec walk_down_the_tree/5 walk_down_the_tree(Tree, PathPattern, TreeOptions, Fun, FunAcc) -> Ret when Tree :: tree(), PathPattern :: khepri_path:native_pattern(), TreeOptions :: khepri:tree_options(), Fun :: walk_down_the_tree_fun(), FunAcc :: any(), AppliedChanges :: applied_changes(), Ret :: ok(Tree, AppliedChanges, FunAcc)
+       | khepri:error()
+  spec walk_down_the_tree/6 walk_down_the_tree(Tree, PathPattern, TreeOptions, AppliedChanges, Fun, FunAcc) -> Ret when Tree :: tree(), PathPattern :: khepri_path:native_pattern(), TreeOptions :: khepri:tree_options(), AppliedChanges :: applied_changes(), Fun :: walk_down_the_tree_fun(), FunAcc :: any(), Ret :: ok(Tree, AppliedChanges, FunAcc)
+       | khepri:error()
+  spec walk_down_the_tree1/1 walk_down_the_tree1(Walk) -> Ret when Walk :: #walk{}, Ret :: khepri:ok(Walk)
+       | khepri:error()
+  type applied_changes/0 :: #{khepri_path:native_path() => {create, khepri:node_props()} | {update, khepri:node_props()} | delete}
+  type keep_while_conds_map/0 :: #{khepri_path:native_path() => khepri_condition:native_keep_while()}
+  type keep_while_conds_revidx/0 :: keep_while_conds_revidx_v0() | keep_while_conds_revidx_v1()
+  type ok/2 :: {ok, Type1, Type2}
+  type ok/3 :: {ok, Type1, Type2, Type3}
+  type tree/0 :: tree_v0() | tree_v1()
+  type tree/1 :: #tree{keep_while_conds_revidx :: KeepWhileCondsRevIdxType}
+  type tree_node/0 :: #node{}
+  type walk_down_the_tree_fun/0 :: fun((khepri_path:native_path(), tree_node() | {interrupted, any(), map()}, Acc :: any()) -> ok(tree_node() | keep | delete, any()) | khepri:error())
+  opaque keep_while_conds_revidx_v0/0
+  opaque keep_while_conds_revidx_v1/0
+  opaque tree_v0/0
+  opaque tree_v1/0
+
+module khepri_tx
+  export abort/1
+  export clear_many_payloads/1
+  export clear_many_payloads/2
+  export clear_payload/1
+  export clear_payload/2
+  export compare_and_swap/3
+  export compare_and_swap/4
+  export count/1
+  export count/2
+  export create/2
+  export create/3
+  export delete/1
+  export delete/2
+  export delete_many/1
+  export delete_many/2
+  export does_api_comply_with/1
+  export exists/1
+  export exists/2
+  export filter/2
+  export filter/3
+  export fold/3
+  export fold/4
+  export foreach/2
+  export foreach/3
+  export get/1
+  export get/2
+  export get_many/1
+  export get_many/2
+  export get_many_or/2
+  export get_many_or/3
+  export get_or/2
+  export get_or/3
+  export has_data/1
+  export has_data/2
+  export is_empty/0
+  export is_empty/1
+  export is_sproc/1
+  export is_sproc/2
+  export is_transaction/0
+  export map/2
+  export map/3
+  export put/2
+  export put/3
+  export put_many/2
+  export put_many/3
+  export update/2
+  export update/3
+  export_type tx_abort/0
+  export_type tx_fun/0
+  export_type tx_fun_result/0
+  spec abort/1 abort(Reason) -> no_return() when Reason :: any()
+  spec clear_many_payloads/1 clear_many_payloads(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_many_payloads/2 clear_many_payloads(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec clear_payload/1 clear_payload(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec clear_payload/2 clear_payload(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec compare_and_swap/3 compare_and_swap(PathPattern, DataPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec compare_and_swap/4 compare_and_swap(PathPattern, DataPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec count/1 count(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:ok(Count)
+       | khepri:error(), Count :: non_neg_integer()
+  spec count/2 count(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri:ok(Count)
+       | khepri:error(), Count :: non_neg_integer()
+  spec create/2 create(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec create/3 create(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec delete/1 delete(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec delete/2 delete(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri:minimal_ret()
+  spec delete_many/1 delete_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:minimal_ret()
+  spec delete_many/2 delete_many(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri:minimal_ret()
+  spec does_api_comply_with/1 does_api_comply_with(Behaviour) -> DoesUse when Behaviour :: khepri_machine:api_behaviour(), DoesUse :: boolean()
+  spec exists/1 exists(PathPattern) -> Exists when PathPattern :: khepri_path:pattern(), Exists :: boolean()
+  spec exists/2 exists(PathPattern, Options) -> Exists when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Exists :: boolean()
+  spec filter/2 filter(PathPattern, Pred) -> Ret when PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Ret :: khepri:many_payloads_ret()
+  spec filter/3 filter(PathPattern, Pred, Options) -> Ret when PathPattern :: khepri_path:pattern(), Pred :: khepri:filter_fun(), Options :: khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec fold/3 fold(PathPattern, Fun, Acc) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec fold/4 fold(PathPattern, Fun, Acc, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:fold_fun(), Acc :: khepri:fold_acc(), Options :: khepri:tree_options(), Ret :: khepri:ok(NewAcc)
+       | khepri:error(), NewAcc :: Acc
+  spec foreach/2 foreach(PathPattern, Fun) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Ret :: ok
+       | khepri:error()
+  spec foreach/3 foreach(PathPattern, Fun, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:foreach_fun(), Options :: khepri:tree_options(), Ret :: ok
+       | khepri:error()
+  spec get/1 get(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:payload_ret()
+  spec get/2 get(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri:payload_ret()
+  spec get_many/1 get_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri:many_payloads_ret()
+  spec get_many/2 get_many(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec get_many_or/2 get_many_or(PathPattern, Default) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:many_payloads_ret()
+  spec get_many_or/3 get_many_or(PathPattern, Default, Options) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:tree_options(), Ret :: khepri:many_payloads_ret()
+  spec get_or/2 get_or(PathPattern, Default) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Ret :: khepri:payload_ret()
+  spec get_or/3 get_or(PathPattern, Default, Options) -> Ret when PathPattern :: khepri_path:pattern(), Default :: khepri:data(), Options :: khepri:tree_options(), Ret :: khepri:payload_ret()
+  spec has_data/1 has_data(PathPattern) -> HasData
+       | Error when PathPattern :: khepri_path:pattern(), HasData :: boolean(), Error :: khepri:error()
+  spec has_data/2 has_data(PathPattern, Options) -> HasData
+       | Error when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), HasData :: boolean(), Error :: khepri:error()
+  spec is_empty/0 is_empty() -> IsEmpty | Error when IsEmpty :: boolean(), Error :: khepri:error()
+  spec is_empty/1 is_empty(Options) -> IsEmpty
+       | Error when Options :: khepri:tree_options(), IsEmpty :: boolean(), Error :: khepri:error()
+  spec is_sproc/1 is_sproc(PathPattern) -> IsSproc
+       | Error when PathPattern :: khepri_path:pattern(), IsSproc :: boolean(), Error :: khepri:error()
+  spec is_sproc/2 is_sproc(PathPattern, Options) -> IsSproc
+       | Error when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), IsSproc :: boolean(), Error :: khepri:error()
+  spec is_transaction/0 is_transaction() -> boolean()
+  spec map/2 map(PathPattern, Fun) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}
+  spec map/3 map(PathPattern, Fun, Options) -> Ret when PathPattern :: khepri_path:pattern(), Fun :: khepri:map_fun(), Options :: khepri:tree_options(), Ret :: khepri:ok(Map)
+       | khepri:error(), Map :: #{khepri_path:native_path() => khepri:map_fun_ret()}
+  spec put/2 put(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put/3 put(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec put_many/2 put_many(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec put_many/3 put_many(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  spec update/2 update(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri:minimal_ret()
+  spec update/3 update(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri:minimal_ret()
+  type tx_abort/0 :: khepri:error(any())
+  type tx_fun/0 :: fun()
+  type tx_fun_result/0 :: any() | no_return()
+
+module khepri_tx_adv
+  export clear_many_payloads/1
+  export clear_many_payloads/2
+  export clear_payload/1
+  export clear_payload/2
+  export compare_and_swap/3
+  export compare_and_swap/4
+  export create/2
+  export create/3
+  export delete/1
+  export delete/2
+  export delete_many/1
+  export delete_many/2
+  export do_get_many/4
+  export ensure_instruction_is_permitted/1
+  export get/1
+  export get/2
+  export get_many/1
+  export get_many/2
+  export get_tx_effective_machine_version/0
+  export get_tx_props/0
+  export get_tx_state/0
+  export is_standalone_fun_still_needed/2
+  export path_from_string/1
+  export put/2
+  export put/3
+  export put_many/2
+  export put_many/3
+  export run/5
+  export should_process_function/4
+  export to_standalone_fun/2
+  export update/2
+  export update/3
+  spec clear_many_payloads/1 clear_many_payloads(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec clear_many_payloads/2 clear_many_payloads(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+  spec clear_payload/1 clear_payload(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec clear_payload/2 clear_payload(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec compare_and_swap/3 compare_and_swap(PathPattern, DataPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec compare_and_swap/4 compare_and_swap(PathPattern, DataPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), DataPattern :: ets:match_pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec create/2 create(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec create/3 create(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec delete/1 delete(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec delete/2 delete(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec delete_many/1 delete_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec delete_many/2 delete_many(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec ensure_updates_are_allowed/0 ensure_updates_are_allowed() -> ok | no_return()
+  spec get/1 get(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec get/2 get(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec get_many/1 get_many(PathPattern) -> Ret when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret()
+  spec get_many/2 get_many(PathPattern, Options) -> Ret when PathPattern :: khepri_path:pattern(), Options :: khepri:tree_options(), Ret :: khepri_machine:write_ret()
+  spec get_tx_effective_machine_version/0 get_tx_effective_machine_version() -> MacVer when MacVer :: ra_machine:version()
+  spec get_tx_props/0 get_tx_props() -> TxProps when TxProps :: tx_props()
+  spec get_tx_state/0 get_tx_state() -> {State, SideEffects} when State :: khepri_machine:state(), SideEffects :: ra_machine:effects()
+  spec maybe_return_indirect_deletes/1 maybe_return_indirect_deletes(TreeOptions) -> NewTreeOptions when TreeOptions :: khepri:tree_options(), NewTreeOptions :: khepri:tree_options()
+  spec maybe_write_ret_to_legacy_ret/2 maybe_write_ret_to_legacy_ret(PathPattern, Ret) -> NewRet when PathPattern :: khepri_path:pattern(), Ret :: khepri_machine:write_ret(), NewRet :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec path_from_string/1 path_from_string(PathPattern) -> NativePathPattern
+       | no_return() when PathPattern :: khepri_path:pattern(), NativePathPattern :: khepri_path:native_pattern()
+  spec put/2 put(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec put/3 put(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec put_many/2 put_many(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+  spec put_many/3 put_many(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+  spec run/5 run(State, StandaloneFun, Args, AllowUpdates, RaMeta) -> Ret when State :: khepri_machine:state(), StandaloneFun :: horus:horus_fun(), Args :: list(), AllowUpdates :: boolean(), RaMeta :: ra_machine:command_meta_data(), Ret :: {State, khepri_tx:tx_fun_result() | Exception, SideEffects}, Exception :: {exception, Class, Reason, Stacktrace}, Class :: error
+       | exit
+       | throw, Reason :: any(), Stacktrace :: list(), SideEffects :: ra_machine:effects()
+  spec set_tx_state/2 set_tx_state(State, SideEffects) -> ok when State :: khepri_machine:state(), SideEffects :: ra_machine:effects()
+  spec to_standalone_fun/2 to_standalone_fun(Fun, ReadWrite) -> StandaloneFun
+       | no_return() when Fun :: fun(), ReadWrite :: ro
+       | rw
+       | auto, StandaloneFun :: horus:horus_fun()
+  spec update/2 update(PathPattern, Data) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  spec update/3 update(PathPattern, Data, Options) -> Ret when PathPattern :: khepri_path:pattern(), Data :: khepri_payload:payload()
+       | khepri:data()
+       | fun(), Options :: khepri:tree_options()
+       | khepri:put_options(), Ret :: khepri_machine:write_ret()
+       | legacy_ret()
+  type legacy_ret/0 :: khepri:ok(khepri:node_props() | #{}) | khepri:error()
+  type tx_props/0 :: #{allow_updates := boolean(), ra_meta => ra_machine:command_meta_data()}
+
+module khepri_utils
+  visibility hidden
+  export clear_list_of_modules_to_skip/0
+  export display_tree/1
+  export display_tree/2
+  export display_tree/3
+  export end_timeout_window/2
+  export flat_struct_to_tree/1
+  export flat_struct_to_tree/2
+  export format_exception/4
+  export get_single_node_props/1
+  export init_list_of_modules_to_skip/0
+  export is_ra_server_alive/1
+  export node_props_to_payload/2
+  export should_process_module/1
+  export sleep/2
+  export start_timeout_window/1
+  export_type display_tree/0
+  spec display_tree/1 display_tree(display_tree()) -> ok
+  spec end_timeout_window/2 end_timeout_window(Timeout, Timestamp | none) -> Timeout when Timeout :: timeout(), Timestamp :: integer()
+  spec flat_struct_to_tree/1 flat_struct_to_tree(NodePropsMap) -> DisplayTree when NodePropsMap :: khepri:node_props_map(), DisplayTree :: display_tree()
+  spec flat_struct_to_tree/2 flat_struct_to_tree(NodePropsMap, MapFun) -> DisplayTree when NodePropsMap :: khepri:node_props_map(), MapFun :: fun((khepri:node_props()) -> khepri:node_props()), DisplayTree :: display_tree()
+  spec is_ra_server_alive/1 is_ra_server_alive(RaServer) -> IsAlive when RaServer :: ra:server_id(), IsAlive :: boolean()
+  spec sleep/2 sleep(Time, Timeout) -> Timeout when Time :: non_neg_integer(), Timeout :: timeout()
+  spec start_timeout_window/1 start_timeout_window(Timeout) -> Timestamp
+       | none when Timeout :: timeout(), Timestamp :: integer()
+  type display_tree/0 :: #{data => khepri:data(), sproc => horus:horus_fun(), payload_version => khepri:payload_version(), child_list_version => khepri:child_list_version(), child_list_length => khepri:child_list_length(), child_names => [khepri_path:node_id()], child_nodes => #{khepri_path:node_id() => display_tree()}}
+
+header include/khepri.hrl
+  record if_all
+    field conditions
+  record if_any
+    field conditions
+  record if_child_list_length
+    field count
+  record if_child_list_version
+    field version
+  record if_data_matches
+    field pattern
+    field conditions
+    field compiled
+  record if_has_data
+    field has_data
+  record if_has_payload
+    field has_payload
+  record if_has_sproc
+    field has_sproc
+  record if_name_matches
+    field regex
+    field compiled
+  record if_node_exists
+    field exists
+  record if_not
+    field condition :: khepri_path:pattern_component()
+  record if_path_matches
+    field regex
+    field compiled
+  record if_payload_version
+    field version

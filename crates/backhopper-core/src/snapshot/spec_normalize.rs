@@ -9,11 +9,53 @@ const WRAP_WIDTH: usize = 80;
 const CONTINUATION_INDENT: &str = "       ";
 
 pub fn normalize_signature(input: &str) -> String {
-    let collapsed = collapse_whitespace(input);
+    let stripped = strip_line_comments(input);
+    let collapsed = collapse_whitespace(&stripped);
     if collapsed.len() <= WRAP_WIDTH {
         return collapsed;
     }
     wrap_top_level_alternatives(&collapsed)
+}
+
+fn strip_line_comments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_string = false;
+    let mut in_atom_quote = false;
+    let mut prev_back = false;
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if prev_back {
+            out.push(ch);
+            prev_back = false;
+            continue;
+        }
+        if ch == '\\' && (in_string || in_atom_quote) {
+            out.push(ch);
+            prev_back = true;
+            continue;
+        }
+        if ch == '"' && !in_atom_quote {
+            in_string = !in_string;
+            out.push(ch);
+            continue;
+        }
+        if ch == '\'' && !in_string {
+            in_atom_quote = !in_atom_quote;
+            out.push(ch);
+            continue;
+        }
+        if ch == '%' && !in_string && !in_atom_quote {
+            for c in chars.by_ref() {
+                if c == '\n' {
+                    out.push('\n');
+                    break;
+                }
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn collapse_whitespace(input: &str) -> String {

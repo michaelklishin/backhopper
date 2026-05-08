@@ -8,8 +8,9 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, HrlFile, Module, RecordDecl, RecordField, SpecSig,
-    TypeArity, TypeDecl, Visibility,
+    TypeArity, TypeDecl,
 };
+use backhopper_core::snapshot::spec_normalize::normalize_signature;
 use thiserror::Error;
 use tracing::warn;
 
@@ -79,6 +80,9 @@ impl ErlangExtractor {
         let mut module: Option<Module> = None;
         let mut cond = CondStack::new();
         let mut module_name: Option<ModuleName> = None;
+        let mut hidden_via_attr = false;
+        let mut has_non_test_export = false;
+        let mut has_only_test_exports = false;
         for block in &blocks {
             let Some(parsed) = classify(block) else {
                 continue;
@@ -95,32 +99,31 @@ impl ErlangExtractor {
                 ParsedAttribute::Else => cond.flip_else(),
                 ParsedAttribute::EndIf => cond.pop_endif(),
                 ParsedAttribute::DocHidden => {
-                    if let Some(m) = module.as_mut() {
-                        m.visibility = Visibility::Hidden;
-                    }
+                    hidden_via_attr = true;
                 }
                 _ => {
                     let Some(m) = module.as_mut() else { continue };
-                    let active = cond.current() == crate::cond_compile::CondState::Active;
                     let is_test = cond.is_test_only();
-                    if !active && !is_test {
-                        continue;
+                    if matches!(parsed, ParsedAttribute::Export(_)) {
+                        if is_test {
+                            has_only_test_exports = true;
+                        } else {
+                            has_non_test_export = true;
+                        }
                     }
                     apply_attribute(m, parsed);
-                    if is_test {
-                        m.visibility = Visibility::TestOnly;
-                    }
                 }
             }
         }
         if let Some(mut m) = module {
+            let test_only = has_only_test_exports && !has_non_test_export;
             if let Some(name) = module_name {
                 m.visibility = classify_visibility(
                     &name,
                     VisibilityHints {
-                        hidden: m.visibility == Visibility::Hidden || hints.hidden,
+                        hidden: hidden_via_attr || hints.hidden,
                     },
-                    m.visibility == Visibility::TestOnly,
+                    test_only,
                     &self.public_modules,
                     &self.internal_modules,
                 );
@@ -157,7 +160,7 @@ impl ErlangExtractor {
                         hrl.types.push(TypeDecl {
                             name,
                             arity: Arity::new(arity),
-                            rhs,
+                            rhs: normalize_signature(&rhs),
                         });
                     }
                 }
@@ -225,7 +228,7 @@ fn apply_attribute(m: &mut Module, attr: ParsedAttribute) {
                     m.types.push(TypeDecl {
                         name: n,
                         arity: Arity::new(arity),
-                        rhs,
+                        rhs: normalize_signature(&rhs),
                     });
                 }
             }
@@ -245,7 +248,7 @@ fn into_callback(sig: ParsedSignature) -> Option<CallbackSig> {
     Some(CallbackSig {
         name: FunctionName::from_str(&sig.name).ok()?,
         arity: Arity::new(sig.arity),
-        signature: backhopper_core::snapshot::spec_normalize::normalize_signature(&sig.signature),
+        signature: normalize_signature(&sig.signature),
     })
 }
 
@@ -253,7 +256,7 @@ fn into_spec(sig: ParsedSignature) -> Option<SpecSig> {
     Some(SpecSig {
         name: FunctionName::from_str(&sig.name).ok()?,
         arity: Arity::new(sig.arity),
-        signature: backhopper_core::snapshot::spec_normalize::normalize_signature(&sig.signature),
+        signature: normalize_signature(&sig.signature),
     })
 }
 

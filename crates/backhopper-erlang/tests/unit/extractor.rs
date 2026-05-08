@@ -60,13 +60,24 @@ fn detects_hidden_module_via_doc_comment() {
 }
 
 #[test]
-fn marks_test_only_when_export_is_inside_ifdef_test() {
+fn module_with_mix_of_test_and_real_exports_is_public() {
     let ex = ErlangExtractor::default();
     let m = ex.extract_module(SOURCE_TEST_ONLY).unwrap();
-    assert!(matches!(
-        m.visibility,
-        Visibility::TestOnly | Visibility::Public
-    ));
+    assert_eq!(m.visibility, Visibility::Public);
+}
+
+#[test]
+fn module_with_only_test_exports_is_test_only() {
+    let only_test = r#"
+-module(t).
+-ifdef(TEST).
+-export([helper/0]).
+-endif.
+helper() -> ok.
+"#;
+    let ex = ErlangExtractor::default();
+    let m = ex.extract_module(only_test).unwrap();
+    assert_eq!(m.visibility, Visibility::TestOnly);
 }
 
 #[test]

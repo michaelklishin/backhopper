@@ -1,0 +1,1824 @@
+# backhopper snapshot
+# format-version: 1
+# project: ra
+# tag: v3.1.4
+# commit: 877cd7c89c4ec77ea8372f5f9f5f81c5e0325729
+# scanned-paths: src/**/*.erl, include/**/*.hrl
+# generated-by: backhopper 0.1.0
+# generated-at: 2026-05-08T04:28:43.099779Z
+
+module ra
+  export add_member/3
+  export aux_command/3
+  export cast_aux_command/2
+  export consistent_aux/3
+  export consistent_query/2
+  export consistent_query/3
+  export delete_cluster/1
+  export delete_cluster/2
+  export force_delete_server/2
+  export initial_members/1
+  export initial_members/2
+  export key_metrics/1
+  export key_metrics/2
+  export leader_query/2
+  export leader_query/3
+  export leave_and_delete_server/3
+  export leave_and_delete_server/4
+  export leave_and_terminate/3
+  export leave_and_terminate/4
+  export local_query/2
+  export local_query/3
+  export member_overview/1
+  export member_overview/2
+  export members/2
+  export members_info/1
+  export members_info/2
+  export ping/2
+  export pipeline_command/2
+  export pipeline_command/3
+  export pipeline_command/4
+  export process_command/3
+  export remove_member/2
+  export remove_member/3
+  export restart_server/2
+  export restart_server/3
+  export start/0
+  export start/1
+  export start_cluster/3
+  export start_cluster/4
+  export start_in/1
+  export start_or_restart_cluster/4
+  export start_or_restart_cluster/5
+  export start_server/5
+  export stop_server/2
+  export transfer_leadership/3
+  export trigger_compaction/1
+  export trigger_election/1
+  export trigger_election/2
+  export_type cluster_name/0
+  export_type from/0
+  export_type idxterm/0
+  export_type index/0
+  export_type membership/0
+  export_type query_condition/0
+  export_type query_ctx/0
+  export_type query_fun/0
+  export_type query_mfa/0
+  export_type query_opts/0
+  export_type range/0
+  export_type server_id/0
+  export_type uid/0
+  spec add_member/2 add_member(ra_server_id() | [ra_server_id()], ra_server_id() | ra_new_server()) -> ra_cmd_ret()
+       | {error, already_member}
+       | {error, cluster_change_not_permitted}
+  spec add_member/3 add_member(ra_server_id() | [ra_server_id()], ra_server_id() | ra_new_server(), timeout()) -> ra_cmd_ret()
+       | {error, already_member}
+       | {error, cluster_change_not_permitted}
+  spec aux_command/2 aux_command(ra_server_id(), term()) -> term()
+  spec aux_command/3 aux_command(ra_server_id(), term(), timeout()) -> term()
+  spec cast_aux_command/2 cast_aux_command(ra_server_id(), term()) -> ok
+  spec consistent_aux/3 consistent_aux(ServerId :: ra_server_id() | [ra_server_id()], AuxCmd :: term(), Timeout :: timeout()) -> ra_server_proc:ra_leader_call_ret(Reply :: term())
+  spec consistent_query/2 consistent_query(ServerId :: ra_server_id() | [ra_server_id()], QueryMFA :: query_mfa()) -> ra_server_proc:ra_leader_call_ret(Reply :: term())
+  spec consistent_query/3 consistent_query(ServerId :: ra_server_id() | [ra_server_id()], QueryMFA :: query_mfa(), Timeout :: timeout()) -> ra_server_proc:ra_leader_call_ret(Reply :: term())
+  spec delete_cluster/1 delete_cluster(ServerIds :: [ra_server_id()]) -> {ok, ra_server_id()}
+       | {error, term()}
+  spec delete_cluster/2 delete_cluster(ServerIds :: [ra_server_id()], timeout()) -> {ok, Leader :: ra_server_id()}
+       | {error, term()}
+  spec force_delete_server/2 force_delete_server(atom(), ServerId :: ra_server_id()) -> ok
+       | {error, term()}
+       | {badrpc, term()}
+  spec initial_members/1 initial_members(ra_server_id() | [ra_server_id()]) -> ra_server_proc:ra_leader_call_ret([ra_server_id()] | error)
+  spec initial_members/2 initial_members(ra_server_id() | [ra_server_id()], timeout()) -> ra_server_proc:ra_leader_call_ret([ra_server_id()] | error)
+  spec leader_query/2 leader_query(ServerId :: ra_server_id() | [ra_server_id()], QueryFun :: query_mfa()) -> ra_server_proc:ra_leader_call_ret({ra_idxterm(), Reply :: term()})
+       | {ok, {ra_idxterm(), Reply :: term()}, not_known}
+  spec leader_query/3 leader_query(ServerId :: ra_server_id() | [ra_server_id()], QueryFun :: query_mfa(), TimeoutOrOptions) -> ra_server_proc:ra_leader_call_ret({ra_idxterm(), Reply :: term()})
+       | {ok, {ra_idxterm(), Reply :: term()}, not_known} when TimeoutOrOptions :: Timeout
+       | Options, Timeout :: timeout(), Options :: #{condition => query_condition(), timeout => timeout()}
+  spec leave_and_delete_server/3 leave_and_delete_server(atom(), ra_server_id() | [ra_server_id()], ra_server_id()) -> ok
+       | timeout
+       | {error, noproc}
+  spec leave_and_delete_server/4 leave_and_delete_server(atom(), ra_server_id() | [ra_server_id()], ra_server_id(), timeout()) -> ok
+       | timeout
+       | {error, noproc}
+  spec leave_and_terminate/3 leave_and_terminate(atom(), ra_server_id() | [ra_server_id()], ra_server_id()) -> ok
+       | timeout
+       | {error, noproc | system_not_started}
+  spec leave_and_terminate/4 leave_and_terminate(atom(), ra_server_id() | [ra_server_id()], ra_server_id(), timeout()) -> ok
+       | timeout
+       | {error, noproc | system_not_started}
+  spec local_query/2 local_query(ServerId :: ra_server_id(), QueryFun :: query_fun()) -> ra_server_proc:ra_leader_call_ret({ra_idxterm(), Reply :: term()})
+  spec local_query/3 local_query(ServerId :: ra_server_id(), QueryFun :: query_fun(), TimeoutOrOptions) -> ra_server_proc:ra_leader_call_ret({ra_idxterm(), Reply :: term()})
+       | {ok, {ra_idxterm(), Reply :: term()}, not_known} when TimeoutOrOptions :: Timeout
+       | Options, Timeout :: timeout(), Options :: #{condition => query_condition(), timeout => timeout()}
+  spec member_overview/1 member_overview(ra_server_id()) -> ra_server_proc:ra_local_call_ret(map())
+  spec member_overview/2 member_overview(ra_server_id(), timeout()) -> ra_server_proc:ra_local_call_ret(map())
+  spec members/1 members(ra_server_id() | [ra_server_id()] | {local, ra_server_id()}) -> ra_server_proc:ra_leader_call_ret([ra_server_id()])
+  spec members/2 members(ra_server_id() | [ra_server_id()] | {local, ra_server_id()}, timeout()) -> ra_server_proc:ra_leader_call_ret([ra_server_id()])
+  spec members_info/1 members_info(ra_server_id() | [ra_server_id()] | {local, ra_server_id()}) -> ra_server_proc:ra_leader_call_ret(ra_cluster())
+  spec members_info/2 members_info(ra_server_id() | [ra_server_id()] | {local, ra_server_id()}, timeout()) -> ra_server_proc:ra_leader_call_ret(ra_cluster())
+  spec overview/1 overview(atom()) -> map() | system_not_started
+  spec ping/2 ping(ServerId :: ra_server_id(), Timeout :: timeout()) -> safe_call_ret({pong, states()})
+  spec pipeline_command/2 pipeline_command(ServerId :: ra_server_id(), Command :: term()) -> ok
+  spec pipeline_command/3 pipeline_command(ServerId :: ra_server_id(), Command :: term(), Correlation :: ra_server:command_correlation() | no_correlation) -> ok
+  spec pipeline_command/4 pipeline_command(ServerId :: ra_server_id(), Command :: term(), Correlation :: ra_server:command_correlation() | no_correlation, Priority :: ra_server:command_priority()) -> ok
+  spec process_command/2 process_command(ServerId :: ra_server_id() | [ra_server_id()], Command :: term()) -> {ok, Reply :: term(), Leader :: ra_server_id()}
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec process_command/3 process_command(ServerId, Command, TimeoutOrOptions) -> {ok, Reply, Leader}
+       | {error, term()}
+       | {timeout, ra_server_id()} when ServerId :: ra_server_id()
+       | [ra_server_id()], Command :: term(), TimeoutOrOptions :: timeout()
+       | Options, Options :: #{timeout => timeout(), reply_from => leader | local | {member, ra_server_id()}}, Reply :: term(), Leader :: ra_server_id()
+  spec remove_member/2 remove_member(ra_server_id() | [ra_server_id()], ra_server_id()) -> ra_cmd_ret()
+       | {error, not_member}
+       | {error, cluster_change_not_permitted}
+  spec remove_member/3 remove_member(ra_server_id() | [ra_server_id()], ra_server_id(), timeout()) -> ra_cmd_ret()
+       | {error, not_member}
+       | {error, cluster_change_not_permitted}
+  spec restart_server/2 restart_server(atom(), ra_server_id()) -> ok | {error, term()}
+  spec restart_server/3 restart_server(atom(), ra_server_id(), ra_server:mutable_config()) -> ok
+       | {error, term()}
+  spec start/0 start() -> ok
+  spec start/1 start(Params :: [environment_param()]) -> {ok, [Started]}
+       | {error, term()} when Started :: term()
+  spec start_cluster/2 start_cluster(atom(), [ra_server:ra_server_config()]) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_cluster/3 start_cluster(atom(), [ra_server:ra_server_config()], non_neg_integer()) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_cluster/4 start_cluster(atom(), ra_cluster_name(), ra_server:machine_conf(), [ra_server_id()]) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_cluster/5 start_cluster(atom(), ra_cluster_name(), ra_server:machine_conf(), [ra_server_id()], non_neg_integer()) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_in/1 start_in(DataDir :: file:filename()) -> {ok, [Started]}
+       | {error, term()} when Started :: term()
+  spec start_or_restart_cluster/4 start_or_restart_cluster(atom(), ra_cluster_name(), ra_server:machine_conf(), [ra_server_id()]) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_or_restart_cluster/5 start_or_restart_cluster(atom(), ra_cluster_name(), ra_server:machine_conf(), [ra_server_id()], non_neg_integer()) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec start_server/2 start_server(atom(), ra_server:ra_server_config()) -> ok | {error, term()}
+  spec start_server/5 start_server(System, ClusterName, ServerIdOrConf, Machine, ServerIds) -> Ret when System :: atom(), ClusterName :: ra_cluster_name(), ServerIdOrConf :: ServerId
+       | ServerConf, ServerId :: ra:server_id(), ServerConf :: ra_new_server(), Machine :: ra_server:machine_conf(), ServerIds :: [ra:server_id()], Ret :: ok
+       | {error, Reason :: term()}
+  spec stop_server/2 stop_server(atom(), ra_server_id()) -> ok
+       | {error, nodedown | system_not_started}
+  spec transfer_leadership/2 transfer_leadership(ra_server_id(), ra_server_id()) -> ok
+       | already_leader
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec transfer_leadership/3 transfer_leadership(ra_server_id(), ra_server_id(), timeout()) -> ok
+       | already_leader
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec trigger_compaction/1 trigger_compaction(ra_server_id()) -> ok
+  spec trigger_election/1 trigger_election(ra_server_id()) -> ok
+  spec trigger_election/2 trigger_election(ra_server_id(), timeout()) -> ok
+  spec usr/2 usr(UserCommand, ReplyMode) -> Command when UserCommand :: term(), ReplyMode :: ra_server:command_reply_mode(), Command :: {ra_server:command_type(), UserCommand, ReplyMode}
+  type cluster_name/0 :: ra_cluster_name()
+  type environment_param/0 :: {data_dir, file:filename()}
+       | {wal_data_dir, file:filename()}
+       | {segment_max_entries, non_neg_integer()}
+       | {wal_max_size_bytes, non_neg_integer()}
+       | {wal_compute_checksums, boolean()}
+  type idxterm/0 :: ra_idxterm()
+  type index/0 :: ra_index()
+  type membership/0 :: ra_membership()
+  type query_condition/0 :: {applied, idxterm()}
+  type query_ctx/0 :: #{index := ra:index(), term := ra_term(), machine_version := non_neg_integer()}
+  type query_fun/0 :: fun((term()) -> term()) | fun((query_ctx(), term()) -> term()) | query_mfa()
+  type query_mfa/0 :: {M :: module(), F :: atom(), A :: list()}
+       | {M :: module(), F :: atom(), A :: list(), query_opts()}
+  type query_opts/0 :: with_context | [query_opts()]
+  type ra_cmd_ret/0 :: ra_server_proc:ra_cmd_ret()
+  type range/0 :: ra_range:range()
+  type server_id/0 :: ra_server_id()
+  type uid/0 :: ra_uid()
+
+module ra_app
+  visibility hidden
+  behaviour application
+  export start/2
+  export stop/1
+
+module ra_aux
+  export current_term/1
+  export effective_machine_version/1
+  export last_applied/1
+  export leader_id/1
+  export log_fetch/2
+  export log_last_index_term/1
+  export log_stats/1
+  export machine_state/1
+  export members_info/1
+  export overview/1
+  export snapshot_size/1
+  export wal_fill_ratio/1
+  export_type internal_state/0
+  spec current_term/1 current_term(ra_aux:internal_state()) -> ra_term()
+  spec effective_machine_version/1 effective_machine_version(ra_aux:internal_state()) -> ra_machine:version()
+  spec last_applied/1 last_applied(ra_aux:internal_state()) -> ra_index()
+  spec leader_id/1 leader_id(ra_aux:internal_state()) -> undefined | ra_server_id()
+  spec log_fetch/2 log_fetch(ra_index(), ra_aux:internal_state()) -> {undefined | {ra_term(), CmdMetadata :: ra_server:command_meta(), Command :: term()}, ra_aux:internal_state()}
+  spec log_last_index_term/1 log_last_index_term(ra_aux:internal_state()) -> ra_idxterm()
+  spec log_stats/1 log_stats(ra_aux:internal_state()) -> ra_log:overview()
+  spec machine_state/1 machine_state(ra_aux:internal_state()) -> term()
+  spec members_info/1 members_info(ra_aux:internal_state()) -> ra_cluster()
+  spec overview/1 overview(ra_aux:internal_state()) -> map()
+  spec snapshot_size/1 snapshot_size(ra_aux:internal_state()) -> non_neg_integer() | undefined
+  spec wal_fill_ratio/1 wal_fill_ratio(ra_aux:internal_state()) -> float()
+  opaque internal_state/0
+
+module ra_bench
+  visibility hidden
+  behaviour ra_machine
+  export apply/3
+  export init/1
+  export prepare/0
+  export print_metrics/1
+  export run/0
+  export run/1
+  export run/2
+  export run/3
+
+module ra_counters
+  export counters/2
+  export delete/1
+  export fetch/1
+  export init/0
+  export new/2
+  export new/3
+  export overview/0
+  export overview/1
+  spec counters/2 counters(name(), [atom()]) -> #{atom() => non_neg_integer()} | undefined
+  spec delete/1 delete(term()) -> ok
+  spec fetch/1 fetch(name()) -> undefined | counters:counters_ref()
+  spec init/0 init() -> ok
+  spec new/2 new(name(), seshat:fields_spec()) -> counters:counters_ref()
+  spec overview/0 overview() -> #{name() => #{atom() => non_neg_integer()}}
+  spec overview/1 overview(name()) -> #{atom() => non_neg_integer()} | undefined
+  type name/0 :: term()
+
+module ra_dbg
+  export filter_duplicate_entries/1
+  export replay_log/3
+  export replay_log/4
+  spec replay_log/3 replay_log(string(), module(), term()) -> term()
+  spec replay_log/4 replay_log(string(), module(), term(), Fun) -> term() when Fun :: fun((State :: term(), Effects :: term()) -> term())
+
+module ra_directory
+  export cluster_name_of/2
+  export deinit/1
+  export init/1
+  export init/2
+  export is_registered_uid/2
+  export list_registered/1
+  export name_of/2
+  export overview/1
+  export pid_of/2
+  export register_name/6
+  export uid_of/2
+  export unregister_name/2
+  export where_is/2
+  export where_is_parent/2
+  spec cluster_name_of/2 cluster_name_of(ra_system:names() | atom(), ra_uid()) -> option(ra_cluster_name())
+  spec deinit/1 deinit(atom() | ra_system:names()) -> ok
+  spec init/1 init(atom()) -> ok | {error, system_not_started}
+  spec init/2 init(file:filename(), ra_system:names()) -> ok
+  spec is_registered_uid/2 is_registered_uid(atom() | ra_system:names(), ra_uid()) -> boolean()
+  spec list_registered/1 list_registered(atom() | ra_system:names()) -> [{atom(), ra_uid()}]
+  spec name_of/2 name_of(atom() | ra_system:names(), ra_uid()) -> option(atom())
+  spec pid_of/2 pid_of(atom() | ra_system:names(), ra_uid()) -> option(pid())
+  spec register_name/6 register_name(ra_system:names() | atom(), ra_uid(), pid(), option(pid()), atom(), ra_cluster_name()) -> ok
+  spec unregister_name/2 unregister_name(atom() | ra_system:names(), ra_uid()) -> ra_uid()
+  spec where_is/2 where_is(atom() | ra_system:names(), ra_uid() | atom()) -> pid() | undefined
+  spec where_is_parent/2 where_is_parent(atom() | ra_system:names(), ra_uid() | atom()) -> pid()
+       | undefined
+
+module ra_env
+  export configure_logger/1
+  export data_dir/0
+  export server_data_dir/2
+
+module ra_ets_queue
+  visibility hidden
+  export in/2
+  export len/1
+  export new/0
+  export reset/1
+  export take/2
+  export_type state/0
+  spec in/2 in(item(), state()) -> state()
+  spec len/1 len(state()) -> non_neg_integer()
+  spec new/0 new() -> state()
+  spec reset/1 reset(state()) -> state()
+  spec take/2 take(non_neg_integer(), state()) -> {[item()], state()}
+  type item/0 :: term()
+  opaque state/0
+
+module ra_file
+  visibility hidden
+  export rename/2
+  export sync/1
+
+module ra_flru
+  visibility hidden
+  export evict/2
+  export evict_all/1
+  export fetch/2
+  export insert/3
+  export max_size/1
+  export new/2
+  export size/1
+  export_type state/0
+  spec evict/2 evict(Key :: term(), state()) -> {Evicted :: kv_item(), state()} | error
+  spec evict_all/1 evict_all(state()) -> state()
+  spec fetch/2 fetch(term(), state()) -> {ok, term(), state()} | error
+  spec insert/3 insert(term(), term(), state()) -> state()
+  spec max_size/1 max_size(state()) -> non_neg_integer()
+  spec new/2 new(non_neg_integer(), handler_fun()) -> state()
+  spec size/1 size(state()) -> non_neg_integer()
+  type handler_fun/0 :: fun((kv_item()) -> ok)
+  type kv_item/0 :: {Key :: term(), Value :: term()}
+  opaque state/0
+
+module ra_kv
+  behaviour ra_machine
+  export add_member/3
+  export apply/3
+  export delete/3
+  export get/3
+  export handle_aux/5
+  export init/1
+  export init_aux/1
+  export live_indexes/1
+  export member_overview/1
+  export overview/1
+  export put/4
+  export read_entry/4
+  export remove_member/3
+  export start_cluster/3
+  export take_snapshot/1
+  export_type command/0
+  export_type state/0
+  spec add_member/3 add_member(System :: atom(), NewMemberId :: ra_server_id(), LeaderId :: ra_server_id()) -> ok
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec delete/3 delete(ra:server_id(), key(), non_neg_integer()) -> {ok, map()}
+       | {error, not_found}
+       | {error, term()}
+       | {timeout, ra:server_id()}
+  spec get/3 get(ra:server_id(), key(), non_neg_integer()) -> {ok, map(), value()}
+       | {error, term()}
+       | {timeout, ra:server_id()}
+  spec put/4 put(ra:server_id(), key(), value(), non_neg_integer()) -> {ok, map()}
+       | {error, term()}
+       | {timeout, ra:server_id()}
+  spec remove_member/3 remove_member(System :: atom(), NewMemberId :: ra_server_id(), LeaderId :: ra_server_id()) -> ok
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec start_cluster/3 start_cluster(System :: atom(), ClusterName :: atom(), Config :: #{members := [ra_server_id()]}) -> {ok, [ra_server_id()], [ra_server_id()]}
+       | {error, cluster_not_formed}
+  spec take_snapshot/1 take_snapshot(ra_server_id()) -> ok
+  type command/0 :: #put{} | #delete{}
+  type key/0 :: binary()
+  type value/0 :: term()
+  opaque state/0
+
+module ra_kv_harness
+  export log/2
+  export read_all_keys/0
+  export run/1
+  export run/2
+  export teardown_cluster/1
+  export timestamp/0
+  spec analyze_field_differences/1 analyze_field_differences([map()]) -> iolist()
+  spec execute_operation/2 execute_operation(state(), operation()) -> state()
+  spec format_consistency_failure/2 format_consistency_failure([ra:server_id()], [map() | error]) -> iolist()
+  spec generate_operation/0 generate_operation() -> operation()
+  spec generate_value/0 generate_value() -> binary()
+  spec get_applied_indices/1 get_applied_indices([ra:server_id()]) -> #{ra:server_id() => ra:index() | undefined}
+  spec log/2 log(string(), list()) -> ok
+  spec new_state/0 new_state() -> state()
+  spec perform_consistency_check/2 perform_consistency_check(state(), [ra:server_id()]) -> state()
+  spec run/1 run(NumOperations :: pos_integer()) -> {ok, #{successful := non_neg_integer(), failed := non_neg_integer(), consistency_checks := non_neg_integer()}}
+       | {error, term()}
+  spec run/2 run(NumOperations :: pos_integer(), Options :: map()) -> {ok, #{successful := non_neg_integer(), failed := non_neg_integer(), consistency_checks := non_neg_integer()}}
+       | {error, term()}
+  spec teardown_cluster/1 teardown_cluster(state()) -> ok
+  spec timestamp/0 timestamp() -> string()
+  spec validate_consistency/1 validate_consistency(state()) -> state()
+  spec validate_final_consistency/1 validate_final_consistency(state()) -> non_neg_integer()
+  spec validate_key_across_members/3 validate_key_across_members(binary(), term(), [ra:server_id()]) -> ok | error
+  spec validate_member_consistency/2 validate_member_consistency(ra:server_id(), map()) -> map() | error
+  spec wait_for_applied_index_convergence/2 wait_for_applied_index_convergence([ra:server_id()], non_neg_integer()) -> ok
+  type operation/0 :: {put, Key :: binary(), Value :: term()}
+       | {get, Key :: binary()}
+       | {snapshot}
+       | {major_compaction}
+       | {update_almost_all_keys}
+       | {kill_wal}
+       | {kill_member}
+       | {add_member}
+       | {remove_member}
+       | {network_partition}
+  type state/0 :: #{options => map(), members := #{ra:server_id() => peer:server_ref()}, reference_map := #{binary() => term()}, operations_count := non_neg_integer(), successful_ops := non_neg_integer(), failed_ops := non_neg_integer(), next_node_id := pos_integer(), remaining_ops := non_neg_integer(), consistency_failed := boolean(), partition_state => #{partitioned_node => ra:server_id(), heal_time => non_neg_integer(), other_nodes => [node()]}}
+
+module ra_leaderboard
+  export clear/1
+  export init/0
+  export lookup_leader/1
+  export lookup_members/1
+  export overview/0
+  export record/3
+  spec clear/1 clear(ra:cluster_name()) -> ok
+  spec init/0 init() -> ok
+  spec lookup_leader/1 lookup_leader(ra:cluster_name()) -> ra:server_id() | undefined
+  spec lookup_members/1 lookup_members(ra:cluster_name()) -> [ra:server_id()] | undefined
+  spec overview/0 overview() -> list()
+  spec record/3 record(ra:cluster_name(), ra:server_id(), [ra:server_id()]) -> ok
+
+module ra_li
+  visibility hidden
+  export new/1
+  export rate/1
+  export rate/2
+  export read/1
+  export read/2
+  export reset/1
+  export update/2
+  export update/3
+  export_type state/0
+  spec new/1 new(DecayTimeMs :: pos_integer()) -> state()
+  spec rate/1 rate(state()) -> float()
+  spec rate/2 rate(Ts :: integer(), state()) -> float()
+  spec read/1 read(state()) -> float()
+  spec read/2 read(Ts :: integer(), state()) -> float()
+  spec reset/1 reset(state()) -> state()
+  spec update/2 update(Amount :: number(), state()) -> state()
+  spec update/3 update(Amount :: number(), Ts :: integer(), state()) -> state()
+  opaque state/0
+
+module ra_lib
+  visibility hidden
+  export ceiling/1
+  export cons/2
+  export consult/1
+  export default/2
+  export derive_safe_string/2
+  export dump/1
+  export dump/2
+  export ensure_dir/1
+  export id/1
+  export ignore/1
+  export ignore/2
+  export is_any_file/1
+  export is_dir/1
+  export is_file/1
+  export lazy_default/2
+  export lists_chunk/2
+  export lists_detect_sort/1
+  export lists_shuffle/1
+  export make_dir/1
+  export make_uid/0
+  export make_uid/1
+  export partition_parallel/2
+  export partition_parallel/3
+  export ra_server_id_node/1
+  export ra_server_id_to_local_name/1
+  export recursive_delete/1
+  export retry/2
+  export retry/3
+  export sync_dir/1
+  export sync_file/1
+  export to_atom/1
+  export to_binary/1
+  export to_string/1
+  export update_element/3
+  export validate_base64uri/1
+  export write_file/2
+  export write_file/3
+  export zpad_extract_num/1
+  export zpad_filename/3
+  export zpad_filename_incr/1
+  export zpad_hex/1
+  export zpad_upgrade/3
+  export_type file_err/0
+  spec cons/2 cons(term(), list()) -> list()
+  spec consult/1 consult(file:filename()) -> {ok, term()} | {error, term()}
+  spec iter_maybe/2 iter_maybe(undefined | term(), fun()) -> ok
+  spec lazy_default/2 lazy_default(undefined | term(), fun (() -> term())) -> term()
+  spec lists_shuffle/1 lists_shuffle(list()) -> list()
+  spec make_dir/1 make_dir(file:name_all()) -> ok | {error, file:posix() | badarg}
+  spec make_uid/0 make_uid() -> binary()
+  spec make_uid/1 make_uid(atom() | binary() | string()) -> binary()
+  spec partition_parallel/2 partition_parallel(fun((any()) -> boolean()), [any()]) -> {ok, [any()], [any()]}
+       | {error, any()}
+  spec partition_parallel/3 partition_parallel(fun((any()) -> boolean()), [any()], timeout()) -> {ok, [any()], [any()]}
+       | {error, any()}
+  spec sync_and_close_fd/1 sync_and_close_fd(file:fd()) -> ok | {error, file_err()}
+  spec sync_dir/1 sync_dir(file:name_all()) -> ok | {error, file_err()}
+  spec sync_file/1 sync_file(file:name_all()) -> ok | {error, file_err()}
+  spec throw_error/2 throw_error(string(), list()) -> no_return()
+  spec to_atom/1 to_atom(atom() | list() | binary()) -> atom()
+  spec to_binary/1 to_binary(atom() | binary() | list() | integer()) -> binary()
+  spec to_list/1 to_list(atom() | binary() | list() | integer()) -> list()
+  spec to_string/1 to_string(binary() | string()) -> string()
+  spec validate_base64uri/1 validate_base64uri(string()) -> boolean()
+  spec write_file/2 write_file(file:name_all(), iodata()) -> ok | {error, file_err()}
+  spec write_file/3 write_file(file:name_all(), iodata(), Sync :: boolean()) -> ok
+       | {error, file_err()}
+  type file_err/0 :: file:posix() | badarg | terminated | system_limit
+
+module ra_log
+  visibility hidden
+  export append/2
+  export append_sync/2
+  export assert/1
+  export begin_tx/1
+  export can_write/1
+  export checkpoint/5
+  export close/1
+  export commit_tx/1
+  export delete_everything/1
+  export execute_read_plan/4
+  export exists/2
+  export fetch/2
+  export fetch_term/2
+  export fold/5
+  export fold/6
+  export handle_event/2
+  export has_pending/1
+  export init/1
+  export install_snapshot/4
+  export last_index_term/1
+  export last_written/1
+  export next_index/1
+  export overview/1
+  export partial_read/3
+  export pre_init/1
+  export previous_wal_index/1
+  export promote_checkpoint/2
+  export read_config/1
+  export read_plan_info/1
+  export recover_snapshot/1
+  export release_resources/3
+  export set_last_index/2
+  export set_snapshot_state/2
+  export snapshot_index_term/1
+  export snapshot_size/1
+  export snapshot_state/1
+  export sparse_read/2
+  export tick/2
+  export update_release_cursor/5
+  export write/2
+  export write_sparse/3
+  export write_sync/2
+  export_type effect/0
+  export_type event/0
+  export_type event_body/0
+  export_type overview/0
+  export_type ra_log_init_args/0
+  export_type ra_meta_key/0
+  export_type read_plan/0
+  export_type segment_ref/0
+  export_type state/0
+  spec append/2 append(Entry :: log_entry(), State :: state()) -> state() | no_return()
+  spec append_sync/2 append_sync(Entry :: log_entry(), State :: state()) -> state() | no_return()
+  spec begin_tx/1 begin_tx(state()) -> state()
+  spec can_write/1 can_write(state()) -> boolean()
+  spec checkpoint/5 checkpoint(Idx :: ra_index(), Cluster :: ra_cluster(), MacCtx :: {MacVer :: ra_machine:version(), module()}, MacState :: term(), State :: state()) -> {state(), effects()}
+  spec close/1 close(state()) -> ok
+  spec commit_tx/1 commit_tx(state()) -> {ok, state()} | {error, wal_down, state()}
+  spec delete_everything/1 delete_everything(state()) -> ok
+  spec execute_read_plan/4 execute_read_plan(read_plan(), undefined | ra_flru:state(), TransformFun :: transform_fun(), ra_log_segments:read_plan_options()) -> {#{ra_index() => Command :: term()}, ra_flru:state()}
+  spec exists/2 exists(ra_idxterm(), state()) -> {boolean(), state()}
+  spec fetch/2 fetch(ra_index(), state()) -> {option(log_entry()), state()}
+  spec fetch_term/2 fetch_term(ra_index(), state()) -> {option(ra_term()), state()}
+  spec fold/5 fold(FromIdx :: ra_index(), ToIdx :: ra_index(), fun((log_entry(), Acc) -> Acc), Acc, state()) -> {Acc, state()} when Acc :: term()
+  spec fold/6 fold(FromIdx :: ra_index(), ToIdx :: ra_index(), fun((log_entry(), Acc) -> Acc), Acc, state(), MissingKeyStrategy :: error | return) -> {Acc, state()} when Acc :: term()
+  spec handle_event/2 handle_event(event_body(), state()) -> {state(), [effect()]}
+  spec has_pending/1 has_pending(state()) -> boolean()
+  spec init/1 init(ra_log_init_args()) -> state()
+  spec install_snapshot/4 install_snapshot(ra_idxterm(), module(), ra_seq:state(), state()) -> {ok, state(), effects()}
+  spec last_index_term/1 last_index_term(state()) -> option(ra_idxterm())
+  spec last_written/1 last_written(state()) -> ra_idxterm()
+  spec next_index/1 next_index(state()) -> ra_index()
+  spec overview/1 overview(state()) -> overview()
+  spec partial_read/3 partial_read([ra_index()], state(), fun ((ra_index(), ra_term(), ra_server:command()) -> term())) -> read_plan()
+  spec previous_wal_index/1 previous_wal_index(state()) -> ra_idxterm() | -1
+  spec read_config/1 read_config(state() | file:filename_all()) -> {ok, ra_server:config()}
+       | {error, term()}
+  spec read_plan_info/1 read_plan_info(read_plan()) -> map()
+  spec recover_snapshot/1 recover_snapshot(State :: state()) -> option({ra_snapshot:meta(), term()})
+  spec release_resources/3 release_resources(non_neg_integer(), sequential | random, state()) -> state()
+  spec set_last_index/2 set_last_index(ra_index(), state()) -> {ok, state()} | {not_found, state()}
+  spec set_snapshot_state/2 set_snapshot_state(ra_snapshot:state(), state()) -> state()
+  spec snapshot_index_term/1 snapshot_index_term(State :: state()) -> option(ra_idxterm())
+  spec snapshot_size/1 snapshot_size(State :: state()) -> non_neg_integer() | undefined
+  spec snapshot_state/1 snapshot_state(State :: state()) -> ra_snapshot:state()
+  spec sparse_read/2 sparse_read([ra_index()], state()) -> {[log_entry()], state()}
+  spec tick/2 tick(Now :: integer(), state()) -> state()
+  spec update_release_cursor/5 update_release_cursor(Idx :: ra_index(), Cluster :: ra_cluster(), MacCtx :: {MacVer :: ra_machine:version(), module()}, MacState :: term(), State :: state()) -> {state(), effects()}
+  spec write/2 write(Entries :: [log_entry()], State :: state()) -> {ok, state()}
+       | {error, {integrity_error, term()} | wal_down}
+  spec write_config/2 write_config(ra_server:config(), state()) -> ok
+  spec write_sparse/3 write_sparse(log_entry(), option(ra:index()), state()) -> {ok, state()}
+       | {error, wal_down | gap_detected}
+  spec write_sync/2 write_sync(Entries :: [log_entry()], State :: state()) -> {ok, state()}
+       | {error, {integrity_error, term()} | wal_down}
+  type effect/0 :: {delete_snapshot, Dir :: file:filename_all(), ra_idxterm()}
+       | {monitor, process, log, pid()}
+       | ra_snapshot:effect()
+       | ra_server:effect()
+  type effects/0 :: [effect()]
+  type event/0 :: {ra_log_event, event_body()}
+  type event_body/0 :: {written, ra_term(), ra_seq:state()}
+       | {segments, [{ets:tid(), ra:range()}], [segment_ref()]}
+       | {resend_write, ra_index()}
+       | {snapshot_written, ra_idxterm(), LiveIndexes :: ra_seq:state(), ra_snapshot:kind(), SnapshotSize :: non_neg_integer() | undefined, Duration :: non_neg_integer()}
+       | {compaction_result, term()}
+       | major_compaction
+       | {down, pid(), term()}
+  type overview/0 :: #{type := ra_log, range := ra:range(), last_index := ra:index(), last_term := ra_term(), last_written_index_term := ra_idxterm(), num_segments := non_neg_integer(), open_segments => non_neg_integer(), snapshot_index => undefined | ra_index(), snapshot_term => undefined | ra_index(), mem_table_size => non_neg_integer(), latest_checkpoint_index => undefined | ra_index(), atom() => term()}
+  type ra_log_init_args/0 :: #{uid := ra_uid(), system_config => ra_system:config(), log_id => unicode:chardata(), snapshot_interval => non_neg_integer(), min_snapshot_interval => non_neg_integer(), min_checkpoint_interval => non_neg_integer(), resend_window => integer(), max_open_segments => non_neg_integer(), snapshot_module => module(), machine => ra_machine:machine(), counter => counters:counters_ref(), initial_access_pattern => sequential | random, max_checkpoints => non_neg_integer(), major_compaction_strategy => ra_log_segments:major_compaction_strategy()}
+  type ra_meta_key/0 :: atom()
+  type segment_ref/0 :: {File :: binary(), ra_range:range()}
+  type transform_fun/0 :: fun ((ra_index(), ra_term(), ra_server:command()) -> term())
+  opaque read_plan/0
+  opaque state/0
+
+module ra_log_ets
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export delete_mem_tables/2
+  export execute_delete/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export mem_table_please/2
+  export mem_table_please/3
+  export new_mem_table_please/3
+  export start_link/1
+  export terminate/2
+  spec execute_delete/3 execute_delete(ra_system:names(), ra:uid(), ra_mt:delete_spec()) -> ok
+  spec mem_table_please/2 mem_table_please(ra_system:names(), ra:uid()) -> {ok, ra_mt:state()}
+       | {error, term()}
+  spec mem_table_please/3 mem_table_please(ra_system:names(), ra:uid(), read | read_write) -> {ok, ra_mt:state()}
+       | {error, term()}
+  spec new_mem_table_please/3 new_mem_table_please(ra_system:names(), ra:uid(), ra_mt:state()) -> {ok, ra_mt:state()}
+       | {error, term()}
+
+module ra_log_meta
+  visibility hidden
+  behaviour gen_batch_server
+  export delete/2
+  export delete_sync/2
+  export fetch/3
+  export fetch/4
+  export format_status/1
+  export handle_batch/2
+  export init/1
+  export start_link/1
+  export store/4
+  export store_sync/4
+  export terminate/2
+  export_type state/0
+  spec delete/2 delete(atom(), ra_uid()) -> ok
+  spec delete_sync/2 delete_sync(atom(), ra_uid()) -> ok
+  spec fetch/3 fetch(atom(), ra_uid(), key()) -> value() | undefined
+  spec fetch/4 fetch(atom(), ra_uid(), key(), term()) -> value()
+  spec init/1 init(ra_system:config()) -> {ok, state()}
+  spec start_link/1 start_link(ra_system:config()) -> {ok, pid()}
+       | {error, {already_started, pid()}}
+  spec store/4 store(atom(), ra_uid(), key(), value()) -> ok
+  spec store_sync/4 store_sync(atom(), ra_uid(), key(), value()) -> ok
+  type key/0 :: current_term | voted_for | last_applied
+  type value/0 :: non_neg_integer() | atom() | {atom(), atom()}
+  opaque state/0
+
+module ra_log_pre_init
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/1
+  export terminate/2
+
+module ra_log_read_plan
+  export execute/2
+  export execute/3
+  export info/1
+  spec execute/2 execute(ra_log:read_plan(), undefined | ra_flru:state()) -> {#{ra:index() => Command :: term()}, ra_flru:state()}
+  spec execute/3 execute(ra_log:read_plan(), undefined | ra_flru:state(), ra_log_segments:read_plan_options()) -> {#{ra:index() => Command :: term()}, ra_flru:state()}
+  spec info/1 info(ra_log:read_plan()) -> map()
+
+module ra_log_segment
+  visibility hidden
+  export append/4
+  export close/1
+  export copy/3
+  export data_size/1
+  export dump/1
+  export dump/2
+  export dump_index/1
+  export filename/1
+  export flush/1
+  export fold/6
+  export fold/7
+  export info/1
+  export info/2
+  export is_modified/1
+  export is_same_as/2
+  export max_count/1
+  export open/1
+  export open/2
+  export range/1
+  export read_sparse/4
+  export read_sparse_no_checks/4
+  export segref/1
+  export sync/1
+  export term_query/2
+  export_type index_mode/0
+  export_type posix_file_advise/0
+  export_type ra_log_segment_options/0
+  export_type state/0
+  spec append/4 append(state(), ra_index(), ra_term(), iodata() | {non_neg_integer(), iodata()}) -> {ok, state()}
+       | {error, full | inet:posix()}
+  spec append_raw/6 append_raw(state(), ra_index(), ra_term(), non_neg_integer(), binary(), integer()) -> {ok, state()}
+       | {error, full | file:posix()}
+  spec close/1 close(state()) -> ok | {error, term()}
+  spec copy/3 copy(state(), file:filename_all(), [ra:index()]) -> {ok, state()}
+       | {error, term()}
+  spec data_size/1 data_size(state()) -> non_neg_integer()
+  spec filename/1 filename(state()) -> file:filename()
+  spec flush/1 flush(state()) -> {ok, state()} | {error, term()}
+  spec fold/6 fold(state(), FromIdx :: ra_index(), ToIdx :: ra_index(), fun((binary()) -> term()), fun(({ra_index(), ra_term(), term()}, Acc) -> Acc), Acc) -> Acc when Acc :: term()
+  spec fold/7 fold(state(), FromIdx :: ra_index(), ToIdx :: ra_index(), fun((binary()) -> term()), fun(({ra_index(), ra_term(), term()}, Acc) -> Acc), Acc, MissingKeyStrat :: error | return) -> Acc when Acc :: term()
+  spec info/1 info(file:filename_all()) -> infos()
+  spec info/2 info(file:filename_all(), option(ra_seq:state())) -> infos()
+  spec is_modified/1 is_modified(state()) -> boolean()
+  spec is_same_as/2 is_same_as(state(), file:filename_all()) -> boolean()
+  spec max_count/1 max_count(state()) -> non_neg_integer()
+  spec open/1 open(Filename :: file:filename_all()) -> {ok, state()} | {error, term()}
+  spec open/2 open(Filename :: file:filename_all(), Options :: ra_log_segment_options()) -> {ok, state()}
+       | {error, term()}
+  spec range/1 range(state()) -> option({ra_index(), ra_index()})
+  spec read_sparse/4 read_sparse(state(), [ra_index()], fun((ra:index(), ra_term(), binary(), Acc) -> Acc), Acc) -> {ok, NumRead :: non_neg_integer(), Acc}
+       | {error, modified} when Acc :: term()
+  spec read_sparse_no_checks/4 read_sparse_no_checks(state(), [ra_index()], fun((ra:index(), ra_term(), binary(), Acc) -> Acc), Acc) -> {ok, NumRead :: non_neg_integer(), Acc} when Acc :: term()
+  spec segref/1 segref(state() | file:filename_all()) -> option(ra_log:segment_ref())
+  spec sync/1 sync(state()) -> {ok, state()} | {error, term()}
+  spec term_query/2 term_query(state(), Idx :: ra_index()) -> option(ra_term())
+  type index_mode/0 :: map | binary
+  type index_record_data/0 :: {Term :: ra_term(), Offset :: non_neg_integer(), Length :: non_neg_integer(), Checksum :: integer()}
+  type infos/0 :: #{size => non_neg_integer(), index_size => non_neg_integer(), max_count => non_neg_integer(), file_type => regular | symlink, ctime => integer(), links => non_neg_integer(), num_entries => non_neg_integer(), ref => option(ra_log:segment_ref()), indexes => ra_seq:state(), live_size => non_neg_integer() }
+  type posix_file_advise/0 :: 'normal' | 'sequential' | 'random' | 'no_reuse' | 'will_need' | 'dont_need'
+  type ra_log_segment_options/0 :: #{max_count => non_neg_integer(), max_pending => non_neg_integer(), max_size => non_neg_integer(), compute_checksums => boolean(), mode => append | read, index_mode => index_mode(), access_pattern => sequential | random, file_advise => posix_file_advise()}
+  type ra_segment_index/0 :: #{ra_index() => index_record_data()}
+  opaque state/0
+
+module ra_log_segment_writer
+  visibility hidden
+  behaviour gen_server
+  export accept_mem_tables/3
+  export await/1
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export my_segments/2
+  export overview/1
+  export start_link/1
+  export terminate/2
+  export truncate_segments/3
+  spec accept_mem_tables/3 accept_mem_tables(atom() | pid(), #{ra_uid() => [{ets:tid(), ra_seq:state()}]}, string()) -> ok
+  spec my_segments/2 my_segments(atom() | pid(), ra_uid()) -> [file:filename()]
+  spec overview/1 overview(atom() | pid()) -> #{}
+  spec truncate_segments/3 truncate_segments(atom() | pid(), ra_uid(), ra_log:segment_ref()) -> ok
+
+module ra_log_segments
+  visibility hidden
+  export close/1
+  export compaction/1
+  export compaction_conf/1
+  export exec_read_plan/6
+  export fetch_term/2
+  export fold/6
+  export handle_compaction_result/2
+  export info/1
+  export init/8
+  export num_open_segments/1
+  export purge_dangling_symlinks/1
+  export purge_symlinks/2
+  export range/1
+  export read_plan/2
+  export schedule_compaction/4
+  export segment_ref_count/1
+  export segment_refs/1
+  export sparse_read/3
+  export update_conf/3
+  export update_first_index/2
+  export update_segments/2
+  export_type major_compaction_strategy/0
+  export_type read_plan/0
+  export_type read_plan_options/0
+  export_type state/0
+  spec close/1 close(state()) -> ok
+  spec compaction/1 compaction(state()) -> undefined | {major | minor, ra:index()}
+  spec compaction_conf/1 compaction_conf(state()) -> map()
+  spec exec_read_plan/6 exec_read_plan(file:filename_all(), read_plan(), undefined | ra_flru:state(), TransformFun :: fun((ra_index(), ra_term(), binary()) -> term()), read_plan_options(), #{ra_index() => Command :: term()}) -> {#{ra_index() => Command :: term()}, ra_flru:state()}
+  spec fetch_term/2 fetch_term(ra_index(), state()) -> {option(ra_index()), state()}
+  spec fold/6 fold(ra_index(), ra_index(), fun(), term(), state(), MissingKeyStrategy :: error | return) -> {state(), term()}
+  spec handle_compaction_result/2 handle_compaction_result(#compaction_result{}, state()) -> {state(), [ra_server:effect()]}
+  spec info/1 info(state()) -> map()
+  spec init/8 init(ra_uid(), file:filename_all(), non_neg_integer(), access_pattern(), [segment_ref()], undefined | counters:counters_ref(), map(), unicode:chardata()) -> state()
+  spec num_open_segments/1 num_open_segments(state()) -> non_neg_integer()
+  spec purge_dangling_symlinks/1 purge_dangling_symlinks(file:filename_all()) -> ok
+  spec purge_symlinks/2 purge_symlinks(file:filename_all(), OlderThanSec :: non_neg_integer()) -> ok
+  spec range/1 range(state()) -> ra_range:range()
+  spec read_plan/2 read_plan(state(), [ra_index()]) -> read_plan()
+  spec schedule_compaction/4 schedule_compaction(minor | major, ra:index(), ra_seq:state(), state()) -> {state(), [ra_server:effect()]}
+  spec segment_ref_count/1 segment_ref_count(state()) -> non_neg_integer()
+  spec segment_refs/1 segment_refs(state()) -> [segment_ref()]
+  spec sparse_read/3 sparse_read(state(), [ra_index()], [log_entry()]) -> {[log_entry()], state()}
+  spec update_conf/3 update_conf(non_neg_integer(), sequential | random, state()) -> state()
+  spec update_first_index/2 update_first_index(ra_index(), state()) -> {state(), [segment_ref()]}
+  spec update_segments/2 update_segments([segment_ref()], state()) -> {state(), OverwrittenSegments :: [segment_ref()]}
+  type access_pattern/0 :: sequential | random
+  type compaction_conf/0 :: #{max_count => non_neg_integer(), max_size => non_neg_integer(), major_strategy => major_compaction_strategy()}
+  type major_compaction_strategy/0 :: manual | {num_minors, pos_integer()}
+  type read_plan/0 :: [{BaseName :: file:filename_all(), [ra:index()]}]
+  type read_plan_options/0 :: #{access_pattern => random | sequential, file_advise => ra_log_segment:posix_file_advise(), index_mode => ra_log_segment:index_mode()}
+  type segment_ref/0 :: ra_log:segment_ref()
+  opaque state/0
+
+module ra_log_snapshot
+  visibility hidden
+  behaviour ra_snapshot
+  export accept_chunk/2
+  export begin_accept/2
+  export begin_read/2
+  export complete_accept/2
+  export context/0
+  export get_size/1
+  export prepare/2
+  export read_chunk/3
+  export read_meta/1
+  export recover/1
+  export sync/1
+  export validate/1
+  export write/4
+  spec context/0 context() -> map()
+  spec get_size/1 get_size(file:filename()) -> {ok, non_neg_integer()} | {error, file_err()}
+  spec read_meta/1 read_meta(file:filename()) -> {ok, meta()}
+       | {error, invalid_format | {invalid_version, integer()} | checksum_error | file_err()}
+  spec recover/1 recover(file:filename_all()) -> {ok, meta(), term()}
+       | {error, invalid_format | {invalid_version, integer()} | checksum_error | file_err()}
+  spec sync/1 sync(file:filename()) -> ok | {error, file_err()}
+  spec write/4 write(file:filename(), meta(), term(), Sync :: boolean()) -> {ok, non_neg_integer()}
+       | {error, file_err()}
+  type file_err/0 :: ra_snapshot:file_err()
+  type meta/0 :: ra_snapshot:meta()
+
+module ra_log_snapshot_state
+  export delete/2
+  export insert/5
+  export live_indexes/2
+  export read/2
+  export smallest/2
+  export snapshot/2
+  spec insert/5 insert(ets:table(), ra:uid(), -1 | ra:index(), ra:index(), ra_seq:state()) -> ok
+  spec live_indexes/2 live_indexes(ets:table(), ra:uid()) -> ra_seq:state()
+  spec read/2 read(ets:table(), ra:uid()) -> undefined
+       | {UId :: ra:uid(), SnapIdx :: -1 | ra:index(), SmallestIdx :: ra:index(), LiveIndexes :: ra_seq:state()}
+  spec smallest/2 smallest(ets:table(), ra:uid()) -> ra:index()
+  spec snapshot/2 snapshot(ets:table(), ra:uid()) -> ra:index() | -1
+
+module ra_log_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/1
+  spec start_link/1 start_link(ra_system:config()) -> {ok, pid()} | ignore | {error, term()}
+
+module ra_log_sync
+  visibility hidden
+  behaviour gen_batch_server
+  export format_status/1
+  export handle_batch/2
+  export init/1
+  export pool_size/0
+  export start_link/1
+  export sync/2
+  export terminate/2
+  export worker_name/2
+  export_type pool_ref/0
+  spec pool_size/0 pool_size() -> pos_integer()
+  spec start_link/1 start_link(#{name := atom()}) -> {ok, pid()} | {error, term()}
+  spec sync/2 sync(pool_ref(), sync_fun()) -> ok | {error, term()}
+  spec worker_name/2 worker_name(atom(), non_neg_integer()) -> atom()
+  type pool_ref/0 :: {pool, BaseName :: atom(), PoolSize :: pos_integer()}
+  type sync_fun/0 :: fun(() -> ok | {error, term()})
+
+module ra_log_wal
+  visibility hidden
+  behaviour gen_batch_server
+  export fill_ratio/1
+  export force_roll_over/1
+  export forget_writer/2
+  export format_status/1
+  export handle_batch/2
+  export init/1
+  export last_writer_seq/2
+  export start_link/1
+  export terminate/2
+  export wal2list/1
+  export write/6
+  export write/7
+  export write_batch/2
+  export_type wal_conf/0
+  spec fill_ratio/1 fill_ratio(atom()) -> float()
+  spec forget_writer/2 forget_writer(atom() | pid(), ra_uid()) -> ok
+  spec handle_batch/2 handle_batch([wal_op()], state()) -> {ok, [gen_batch_server:action()], state()}
+  spec init/1 init(wal_conf()) -> {ok, state()}
+       | {stop, wal_checksum_validation_failure}
+       | {stop, term()}
+  spec last_writer_seq/2 last_writer_seq(Wal :: atom() | pid(), ra:uid()) -> {ok, undefined | ra:index()}
+       | {error, wal_down}
+  spec start_link/1 start_link(Config :: wal_conf()) -> {ok, pid()}
+       | {error, {already_started, pid()}}
+       | {error, wal_checksum_validation_failure}
+  spec write/6 write(atom() | pid(), writer_id(), ets:tid(), ra_index(), ra_term(), wal_cmd()) -> {ok, pid()}
+       | {error, wal_down}
+  spec write/7 write(atom() | pid(), writer_id(), ets:tid(), PrevIndex :: ra:index() | -1, Index :: ra_index(), Term :: ra_term(), wal_cmd()) -> {ok, pid()}
+       | {error, wal_down}
+  spec write_batch/2 write_batch(Wal :: atom() | pid(), [wal_command()]) -> {ok, pid()}
+       | {error, wal_down}
+  type state/0 :: #state{}
+  type wal_cmd/0 :: term() | {ttb, iodata()}
+  type wal_command/0 :: {append, writer_id(), PrevIndex :: ra:index() | -1, Index :: ra:index(), Term :: ra_term(), wal_cmd()}
+  type wal_conf/0 :: #{names := ra_system:names(), system := atom(), dir := file:filename_all(), max_size_bytes => non_neg_integer(), max_entries => non_neg_integer(), compute_checksums => boolean(), pre_allocate => boolean(), sync_method => sync | datasync, recovery_chunk_size => non_neg_integer(), hibernate_after => infinity | non_neg_integer(), max_batch_size => non_neg_integer(), garbage_collect => boolean(), min_heap_size => non_neg_integer(), min_bin_vheap_size => non_neg_integer() }
+  type wal_op/0 :: {cast, wal_command()} | {call, from(), wal_command()}
+  type writer_id/0 :: {ra_uid(), pid()}
+  type writer_name_cache/0 :: {NextIntId :: non_neg_integer(), #{writer_id() => binary()}}
+
+module ra_log_wal_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/1
+  spec start_link/1 start_link(ra_log_wal:wal_conf()) -> {ok, pid()} | ignore | {error, term()}
+
+module ra_lol
+  export append/2
+  export foldl/3
+  export foldr/3
+  export from_list/1
+  export from_list/2
+  export len/1
+  export new/0
+  export new/1
+  export search/2
+  export takewhile/2
+  export to_list/1
+  export_type cont/0
+  export_type state/0
+  spec append/2 append(Item, state()) -> state() | out_of_order when Item :: term()
+  spec foldl/3 foldl(fun((Item, Acc) -> Acc), Acc, state()) -> Acc when Item :: term(), Acc :: term()
+  spec foldr/3 foldr(fun((Item, Acc) -> Acc), Acc, state()) -> Acc when Item :: term(), Acc :: term()
+  spec from_list/1 from_list(list()) -> state()
+  spec from_list/2 from_list(gt_fun(), list()) -> state()
+  spec len/1 len(state()) -> non_neg_integer()
+  spec new/0 new() -> state()
+  spec new/1 new(gt_fun()) -> state()
+  spec search/2 search(fun((term()) -> higher | lower | equal), state() | cont()) -> {term(), cont()}
+       | undefined
+  spec takewhile/2 takewhile(fun((Item) -> boolean()), state()) -> {[Item], state()} when Item :: term()
+  spec to_list/1 to_list(state()) -> list()
+  type gt_fun/0 :: fun((Item, Item) -> boolean())
+  opaque cont/0
+  opaque state/0
+
+module ra_machine
+  export apply/4
+  export handle_aux/6
+  export handle_aux/7
+  export init/3
+  export init_aux/2
+  export is_versioned/1
+  export live_indexes/2
+  export module/1
+  export overview/2
+  export query/3
+  export query/4
+  export snapshot_installed/5
+  export snapshot_module/1
+  export state_enter/3
+  export tick/3
+  export version/1
+  export which_aux_fun/1
+  export which_module/2
+  export_type builtin_command/0
+  export_type command/1
+  export_type command_meta_data/0
+  export_type effect/0
+  export_type effects/0
+  export_type machine/0
+  export_type release_cursor_condition/0
+  export_type release_cursor_opts/0
+  export_type reply/0
+  export_type version/0
+  callback 'apply'/3 'apply'(command_meta_data(), command(term()), State) -> {State, reply(), effects() | effect()}
+       | {State, reply()} when State :: term()
+  callback handle_aux/5 handle_aux(ra_server:ra_state(), {call, From :: from()} | cast, Command :: term(), AuxState, IntState) -> {reply, Reply :: term(), AuxState, IntState}
+       | {reply, Reply :: term(), AuxState, IntState, effects()}
+       | {no_reply, AuxState, IntState}
+       | {no_reply, AuxState, IntState, effects()} when AuxState :: term(), IntState :: ra_aux:internal_state()
+  callback handle_aux/6 handle_aux(ra_server:ra_state(), {call, From :: from()} | cast, Command :: term(), AuxState, LogState, MacState :: state()) -> {reply, Reply :: term(), AuxState, LogState}
+       | {reply, Reply :: term(), AuxState, LogState, [{monitor, process, aux, pid()}]}
+       | {no_reply, AuxState, LogState}
+       | {no_reply, AuxState, LogState, [{monitor, process, aux, pid()}]} when AuxState :: term(), LogState :: ra_log:state()
+  callback init/1 init(Conf :: machine_init_args()) -> state()
+  callback init_aux/1 init_aux(Name :: atom()) -> AuxState :: term()
+  callback live_indexes/1 live_indexes(state()) -> [ra:index()] | {ra_seq, ra_seq:state()}
+  callback overview/1 overview(state()) -> map()
+  callback snapshot_installed/4 snapshot_installed(Meta, State, OldMeta, OldState) -> Effects when Meta :: ra_snapshot:meta(), State :: state(), OldMeta :: ra_snapshot:meta(), OldState :: state(), Effects :: effects()
+  callback snapshot_module/0 snapshot_module() -> module()
+  callback state_enter/2 state_enter(ra_server:ra_state() | eol, state()) -> effects()
+  callback tick/2 tick(TimeMs :: milliseconds(), state()) -> effects()
+  callback version/0 version() -> version()
+  callback which_module/1 which_module(version()) -> module()
+  optional_callback handle_aux/5
+  optional_callback handle_aux/6
+  optional_callback init_aux/1
+  optional_callback live_indexes/1
+  optional_callback overview/1
+  optional_callback snapshot_installed/4
+  optional_callback snapshot_module/0
+  optional_callback state_enter/2
+  optional_callback tick/2
+  optional_callback version/0
+  optional_callback which_module/1
+  spec apply/4 apply(module(), command_meta_data(), command(term()), State) -> {State, reply(), effects()}
+       | {State, reply()}
+  spec handle_aux/6 handle_aux(module(), ra_server:ra_state(), {call, From :: from()} | cast, Command :: term(), AuxState, State) -> {reply, Reply :: term(), AuxState, State}
+       | {reply, Reply :: term(), AuxState, State, [{monitor, process, aux, pid()}]}
+       | {no_reply, AuxState, State}
+       | {no_reply, AuxState, State, [{monitor, process, aux, pid()}]} when AuxState :: term(), State :: ra_server:state()
+  spec handle_aux/7 handle_aux(module(), ra_server:ra_state(), {call, From :: from()} | cast, Command :: term(), AuxState, LogState, MacState :: state()) -> undefined
+       | {reply, Reply :: term(), AuxState, LogState}
+       | {reply, Reply :: term(), AuxState, LogState, [{monitor, process, aux, pid()}]}
+       | {no_reply, AuxState, LogState}
+       | {no_reply, AuxState, LogState, [{monitor, process, aux, pid()}]} when AuxState :: term(), LogState :: ra_log:state()
+  spec init/3 init(machine(), atom(), version()) -> state()
+  spec init_aux/2 init_aux(module(), atom()) -> term()
+  spec is_versioned/1 is_versioned(machine()) -> boolean()
+  spec live_indexes/2 live_indexes(module(), state()) -> ra_seq:state()
+  spec module/1 module(machine()) -> module()
+  spec overview/2 overview(module(), state()) -> map()
+  spec query/3 query(module(), ra:query_fun(), state()) -> Result when Result :: term()
+  spec query/4 query(module(), ra:query_fun(), state(), map()) -> Result when Result :: term()
+  spec snapshot_installed/5 snapshot_installed(Module, Meta, State, OldMeta, OldState) -> effects() when Module :: module(), Meta :: ra_snapshot:meta(), State :: state(), OldMeta :: ra_snapshot:meta(), OldState :: state()
+  spec snapshot_module/1 snapshot_module(machine()) -> module()
+  spec state_enter/3 state_enter(module(), ra_server:ra_state() | eol, state()) -> effects()
+  spec tick/3 tick(module(), milliseconds(), state()) -> effects()
+  spec version/1 version(machine() | module()) -> version()
+  spec which_aux_fun/1 which_aux_fun(module()) -> undefined | {atom(), arity()}
+  spec which_module/2 which_module(machine(), version()) -> module()
+  type builtin_command/0 :: {down, pid(), term()}
+       | {nodeup | nodedown, node()}
+       | {machine_version, From :: version(), To :: version()}
+       | {timeout, term()}
+  type command/1 :: UserCommand | builtin_command()
+  type command_meta_data/0 :: #{system_time := integer(), index := ra_index(), term := ra_term(), machine_version => version(), from => from(), reply_mode => ra_server:command_reply_mode()}
+  type effect/0 :: {send_msg, To :: locator(), Msg :: term()}
+       | {mod_call, module(), Function :: atom(), [term()]}
+       | {append, Cmd :: term()}
+       | {append, Cmd :: term(), ra_server:command_reply_mode()}
+       | {monitor, process, pid()}
+       | {monitor, node, node()}
+       | {demonitor, process, pid()}
+       | {demonitor, node, node()}
+       | {timer, term(), non_neg_integer() | infinity}
+       | {timer, term(), non_neg_integer() | infinity, {abs, boolean()}}
+       | {log, [ra_index()], fun(([user_command()]) -> effects())}
+       | {send_msg, To :: locator(), Msg :: term(), Options :: send_msg_opts()}
+       | {log, [ra_index()], fun(([user_command()]) -> effects()), {local, node()}}
+       | {log_ext, [ra_index()], fun(([ra_log:read_plan()]) -> effects()), {local, node()}}
+       | {release_cursor, ra_index(), state()}
+       | {release_cursor, ra_index(), state(), release_cursor_opts()}
+       | {release_cursor, ra_index()}
+       | {checkpoint, ra_index(), state()}
+       | {aux, term()}
+       | {try_append, term(), ra_server:command_reply_mode()}
+       | garbage_collection
+  type effects/0 :: [effect()]
+  type locator/0 :: pid() | atom() | {atom(), node()}
+  type machine/0 :: {machine, module(), AddInitArgs :: #{term() => term()}}
+  type machine_init_args/0 :: #{name := atom(), machine_version => version(), atom() => term()}
+  type milliseconds/0 :: non_neg_integer()
+  type release_cursor_condition/0 :: {written, ra_index()} | no_snapshot_sends
+  type release_cursor_opts/0 :: #{condition => [release_cursor_condition()]}
+  type reply/0 :: term()
+  type send_msg_opt/0 :: ra_event | cast | local
+  type send_msg_opts/0 :: send_msg_opt() | [send_msg_opt()]
+  type state/0 :: term()
+  type user_command/0 :: term()
+  type version/0 :: non_neg_integer()
+
+module ra_machine_ets
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export create_table/2
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module ra_machine_simple
+  visibility hidden
+  behaviour ra_machine
+  export apply/3
+  export init/1
+
+module ra_metrics_ets
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module ra_monitors
+  visibility hidden
+  export add/3
+  export components/2
+  export handle_down/2
+  export init/0
+  export remove/3
+  export remove_all/2
+  export_type state/0
+  spec add/3 add(pid() | node(), component(), state()) -> state()
+  spec components/2 components(pid() | node(), state()) -> [component()]
+  spec handle_down/2 handle_down(pid() | node(), state()) -> {[component()], state()}
+  spec init/0 init() -> state()
+  spec remove/3 remove(pid() | node(), component(), state()) -> state()
+  spec remove_all/2 remove_all(component(), state()) -> state()
+  type component/0 :: machine | aux | snapshot_sender
+  opaque state/0
+
+module ra_mt
+  visibility hidden
+  export abort/1
+  export commit/1
+  export delete/1
+  export fold/5
+  export fold/6
+  export get_items/2
+  export indexes/1
+  export info/1
+  export init/1
+  export init/2
+  export init_successor/3
+  export insert/2
+  export insert_sparse/3
+  export is_active/2
+  export lookup/2
+  export lookup_term/2
+  export prev/1
+  export range/1
+  export range_overlap/2
+  export record_flushed/3
+  export set_first/2
+  export stage/2
+  export staged/1
+  export tid/1
+  export tid_for/3
+  export_type delete_spec/0
+  export_type state/0
+  spec abort/1 abort(state()) -> state()
+  spec commit/1 commit(state()) -> {[log_entry()], state()}
+  spec delete/1 delete(delete_spec()) -> non_neg_integer()
+  spec fold/5 fold(ra:index(), ra:index(), fun(), term(), state()) -> term()
+  spec fold/6 fold(ra:index(), ra:index(), fun(), term(), state(), MissingKeyStrategy :: error | return) -> term()
+  spec get_items/2 get_items([ra:index()], state()) -> {[log_entry()], NumRead :: non_neg_integer(), Remaining :: [ra:index()]}
+  spec indexes/1 indexes(state()) -> ra_seq:state()
+  spec info/1 info(state()) -> map()
+  spec init/1 init(ets:tid()) -> state()
+  spec init/2 init(ets:tid(), read | read_write) -> state()
+  spec init_successor/3 init_successor(ets:tid(), read | read_write, state()) -> state()
+  spec insert/2 insert(log_entry(), state()) -> {ok, state()}
+       | {error, overwriting | limit_reached}
+  spec insert_sparse/3 insert_sparse(log_entry(), undefined | ra:index(), state()) -> {ok, state()}
+       | {error, overwriting | gap_detected | limit_reached}
+  spec is_active/2 is_active(ets:tid(), state()) -> boolean()
+  spec lookup/2 lookup(ra:index(), state()) -> log_entry() | undefined
+  spec lookup_term/2 lookup_term(ra:index(), state()) -> ra_term() | undefined
+  spec prev/1 prev(state()) -> undefined | state()
+  spec range/1 range(state()) -> undefined | {ra:index(), ra:index()}
+  spec range_overlap/2 range_overlap(ra:range(), state()) -> {Overlap :: ra:range(), Remainder :: ra:range()}
+  spec record_flushed/3 record_flushed(ets:tid(), ra_seq:state(), state()) -> {delete_spec(), state()}
+  spec set_first/2 set_first(ra:index(), state()) -> {[delete_spec()], state()}
+  spec stage/2 stage(log_entry(), state()) -> {ok, state()}
+       | {error, overwriting | limit_reached}
+  spec staged/1 staged(state()) -> [log_entry()]
+  spec tid/1 tid(state()) -> ets:tid()
+  spec tid_for/3 tid_for(ra:index(), ra_term(), state()) -> undefined | ets:tid()
+  type delete_spec/0 :: undefined
+       | {'<', ets:tid(), ra:index()}
+       | {delete, ets:tid()}
+       | {indexes, ets:tid(), ra_seq:state()}
+       | {multi, [delete_spec()]}
+  opaque state/0
+
+module ra_range
+  visibility hidden
+  export add/2
+  export combine/2
+  export extend/2
+  export fold/3
+  export in/2
+  export limit/2
+  export new/1
+  export new/2
+  export overlap/2
+  export size/1
+  export subtract/2
+  export truncate/2
+  export_type range/0
+  spec add/2 add(AddRange :: range(), CurRange :: range()) -> range()
+  spec combine/2 combine(AddRange :: range(), CurRange :: range()) -> range()
+  spec extend/2 extend(ra:index(), range()) -> range()
+  spec fold/3 fold(range(), fun((ra:index(), Acc) -> Acc), Acc) -> Acc when Acc :: term()
+  spec in/2 in(ra:index(), range()) -> boolean()
+  spec limit/2 limit(ra:index(), range()) -> range()
+  spec new/1 new(ra:index()) -> range()
+  spec new/2 new(ra:index(), ra:index()) -> range()
+  spec overlap/2 overlap(range(), range()) -> range()
+  spec subtract/2 subtract(range(), range()) -> [range()]
+  spec truncate/2 truncate(ra:index(), range()) -> range()
+  type range/0 :: undefined | {ra:index(), ra:index()}
+
+module ra_seq
+  export add/2
+  export append/2
+  export expand/1
+  export first/1
+  export floor/2
+  export fold/3
+  export from_list/1
+  export has_overlap/2
+  export in/2
+  export in_range/2
+  export iterator/1
+  export last/1
+  export length/1
+  export limit/2
+  export list_chunk/2
+  export next/1
+  export range/1
+  export remove_prefix/2
+  export subtract/2
+  export_type iter/0
+  export_type state/0
+  spec add/2 add(Add :: state(), To :: state()) -> state()
+  spec append/2 append(ra:index(), state()) -> state()
+  spec expand/1 expand(state()) -> [ra:index()]
+  spec first/1 first(state()) -> undefined | ra:index()
+  spec floor/2 floor(ra:index(), state()) -> state()
+  spec fold/3 fold(fun ((ra:index(), Acc) -> Acc), Acc, state()) -> Acc when Acc :: term()
+  spec from_list/1 from_list([ra:index()]) -> state()
+  spec has_overlap/2 has_overlap(ra:range(), state()) -> boolean()
+  spec in_range/2 in_range(ra:range(), state()) -> state()
+  spec iterator/1 iterator(state()) -> iter() | end_of_seq
+  spec last/1 last(state()) -> undefined | ra:index()
+  spec limit/2 limit(ra:index(), state()) -> state()
+  spec list_chunk/2 list_chunk(ChunkSize :: pos_integer(), state() | iter()) -> {[ra:index()], iter()}
+       | end_of_seq
+  spec next/1 next(iter()) -> {ra:index(), iter()} | end_of_seq
+  spec range/1 range(state()) -> ra:range()
+  spec remove_prefix/2 remove_prefix(state(), state()) -> {ok, state()} | {error, not_prefix}
+  spec subtract/2 subtract(Min :: state(), Sub :: state()) -> Diff :: state()
+  type state/0 :: [ra:index() | ra:range()]
+  opaque iter/0
+
+module ra_server
+  visibility hidden
+  export checkpoint/3
+  export clear_leader_id/1
+  export current_term/1
+  export fetch_term/2
+  export get_condition_timeout/2
+  export get_membership/1
+  export handle_aux/4
+  export handle_await_condition/2
+  export handle_candidate/2
+  export handle_down/5
+  export handle_follower/2
+  export handle_leader/2
+  export handle_node_status/6
+  export handle_pre_vote/2
+  export handle_receive_snapshot/2
+  export handle_state_enter/3
+  export init/1
+  export is_fully_persisted/1
+  export is_fully_replicated/1
+  export is_new/1
+  export leader_id/1
+  export log_fold/3
+  export log_id/1
+  export log_partial_read/2
+  export log_read/2
+  export log_tick/1
+  export machine/1
+  export machine_query/2
+  export machine_version/1
+  export name/2
+  export overview/1
+  export peer_status/2
+  export peers/1
+  export persist_last_applied/1
+  export process_new_leader_queries/1
+  export promote_checkpoint/2
+  export recover/1
+  export state_query/2
+  export system_config/1
+  export terminate/2
+  export tick/1
+  export transform_for_partial_read/3
+  export uid/1
+  export update_disconnected_peers/3
+  export update_peer/3
+  export update_release_cursor/4
+  export_type command/0
+  export_type command_correlation/0
+  export_type command_meta/0
+  export_type command_priority/0
+  export_type command_reply_mode/0
+  export_type command_type/0
+  export_type config/0
+  export_type effect/0
+  export_type effects/0
+  export_type machine_conf/0
+  export_type machine_upgrade_strategy/0
+  export_type mutable_config/0
+  export_type ra_event_formatter_fun/0
+  export_type ra_msg/0
+  export_type ra_server_config/0
+  export_type ra_server_info/0
+  export_type ra_server_info_key/0
+  export_type ra_server_state/0
+  export_type ra_state/0
+  export_type state/0
+  spec agreed_commit/1 agreed_commit(list()) -> ra_index()
+  spec checkpoint/3 checkpoint(ra_index(), term(), ra_server_state()) -> {ra_server_state(), effects()}
+  spec clear_leader_id/1 clear_leader_id(ra_server_state()) -> ra_server_state()
+  spec current_term/1 current_term(ra_server_state()) -> option(ra_term())
+  spec ensure_promotion_target/2 ensure_promotion_target(ra_voter_status(), ra_server_state()) -> {ok, ra_voter_status()}
+       | {error, term()}
+  spec get_condition_timeout/2 get_condition_timeout(ra_server_state(), Default :: term()) -> term()
+       | integer()
+  spec get_membership/1 get_membership(ra_server_state()) -> ra_membership()
+  spec get_membership/2 get_membership(ra_cluster() | ra_cluster_snapshot() | ra_cluster_servers(), ra_server_state()) -> ra_membership()
+  spec get_membership/4 get_membership(ra_cluster() | ra_cluster_snapshot() | ra_cluster_servers(), ra_server_id(), ra_uid(), ra_membership()) -> ra_membership()
+  spec handle_await_condition/2 handle_await_condition(ra_msg(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_candidate/2 handle_candidate(ra_msg() | election_timeout, ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_down/5 handle_down(ra_state(), machine | snapshot_sender | snapshot_writer | aux, pid(), term(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_follower/2 handle_follower(ra_msg(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_leader/2 handle_leader(ra_msg(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_node_status/6 handle_node_status(ra_state(), machine | aux, node(), nodeup | nodedown, term(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_pre_vote/2 handle_pre_vote(ra_msg(), ra_server_state()) -> {ra_state(), ra_server_state(), effects()}
+  spec handle_state_enter/3 handle_state_enter(ra_state() | eol, ra_state(), ra_server_state()) -> {ra_server_state() | eol, effects()}
+  spec id/1 id(ra_server_state()) -> ra_server_id()
+  spec init/1 init(ra_server_config()) -> ra_server_state()
+  spec is_candidate_log_up_to_date/3 is_candidate_log_up_to_date(ra_index(), ra_term(), ra_idxterm()) -> boolean()
+  spec is_fully_persisted/1 is_fully_persisted(ra_server_state()) -> boolean()
+  spec is_fully_replicated/1 is_fully_replicated(ra_server_state()) -> boolean()
+  spec is_new/1 is_new(ra_server_state()) -> boolean()
+  spec leader_id/1 leader_id(ra_server_state()) -> option(ra_server_id())
+  spec log_fold/3 log_fold(ra_server_state(), fun((term(), State) -> State), State) -> {ok, State, ra_server_state()}
+       | {error, term(), ra_server_state()}
+  spec log_id/1 log_id(ra_server_state()) -> unicode:chardata()
+  spec log_partial_read/2 log_partial_read([ra_index()], ra_server_state()) -> ra_log:read_plan()
+  spec log_read/2 log_read([ra_index()], ra_server_state()) -> {ok, [term()], ra_server_state()}
+       | {error, ra_server_state()}
+  spec log_tick/1 log_tick(ra_server_state()) -> ra_server_state()
+  spec machine/1 machine(ra_server_state()) -> ra_machine:machine()
+  spec machine_query/2 machine_query(ra:query_fun(), ra_server_state()) -> {ra_idxterm(), term()}
+  spec machine_version/1 machine_version(ra_server_state()) -> non_neg_integer()
+  spec make_cluster/2 make_cluster(ra_server_id(), ra_cluster_snapshot() | [ra_server_id()]) -> ra_cluster()
+  spec maybe_promote_peer/3 maybe_promote_peer(ra_server_id(), ra_server_state(), effects()) -> effects()
+  spec name/2 name(ClusterName :: ra_cluster_name(), UniqueSuffix::string()) -> atom()
+  spec overview/1 overview(ra_server_state()) -> map()
+  spec persist_last_applied/1 persist_last_applied(ra_server_state()) -> ra_server_state()
+  spec process_new_leader_queries/1 process_new_leader_queries(ra_server_state()) -> {ra_server_state(), [from()]}
+  spec promote_checkpoint/2 promote_checkpoint(ra_index(), ra_server_state()) -> {ra_server_state(), effects()}
+  spec required_quorum/1 required_quorum(ra_cluster()) -> pos_integer()
+  spec system_config/1 system_config(ra_server_state()) -> ra_system:config()
+  spec take_from_queue_while/2 take_from_queue_while(fun((El) -> {true, Res} | false), queue:queue(El)) -> {[Res], queue:queue(El)}
+  spec terminate/2 terminate(ra_server_state(), Reason :: {shutdown, delete} | term()) -> ok
+  spec tick/1 tick(ra_server_state()) -> effects()
+  spec uid/1 uid(ra_server_state()) -> ra_uid()
+  spec update_disconnected_peers/3 update_disconnected_peers(node(), nodeup | nodedown, ra_server_state()) -> ra_server_state()
+  spec update_peer/3 update_peer(ra_server_id(), #{next_index => non_neg_integer(), query_index => non_neg_integer(), commit_index_sent => non_neg_integer(), status => ra_peer_status()}, ra_server_state()) -> ra_server_state()
+  spec update_release_cursor/4 update_release_cursor(ra_index(), term(), map(), ra_server_state()) -> {ra_server_state(), effects()}
+  type command/0 :: {command_type(), command_meta(), UserCommand :: term(), command_reply_mode()}
+       | {noop, command_meta(), CurrentMachineVersion :: ra_machine:version()}
+  type command_correlation/0 :: integer() | reference()
+  type command_meta/0 :: #{from => from(), ts := integer()}
+  type command_priority/0 :: normal | low
+  type command_reply_mode/0 :: after_log_append
+       | await_consensus
+       | {await_consensus, command_reply_options()}
+       | {notify, command_correlation(), pid()}
+       | noreply
+  type command_reply_options/0 :: #{reply_from => ra_reply_from()}
+  type command_type/0 :: '$usr' | '$ra_join' | '$ra_leave' | '$ra_cluster_change' | '$ra_cluster'
+  type config/0 :: ra_server_config()
+  type effect/0 :: ra_machine:effect()
+       | ra_log:effect()
+       | {reply, ra_reply_body()}
+       | {reply, from(), ra_reply_body()}
+       | {reply, from(), ra_reply_body(), Replier :: leader | local | {member, ra_server_id()}}
+       | {cast, ra_server_id(), term()}
+       | {send_vote_requests, [{ra_server_id(), #request_vote_rpc{} | #pre_vote_rpc{}}]}
+       | {send_rpc, ra_server_id(), #append_entries_rpc{} | #heartbeat_rpc{} | #info_rpc{}}
+       | {send_snapshot, To :: ra_server_id(), {Module :: module(), Ref :: term(), LeaderId :: ra_server_id(), Term :: ra_term()}}
+       | {next_event, ra_msg()}
+       | {next_event, cast, ra_msg()}
+       | {notify, #{pid() => [term()]}}
+       | {record_leader_msg, ra_server_id()}
+       | start_election_timeout
+       | {start_snapshot_retry_timer, ra_server_id(), non_neg_integer()}
+       | {cancel_snapshot_retry_timer, ra_server_id()}
+       | {bg_work, fun(() -> ok) | mfargs(), fun()}
+  type effects/0 :: [effect()]
+  type machine_conf/0 :: {module, module(), InitConfig :: map()}
+       | {simple, simple_apply_fun(term()), InitialState :: term()}
+  type machine_upgrade_strategy/0 :: all | quorum
+  type mutable_config/0 :: #{cluster_name => ra_cluster_name(), metrics_key => term(), metrics_labels => seshat:labels_map(), broadcast_time => non_neg_integer(), tick_timeout => non_neg_integer(), install_snap_rpc_timeout => non_neg_integer(), await_condition_timeout => non_neg_integer(), max_pipeline_count => non_neg_integer(), ra_event_formatter => {module(), atom(), [term()]}, min_recovery_checkpoint_interval => non_neg_integer()}
+  type ra_await_condition_fun/0 :: fun((ra_msg(), ra_server_state()) -> {boolean(), ra_server_state()})
+  type ra_event_formatter_fun/0 :: fun((ra_server_id(), Evt :: term()) -> term())
+  type ra_msg/0 :: #append_entries_rpc{}
+       | {ra_server_id(), #append_entries_reply{}}
+       | {ra_server_id(), #install_snapshot_result{}}
+       | #request_vote_rpc{}
+       | #request_vote_result{}
+       | #pre_vote_rpc{}
+       | #pre_vote_result{}
+       | #install_snapshot_rpc{}
+       | election_timeout
+       | await_condition_timeout
+       | {command, command()}
+       | {commands, [command()]}
+       | ra_log:event()
+       | {consistent_query, from(), ra:query_fun()}
+       | {consistent_aux, from(), AuxCmd :: term()}
+       | #heartbeat_rpc{}
+       | #info_rpc{}
+       | #info_reply{}
+       | {ra_server_id, #heartbeat_reply{}}
+       | pipeline_rpcs
+       | {snapshot_retry_timeout, ra_server_id()}
+  type ra_reply_body/0 :: #append_entries_reply{}
+       | #request_vote_result{}
+       | #install_snapshot_result{}
+       | #pre_vote_result{}
+  type ra_server_config/0 :: #{id := ra_server_id(), uid := ra_uid(), cluster_name := ra_cluster_name(), log_init_args := ra_log:ra_log_init_args(), initial_members := [ra_server_id()], machine := machine_conf(), initial_machine_version => ra_machine:version(), friendly_name => unicode:chardata(), metrics_key => term(), metrics_labels => seshat:labels_map(), broadcast_time => non_neg_integer(), tick_timeout => non_neg_integer(), install_snap_rpc_timeout => non_neg_integer(), await_condition_timeout => non_neg_integer(), max_pipeline_count => non_neg_integer(), ra_event_formatter => {module(), atom(), [term()]}, counter => counters:counters_ref(), membership => ra_membership(), system_config => ra_system:config(), has_changed => boolean(), parent => term(), min_recovery_checkpoint_interval => non_neg_integer() }
+  type ra_server_info/0 :: #{machine_version => ra_machine:version(), atom() => any()}
+  type ra_server_info_key/0 :: machine_version | atom()
+  type ra_server_state/0 :: #{cfg := #cfg{}, leader_id => option(ra_server_id()), cluster := ra_cluster(), cluster_change_permitted := boolean(), cluster_index_term := ra_idxterm(), previous_cluster => {ra_index(), ra_term(), ra_cluster()}, current_term := ra_term(), log := term(), voted_for => option(ra_server_id()), votes => non_neg_integer(), membership => ra_membership(), commit_index := ra_index(), last_applied := ra_index(), persisted_last_applied => ra_index(), machine_state := term(), aux_state => term(), condition => #{predicate_fun := ra_await_condition_fun(), transition_to => ra_state(), timeout => #{duration => integer(), transition_to => ra_state(), effects => [effect()]}}, pre_vote_token => reference(), query_index := non_neg_integer(), queries_waiting_heartbeats := queue:queue({non_neg_integer(), consistent_query_ref()}), pending_consistent_queries := [consistent_query_ref()], commit_latency => option(non_neg_integer()), snapshot_phase => chunk_flag() | {awaiting_pending, term(), #install_snapshot_rpc{}}, pending_release_cursor => {ra_index(), term(), [ra_machine:release_cursor_condition()]}, current_event_type => term(), snapshot_has_live_indexes => boolean() }
+  type ra_state/0 :: leader
+       | follower
+       | candidate
+       | pre_vote
+       | await_condition
+       | delete_and_terminate
+       | terminating_leader
+       | terminating_follower
+       | recover
+       | recovered
+       | stop
+       | receive_snapshot
+  type simple_apply_fun/1 :: fun((term(), State) -> State)
+  type state/0 :: ra_server_state()
+
+module ra_server_proc
+  visibility hidden
+  behaviour gen_statem
+  export await_condition/3
+  export callback_mode/0
+  export candidate/3
+  export cast_command/2
+  export cast_command/3
+  export code_change/4
+  export command/3
+  export follower/3
+  export force_shrink_members_to_current_member/1
+  export format_status/1
+  export handle_event/4
+  export init/1
+  export leader/3
+  export leader_call/3
+  export local_call/3
+  export local_state_query/3
+  export ping/2
+  export post_init/3
+  export pre_vote/3
+  export query/5
+  export read_entries/4
+  export receive_snapshot/3
+  export recover/3
+  export recovered/3
+  export send_rpc/3
+  export start_link/1
+  export state_query/3
+  export terminate/3
+  export terminating_follower/3
+  export terminating_leader/3
+  export transfer_leadership/3
+  export trigger_election/2
+  export_type query_options/0
+  export_type ra_cmd_ret/0
+  export_type ra_event/0
+  export_type ra_event_body/0
+  export_type ra_event_reject_detail/0
+  export_type ra_leader_call_ret/1
+  export_type ra_local_call_ret/1
+  export_type safe_call_ret/1
+  spec cast_command/2 cast_command(ra_server_id(), ra_command()) -> ok
+  spec cast_command/3 cast_command(ra_server_id(), ra_server:command_priority(), ra_command()) -> ok
+  spec command/3 command(server_loc(), ra_command(), timeout()) -> ra_cmd_ret()
+  spec force_shrink_members_to_current_member/1 force_shrink_members_to_current_member(ra_server_id()) -> ok
+  spec local_state_query/3 local_state_query(server_loc(), all | overview | voters | members | members_info | initial_members | machine, timeout()) -> ra_local_call_ret(term())
+  spec ping/2 ping(ra_server_id(), timeout()) -> safe_call_ret({pong, states()})
+  spec query/5 query(server_loc(), AuxCmd :: term() | query_fun(), local | consistent | consistent_aux | leader, query_options(), timeout()) -> ra_server_proc:ra_leader_call_ret({ra_idxterm(), Reply :: term()})
+       | ra_server_proc:ra_leader_call_ret(Reply :: term())
+       | {ok, {ra_idxterm(), Reply :: term()}, not_known}
+  spec read_entries/4 read_entries(ra_server_id(), [ra:index()], undefined | ra_flru:state(), timeout()) -> {ok, {map(), ra_flru:state()}}
+       | {error, term()}
+  spec start_link/1 start_link(ra_server:ra_server_config()) -> gen_statem_start_ret()
+  spec state_query/3 state_query(server_loc(), all | overview | voters | members | members_info | initial_members | machine, timeout()) -> ra_leader_call_ret(term())
+  spec transfer_leadership/3 transfer_leadership(ra_server_id(), ra_server_id(), timeout()) -> ok
+       | already_leader
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  spec trigger_election/2 trigger_election(ra_server_id(), timeout()) -> ok
+  type gen_statem_start_ret/0 :: {ok, pid()} | ignore | {error, term()}
+  type query_fun/0 :: ra:query_fun()
+  type query_options/0 :: #{condition => ra:query_condition()}
+  type ra_cmd_ret/0 :: ra_leader_call_ret(term())
+  type ra_command/0 :: {ra_server:command_type(), term(), ra_server:command_reply_mode()}
+  type ra_event/0 :: {ra_event, Sender :: ra_server_id(), ra_event_body()}
+  type ra_event_body/0 :: {applied, [{ra_server:command_correlation(), Reply :: term()}]}
+       | {rejected, ra_event_reject_detail()}
+       | {machine, term()}
+  type ra_event_reject_detail/0 :: {not_leader, Leader :: option(ra_server_id()), ra_server:command_correlation()}
+  type ra_leader_call_ret/1 :: {ok, Result, Leader::ra_server_id()}
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  type ra_local_call_ret/1 :: {ok, Result, LocalServer::ra_server_id()}
+       | {error, term()}
+       | {timeout, ra_server_id()}
+  type server_loc/0 :: ra_server_id() | [ra_server_id()]
+
+module ra_server_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/1
+  export start_ra_worker/2
+  spec start_ra_worker/2 start_ra_worker(pid(), ra_server:config()) -> supervisor:startchild_ret()
+
+module ra_server_sup_sup
+  visibility hidden
+  behaviour supervisor
+  export delete_server/2
+  export delete_server_rpc/2
+  export init/1
+  export prepare_server_stop_rpc/2
+  export recover_config/2
+  export remove_all/1
+  export restart_server/3
+  export restart_server_rpc/3
+  export start_link/1
+  export start_server/2
+  export stop_server/2
+  spec delete_server/2 delete_server(atom(), ServerId :: ra_server_id()) -> ok
+       | {error, term()}
+       | {badrpc, term()}
+  spec restart_server/3 restart_server(atom(), ra_server_id(), ra_server:mutable_config()) -> supervisor:startchild_ret()
+       | {error, system_not_started}
+       | {badrpc, term()}
+  spec start_link/1 start_link(ra_system:config()) -> {ok, pid()} | ignore | {error, term()}
+  spec start_server/2 start_server(System :: atom(), ra_server:ra_server_config()) -> supervisor:startchild_ret()
+       | {error, not_new | system_not_started | invalid_initial_machine_version}
+       | {badrpc, term()}
+  spec stop_server/2 stop_server(System :: atom(), RaNodeId :: ra_server_id()) -> ok
+       | {error, term()}
+
+module ra_snapshot
+  export abort_accept/1
+  export accept_chunk/3
+  export accepting/1
+  export begin_accept/2
+  export begin_read/2
+  export begin_snapshot/5
+  export complete_accept/4
+  export complete_snapshot/5
+  export context/2
+  export current/1
+  export current_snapshot_dir/1
+  export delete/2
+  export delete_recovery_checkpoint/1
+  export directory/2
+  export handle_error/3
+  export highest_idx/1
+  export indexes/1
+  export init/7
+  export init/8
+  export init/9
+  export init_ets/0
+  export last_index_for/1
+  export latest_checkpoint/1
+  export make_snapshot_dir/3
+  export pending/1
+  export promote_checkpoint/2
+  export read_chunk/3
+  export read_meta/2
+  export recover/1
+  export recover_recovery_checkpoint/1
+  export recovery_checkpoint/1
+  export snapshot_size/1
+  export take_extra_checkpoints/1
+  export take_older_checkpoints/2
+  export write_indexes/2
+  export write_recovery_checkpoint/4
+  export_type checkpoint/0
+  export_type chunk_flag/0
+  export_type effect/0
+  export_type file_err/0
+  export_type kind/0
+  export_type meta/0
+  export_type recovery_checkpoint/0
+  export_type state/0
+  callback accept_chunk/2 accept_chunk(Chunk :: term(), AcceptState :: term()) -> {ok, AcceptState :: term()}
+       | {error, term()}
+  callback begin_accept/2 begin_accept(SnapDir :: file:filename_all(), Meta :: meta()) -> {ok, AcceptState :: term()}
+       | {error, term()}
+  callback begin_read/2 begin_read(Location :: file:filename_all(), Context :: map()) -> {ok, Meta :: meta(), ReadState :: term()}
+       | {error, term()}
+  callback complete_accept/2 complete_accept(Chunk :: term(), AcceptState :: term()) -> ok
+       | {ok, Bytes :: non_neg_integer()}
+       | {error, term()}
+  callback context/0 context() -> map()
+  callback get_size/1 get_size(Location :: file:filename_all()) -> {ok, SnapshotSize :: non_neg_integer() | undefined}
+       | {error, file_err() | term()}
+  callback prepare/2 prepare(Index :: ra_index(), State :: term()) -> Ref :: term()
+  callback read_chunk/3 read_chunk(ReadState, ChunkSizeBytes :: non_neg_integer(), Location :: file:filename_all()) -> {ok, Chunk :: term(), {next, ReadState} | last}
+       | {error, term()}
+  callback read_meta/1 read_meta(Location :: file:filename_all()) -> {ok, meta()}
+       | {error, invalid_format | {invalid_version, integer()} | checksum_error | file_err() | term()}
+  callback recover/1 recover(Location :: file:filename_all()) -> {ok, Meta :: meta(), State :: term()}
+       | {error, term()}
+  callback sync/1 sync(Location :: file:filename_all()) -> ok | {error, file_err() | term()}
+  callback validate/1 validate(Location :: file:filename_all()) -> ok | {error, term()}
+  callback write/4 write(Location :: file:filename_all(), Meta :: meta(), Ref :: term(), Sync :: boolean()) -> ok
+       | {ok, Bytes :: non_neg_integer()}
+       | {error, file_err() | term()}
+  optional_callback context/0
+  optional_callback get_size/1
+  spec abort_accept/1 abort_accept(state()) -> state()
+  spec accept_chunk/3 accept_chunk(Chunk :: term(), Num :: non_neg_integer(), state()) -> state()
+  spec accepting/1 accepting(state()) -> option(ra_idxterm())
+  spec begin_accept/2 begin_accept(meta(), state()) -> {ok, state()}
+  spec begin_read/2 begin_read(State :: state(), Context :: map()) -> {ok, Meta :: meta(), ReadState}
+       | {error, term()} when ReadState :: term()
+  spec begin_snapshot/5 begin_snapshot(meta(), MacModule :: module(), MacState :: term(), kind(), state()) -> {state(), [effect()]}
+  spec complete_accept/4 complete_accept(Chunk :: term(), Num :: non_neg_integer(), Machine :: ra_machine:machine(), state()) -> {state(), MacState :: term(), ra_seq:state(), [effect()]}
+  spec complete_snapshot/5 complete_snapshot(ra_idxterm(), kind(), ra_seq:state(), non_neg_integer(), state()) -> state()
+  spec context/2 context(state(), node()) -> map()
+  spec current/1 current(state()) -> option(ra_idxterm())
+  spec current_snapshot_dir/1 current_snapshot_dir(state()) -> option(file:filename_all())
+  spec delete_recovery_checkpoint/1 delete_recovery_checkpoint(state()) -> state()
+  spec directory/2 directory(state(), kind()) -> option(file:filename_all())
+  spec find_promotable_checkpoint/3 find_promotable_checkpoint(PromotionIdx, Checkpoints, Acc) -> Result when PromotionIdx :: ra_index(), Checkpoints :: [ra_idxterm()], Acc :: [ra_idxterm()], Result :: option({[ra_idxterm()], ra_idxterm()})
+  spec handle_error/3 handle_error({ra:index(), ra_term()}, Error :: term(), state()) -> state()
+  spec highest_idx/1 highest_idx(state()) -> ra_index()
+  spec indexes/1 indexes(file:filename_all()) -> {ok, ra_seq:state()}
+       | {error, invalid_format | {invalid_version, integer()} | checksum_error | file:posix()}
+  spec init/7 init(ra_uid(), module(), file:filename_all(), file:filename_all(), option(ra_machine:machine()), undefined | counters:counters_ref(), pos_integer()) -> state()
+  spec init/8 init(ra_uid(), module(), file:filename_all(), file:filename_all(), option(file:filename_all()), option(ra_machine:machine()), undefined | counters:counters_ref(), pos_integer()) -> state()
+  spec init/9 init(ra_uid(), module(), file:filename_all(), file:filename_all(), option(file:filename_all()), undefined | ra_log_sync:pool_ref(), option(ra_machine:machine()), undefined | counters:counters_ref(), pos_integer()) -> state()
+  spec init_ets/0 init_ets() -> ok
+  spec last_index_for/1 last_index_for(ra_uid()) -> option(ra_index())
+  spec latest_checkpoint/1 latest_checkpoint(state()) -> option(checkpoint())
+  spec pending/1 pending(state()) -> option({ra_idxterm(), kind()})
+  spec promote_checkpoint/2 promote_checkpoint(Idx :: ra_index(), State0 :: state()) -> {boolean(), State :: state(), Effects :: [effect()]}
+  spec read_chunk/3 read_chunk(ReadState, ChunkSizeBytes :: non_neg_integer(), State :: state()) -> {ok, Data :: term(), {next, ReadState} | last}
+       | {error, term()} when ReadState :: term()
+  spec read_meta/2 read_meta(Module :: module(), Location :: file:filename_all()) -> {ok, meta()}
+       | {error, invalid_format | {invalid_version, integer()} | checksum_error | file_err() | term()}
+  spec recover/1 recover(state()) -> {ok, Meta :: meta(), State :: term()}
+       | {error, no_current_snapshot}
+       | {error, term()}
+  spec recover_recovery_checkpoint/1 recover_recovery_checkpoint(state()) -> {ok, Meta :: meta(), State :: term()}
+       | {error, no_recovery_checkpoint}
+       | {error, term()}
+  spec recovery_checkpoint/1 recovery_checkpoint(state()) -> option(recovery_checkpoint())
+  spec snapshot_size/1 snapshot_size(state()) -> non_neg_integer() | undefined
+  spec take_extra_checkpoints/1 take_extra_checkpoints(state()) -> {state(), [checkpoint()]}
+  spec take_older_checkpoints/2 take_older_checkpoints(ra_index(), state()) -> {state(), [checkpoint()]}
+  spec write_indexes/2 write_indexes(file:filename_all(), ra_seq:state()) -> ok | {error, file:posix()}
+  spec write_recovery_checkpoint/4 write_recovery_checkpoint(meta(), term(), module(), state()) -> {ok, state()}
+       | {error, term()}
+  type checkpoint/0 :: ra_idxterm()
+  type effect/0 :: {monitor, process, snapshot_writer, pid()} | {bg_work, fun(), fun()}
+  type file_err/0 :: ra_lib:file_err()
+  type kind/0 :: snapshot | checkpoint | recovery_checkpoint
+  type meta/0 :: snapshot_meta()
+  type recovery_checkpoint/0 :: ra_idxterm()
+  opaque state/0
+
+module ra_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/0
+
+module ra_system
+  export default_config/0
+  export derive_names/1
+  export fetch/1
+  export fetch/2
+  export lookup_name/2
+  export start/1
+  export start_default/0
+  export stop/1
+  export stop_default/0
+  export store/1
+  export_type config/0
+  export_type names/0
+  spec default_config/0 default_config() -> ra_system:config()
+  spec fetch/1 fetch(atom()) -> config() | undefined
+  spec fetch/2 fetch(atom(), Node :: atom()) -> config() | undefined | {badrpc, term()}
+  spec lookup_name/2 lookup_name(atom(), atom()) -> {ok, atom()} | {error, system_not_started}
+  spec start/1 start(ra_system:config()) -> supervisor:startchild_ret()
+  spec start_default/0 start_default() -> supervisor:startchild_ret()
+  spec stop/1 stop(ra_system:config() | atom()) -> ok | {error, any()}
+  spec stop_default/0 stop_default() -> ok | {error, any()}
+  spec store/1 store(config()) -> ok
+  type config/0 :: #{name := atom(), names := names(), data_dir := file:filename_all(), wal_data_dir => file:filename_all(), wal_max_size_bytes => non_neg_integer(), wal_compute_checksums => boolean(), wal_max_batch_size => non_neg_integer(), wal_max_entries => undefined | non_neg_integer(), wal_sync_method => datasync | sync | none, wal_hibernate_after => infinity | non_neg_integer(), wal_garbage_collect => boolean(), wal_pre_allocate => boolean(), segment_max_entries => non_neg_integer(), segment_max_pending => non_neg_integer(), segment_max_size_bytes => non_neg_integer(), segment_compute_checksums => boolean(), snapshot_chunk_size => non_neg_integer(), receive_snapshot_timeout => non_neg_integer(), default_max_pipeline_count => non_neg_integer(), default_max_append_entries_rpc_batch_size => non_neg_integer(), message_queue_data => on_heap | off_heap, wal_min_heap_size => non_neg_integer(), wal_min_bin_vheap_size => non_neg_integer(), server_min_bin_vheap_size => non_neg_integer(), server_min_heap_size => non_neg_integer(), compress_mem_tables => boolean(), low_priority_commands_flush_size => non_neg_integer(), low_priority_commands_in_memory_size => non_neg_integer(), server_recovery_strategy => undefined | registered | {module(), atom(), list()}, machine_upgrade_strategy => ra_server:machine_upgrade_strategy() }
+  type names/0 :: #{wal := atom(), wal_sup := atom(), log_sup := atom(), log_ets := atom(), log_meta := atom(), log_sync := atom(), open_mem_tbls := atom(), segment_writer := atom(), server_sup := atom(), directory := atom(), directory_rev := atom()}
+
+module ra_system_recover
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/1
+  export terminate/2
+
+module ra_system_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/1
+
+module ra_systems_sup
+  visibility hidden
+  behaviour supervisor
+  export init/1
+  export start_link/0
+  export start_system/1
+  export stop_system/1
+  spec start_link/0 start_link() -> {ok, pid()} | ignore | {error, term()}
+  spec start_system/1 start_system(ra_system:config()) -> supervisor:startchild_ret()
+  spec stop_system/1 stop_system(ra_system:config() | atom()) -> ok | {error, any()}
+
+module ra_worker
+  visibility hidden
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export queue_work/3
+  export start_link/1
+  export terminate/2
