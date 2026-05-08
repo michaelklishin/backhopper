@@ -507,8 +507,17 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
                 });
             }
             "reason" => {
-                let raw = tokens.next().ok_or("missing reason")?;
-                reason = Some(raw.trim_matches('"').to_owned());
+                let remaining: Vec<&str> = tokens.collect();
+                if remaining.is_empty() {
+                    return Err("missing reason".into());
+                }
+                let joined = remaining.join(" ");
+                let trimmed = joined
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .unwrap_or(&joined);
+                reason = Some(trimmed.to_owned());
+                break;
             }
             other => return Err(format!("unexpected deprecation token {:?}", other)),
         }

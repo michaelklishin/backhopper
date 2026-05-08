@@ -91,6 +91,7 @@ unused_self             = "allow"
 enum_glob_use           = "allow"
 needless_raw_string_hashes = "allow"
 struct_excessive_bools  = "allow"
+semicolon_if_nothing_returned = "allow"
 
 [profile.release]
 lto             = "thin"
