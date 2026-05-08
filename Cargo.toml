@@ -93,6 +93,7 @@ enum_glob_use           = "allow"
 needless_raw_string_hashes = "allow"
 struct_excessive_bools  = "allow"
 semicolon_if_nothing_returned = "allow"
+result_large_err        = "allow"
 
 [profile.release]
 lto             = "thin"
