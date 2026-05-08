@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use backhopper_core::rabbitmq::{
     DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
 };
@@ -23,8 +25,7 @@ some_other_var = no
 #[test]
 fn parses_canonical_hex_and_git_lines() {
     let pins = parse_components_mk(SAMPLE);
-    let by_name: std::collections::BTreeMap<_, _> =
-        pins.iter().map(|p| (p.name.clone(), p)).collect();
+    let by_name: BTreeMap<_, _> = pins.iter().map(|p| (p.name.clone(), p)).collect();
     assert_eq!(by_name["cowboy"].source, DepSource::Hex);
     assert_eq!(by_name["cowboy"].version, "2.14.1");
     assert_eq!(by_name["khepri"].version, "0.18.0");

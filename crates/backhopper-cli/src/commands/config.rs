@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::Serialize;
 
 use crate::cli::{ConfigCmd, GlobalArgs};
@@ -7,7 +9,7 @@ use crate::output::{OutputContext, render};
 
 #[derive(Debug, Serialize)]
 struct PathPayload {
-    config_path: std::path::PathBuf,
+    config_path: PathBuf,
 }
 
 pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {

@@ -1,7 +1,7 @@
-//! Top-level Erlang source extractor: tokens → typed `Module`/`HrlFile` records.
+//! Top-level Erlang source extractor: tokens → typed `Module` and `HrlFile` records.
 
 use std::path::PathBuf;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 
 use backhopper_core::model::names::{
     Arity, FieldName, FunctionName, ModuleName, RecordName, TypeName,
@@ -56,7 +56,7 @@ impl ErlangExtractor {
         let mut modules: Vec<Module> = Vec::new();
         let mut headers: Vec<HrlFile> = Vec::new();
         for (path, bytes) in files {
-            let text = std::str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
+            let text = str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
                 path: path.clone(),
                 offset: e.valid_up_to(),
             })?;

@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use assert_cmd::Command;
 use tempfile::TempDir;
 
@@ -20,10 +22,7 @@ fn build_components_repo() -> (FixtureRepo, TempDir) {
     (repo, workdir)
 }
 
-fn write_full_config(
-    workdir: &std::path::Path,
-    snapshot_dir: &std::path::Path,
-) -> std::path::PathBuf {
+fn write_full_config(workdir: &Path, snapshot_dir: &Path) -> PathBuf {
     let body = format!(
         r#"
 config_version = 1

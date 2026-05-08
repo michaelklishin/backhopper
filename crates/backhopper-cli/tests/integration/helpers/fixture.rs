@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use tempfile::TempDir;
@@ -58,11 +58,7 @@ impl FixtureRepo {
     }
 }
 
-pub(crate) fn write_config(
-    dir: &Path,
-    repo_path: &Path,
-    snapshot_dir: &Path,
-) -> std::path::PathBuf {
+pub(crate) fn write_config(dir: &Path, repo_path: &Path, snapshot_dir: &Path) -> PathBuf {
     let body = format!(
         r#"
 config_version = 1

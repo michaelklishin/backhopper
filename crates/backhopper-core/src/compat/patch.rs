@@ -1,7 +1,9 @@
 //! Unified-diff parser plus `Patch<S>` typestate pipeline.
 
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::str;
 
 use crate::errors::PatchError;
 use crate::model::names::{Arity, FunctionName, ModuleName};
@@ -98,8 +100,8 @@ impl Patch<Raw> {
                 limit: PATCH_SIZE_LIMIT,
             });
         }
-        let text = std::str::from_utf8(input)
-            .unwrap_or_else(|_| std::str::from_utf8(&input[..input.len().min(64)]).unwrap_or(""));
+        let text = str::from_utf8(input)
+            .unwrap_or_else(|_| str::from_utf8(&input[..input.len().min(64)]).unwrap_or(""));
         let files = parse_unified_diff(text)?;
         Ok(Self {
             files,
@@ -149,7 +151,7 @@ impl Patch<Raw> {
 /// itself never knows about git.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PinFiles {
-    files: std::collections::BTreeMap<PathBuf, Option<Vec<u8>>>,
+    files: BTreeMap<PathBuf, Option<Vec<u8>>>,
 }
 
 impl PinFiles {
@@ -276,7 +278,7 @@ fn check_files_against_pin(files: &[PatchedFile], pin_files: &PinFiles, reasons:
             reasons.push(Reason::FileAbsent { path: path.clone() });
             continue;
         };
-        let target_lines = match std::str::from_utf8(bytes) {
+        let target_lines = match str::from_utf8(bytes) {
             Ok(s) => s.lines().collect::<Vec<&str>>(),
             Err(_) => continue,
         };

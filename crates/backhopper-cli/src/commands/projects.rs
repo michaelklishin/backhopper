@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::Serialize;
 
 use crate::cli::{GlobalArgs, ProjectsCmd};
@@ -8,14 +10,14 @@ use crate::output::{OutputContext, render};
 #[derive(Debug, Serialize)]
 struct ProjectListEntry {
     name: String,
-    git_url: std::path::PathBuf,
+    git_url: PathBuf,
     language: String,
 }
 
 #[derive(Debug, Serialize)]
 struct ProjectShow {
     name: String,
-    git_url: std::path::PathBuf,
+    git_url: PathBuf,
     language: String,
     tag_prefix: String,
     public_modules: Vec<String>,

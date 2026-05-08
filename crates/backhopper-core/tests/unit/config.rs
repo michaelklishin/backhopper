@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use tempfile::TempDir;
 
 use backhopper_core::config::Config;
@@ -28,7 +30,7 @@ pins = [
 ]
 "#;
 
-fn write_config(tmp: &TempDir, body: &str) -> std::path::PathBuf {
+fn write_config(tmp: &TempDir, body: &str) -> PathBuf {
     let path = tmp.path().join("backhopper.toml");
     std::fs::write(&path, body).unwrap();
     path

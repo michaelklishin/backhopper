@@ -1,10 +1,13 @@
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use serde::Serialize;
 
+use backhopper_core::Error as CoreError;
 use backhopper_core::Snapshot;
+use backhopper_core::config::Config;
 use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, TagName};
-use backhopper_core::model::snapshot::{Module, state};
+use backhopper_core::model::snapshot::{Module, Visibility, state};
 
 use crate::cli::{ApiCmd, GlobalArgs};
 use crate::commands::context::{load_config, open_store_read};
@@ -66,7 +69,7 @@ pub fn handle(args: &GlobalArgs, cmd: ApiCmd) -> CliResult<i32> {
 
 fn lookup(
     args: &GlobalArgs,
-    cfg: &backhopper_core::config::Config,
+    cfg: &Config,
     project: ProjectName,
     tag: TagName,
     mfas: Vec<Mfa>,
@@ -81,13 +84,7 @@ fn lookup(
     for mfa in &mfas {
         let module = snapshot.modules().iter().find(|m| m.name == mfa.module);
         let allowed = match module {
-            Some(m) => {
-                include_hidden
-                    || matches!(
-                        m.visibility,
-                        backhopper_core::model::snapshot::Visibility::Public
-                    )
-            }
+            Some(m) => include_hidden || matches!(m.visibility, Visibility::Public),
             None => true,
         };
         let found = allowed && snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity);
@@ -123,7 +120,7 @@ fn lookup(
 
 fn modules(
     args: &GlobalArgs,
-    cfg: &backhopper_core::config::Config,
+    cfg: &Config,
     project: ProjectName,
     tag: TagName,
     include_hidden: bool,
@@ -139,7 +136,7 @@ fn modules(
         headers: snapshot.headers().iter().map(|h| h.path.clone()).collect(),
     };
     for m in snapshot.modules() {
-        if !include_hidden && m.visibility != backhopper_core::model::snapshot::Visibility::Public {
+        if !include_hidden && m.visibility != Visibility::Public {
             continue;
         }
         payload.modules.push(ModuleSummary {
@@ -168,7 +165,7 @@ fn modules(
 
 fn exports(
     args: &GlobalArgs,
-    cfg: &backhopper_core::config::Config,
+    cfg: &Config,
     project: ProjectName,
     tag: TagName,
     module: String,
@@ -177,8 +174,7 @@ fn exports(
     let snapshot = store
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let mod_name = ModuleName::from_str(&module)
-        .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?;
+    let mod_name = ModuleName::from_str(&module).map_err(|e| CliError::Core(CoreError::Name(e)))?;
     let m: Option<&Module> = snapshot.modules().iter().find(|m| m.name == mod_name);
     let exports: Vec<String> = m
         .map(|m| {
@@ -206,7 +202,7 @@ fn exports(
 
 fn diff(
     args: &GlobalArgs,
-    cfg: &backhopper_core::config::Config,
+    cfg: &Config,
     project: ProjectName,
     from: TagName,
     to: TagName,
@@ -250,18 +246,15 @@ struct DiffExport {
 }
 
 fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
-    let a_modules: std::collections::BTreeSet<String> =
-        a.modules().iter().map(|m| m.name.to_string()).collect();
-    let b_modules: std::collections::BTreeSet<String> =
-        b.modules().iter().map(|m| m.name.to_string()).collect();
+    let a_modules: BTreeSet<String> = a.modules().iter().map(|m| m.name.to_string()).collect();
+    let b_modules: BTreeSet<String> = b.modules().iter().map(|m| m.name.to_string()).collect();
     let modules_added: Vec<_> = b_modules.difference(&a_modules).cloned().collect();
     let modules_removed: Vec<_> = a_modules.difference(&b_modules).cloned().collect();
     let mut exports_added = Vec::new();
     let mut exports_removed = Vec::new();
-    let module_names: std::collections::BTreeSet<_> =
-        a_modules.union(&b_modules).cloned().collect();
+    let module_names: BTreeSet<_> = a_modules.union(&b_modules).cloned().collect();
     for name in module_names {
-        let a_exports: std::collections::BTreeSet<String> = a
+        let a_exports: BTreeSet<String> = a
             .modules()
             .iter()
             .find(|m| m.name.as_str() == name)
@@ -272,7 +265,7 @@ fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) 
                     .collect()
             })
             .unwrap_or_default();
-        let b_exports: std::collections::BTreeSet<String> = b
+        let b_exports: BTreeSet<String> = b
             .modules()
             .iter()
             .find(|m| m.name.as_str() == name)

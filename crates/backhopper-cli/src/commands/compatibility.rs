@@ -1,8 +1,10 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use backhopper_core::Error as CoreError;
 use backhopper_core::compat::patch::{Language, Patch, PinFiles};
 use backhopper_core::config::Config;
 use backhopper_core::git::GitRepo;
@@ -71,11 +73,7 @@ pub fn handle(args: &GlobalArgs, cmd: CompatibilityCmd) -> CliResult<i32> {
     }
 }
 
-fn build_pin_files(
-    cfg: &Config,
-    pin: &Pin,
-    touched_paths: &[std::path::PathBuf],
-) -> CliResult<PinFiles> {
+fn build_pin_files(cfg: &Config, pin: &Pin, touched_paths: &[PathBuf]) -> CliResult<PinFiles> {
     if touched_paths.is_empty() {
         return Ok(PinFiles::new());
     }
@@ -86,7 +84,7 @@ fn build_pin_files(
     let commit = repo
         .resolve_tag(&pin.tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let needed: std::collections::BTreeSet<String> = touched_paths
+    let needed: BTreeSet<String> = touched_paths
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
@@ -94,7 +92,7 @@ fn build_pin_files(
         .read_paths_at_commit(&commit, |p| needed.contains(p))
         .map_err(|e| CliError::Core(e.into()))?;
     let mut files = PinFiles::new();
-    let present: std::collections::BTreeMap<String, Vec<u8>> = blobs
+    let present: BTreeMap<String, Vec<u8>> = blobs
         .into_iter()
         .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
         .collect();
@@ -124,8 +122,7 @@ fn read_patch_input(file: Option<PathBuf>) -> CliResult<Vec<u8>> {
 
 fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
     let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let to = CommitSha::new(commit.to_owned())
-        .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?;
+    let to = CommitSha::new(commit.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?;
     let from = g
         .parent_commit(&to)
         .map_err(|e| CliError::Core(e.into()))?
@@ -146,15 +143,13 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>, merge: Option<&str>) -> C
                 .split_once("..")
                 .ok_or_else(|| CliError::InvalidInput(format!("invalid range {:?}", r)))?;
             (
-                CommitSha::new(a.to_owned())
-                    .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?,
-                CommitSha::new(b.to_owned())
-                    .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?,
+                CommitSha::new(a.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?,
+                CommitSha::new(b.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?,
             )
         }
         (None, Some(merge_sha)) => {
             let merge = CommitSha::new(merge_sha.to_owned())
-                .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?;
+                .map_err(|e| CliError::Core(CoreError::Name(e)))?;
             let parents = g.parents(&merge).map_err(|e| CliError::Core(e.into()))?;
             if parents.len() < 2 {
                 return Err(CliError::InvalidInput(format!(
@@ -202,9 +197,8 @@ fn run_compat_patch(
             ));
         }
     };
-    let patch =
-        Patch::parse(bytes).map_err(|e| CliError::Core(backhopper_core::Error::Patch(e)))?;
-    let touched_paths: Vec<std::path::PathBuf> = patch
+    let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
+    let touched_paths: Vec<PathBuf> = patch
         .files
         .iter()
         .filter_map(|f| f.new_path.clone().or_else(|| f.old_path.clone()))

@@ -7,7 +7,9 @@ use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader, Visibility};
+use backhopper_core::model::snapshot::{
+    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
+};
 use backhopper_core::model::verdict::Reason;
 
 const ORIGINAL: &str = "-module(demo).\n-export([greet/1]).\ngreet(Name) -> Name.\n";
@@ -22,7 +24,7 @@ diff --git a/src/demo.erl b/src/demo.erl
  greet(Name) -> Name.
 ";
 
-fn snapshot() -> Snapshot<backhopper_core::model::snapshot::state::Canonical> {
+fn snapshot() -> Snapshot<state::Canonical> {
     let header = SnapshotHeader {
         project: ProjectName::new("demo").unwrap(),
         tag: TagName::new("v1.0.0").unwrap(),

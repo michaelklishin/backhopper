@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
+use backhopper_core::SymbolRef;
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict};
 
@@ -21,7 +22,7 @@ fn missing_symbol_is_incompatible() {
 #[test]
 fn deprecated_only_is_requires_adaptation() {
     let r = Reason::DeprecatedUsage {
-        symbol: backhopper_core::SymbolRef::macro_use("X"),
+        symbol: SymbolRef::macro_use("X"),
         since: None,
         replacement: None,
     };
@@ -31,14 +32,8 @@ fn deprecated_only_is_requires_adaptation() {
 
 #[test]
 fn series_verdict_summarizes_results() {
-    let pin1 = Pin::new(
-        backhopper_core::model::names::ProjectName::new("a").unwrap(),
-        backhopper_core::model::names::TagName::new("v1").unwrap(),
-    );
-    let pin2 = Pin::new(
-        backhopper_core::model::names::ProjectName::new("b").unwrap(),
-        backhopper_core::model::names::TagName::new("v1").unwrap(),
-    );
+    let pin1 = Pin::new(ProjectName::new("a").unwrap(), TagName::new("v1").unwrap());
+    let pin2 = Pin::new(ProjectName::new("b").unwrap(), TagName::new("v1").unwrap());
     let r1 = PinVerdict {
         pin: pin1,
         verdict: Verdict::Compatible,

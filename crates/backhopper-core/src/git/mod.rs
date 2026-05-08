@@ -1,6 +1,9 @@
 //! Git access through `gix`. The whole crate's git seam lives here.
 
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::str;
 
 use crate::errors::GitError;
 use crate::model::names::{CommitSha, TagName};
@@ -194,9 +197,9 @@ impl GitRepo {
         let from_blobs = self.read_paths_at_commit(from, &path_filter)?;
         let to_blobs = self.read_paths_at_commit(to, &path_filter)?;
         let mut out = String::new();
-        let mut from_map: std::collections::BTreeMap<PathBuf, Vec<u8>> =
+        let mut from_map: BTreeMap<PathBuf, Vec<u8>> =
             from_blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
-        let to_map: std::collections::BTreeMap<PathBuf, Vec<u8>> =
+        let to_map: BTreeMap<PathBuf, Vec<u8>> =
             to_blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
         for (path, new_bytes) in &to_map {
             let old_bytes = from_map.remove(path).unwrap_or_default();
@@ -214,8 +217,8 @@ impl GitRepo {
 
 fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     let display = path.display();
-    let old_text = std::str::from_utf8(old).unwrap_or("");
-    let new_text = std::str::from_utf8(new).unwrap_or("");
+    let old_text = str::from_utf8(old).unwrap_or("");
+    let new_text = str::from_utf8(new).unwrap_or("");
     let input = imara_diff::InternedInput::new(old_text, new_text);
     let mut diff = imara_diff::Diff::compute(imara_diff::Algorithm::Histogram, &input);
     diff.postprocess_lines(&input);
@@ -235,7 +238,7 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     }
 }
 
-fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+fn version_cmp(a: &str, b: &str) -> Ordering {
     let a_parts = parse_version(a);
     let b_parts = parse_version(b);
     a_parts.cmp(&b_parts).reverse()

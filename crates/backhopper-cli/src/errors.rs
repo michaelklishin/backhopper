@@ -1,17 +1,21 @@
+use std::io;
 use std::path::PathBuf;
 
 use sysexits::ExitCode as SysExits;
 use thiserror::Error;
+
+use backhopper_core::Error as CoreError;
+use backhopper_core::errors::{ConfigError, StoreError};
 
 pub type CliResult<T> = Result<T, CliError>;
 
 #[derive(Debug, Error)]
 pub enum CliError {
     #[error(transparent)]
-    Core(#[from] backhopper_core::Error),
+    Core(#[from] CoreError),
 
     #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 
     #[error("config not found: {0}")]
     ConfigNotFound(PathBuf),
@@ -39,22 +43,20 @@ impl CliError {
     }
 }
 
-fn map_core(e: &backhopper_core::Error) -> SysExits {
-    use backhopper_core::Error::*;
+fn map_core(e: &CoreError) -> SysExits {
     match e {
-        Snapshot(_) => SysExits::DataErr,
-        Store(s) => match s {
-            backhopper_core::errors::StoreError::SnapshotNotFound { .. } => SysExits::NoInput,
-            backhopper_core::errors::StoreError::RootMissing(_) => SysExits::NoInput,
+        CoreError::Snapshot(_) => SysExits::DataErr,
+        CoreError::Store(s) => match s {
+            StoreError::SnapshotNotFound { .. } | StoreError::RootMissing(_) => SysExits::NoInput,
             _ => SysExits::IoErr,
         },
-        Config(c) => match c {
-            backhopper_core::errors::ConfigError::NotFound(_) => SysExits::NoInput,
+        CoreError::Config(c) => match c {
+            ConfigError::NotFound(_) => SysExits::NoInput,
             _ => SysExits::DataErr,
         },
-        Git(_) => SysExits::IoErr,
-        Patch(_) => SysExits::DataErr,
-        Name(_) => SysExits::Usage,
-        Io(_) => SysExits::IoErr,
+        CoreError::Git(_) => SysExits::IoErr,
+        CoreError::Patch(_) => SysExits::DataErr,
+        CoreError::Name(_) => SysExits::Usage,
+        CoreError::Io(_) => SysExits::IoErr,
     }
 }

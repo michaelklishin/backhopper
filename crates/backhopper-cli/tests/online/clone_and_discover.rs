@@ -1,10 +1,13 @@
 use core::time::Duration;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command as Std;
 use std::str::FromStr;
 
 use assert_cmd::Command;
 use tempfile::TempDir;
+
+use backhopper_core::model::names::{Mfa, ProjectName, TagName};
+use backhopper_core::store::SnapshotStore;
 
 const RA_REPO: &str = "https://github.com/rabbitmq/ra.git";
 const KHEPRI_REPO: &str = "https://github.com/rabbitmq/khepri.git";
@@ -31,12 +34,7 @@ fn shallow_clone(url: &str, dest: &Path) {
     assert!(unshallow.success(), "git fetch tags failed for {}", url);
 }
 
-fn write_config(
-    workdir: &Path,
-    project: &str,
-    repo: &Path,
-    snapshot_dir: &Path,
-) -> std::path::PathBuf {
+fn write_config(workdir: &Path, project: &str, repo: &Path, snapshot_dir: &Path) -> PathBuf {
     let body = format!(
         r#"
 config_version = 1
@@ -97,9 +95,6 @@ fn ra_upstream_clone_then_discover() {
 #[test]
 #[ignore = "online: clones rabbitmq/khepri"]
 fn khepri_upstream_clone_then_lookup() {
-    use backhopper_core::model::names::{Mfa, ProjectName, TagName};
-    use backhopper_core::store::SnapshotStore;
-
     let work = TempDir::new().unwrap();
     let repo = work.path().join("khepri-clone");
     shallow_clone(KHEPRI_REPO, &repo);

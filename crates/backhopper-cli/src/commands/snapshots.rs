@@ -1,6 +1,9 @@
+use std::path::PathBuf;
+
 use serde::Serialize;
 use time::OffsetDateTime;
 
+use backhopper_core::Error as CoreError;
 use backhopper_core::config::{Config, Language, Project};
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{ProjectName, TagName};
@@ -143,8 +146,7 @@ fn build_snapshot(
     let blobs = repo
         .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
         .map_err(|e| CliError::Core(e.into()))?;
-    let files: Vec<(std::path::PathBuf, Vec<u8>)> =
-        blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+    let files: Vec<(PathBuf, Vec<u8>)> = blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
     let extracted = match p.language {
         Language::Erlang => {
             let extractor =
@@ -245,8 +247,8 @@ fn show(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -> 
         .map_err(|e| CliError::Core(e.into()))?;
     let ctx = OutputContext::new(args.formatter, "snapshots show");
     render(&ctx, &snapshot, |w| {
-        let text = format::to_string(&snapshot)
-            .map_err(|e| CliError::Core(backhopper_core::Error::Snapshot(e)))?;
+        let text =
+            format::to_string(&snapshot).map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
         write!(w, "{}", text)?;
         Ok(())
     })?;

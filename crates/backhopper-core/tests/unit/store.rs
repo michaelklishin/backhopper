@@ -4,13 +4,10 @@ use time::OffsetDateTime;
 use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader, state};
 use backhopper_core::store::SnapshotStore;
 
-fn make_snapshot(
-    project: &str,
-    tag: &str,
-) -> Snapshot<backhopper_core::model::snapshot::state::Canonical> {
+fn make_snapshot(project: &str, tag: &str) -> Snapshot<state::Canonical> {
     let header = SnapshotHeader {
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag).unwrap(),

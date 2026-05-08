@@ -1,4 +1,8 @@
-use backhopper_core::model::snapshot::Visibility;
+use time::OffsetDateTime;
+
+use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, Visibility};
+use backhopper_core::snapshot::{format, parser};
 use backhopper_erlang::ErlangExtractor;
 
 const RA_LIKE: &str = r#"
@@ -76,13 +80,6 @@ fn extracts_full_module_surface() {
 
 #[test]
 fn snapshot_round_trip_for_realistic_module() {
-    use std::path::PathBuf;
-    use time::OffsetDateTime;
-
-    use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
-    use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
-    use backhopper_core::snapshot::{format, parser};
-
     let ex = ErlangExtractor::default();
     let m = ex.extract_module(RA_LIKE).expect("module");
     let header = SnapshotHeader {
@@ -98,5 +95,4 @@ fn snapshot_round_trip_for_realistic_module() {
     let text = format::to_string(&snap).unwrap();
     let back = parser::parse(&text).expect("re-parse");
     assert_eq!(snap, back);
-    let _ = PathBuf::new();
 }

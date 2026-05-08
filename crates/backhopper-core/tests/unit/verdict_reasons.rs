@@ -1,15 +1,12 @@
-use std::marker::PhantomData;
-use std::str::FromStr;
-
 use time::OffsetDateTime;
 
 use backhopper_core::compat::patch::{Language, Patch};
 use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, TagName,
+    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
-    ArityMatch, Deprecation, FunArity, Module, Snapshot, SnapshotHeader, Visibility,
+    ArityMatch, Deprecation, FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
 };
 use backhopper_core::model::verdict::{Reason, Verdict};
 
@@ -37,9 +34,7 @@ fn module(name: &str, visibility: Visibility, exports: &[(&str, u8)]) -> Module 
     m
 }
 
-fn snapshot_with(
-    modules: Vec<Module>,
-) -> Snapshot<backhopper_core::model::snapshot::state::Canonical> {
+fn snapshot_with(modules: Vec<Module>) -> Snapshot<state::Canonical> {
     Snapshot::from_extracted(header(), modules, vec![]).into_canonical()
 }
 
@@ -162,9 +157,4 @@ diff --git a/x.erl b/x.erl
         .against_series(&[(pin(), snap)]);
     let r0 = &v.results[0];
     assert!(r0.verdict.is_compatible() || matches!(r0.verdict, Verdict::Compatible));
-}
-
-#[test]
-fn placeholder_to_silence_unused_imports() {
-    let _ = (Mfa::from_str("a:b/0").is_ok(), PhantomData::<u8>);
 }

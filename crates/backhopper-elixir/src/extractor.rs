@@ -1,7 +1,8 @@
 //! Top-level Elixir source extractor: text → typed `Module` records.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 use std::sync::OnceLock;
 
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, TypeName};
@@ -54,7 +55,7 @@ impl ElixirExtractor {
             {
                 continue;
             }
-            let text = std::str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
+            let text = str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
                 path: path.clone(),
                 offset: e.valid_up_to(),
             })?;
@@ -141,7 +142,7 @@ fn collect_module_recursive(
     let mut module = Module::new(module_name.clone());
     let mut depth: i32 = 1;
     let mut hidden = false;
-    let mut exports = std::collections::BTreeSet::<(String, u8)>::new();
+    let mut exports: BTreeSet<(String, u8)> = BTreeSet::new();
     let mut callbacks: Vec<CallbackSig> = Vec::new();
     let mut specs: Vec<SpecSig> = Vec::new();
     let mut types: Vec<TypeDecl> = Vec::new();

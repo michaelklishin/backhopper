@@ -1,8 +1,12 @@
+use std::io::Write;
+use std::path::Path;
+use std::str;
+
 use serde::Serialize;
 
 use backhopper_core::config::Config;
 use backhopper_core::git::GitRepo;
-use backhopper_core::model::names::CommitSha;
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::rabbitmq::{
     DepPin, DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
 };
@@ -95,11 +99,7 @@ fn list(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
     Ok(0)
 }
 
-fn show(
-    args: &GlobalArgs,
-    cfg: &Config,
-    series: backhopper_core::model::names::SeriesName,
-) -> CliResult<i32> {
+fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<i32> {
     let s = cfg
         .series_by_name(&series)
         .map_err(|e| CliError::Core(e.into()))?;
@@ -129,7 +129,7 @@ fn show(
 fn infer(
     args: &GlobalArgs,
     cfg: &Config,
-    repo: &std::path::Path,
+    repo: &Path,
     branch: Option<String>,
     all_branches: bool,
     branches: &[String],
@@ -188,13 +188,12 @@ fn infer_one(
         .into_iter()
         .next()
         .ok_or_else(|| format!("{} not present at {}", COMPONENTS_MK, branch))?;
-    let text = std::str::from_utf8(&blob.bytes).map_err(|e| e.to_string())?;
+    let text = str::from_utf8(&blob.bytes).map_err(|e| e.to_string())?;
     let pins = parse_components_mk(text);
     let mut kept: Vec<PinPayload> = Vec::new();
     let mut skipped: Vec<SkippedPin> = Vec::new();
     for pin in pins {
-        let Ok(project_name) = backhopper_core::model::names::ProjectName::new(pin.name.clone())
-        else {
+        let Ok(project_name) = ProjectName::new(pin.name.clone()) else {
             skipped.push(SkippedPin {
                 name: pin.name.clone(),
                 reason: "name not a valid project identifier".into(),
@@ -205,7 +204,7 @@ fn infer_one(
             continue;
         };
         let tag_str = canonicalize_pin(&pin, &project.tag_prefix);
-        let Ok(tag) = backhopper_core::model::names::TagName::new(tag_str.clone()) else {
+        let Ok(tag) = TagName::new(tag_str.clone()) else {
             skipped.push(SkippedPin {
                 name: pin.name.clone(),
                 reason: format!("tag {:?} not a valid tag name", tag_str),
@@ -235,7 +234,7 @@ fn resolve_branch(g: &GitRepo, branch: &str) -> Result<CommitSha, String> {
         format!("refs/tags/{}", branch),
     ];
     for spec in candidates {
-        if let Ok(tag_name) = backhopper_core::model::names::TagName::new(spec.clone()) {
+        if let Ok(tag_name) = TagName::new(spec.clone()) {
             if let Ok(sha) = g.resolve_tag(&tag_name) {
                 return Ok(sha);
             }
@@ -254,7 +253,7 @@ fn canonicalize_pin(pin: &DepPin, tag_prefix: &str) -> String {
     }
 }
 
-fn render_series_toml(w: &mut dyn std::io::Write, s: &InferredSeries) -> std::io::Result<()> {
+fn render_series_toml(w: &mut dyn Write, s: &InferredSeries) -> std::io::Result<()> {
     writeln!(w, "[[series]]")?;
     writeln!(w, "name = {:?}", s.name)?;
     writeln!(w, "# inferred from {}", s.branch)?;
