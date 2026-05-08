@@ -152,6 +152,74 @@ impl GitRepo {
         let blobs = self.read_paths_at_tag(tag, |p| p == path)?;
         Ok(!blobs.is_empty())
     }
+
+    pub fn parent_commit(&self, commit: &CommitSha) -> Result<Option<CommitSha>, GitError> {
+        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let object = self
+            .repo
+            .find_object(oid)
+            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?;
+        let c = object
+            .try_into_commit()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let mut parents = c.parent_ids();
+        match parents.next() {
+            Some(id) => Ok(Some(
+                CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    pub fn diff_commits_unified(
+        &self,
+        from: &CommitSha,
+        to: &CommitSha,
+        path_filter: impl Fn(&str) -> bool,
+    ) -> Result<String, GitError> {
+        let from_blobs = self.read_paths_at_commit(from, &path_filter)?;
+        let to_blobs = self.read_paths_at_commit(to, &path_filter)?;
+        let mut out = String::new();
+        let mut from_map: std::collections::BTreeMap<PathBuf, Vec<u8>> =
+            from_blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+        let to_map: std::collections::BTreeMap<PathBuf, Vec<u8>> =
+            to_blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+        for (path, new_bytes) in &to_map {
+            let old_bytes = from_map.remove(path).unwrap_or_default();
+            if old_bytes == *new_bytes {
+                continue;
+            }
+            append_unified_diff(&mut out, path, &old_bytes, new_bytes);
+        }
+        for (path, old_bytes) in from_map {
+            append_unified_diff(&mut out, &path, &old_bytes, &[]);
+        }
+        Ok(out)
+    }
+}
+
+fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
+    let display = path.display();
+    let old_text = std::str::from_utf8(old).unwrap_or("");
+    let new_text = std::str::from_utf8(new).unwrap_or("");
+    let input = imara_diff::InternedInput::new(old_text, new_text);
+    let mut diff = imara_diff::Diff::compute(imara_diff::Algorithm::Histogram, &input);
+    diff.postprocess_lines(&input);
+    let printer = imara_diff::BasicLineDiffPrinter(&input.interner);
+    let body = diff
+        .unified_diff(&printer, imara_diff::UnifiedDiffConfig::default(), &input)
+        .to_string();
+    if body.is_empty() {
+        return;
+    }
+    out.push_str(&format!("diff --git a/{} b/{}\n", display, display));
+    out.push_str(&format!("--- a/{}\n", display));
+    out.push_str(&format!("+++ b/{}\n", display));
+    out.push_str(&body);
+    if !body.ends_with('\n') {
+        out.push('\n');
+    }
 }
 
 fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {

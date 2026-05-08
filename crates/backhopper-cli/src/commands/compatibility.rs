@@ -1,11 +1,12 @@
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use backhopper_core::compat::patch::{Language, Patch};
 use backhopper_core::config::Config;
-use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
+use backhopper_core::git::GitRepo;
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::SeriesVerdict;
 
@@ -86,22 +87,53 @@ fn read_patch_input(file: Option<PathBuf>) -> CliResult<Vec<u8>> {
     }
 }
 
-fn commit_patch_bytes(repo: &PathBuf, commit: &str) -> CliResult<Vec<u8>> {
-    let _ = (repo, commit);
-    Err(CliError::Other(
-        "compatibility commit reads via gix-diff: scheduled for Phase 2 polish".into(),
-    ))
+fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
+    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
+    let to = CommitSha::new(commit.to_owned())
+        .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?;
+    let from = g
+        .parent_commit(&to)
+        .map_err(|e| CliError::Core(e.into()))?
+        .ok_or_else(|| CliError::InvalidInput(format!("commit {} has no parent", commit)))?;
+    let text = g
+        .diff_commits_unified(&from, &to, |p| {
+            p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
+        })
+        .map_err(|e| CliError::Core(e.into()))?;
+    Ok(text.into_bytes())
 }
 
-fn range_patch_bytes(
-    repo: &PathBuf,
-    range: Option<&str>,
-    merge: Option<&str>,
-) -> CliResult<Vec<u8>> {
-    let _ = (repo, range, merge);
-    Err(CliError::Other(
-        "compatibility range reads via gix-diff: scheduled for Phase 2 polish".into(),
-    ))
+fn range_patch_bytes(repo: &Path, range: Option<&str>, merge: Option<&str>) -> CliResult<Vec<u8>> {
+    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
+    let (from, to) = match (range, merge) {
+        (Some(r), None) => {
+            let (a, b) = r
+                .split_once("..")
+                .ok_or_else(|| CliError::InvalidInput(format!("invalid range {:?}", r)))?;
+            (
+                CommitSha::new(a.to_owned())
+                    .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?,
+                CommitSha::new(b.to_owned())
+                    .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?,
+            )
+        }
+        (None, Some(_m)) => {
+            return Err(CliError::Other(
+                "merge-commit support: scheduled for Phase 3 polish".into(),
+            ));
+        }
+        _ => {
+            return Err(CliError::InvalidInput(
+                "specify either --range BASE..HEAD or --merge-commit SHA".into(),
+            ));
+        }
+    };
+    let text = g
+        .diff_commits_unified(&from, &to, |p| {
+            p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
+        })
+        .map_err(|e| CliError::Core(e.into()))?;
+    Ok(text.into_bytes())
 }
 
 fn run_compat_patch(
