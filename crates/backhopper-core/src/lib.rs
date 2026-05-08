@@ -5,6 +5,7 @@ pub mod config;
 pub mod errors;
 pub mod git;
 pub mod model;
+pub mod rabbitmq;
 pub mod snapshot;
 pub mod store;
 

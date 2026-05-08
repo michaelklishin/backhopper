@@ -117,10 +117,18 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>, merge: Option<&str>) -> C
                     .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?,
             )
         }
-        (None, Some(_m)) => {
-            return Err(CliError::Other(
-                "merge-commit support: scheduled for Phase 3 polish".into(),
-            ));
+        (None, Some(merge_sha)) => {
+            let merge = CommitSha::new(merge_sha.to_owned())
+                .map_err(|e| CliError::Core(backhopper_core::Error::Name(e)))?;
+            let parents = g.parents(&merge).map_err(|e| CliError::Core(e.into()))?;
+            if parents.len() < 2 {
+                return Err(CliError::InvalidInput(format!(
+                    "{} is not a merge commit (parents: {})",
+                    merge_sha,
+                    parents.len()
+                )));
+            }
+            (parents[0].clone(), merge)
         }
         _ => {
             return Err(CliError::InvalidInput(

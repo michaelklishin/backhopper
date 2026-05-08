@@ -57,6 +57,15 @@ impl GitRepo {
         Ok(tags)
     }
 
+    pub fn resolve_rev(&self, spec: &str) -> Result<CommitSha, GitError> {
+        let object = self
+            .repo
+            .rev_parse_single(spec)
+            .map_err(|_| GitError::CommitNotFound(spec.to_owned()))?;
+        let id = object.detach();
+        CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))
+    }
+
     pub fn resolve_tag(&self, tag: &TagName) -> Result<CommitSha, GitError> {
         let spec = format!("refs/tags/{}^{{commit}}", tag);
         let object = self
@@ -155,7 +164,7 @@ impl GitRepo {
         Ok(!blobs.is_empty())
     }
 
-    pub fn parent_commit(&self, commit: &CommitSha) -> Result<Option<CommitSha>, GitError> {
+    pub fn parents(&self, commit: &CommitSha) -> Result<Vec<CommitSha>, GitError> {
         let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
             .map_err(|e| GitError::Gix(e.to_string()))?;
         let object = self
@@ -165,13 +174,15 @@ impl GitRepo {
         let c = object
             .try_into_commit()
             .map_err(|e| GitError::Gix(e.to_string()))?;
-        let mut parents = c.parent_ids();
-        match parents.next() {
-            Some(id) => Ok(Some(
-                CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?,
-            )),
-            None => Ok(None),
+        let mut out = Vec::new();
+        for id in c.parent_ids() {
+            out.push(CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?);
         }
+        Ok(out)
+    }
+
+    pub fn parent_commit(&self, commit: &CommitSha) -> Result<Option<CommitSha>, GitError> {
+        Ok(self.parents(commit)?.into_iter().next())
     }
 
     pub fn diff_commits_unified(

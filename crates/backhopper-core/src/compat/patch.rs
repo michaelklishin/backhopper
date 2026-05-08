@@ -194,27 +194,101 @@ fn build_verdict(
         if defined.contains(r) {
             continue;
         }
-        if let SymbolKind::Function { mfa } = &r.kind
-            && !snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity)
-        {
-            let alt_arities = collect_alt_arities(snapshot, &mfa.module, &mfa.function);
-            if !alt_arities.is_empty() && !alt_arities.contains(&mfa.arity) {
-                reasons.push(Reason::ArityChanged {
-                    module: mfa.module.clone(),
-                    function: mfa.function.clone(),
-                    expected: mfa.arity,
-                    found: alt_arities,
-                });
-            } else {
-                reasons.push(Reason::MissingSymbol {
-                    symbol: r.clone(),
-                    first_seen_at_tag: None,
-                    suggested_replacement: None,
-                });
+        match &r.kind {
+            SymbolKind::Function { mfa } => {
+                analyze_function_reference(r, mfa, snapshot, &mut reasons);
             }
+            SymbolKind::Record { name } => {
+                if !record_present(snapshot, name) {
+                    reasons.push(Reason::MissingSymbol {
+                        symbol: r.clone(),
+                        first_seen_at_tag: None,
+                        suggested_replacement: None,
+                    });
+                }
+            }
+            _ => {}
         }
     }
     Verdict::from_reasons(reasons)
+}
+
+fn analyze_function_reference(
+    r: &SymbolRef,
+    mfa: &crate::model::names::Mfa,
+    snapshot: &Snapshot<state::Canonical>,
+    reasons: &mut Vec<Reason>,
+) {
+    use crate::model::snapshot::Visibility;
+
+    if let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module)
+        && module.visibility == Visibility::Hidden
+    {
+        reasons.push(Reason::NowHidden {
+            module: mfa.module.clone(),
+        });
+        return;
+    }
+    if is_function_deprecated(snapshot, mfa) {
+        reasons.push(Reason::DeprecatedUsage {
+            symbol: r.clone(),
+            since: None,
+            replacement: None,
+        });
+    }
+    if !snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity) {
+        let alt_arities = collect_alt_arities(snapshot, &mfa.module, &mfa.function);
+        if !alt_arities.is_empty() && !alt_arities.contains(&mfa.arity) {
+            reasons.push(Reason::ArityChanged {
+                module: mfa.module.clone(),
+                function: mfa.function.clone(),
+                expected: mfa.arity,
+                found: alt_arities,
+            });
+        } else {
+            reasons.push(Reason::MissingSymbol {
+                symbol: r.clone(),
+                first_seen_at_tag: None,
+                suggested_replacement: None,
+            });
+        }
+    }
+}
+
+fn is_function_deprecated(
+    snapshot: &Snapshot<state::Canonical>,
+    mfa: &crate::model::names::Mfa,
+) -> bool {
+    use crate::model::snapshot::ArityMatch;
+
+    let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module) else {
+        return false;
+    };
+    for d in &module.deprecations {
+        if d.module_wide {
+            return true;
+        }
+        if let Some(f) = &d.function
+            && f == &mfa.function
+        {
+            match d.arity_match {
+                ArityMatch::Any => return true,
+                ArityMatch::Exact { arity } if arity == mfa.arity => return true,
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn record_present(
+    snapshot: &Snapshot<state::Canonical>,
+    name: &crate::model::names::RecordName,
+) -> bool {
+    snapshot
+        .headers()
+        .iter()
+        .any(|h| h.records.iter().any(|r| &r.name == name))
 }
 
 fn collect_alt_arities(
