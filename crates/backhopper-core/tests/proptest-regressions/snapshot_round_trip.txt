@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 83b58327ff5507b15d2cbf35ad76078eb143d8a55ed4da2fc78cbe24a50b22c6 # shrinks to project = "a", tag = "v0.0.0", modules = [Module { name: ModuleName("cn"), visibility: Public, behaviours: [], exports: [], export_types: [], callbacks: [], optional_callbacks: [], specs: [], types: [], opaques: [], deprecations: [] }, Module { name: ModuleName("cn"), visibility: Public, behaviours: [], exports: [], export_types: [], callbacks: [], optional_callbacks: [], specs: [], types: [], opaques: [], deprecations: [] }]

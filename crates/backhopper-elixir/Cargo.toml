@@ -1,0 +1,17 @@
+[package]
+name        = "backhopper-elixir"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "Elixir source surface extractor for backhopper (Phase 4 stub)"
+
+[lints]
+workspace = true
+
+[dependencies]
+backhopper-core = { workspace = true }
+serde           = { workspace = true }
+thiserror       = { workspace = true }

@@ -1,0 +1,103 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/backhopper-core",
+    "crates/backhopper-erlang",
+    "crates/backhopper-elixir",
+    "crates/backhopper-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+authors = ["Michael S. Klishin and Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/michaelklishin/backhopper"
+homepage = "https://github.com/michaelklishin/backhopper"
+readme = "README.md"
+
+[workspace.dependencies]
+backhopper-core    = { path = "crates/backhopper-core",    version = "0.1.0" }
+backhopper-erlang  = { path = "crates/backhopper-erlang",  version = "0.1.0" }
+backhopper-elixir  = { path = "crates/backhopper-elixir",  version = "0.1.0" }
+
+anyhow             = "1.0.102"
+clap               = { version = "4.6.1", features = ["derive", "env", "wrap_help"] }
+clap_complete      = "4.6.3"
+clap_complete_nushell = "4.6.0"
+gix                = { version = "=0.83.0" }
+insta              = { version = "1.47.2", features = ["json", "yaml"] }
+owo-colors         = "4.3.0"
+proptest           = "1.11.0"
+regex              = "1.12.3"
+serde              = { version = "1.0.228", features = ["derive"] }
+serde_json         = "1.0.149"
+sysexits           = "0.13.0"
+tabled             = "0.20.0"
+tempfile           = "3.27.0"
+thiserror          = "2.0.18"
+time               = { version = "0.3.47", features = ["formatting", "parsing", "macros", "serde"] }
+toml               = "1.1.2"
+tracing            = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+
+assert_cmd         = "2.2.1"
+predicates         = "3.1.4"
+
+[workspace.lints.rust]
+unsafe_code        = "deny"
+unreachable_pub    = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+pedantic                = { level = "warn", priority = -1 }
+uninlined_format_args   = "allow"
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+needless_pass_by_value  = "allow"
+return_self_not_must_use = "allow"
+similar_names           = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+manual_let_else         = "allow"
+match_same_arms         = "allow"
+single_match_else       = "allow"
+single_char_pattern     = "allow"
+collapsible_if          = "allow"
+collapsible_match       = "allow"
+needless_continue       = "allow"
+struct_field_names      = "allow"
+manual_strip            = "allow"
+map_unwrap_or           = "allow"
+while_let_loop          = "allow"
+cast_sign_loss          = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap      = "allow"
+unreadable_literal      = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"
+doc_lazy_continuation   = "allow"
+format_push_string      = "allow"
+bool_to_int_with_if     = "allow"
+manual_pattern_char_comparison = "allow"
+unnecessary_wraps       = "allow"
+unnested_or_patterns    = "allow"
+if_same_then_else       = "allow"
+manual_map              = "allow"
+redundant_closure_for_method_calls = "allow"
+unused_self             = "allow"
+enum_glob_use           = "allow"
+needless_raw_string_hashes = "allow"
+struct_excessive_bools  = "allow"
+
+[profile.release]
+lto             = "thin"
+codegen-units   = 1
+strip           = true
+opt-level       = 3
+
+[profile.ci]
+inherits  = "release"
+opt-level = "s"
