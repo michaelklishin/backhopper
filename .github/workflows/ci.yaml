@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/ci.yaml"
+      - ".github/scripts/**"
+      - ".config/nextest.toml"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "clippy.toml"
+      - "rustfmt.toml"
+  pull_request: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    name: Lint
+    strategy:
+      matrix:
+        runner:
+          - ubuntu-22.04
+          - ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free up disk space
+        run: .github/scripts/free_disk_space.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Lint (clippy)
+        run: cargo clippy --workspace --all-features --tests
+
+      - name: Lint (rustfmt)
+        run: cargo fmt --all --check
+
+  build-and-test:
+    name: Build and test
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-latest
+          - windows-latest
+        rust:
+          - stable
+          - beta
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free up disk space
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: .github/scripts/free_disk_space.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Build
+        run: cargo build --workspace --all-features --verbose
+
+      - name: Run tests
+        run: cargo nextest run --cargo-profile ci --workspace --all-features --no-fail-fast --no-tests=pass
+        env:
+          NEXTEST_RETRIES: 2
+          RUST_BACKTRACE: 1
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  dependabot:
+    needs: [lint, build-and-test]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request' }}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --merge --auto "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

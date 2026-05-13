@@ -181,14 +181,14 @@ work around them with helper functions that erase the state.
     only way to obtain `Canonical` is `Snapshot::<Unsorted>::into_canonical`
     or `Snapshot::parse`. The reader rejects non-canonical input
  2. `Patch<patch_state::{Raw|Analyzed|Verdicted}>` is a one-way
-    pipeline. `verdict()` exists only on `Verdicted`. Do not add
+    pipeline. `verdict` exists only on `Verdicted`. Do not add
     methods that bypass the pipeline
  3. `SnapshotStore<ReadOnly>` has no `write` method. Query commands
     take the read-only handle. Do not introduce a `write_unchecked` or
     similar escape hatch
 
 If a future change needs to relax one of these, propose it in a PR
-description, not by adding a `.unwrap_state()` method.
+description, not by adding an `.unwrap_state` method.
 
 ## Snapshot Format Invariants
 
@@ -283,8 +283,23 @@ section at the top.
 
 ### GitHub Actions
 
-The release workflow uses
-[`michaelklishin/rust-build-package-release-action`](https://github.com/michaelklishin/rust-build-package-release-action).
+Three workflows live under `.github/workflows/`:
+
+ * `ci.yaml`: Clippy and `cargo fmt --check` on Ubuntu 22.04 and 24.04;
+   `cargo nextest run --cargo-profile ci --workspace --all-features`
+   on Ubuntu, macOS, and Windows against stable and beta Rust; `cargo
+   audit`; auto-merge for dependabot PRs
+ * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
+   `NEXT_RELEASE_VERSION` repo variable, publishes every crate to
+   crates.io in dependency order via Trusted Publishing, builds binary
+   archives for eight targets, builds deb/rpm/MSI packages, signs the
+   archives with `cosign`, generates SBOMs, generates Homebrew, AUR,
+   and Winget manifests, and creates the GitHub Release
+ * `verify-packages.yaml`: post-release smoke test of the Debian, RPM,
+   and Windows artifacts against a matrix of distros
+
+All three use
+[`michaelklishin/rust-build-package-release-action@v3`](https://github.com/michaelklishin/rust-build-package-release-action).
 
 For verifying YAML syntax, use `yq`, Ruby, or Python YAML modules
 (whichever is available).
