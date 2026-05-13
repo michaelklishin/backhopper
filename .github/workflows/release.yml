@@ -40,7 +40,7 @@ jobs:
           command: extract-changelog
 
       - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: release_notes.md
@@ -154,7 +154,7 @@ jobs:
           include: 'README.md,CHANGELOG.md,LICENSE-MIT,LICENSE-APACHE'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: |
@@ -210,7 +210,7 @@ jobs:
           pkg-license: 'Apache-2.0 OR MIT'
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.format }}-${{ matrix.target }}
           path: |
@@ -239,7 +239,7 @@ jobs:
           locked: 'true'
 
       - name: Upload MSI
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: msi-x86_64
           path: |
@@ -375,7 +375,7 @@ jobs:
         run: cp ${{ steps.homebrew.outputs.formula_file }} release/
 
       - name: Upload package manifests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-manager-manifests
           path: |
