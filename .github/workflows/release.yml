@@ -281,7 +281,7 @@ jobs:
           cp ${{ steps.sbom.outputs.sbom_cyclonedx }} release/ || true
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Sign release archives
         run: |
