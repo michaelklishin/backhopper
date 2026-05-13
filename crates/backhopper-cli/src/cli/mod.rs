@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use backhopper_core::model::names::{Mfa, ProjectName, SeriesName, TagName};
 
@@ -55,8 +55,15 @@ pub struct GlobalArgs {
     #[arg(long, short = 'q', global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
-    #[arg(long, short = 'v', global = true, conflicts_with = "quiet")]
-    pub verbose: bool,
+    #[arg(
+        long,
+        short = 'v',
+        global = true,
+        conflicts_with = "quiet",
+        action = ArgAction::Count,
+        help = "Increase log verbosity: -v=info, -vv=debug, -vvv=trace"
+    )]
+    pub verbose: u8,
 
     #[arg(
         long,
@@ -238,6 +245,20 @@ pub enum ApiCmd {
     },
 }
 
+#[derive(Debug, Args, Clone, Copy, Default)]
+pub struct DiagnosticsFlags {
+    #[arg(
+        long,
+        help = "Print untracked module calls in the text-mode footer (informational, not a verdict input)"
+    )]
+    pub show_untracked_calls: bool,
+    #[arg(
+        long,
+        help = "Include OTP stdlib calls in the untracked-calls footer (implies --show-untracked-calls)"
+    )]
+    pub show_otp_calls: bool,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum CompatibilityCmd {
     Patch {
@@ -249,6 +270,8 @@ pub enum CompatibilityCmd {
         series: Option<SeriesName>,
         #[arg(long)]
         explain: bool,
+        #[command(flatten)]
+        diagnostics: DiagnosticsFlags,
         #[arg(value_name = "PATCH_FILE")]
         patch_file: Option<PathBuf>,
     },
@@ -261,6 +284,8 @@ pub enum CompatibilityCmd {
         series: Option<SeriesName>,
         #[arg(long, default_value = ".")]
         repo: PathBuf,
+        #[command(flatten)]
+        diagnostics: DiagnosticsFlags,
         #[arg(value_name = "COMMIT_SHA")]
         commit: String,
     },
@@ -277,6 +302,8 @@ pub enum CompatibilityCmd {
         range: Option<String>,
         #[arg(long)]
         merge_commit: Option<String>,
+        #[command(flatten)]
+        diagnostics: DiagnosticsFlags,
     },
 }
 

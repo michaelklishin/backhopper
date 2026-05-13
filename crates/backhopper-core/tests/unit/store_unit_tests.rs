@@ -1,3 +1,7 @@
+use std::env;
+use std::panic;
+use std::path::PathBuf;
+
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
@@ -76,6 +80,24 @@ fn store_read_open_returns_not_found() {
     let tag = TagName::new("v3.1.6").unwrap();
     let r = store.read(&project, &tag);
     assert!(r.is_err());
+}
+
+#[test]
+fn store_with_relative_root_round_trips() {
+    let tmp = TempDir::new().unwrap();
+    let original = env::current_dir().unwrap();
+    env::set_current_dir(tmp.path()).unwrap();
+    let result = panic::catch_unwind(|| {
+        let store = SnapshotStore::open_mut(PathBuf::from("./snapshots")).unwrap();
+        let snap = make_snapshot("ra", "v3.1.6");
+        store.write(&snap).unwrap();
+        let project = ProjectName::new("ra").unwrap();
+        let tag = TagName::new("v3.1.6").unwrap();
+        let read = store.read(&project, &tag).unwrap();
+        assert_eq!(snap, read);
+    });
+    env::set_current_dir(original).unwrap();
+    result.unwrap();
 }
 
 #[test]

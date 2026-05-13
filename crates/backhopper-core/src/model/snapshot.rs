@@ -14,6 +14,7 @@ use crate::model::names::{
     Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
     TypeName,
 };
+use crate::snapshot::sort::canonicalize;
 
 pub mod state {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -200,7 +201,7 @@ impl Snapshot<state::Unsorted> {
     }
 
     pub fn into_canonical(mut self) -> Snapshot<state::Canonical> {
-        crate::snapshot::sort::canonicalize(&mut self.modules, &mut self.headers);
+        canonicalize(&mut self.modules, &mut self.headers);
         Snapshot {
             header: self.header,
             modules: self.modules,

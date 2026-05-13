@@ -1,5 +1,8 @@
 use assert_cmd::Command;
 use serde_json::Value;
+use tempfile::TempDir;
+
+use crate::helpers::fixture::{FixtureRepo, write_config};
 
 #[test]
 fn version_json_payload_has_expected_shape() {
@@ -17,8 +20,6 @@ fn version_json_payload_has_expected_shape() {
 
 #[test]
 fn config_validate_json_returns_ok_true() {
-    use crate::helpers::fixture::{FixtureRepo, write_config};
-    use tempfile::TempDir;
     let work = TempDir::new().unwrap();
     let repo = FixtureRepo::new();
     let snap = work.path().join("snapshots");

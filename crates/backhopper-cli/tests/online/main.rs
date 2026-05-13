@@ -7,4 +7,4 @@
 //!
 //!     cargo nextest run --profile online --run-ignored only
 
-mod clone_and_discover;
+mod clone_and_discover_online_tests;

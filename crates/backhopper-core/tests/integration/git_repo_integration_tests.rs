@@ -52,3 +52,20 @@ fn missing_tag_yields_error() {
     let r = g.resolve_tag(&TagName::new("nope").unwrap());
     assert!(r.is_err());
 }
+
+#[test]
+fn list_tag_refs_separates_parseable_tags_from_skipped_refs() {
+    let repo = FakeRepo::new();
+    repo.write_file("src/a.erl", "-module(a).\n");
+    repo.commit("a");
+    repo.tag("v1.0.0");
+    repo.tag("v1.1.0");
+    let g = GitRepo::open(repo.dir.path()).unwrap();
+    let listing = g.list_tag_refs().unwrap();
+    assert_eq!(listing.tags.len(), 2);
+    assert!(
+        listing.skipped.is_empty(),
+        "no malformed refs expected, got {:?}",
+        listing.skipped
+    );
+}

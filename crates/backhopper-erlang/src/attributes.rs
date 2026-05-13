@@ -5,7 +5,9 @@ use std::str::FromStr;
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::snapshot::FunArity;
 
-use crate::specs::ParsedSignature;
+use crate::deprecated::{ParsedDeprecation, parse_deprecation_attribute};
+use crate::records::{ParsedRecord, parse_record};
+use crate::specs::{ParsedSignature, parse_callable_signature, parse_type_decl};
 use crate::tokenizer::{
     AttributeBlock, split_top_level_commas, strip_outer_brackets, strip_outer_parens,
 };
@@ -25,10 +27,10 @@ pub enum ParsedAttribute {
         rhs: String,
         opaque: bool,
     },
-    Record(crate::records::ParsedRecord),
+    Record(ParsedRecord),
     Include(String),
     IncludeLib(String),
-    Deprecated(Vec<crate::deprecated::ParsedDeprecation>),
+    Deprecated(Vec<ParsedDeprecation>),
     OnLoad(FunArity),
     DocHidden,
     IfDef(String),
@@ -56,33 +58,29 @@ pub fn classify(block: &AttributeBlock) -> Option<ParsedAttribute> {
         "behaviour" | "behavior" => ModuleName::from_str(body.trim())
             .ok()
             .map(ParsedAttribute::Behaviour),
-        "callback" => crate::specs::parse_callable_signature(body).map(ParsedAttribute::Callback),
+        "callback" => parse_callable_signature(body).map(ParsedAttribute::Callback),
         "optional_callbacks" => Some(ParsedAttribute::OptionalCallbacks(parse_fun_arity_list(
             body,
         ))),
-        "spec" => crate::specs::parse_callable_signature(body).map(ParsedAttribute::Spec),
-        "type" => {
-            crate::specs::parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
-                name,
-                arity,
-                rhs,
-                opaque: false,
-            })
-        }
-        "opaque" => {
-            crate::specs::parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
-                name,
-                arity,
-                rhs,
-                opaque: true,
-            })
-        }
-        "record" => crate::records::parse_record(&block.body).map(ParsedAttribute::Record),
+        "spec" => parse_callable_signature(body).map(ParsedAttribute::Spec),
+        "type" => parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
+            name,
+            arity,
+            rhs,
+            opaque: false,
+        }),
+        "opaque" => parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
+            name,
+            arity,
+            rhs,
+            opaque: true,
+        }),
+        "record" => parse_record(&block.body).map(ParsedAttribute::Record),
         "include" => Some(ParsedAttribute::Include(strip_string(body))),
         "include_lib" => Some(ParsedAttribute::IncludeLib(strip_string(body))),
-        "deprecated" => Some(ParsedAttribute::Deprecated(
-            crate::deprecated::parse_deprecation_attribute(&block.body),
-        )),
+        "deprecated" => Some(ParsedAttribute::Deprecated(parse_deprecation_attribute(
+            &block.body,
+        ))),
         "on_load" => parse_single_fun_arity(body).map(ParsedAttribute::OnLoad),
         "doc" => {
             if body.trim() == "hidden" {

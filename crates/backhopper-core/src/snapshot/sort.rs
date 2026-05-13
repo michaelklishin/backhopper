@@ -1,6 +1,8 @@
 //! Canonicalization: total ordering over modules, headers, and entries.
 
-use crate::model::snapshot::{HrlFile, Module};
+use std::cmp::Ordering;
+
+use crate::model::snapshot::{ArityMatch, Deprecation, HrlFile, Module};
 
 pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
     modules.sort_by(|a, b| a.name.cmp(&b.name));
@@ -51,15 +53,11 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
     }
 }
 
-fn arity_match_cmp(
-    a: &crate::model::snapshot::Deprecation,
-    b: &crate::model::snapshot::Deprecation,
-) -> std::cmp::Ordering {
-    use crate::model::snapshot::ArityMatch;
+fn arity_match_cmp(a: &Deprecation, b: &Deprecation) -> Ordering {
     match (&a.arity_match, &b.arity_match) {
-        (ArityMatch::Any, ArityMatch::Any) => std::cmp::Ordering::Equal,
-        (ArityMatch::Any, ArityMatch::Exact { .. }) => std::cmp::Ordering::Less,
-        (ArityMatch::Exact { .. }, ArityMatch::Any) => std::cmp::Ordering::Greater,
+        (ArityMatch::Any, ArityMatch::Any) => Ordering::Equal,
+        (ArityMatch::Any, ArityMatch::Exact { .. }) => Ordering::Less,
+        (ArityMatch::Exact { .. }, ArityMatch::Any) => Ordering::Greater,
         (ArityMatch::Exact { arity: x }, ArityMatch::Exact { arity: y }) => x.cmp(y),
     }
 }

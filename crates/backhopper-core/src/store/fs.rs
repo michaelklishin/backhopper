@@ -65,7 +65,7 @@ impl<M> SnapshotStore<M> {
         let mut path = self.project_dir(project);
         let filename = format!("{}{}", tag.as_str(), SNAPSHOT_SUFFIX);
         path.push(&filename);
-        ensure_inside(&self.root, &path)?;
+        ensure_no_parent_escape(&path)?;
         Ok(path)
     }
 
@@ -165,22 +165,11 @@ impl SnapshotStore<Mutable> {
     }
 }
 
-fn ensure_inside(root: &Path, candidate: &Path) -> Result<(), StoreError> {
-    let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let mut combined = PathBuf::new();
+fn ensure_no_parent_escape(candidate: &Path) -> Result<(), StoreError> {
     for c in candidate.components() {
-        match c {
-            Component::ParentDir => {
-                if !combined.pop() {
-                    return Err(StoreError::PathEscape(candidate.to_path_buf()));
-                }
-            }
-            Component::CurDir => {}
-            other => combined.push(other.as_os_str()),
+        if matches!(c, Component::ParentDir) {
+            return Err(StoreError::PathEscape(candidate.to_path_buf()));
         }
-    }
-    if !combined.starts_with(&canon_root) && !combined.starts_with(root) {
-        return Err(StoreError::PathEscape(candidate.to_path_buf()));
     }
     Ok(())
 }

@@ -12,7 +12,7 @@ use backhopper_core::model::snapshot::{Module, Visibility, state};
 use crate::cli::{ApiCmd, GlobalArgs};
 use crate::commands::context::{load_config, open_store_read};
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render};
+use crate::output::{OutputContext, render, render_with_exit};
 
 #[derive(Debug, Serialize)]
 struct LookupResult {
@@ -104,7 +104,7 @@ fn lookup(
     };
     let ctx = OutputContext::new(args.formatter, "api lookup");
     let exit = if all_found { 0 } else { 1 };
-    crate::output::render_with_exit(&ctx, &payload, exit, |w| {
+    render_with_exit(&ctx, &payload, exit, |w| {
         for r in &payload.results {
             writeln!(
                 w,

@@ -4,6 +4,7 @@ pub mod cli;
 pub mod commands;
 pub mod errors;
 pub mod output;
+pub mod tables;
 
 use std::process::ExitCode;
 
@@ -22,10 +23,13 @@ pub fn run() -> CliResult<ExitCode> {
 fn init_logging(args: &GlobalArgs) {
     let level = if args.quiet {
         "error"
-    } else if args.verbose {
-        "debug"
     } else {
-        "warn"
+        match args.verbose {
+            0 => "warn",
+            1 => "info",
+            2 => "debug",
+            _ => "trace",
+        }
     };
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| level.to_owned());
     let _ = tracing_subscriber::fmt()

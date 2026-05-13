@@ -16,7 +16,7 @@ use backhopper_erlang::ErlangExtractor;
 use crate::cli::{GlobalArgs, SnapshotsCmd};
 use crate::commands::context::{load_config, open_store_mut, open_store_read};
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render};
+use crate::output::{OutputContext, render, render_with_exit};
 
 #[derive(Debug, Serialize)]
 struct DiscoverPayload {
@@ -25,6 +25,8 @@ struct DiscoverPayload {
     skipped: usize,
     failed: Vec<DiscoverFailure>,
     tags: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    ignored_non_tag_refs: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,6 +82,18 @@ fn discover(
                 p.skipped,
                 p.failed.len()
             )?;
+            if !p.ignored_non_tag_refs.is_empty() {
+                writeln!(
+                    w,
+                    "  ignored {} ref{} that did not parse as a tag name",
+                    p.ignored_non_tag_refs.len(),
+                    if p.ignored_non_tag_refs.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                )?;
+            }
         }
         Ok(())
     })?;
@@ -93,12 +107,12 @@ fn discover_one(
     _update_only: bool,
 ) -> CliResult<DiscoverPayload> {
     let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
-    let tags = repo.list_tags().map_err(|e| CliError::Core(e.into()))?;
+    let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
     let mut captured = 0usize;
     let mut skipped = 0usize;
     let mut failed: Vec<DiscoverFailure> = Vec::new();
     let mut captured_tags = Vec::new();
-    for tag in tags {
+    for tag in listing.tags {
         if store.has(&p.name, &tag) {
             skipped += 1;
             continue;
@@ -131,6 +145,7 @@ fn discover_one(
         skipped,
         failed,
         tags: captured_tags,
+        ignored_non_tag_refs: listing.skipped,
     })
 }
 
@@ -275,7 +290,7 @@ fn verify(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -
     });
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
     let exit = if matches { 0 } else { 1 };
-    crate::output::render_with_exit(&ctx, &payload, exit, |w| {
+    render_with_exit(&ctx, &payload, exit, |w| {
         if matches {
             writeln!(w, "ok: {} {}", project, tag)?;
         } else {

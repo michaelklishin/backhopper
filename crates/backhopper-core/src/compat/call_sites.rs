@@ -6,6 +6,12 @@
 //!   * `#record_use{}`
 //! and definitions:
 //!   * `name(...)` heads on lines that start at column 0 (function clauses)
+//!
+//! Also classifies dynamic dispatch that the static analyzer cannot resolve:
+//!   * apply-family BIFs (`apply`, `spawn`, `spawn_link`, ...)
+//!   * variable-module and variable-function calls (`Mod:foo(...)`, `mod:F(...)`)
+//!
+//! These flow into a separate diagnostic envelope and never feed `Verdict`.
 
 use std::str::FromStr;
 use std::sync::OnceLock;
@@ -14,6 +20,16 @@ use regex::Regex;
 
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName};
 use crate::model::symbol::SymbolRef;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DynamicCall {
+    /// One of the apply-family BIFs: `apply/2`, `apply/3`, `spawn/3`,
+    /// `spawn_link/3`, `spawn_monitor/3`, `spawn_opt/4`, `hibernate/3`.
+    Apply,
+    /// A call whose module or function name is a variable: `Mod:foo(...)`,
+    /// `mod:F(...)`, or `Mod:F(...)`.
+    VariableDispatch,
+}
 
 fn call_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
@@ -37,6 +53,28 @@ fn fun_def_re() -> &'static Regex {
     R.get_or_init(|| Regex::new(r"^([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex"))
 }
 
+fn apply_bif_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"\b(apply|spawn|spawn_link|spawn_monitor|spawn_opt|hibernate)\s*\(")
+            .expect("regex")
+    })
+}
+
+fn var_module_call_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"\b[A-Z][a-zA-Z0-9_@]*\s*:\s*[a-zA-Z_][a-zA-Z0-9_@]*\s*\(").expect("regex")
+    })
+}
+
+fn var_function_call_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"\b[a-z][a-zA-Z0-9_@]*\s*:\s*[A-Z][a-zA-Z0-9_@]*\s*\(").expect("regex")
+    })
+}
+
 pub fn extract_into(line: &str, out: &mut Vec<SymbolRef>) {
     for caps in call_re().captures_iter(line) {
         let module = &caps[1];
@@ -57,6 +95,18 @@ pub fn extract_into(line: &str, out: &mut Vec<SymbolRef>) {
     }
     for caps in macro_re().captures_iter(line) {
         out.push(SymbolRef::macro_use(caps[1].to_owned()));
+    }
+}
+
+pub fn extract_dynamic_into(line: &str, out: &mut Vec<DynamicCall>) {
+    for _ in apply_bif_re().captures_iter(line) {
+        out.push(DynamicCall::Apply);
+    }
+    for _ in var_module_call_re().find_iter(line) {
+        out.push(DynamicCall::VariableDispatch);
+    }
+    for _ in var_function_call_re().find_iter(line) {
+        out.push(DynamicCall::VariableDispatch);
     }
 }
 

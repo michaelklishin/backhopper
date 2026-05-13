@@ -1,8 +1,9 @@
-mod end_to_end;
-mod end_to_end_compat;
-mod end_to_end_compat_commit;
-mod end_to_end_diff;
-mod end_to_end_infer;
-mod end_to_end_json;
+mod end_to_end_compat_commit_integration_tests;
+mod end_to_end_compat_integration_tests;
+mod end_to_end_diff_integration_tests;
+mod end_to_end_infer_integration_tests;
+mod end_to_end_integration_tests;
+mod end_to_end_json_integration_tests;
+mod end_to_end_scope_integration_tests;
 mod helpers;
-mod real_world_fixtures;
+mod real_world_fixtures_integration_tests;

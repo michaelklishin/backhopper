@@ -1,0 +1,553 @@
+# backhopper snapshot
+# format-version: 1
+# project: ranch
+# tag: 2.0.0
+# commit: a882739222df0ad73ab0cab24ae620e05f1b5827
+# scanned-paths: src/**/*.erl, include/**/*.hrl, src/**/*.hrl
+# generated-by: backhopper 0.2.0
+# generated-at: 2026-05-13T03:26:22.416204Z
+
+module ranch
+  export child_spec/5
+  export filter_options/4
+  export get_addr/1
+  export get_max_connections/1
+  export get_port/1
+  export get_protocol_options/1
+  export get_status/1
+  export get_transport_options/1
+  export handshake/1
+  export handshake/2
+  export handshake_cancel/1
+  export handshake_continue/1
+  export handshake_continue/2
+  export info/0
+  export info/1
+  export log/4
+  export normalize_opts/1
+  export procs/2
+  export recv_proxy_header/2
+  export remove_connection/1
+  export require/1
+  export restart_all_acceptors/0
+  export resume_listener/1
+  export set_max_connections/2
+  export set_option_default/3
+  export set_protocol_options/2
+  export set_transport_options/2
+  export start_listener/5
+  export stop_all_acceptors/0
+  export stop_listener/1
+  export suspend_listener/1
+  export wait_for_connections/3
+  export wait_for_connections/4
+  export_type max_conns/0
+  export_type opts/0
+  export_type ref/0
+  export_type transport_opts/1
+  spec child_spec/5 child_spec(ref(), module(), opts(), module(), any()) -> supervisor:child_spec()
+  spec filter_options/4 filter_options([inet | inet6 | {atom(), any()} | {raw, any(), any(), any()}], [atom()], Acc, module()) -> Acc when Acc :: [any()]
+  spec get_addr/1 get_addr(ref()) -> {inet:ip_address(), inet:port_number()}
+       | {local, binary()}
+       | {undefined, undefined}
+  spec get_connections/2 get_connections(ref(), active|all) -> non_neg_integer()
+  spec get_max_connections/1 get_max_connections(ref()) -> max_conns()
+  spec get_port/1 get_port(ref()) -> inet:port_number() | undefined
+  spec get_protocol_options/1 get_protocol_options(ref()) -> any()
+  spec get_status/1 get_status(ref()) -> running | suspended
+  spec get_transport_options/1 get_transport_options(ref()) -> transport_opts(any())
+  spec handshake/1 handshake(ref()) -> {ok, ranch_transport:socket()} | {continue, any()}
+  spec handshake/2 handshake(ref(), any()) -> {ok, ranch_transport:socket()} | {continue, any()}
+  spec handshake_cancel/1 handshake_cancel(ref()) -> ok
+  spec handshake_continue/1 handshake_continue(ref()) -> {ok, ranch_transport:socket()}
+  spec handshake_continue/2 handshake_continue(ref(), any()) -> {ok, ranch_transport:socket()}
+  spec info/0 info() -> #{ref() := #{atom() := term()}}
+  spec info/1 info(ref()) -> #{atom() := term()}
+  spec log/4 log(logger:level(), io:format(), list(), module() | #{logger => module()}) -> ok
+  spec normalize_opts/1 normalize_opts(opts()) -> transport_opts(any())
+  spec procs/2 procs(ref(), acceptors | connections) -> [pid()]
+  spec recv_proxy_header/2 recv_proxy_header(ref(), timeout()) -> {ok, ranch_proxy_header:proxy_info()}
+       | {error, closed | atom()}
+       | {error, protocol_error, atom()}
+  spec remove_connection/1 remove_connection(ref()) -> ok
+  spec require/1 require([atom()]) -> ok
+  spec restart_all_acceptors/0 restart_all_acceptors() -> ok
+  spec resume_listener/1 resume_listener(ref()) -> ok | {error, any()}
+  spec set_max_connections/2 set_max_connections(ref(), max_conns()) -> ok
+  spec set_option_default/3 set_option_default(Opts, atom(), any()) -> Opts when Opts :: [{atom(), any()}]
+  spec set_protocol_options/2 set_protocol_options(ref(), any()) -> ok
+  spec set_transport_options/2 set_transport_options(ref(), opts()) -> ok | {error, term()}
+  spec start_listener/5 start_listener(ref(), module(), opts(), module(), any()) -> supervisor:startchild_ret()
+  spec stop_all_acceptors/0 stop_all_acceptors() -> ok
+  spec stop_listener/1 stop_listener(ref()) -> ok | {error, not_found}
+  spec suspend_listener/1 suspend_listener(ref()) -> ok | {error, any()}
+  spec validate_transport_opt/3 validate_transport_opt(any(), any(), transport_opts(any())) -> boolean()
+  spec validate_transport_opts/1 validate_transport_opts(transport_opts(any())) -> ok | {error, any()}
+  spec wait_for_connections/3 wait_for_connections(ref(), '>' | '>=' | '==' | '=<', non_neg_integer()) -> ok; (ref(), '<', pos_integer()) -> ok
+  spec wait_for_connections/4 wait_for_connections(ref(), '>' | '>=' | '==' | '=<', non_neg_integer(), non_neg_integer()) -> ok; (ref(), '<', pos_integer(), non_neg_integer()) -> ok
+  type max_conns/0 :: non_neg_integer() | infinity
+  type opts/0 :: any() | transport_opts(any())
+  type ref/0 :: any()
+  type transport_opts/1 :: #{ connection_type => worker | supervisor, handshake_timeout => timeout(), max_connections => max_conns(), logger => module(), num_acceptors => pos_integer(), num_conns_sups => pos_integer(), num_listen_sockets => pos_integer(), shutdown => timeout() | brutal_kill, socket_opts => SocketOpts }
+
+module ranch_acceptor
+  export init/4
+  export loop/5
+  export start_link/5
+  spec init/4 init(inet:socket(), module(), module(), pid()) -> no_return()
+  spec loop/5 loop(inet:socket(), module(), module(), pid(), reference()) -> no_return()
+  spec start_link/5 start_link(ranch:ref(), pos_integer(), inet:socket(), module(), module()) -> {ok, pid()}
+
+module ranch_acceptors_sup
+  behaviour supervisor
+  export init/1
+  export start_link/3
+  spec init/1 init([term()]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
+  spec listen_error/5 listen_error(any(), module(), any(), atom(), module()) -> no_return()
+  spec start_link/3 start_link(ranch:ref(), module(), module()) -> {ok, pid()}
+  spec start_listen_socket/4 start_listen_socket(any(), module(), map(), module()) -> inet:socket()
+  spec start_listen_sockets/5 start_listen_sockets(any(), pos_integer(), module(), map(), module()) -> [{pos_integer(), inet:socket()}]
+
+module ranch_app
+  behaviour application
+  export profile_output/0
+  export start/2
+  export stop/1
+  spec profile_output/0 profile_output() -> ok
+  spec start/2 start(application:start_type(), term()) -> {ok, pid()} | {error, term()}
+  spec stop/1 stop(term()) -> ok
+
+module ranch_conns_sup
+  export active_connections/1
+  export init/7
+  export start_link/6
+  export start_protocol/3
+  export system_code_change/4
+  export system_continue/3
+  export system_terminate/4
+  spec active_connections/1 active_connections(pid()) -> non_neg_integer()
+  spec init/7 init(pid(), ranch:ref(), pos_integer(), module(), any(), module(), module()) -> no_return()
+  spec start_link/6 start_link(ranch:ref(), pos_integer(), module(), any(), module(), module()) -> {ok, pid()}
+  spec start_protocol/3 start_protocol(pid(), reference(), inet:socket()) -> ok
+  spec system_code_change/4 system_code_change(any(), _, _, _) -> {ok, any()}
+  spec system_continue/3 system_continue(_, _, any()) -> no_return()
+  spec system_terminate/4 system_terminate(any(), _, _, _) -> no_return()
+  spec terminate/3 terminate(#state{}, any(), non_neg_integer()) -> no_return()
+  type conn_type/0 :: worker | supervisor
+  type shutdown/0 :: brutal_kill | timeout()
+
+module ranch_conns_sup_sup
+  behaviour supervisor
+  export init/1
+  export start_link/4
+  spec init/1 init({ranch:ref(), module(), module(), module()}) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
+  spec start_link/4 start_link(ranch:ref(), module(), module(), module()) -> {ok, pid()}
+
+module ranch_crc32c
+  export crc32c/1
+  export crc32c/2
+  spec crc32c/1 crc32c(iodata()) -> non_neg_integer()
+  spec crc32c/2 crc32c(CRC, iodata()) -> CRC when CRC::non_neg_integer()
+
+module ranch_embedded_sup
+  behaviour supervisor
+  export init/1
+  export start_link/5
+  spec init/1 init({ranch:ref(), module(), any(), module(), any()}) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
+  spec start_link/5 start_link(ranch:ref(), module(), any(), module(), any()) -> {ok, pid()}
+
+module ranch_listener_sup
+  behaviour supervisor
+  export init/1
+  export start_link/5
+  spec init/1 init({ranch:ref(), module(), module(), module()}) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
+  spec start_link/5 start_link(ranch:ref(), module(), any(), module(), any()) -> {ok, pid()}
+
+module ranch_protocol
+  callback start_link/3 start_link(Ref::ranch:ref(), Transport::module(), ProtocolOptions::any()) -> {ok, ConnectionPid::pid()}
+       | {ok, SupPid::pid(), ConnectionPid::pid()}
+
+module ranch_proxy_header
+  export header/1
+  export header/2
+  export parse/1
+  export_type proxy_info/0
+  spec header/1 header(proxy_info()) -> iodata()
+  spec header/2 header(proxy_info(), build_opts()) -> iodata()
+  spec parse/1 parse(Data) -> {ok, proxy_info(), Data} | {error, atom()} when Data::binary()
+  type build_opts/0 :: #{ checksum => crc32c, padding => pos_integer() }
+  type proxy_info/0 :: #{ version := 1 | 2, command := local | proxy, transport_family => undefined | ipv4 | ipv6 | unix, transport_protocol => undefined | stream | dgram, src_address => inet:ip_address() | binary(), src_port => inet:port_number(), dest_address => inet:ip_address() | binary(), dest_port => inet:port_number(), alpn => binary(), authority => binary(), ssl => #{ client := [ssl | cert_conn | cert_sess], verified := boolean(), version => binary(), cipher => binary(), sig_alg => binary(), key_alg => binary(), cn => binary() }, netns => binary(), raw_tlvs => [{0..255, binary()}] }
+
+module ranch_server
+  behaviour gen_server
+  export cleanup_connections_sups/1
+  export cleanup_listener_opts/1
+  export code_change/3
+  export count_connections/1
+  export get_addr/1
+  export get_connections_sup/2
+  export get_connections_sups/0
+  export get_connections_sups/1
+  export get_listener_start_args/1
+  export get_listener_sup/1
+  export get_listener_sups/0
+  export get_max_connections/1
+  export get_protocol_options/1
+  export get_transport_options/1
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export set_addr/2
+  export set_connections_sup/3
+  export set_listener_sup/2
+  export set_max_connections/2
+  export set_new_listener_opts/5
+  export set_protocol_options/2
+  export set_transport_options/2
+  export start_link/0
+  export terminate/2
+  spec cleanup_connections_sups/1 cleanup_connections_sups(ranch:ref()) -> ok
+  spec cleanup_listener_opts/1 cleanup_listener_opts(ranch:ref()) -> ok
+  spec code_change/3 code_change(term() | {down, term()}, #state{}, term()) -> {ok, term()}
+  spec count_connections/1 count_connections(ranch:ref()) -> non_neg_integer()
+  spec get_addr/1 get_addr(ranch:ref()) -> {inet:ip_address(), inet:port_number()}
+       | {local, binary()}
+       | {undefined, undefined}
+  spec get_connections_sup/2 get_connections_sup(ranch:ref(), pos_integer()) -> pid()
+  spec get_connections_sups/0 get_connections_sups() -> [{ranch:ref(), pos_integer(), pid()}]
+  spec get_connections_sups/1 get_connections_sups(ranch:ref()) -> [{pos_integer(), pid()}]
+  spec get_listener_start_args/1 get_listener_start_args(ranch:ref()) -> [any()]
+  spec get_listener_sup/1 get_listener_sup(ranch:ref()) -> pid()
+  spec get_listener_sups/0 get_listener_sups() -> [{ranch:ref(), pid()}]
+  spec get_max_connections/1 get_max_connections(ranch:ref()) -> ranch:max_conns()
+  spec get_protocol_options/1 get_protocol_options(ranch:ref()) -> any()
+  spec get_transport_options/1 get_transport_options(ranch:ref()) -> any()
+  spec handle_call/3 handle_call(term(), {pid(), reference()}, #state{}) -> {reply, ok | ignore, #state{}}
+  spec handle_cast/2 handle_cast(_, #state{}) -> {noreply, #state{}}
+  spec handle_info/2 handle_info(term(), #state{}) -> {noreply, #state{}}
+  spec init/1 init([]) -> {ok, #state{}}
+  spec set_addr/2 set_addr(ranch:ref(), {inet:ip_address(), inet:port_number()} | {local, binary()} | {undefined, undefined}) -> ok
+  spec set_connections_sup/3 set_connections_sup(ranch:ref(), non_neg_integer(), pid()) -> ok
+  spec set_listener_sup/2 set_listener_sup(ranch:ref(), pid()) -> ok
+  spec set_max_connections/2 set_max_connections(ranch:ref(), ranch:max_conns()) -> ok
+  spec set_new_listener_opts/5 set_new_listener_opts(ranch:ref(), ranch:max_conns(), any(), any(), [any()]) -> ok
+  spec set_protocol_options/2 set_protocol_options(ranch:ref(), any()) -> ok
+  spec set_transport_options/2 set_transport_options(ranch:ref(), any()) -> ok
+  spec start_link/0 start_link() -> {ok, pid()}
+  spec terminate/2 terminate(_, #state{}) -> ok
+  type monitors/0 :: [{{reference(), pid()}, any()}]
+
+module ranch_server_proxy
+  behaviour gen_server
+  export code_change/3
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  spec code_change/3 code_change(term() | {down, term()}, reference(), term()) -> {ok, reference()}
+  spec handle_call/3 handle_call(_, _, reference()) -> {noreply, reference(), hibernate}
+  spec handle_cast/2 handle_cast(_, reference()) -> {noreply, reference(), hibernate}
+  spec handle_info/2 handle_info(term(), reference()) -> {noreply, reference(), hibernate}
+       | {stop, term(), reference()}
+  spec init/1 init([]) -> {ok, pid()} | {stop, term()}
+  spec start_link/0 start_link() -> {ok, pid()} | {error, term()}
+
+module ranch_ssl
+  behaviour ranch_transport
+  export accept/2
+  export cleanup/1
+  export close/1
+  export connect/3
+  export connect/4
+  export controlling_process/2
+  export disallowed_listen_options/0
+  export getopts/2
+  export getstat/1
+  export getstat/2
+  export handshake/2
+  export handshake/3
+  export handshake_cancel/1
+  export handshake_continue/2
+  export handshake_continue/3
+  export listen/1
+  export messages/0
+  export name/0
+  export peername/1
+  export recv/3
+  export recv_proxy_header/2
+  export secure/0
+  export send/2
+  export sendfile/2
+  export sendfile/4
+  export sendfile/5
+  export setopts/2
+  export shutdown/2
+  export sockname/1
+  export_type opt/0
+  export_type opts/0
+  export_type ssl_opt/0
+  spec accept/2 accept(ssl:sslsocket(), timeout()) -> {ok, ssl:sslsocket()}
+       | {error, closed | timeout | atom()}
+  spec cleanup/1 cleanup(ranch:transport_opts(opts())) -> ok
+  spec close/1 close(ssl:sslsocket()) -> ok
+  spec connect/3 connect(inet:ip_address() | inet:hostname(), inet:port_number(), any()) -> {ok, inet:socket()}
+       | {error, atom()}
+  spec connect/4 connect(inet:ip_address() | inet:hostname(), inet:port_number(), any(), timeout()) -> {ok, inet:socket()}
+       | {error, atom()}
+  spec controlling_process/2 controlling_process(ssl:sslsocket(), pid()) -> ok
+       | {error, closed | not_owner | atom()}
+  spec disallowed_listen_options/0 disallowed_listen_options() -> [atom()]
+  spec getopts/2 getopts(ssl:sslsocket(), [atom()]) -> {ok, list()} | {error, atom()}
+  spec getstat/1 getstat(ssl:sslsocket()) -> {ok, list()} | {error, atom()}
+  spec getstat/2 getstat(ssl:sslsocket(), [atom()]) -> {ok, list()} | {error, atom()}
+  spec handshake/2 handshake(inet:socket() | ssl:sslsocket(), timeout()) -> {ok, ssl:sslsocket()}
+       | {ok, ssl:sslsocket(), ssl:protocol_extensions()}
+       | {error, any()}
+  spec handshake/3 handshake(inet:socket() | ssl:sslsocket(), opts(), timeout()) -> {ok, ssl:sslsocket()}
+       | {ok, ssl:sslsocket(), ssl:protocol_extensions()}
+       | {error, any()}
+  spec handshake_cancel/1 handshake_cancel(ssl:sslsocket()) -> ok
+  spec handshake_continue/2 handshake_continue(ssl:sslsocket(), timeout()) -> {ok, ssl:sslsocket()}
+       | {error, any()}
+  spec handshake_continue/3 handshake_continue(ssl:sslsocket(), [ssl:tls_server_option()], timeout()) -> {ok, ssl:sslsocket()}
+       | {error, any()}
+  spec listen/1 listen(ranch:transport_opts(opts())) -> {ok, ssl:sslsocket()} | {error, atom()}
+  spec messages/0 messages() -> {ssl, ssl_closed, ssl_error, ssl_passive}
+  spec name/0 name() -> ssl
+  spec peername/1 peername(ssl:sslsocket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  spec recv/3 recv(ssl:sslsocket(), non_neg_integer(), timeout()) -> {ok, any()}
+       | {error, closed | atom()}
+  spec recv_proxy_header/2 recv_proxy_header(ssl:sslsocket(), timeout()) -> {ok, ranch_proxy_header:proxy_info()}
+       | {error, closed | atom()}
+       | {error, protocol_error, atom()}
+  spec secure/0 secure() -> boolean()
+  spec send/2 send(ssl:sslsocket(), iodata()) -> ok | {error, atom()}
+  spec sendfile/2 sendfile(ssl:sslsocket(), file:name_all() | file:fd()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec sendfile/4 sendfile(ssl:sslsocket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec sendfile/5 sendfile(ssl:sslsocket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer(), ranch_transport:sendfile_opts()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec setopts/2 setopts(ssl:sslsocket(), list()) -> ok | {error, atom()}
+  spec shutdown/2 shutdown(ssl:sslsocket(), read | write | read_write) -> ok | {error, atom()}
+  spec sockname/1 sockname(ssl:sslsocket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  type opt/0 :: ranch_tcp:opt() | ssl_opt()
+  type opts/0 :: [opt()]
+  type ssl_opt/0 :: {alpn_preferred_protocols, [binary()]}
+       | {anti_replay, '10k' | '100k' | {integer(), integer(), integer()}}
+       | {beast_mitigation, one_n_minus_one | zero_n | disabled}
+       | {cacertfile, file:filename()}
+       | {cacerts, [public_key:der_encoded()]}
+       | {cert, public_key:der_encoded()}
+       | {certfile, file:filename()}
+       | {ciphers, ssl:ciphers()}
+       | {client_renegotiation, boolean()}
+       | {crl_cache, [any()]}
+       | {crl_check, boolean() | peer | best_effort}
+       | {depth, integer()}
+       | {dh, binary()}
+       | {dhfile, file:filename()}
+       | {eccs, [ssl:named_curve()]}
+       | {fail_if_no_peer_cert, boolean()}
+       | {handshake, hello | full}
+       | {hibernate_after, timeout()}
+       | {honor_cipher_order, boolean()}
+       | {honor_ecc_order, boolean()}
+       | {key, ssl:key()}
+       | {key_update_at, pos_integer()}
+       | {keyfile, file:filename()}
+       | {log_alert, boolean()}
+       | {log_level, logger:level()}
+       | {max_handshake_size, integer()}
+       | {middlebox_comp_mode, boolean()}
+       | {next_protocols_advertised, [binary()]}
+       | {padding_check, boolean()}
+       | {partial_chain, fun()}
+       | {password, string()}
+       | {protocol, tls | dtls}
+       | {psk_identity, string()}
+       | {reuse_session, fun()}
+       | {reuse_sessions, boolean()}
+       | {secure_renegotiate, boolean()}
+       | {session_tickets, disabled | stateful | stateless}
+       | {signature_algs, [{ssl:hash(), ssl:sign_algo()}]}
+       | {signature_algs_cert, [ssl:sign_scheme()]}
+       | {sni_fun, fun()}
+       | {sni_hosts, [{string(), ssl_opt()}]}
+       | {supported_groups, [ssl:group()]}
+       | {user_lookup_fun, {fun(), any()}}
+       | {verify, verify_none | verify_peer}
+       | {verify_fun, {fun(), any()}}
+       | {versions, [ssl:protocol_version()]}
+
+module ranch_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0
+  spec init/1 init([]) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}}
+  spec start_link/0 start_link() -> {ok, pid()}
+
+module ranch_tcp
+  behaviour ranch_transport
+  export accept/2
+  export cleanup/1
+  export close/1
+  export connect/3
+  export connect/4
+  export controlling_process/2
+  export disallowed_listen_options/0
+  export getopts/2
+  export getstat/1
+  export getstat/2
+  export handshake/2
+  export handshake/3
+  export handshake_cancel/1
+  export handshake_continue/2
+  export handshake_continue/3
+  export listen/1
+  export messages/0
+  export name/0
+  export peername/1
+  export recv/3
+  export recv_proxy_header/2
+  export secure/0
+  export send/2
+  export sendfile/2
+  export sendfile/4
+  export sendfile/5
+  export setopts/2
+  export shutdown/2
+  export sockname/1
+  export_type opt/0
+  export_type opts/0
+  spec accept/2 accept(inet:socket(), timeout()) -> {ok, inet:socket()}
+       | {error, closed | timeout | atom()}
+  spec cleanup/1 cleanup(ranch:transport_opts(opts())) -> ok
+  spec close/1 close(inet:socket()) -> ok
+  spec connect/3 connect(inet:ip_address() | inet:hostname(), inet:port_number(), any()) -> {ok, inet:socket()}
+       | {error, atom()}
+  spec connect/4 connect(inet:ip_address() | inet:hostname(), inet:port_number(), any(), timeout()) -> {ok, inet:socket()}
+       | {error, atom()}
+  spec controlling_process/2 controlling_process(inet:socket(), pid()) -> ok
+       | {error, closed | not_owner | atom()}
+  spec disallowed_listen_options/0 disallowed_listen_options() -> [atom()]
+  spec getopts/2 getopts(inet:socket(), [atom()]) -> {ok, list()} | {error, atom()}
+  spec getstat/1 getstat(inet:socket()) -> {ok, list()} | {error, atom()}
+  spec getstat/2 getstat(inet:socket(), [atom()]) -> {ok, list()} | {error, atom()}
+  spec handshake/2 handshake(inet:socket(), timeout()) -> {ok, inet:socket()}
+  spec handshake/3 handshake(inet:socket(), opts(), timeout()) -> {ok, inet:socket()}
+  spec handshake_cancel/1 handshake_cancel(inet:socket()) -> no_return()
+  spec handshake_continue/2 handshake_continue(inet:socket(), timeout()) -> no_return()
+  spec handshake_continue/3 handshake_continue(inet:socket(), opts(), timeout()) -> no_return()
+  spec listen/1 listen(ranch:transport_opts(opts())) -> {ok, inet:socket()} | {error, atom()}
+  spec messages/0 messages() -> {tcp, tcp_closed, tcp_error, tcp_passive}
+  spec name/0 name() -> tcp
+  spec peername/1 peername(inet:socket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  spec recv/3 recv(inet:socket(), non_neg_integer(), timeout()) -> {ok, any()}
+       | {error, closed | atom()}
+  spec recv_proxy_header/2 recv_proxy_header(inet:socket(), timeout()) -> {ok, ranch_proxy_header:proxy_info()}
+       | {error, closed | atom()}
+       | {error, protocol_error, atom()}
+  spec secure/0 secure() -> boolean()
+  spec send/2 send(inet:socket(), iodata()) -> ok | {error, atom()}
+  spec sendfile/2 sendfile(inet:socket(), file:name_all() | file:fd()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec sendfile/4 sendfile(inet:socket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec sendfile/5 sendfile(inet:socket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer(), [{chunk_size, non_neg_integer()}]) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec setopts/2 setopts(inet:socket(), list()) -> ok | {error, atom()}
+  spec shutdown/2 shutdown(inet:socket(), read | write | read_write) -> ok | {error, atom()}
+  spec sockname/1 sockname(inet:socket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  type opt/0 :: {backlog, non_neg_integer()}
+       | {buffer, non_neg_integer()}
+       | {delay_send, boolean()}
+       | {dontroute, boolean()}
+       | {exit_on_close, boolean()}
+       | {fd, non_neg_integer()}
+       | {high_msgq_watermark, non_neg_integer()}
+       | {high_watermark, non_neg_integer()}
+       | inet
+       | inet6
+       | {ip, inet:ip_address() | inet:local_address()}
+       | {ipv6_v6only, boolean()}
+       | {keepalive, boolean()}
+       | {linger, {boolean(), non_neg_integer()}}
+       | {low_msgq_watermark, non_neg_integer()}
+       | {low_watermark, non_neg_integer()}
+       | {nodelay, boolean()}
+       | {port, inet:port_number()}
+       | {priority, integer()}
+       | {raw, non_neg_integer(), non_neg_integer(), binary()}
+       | {recbuf, non_neg_integer()}
+       | {send_timeout, timeout()}
+       | {send_timeout_close, boolean()}
+       | {sndbuf, non_neg_integer()}
+       | {tos, integer()}
+  type opts/0 :: [opt()]
+
+module ranch_transport
+  export sendfile/6
+  export_type sendfile_opts/0
+  export_type socket/0
+  callback accept/2 accept(socket(), timeout()) -> {ok, socket()}
+       | {error, closed | timeout | atom()}
+  callback cleanup/1 cleanup(ranch:transport_opts(any())) -> ok
+  callback close/1 close(socket()) -> ok
+  callback connect/3 connect(string(), inet:port_number(), opts()) -> {ok, socket()}
+       | {error, atom()}
+  callback connect/4 connect(string(), inet:port_number(), opts(), timeout()) -> {ok, socket()}
+       | {error, atom()}
+  callback controlling_process/2 controlling_process(socket(), pid()) -> ok
+       | {error, closed | not_owner | atom()}
+  callback getopts/2 getopts(socket(), [atom()]) -> {ok, opts()} | {error, atom()}
+  callback getstat/1 getstat(socket()) -> {ok, stats()} | {error, atom()}
+  callback getstat/2 getstat(socket(), [atom()]) -> {ok, stats()} | {error, atom()}
+  callback handshake/2 handshake(socket(), timeout()) -> {ok, socket()}
+       | {ok, socket(), any()}
+       | {error, any()}
+  callback handshake/3 handshake(socket(), opts(), timeout()) -> {ok, socket()}
+       | {ok, socket(), any()}
+       | {error, any()}
+  callback handshake_cancel/1 handshake_cancel(socket()) -> ok
+  callback handshake_continue/2 handshake_continue(socket(), timeout()) -> {ok, socket()} | {error, any()}
+  callback handshake_continue/3 handshake_continue(socket(), opts(), timeout()) -> {ok, socket()}
+       | {error, any()}
+  callback listen/1 listen(ranch:transport_opts(any())) -> {ok, socket()} | {error, atom()}
+  callback messages/0 messages() -> {OK::atom(), Closed::atom(), Error::atom(), Passive::atom()}
+  callback name/0 name() -> atom()
+  callback peername/1 peername(socket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  callback recv/3 recv(socket(), non_neg_integer(), timeout()) -> {ok, any()}
+       | {error, closed | timeout | atom()}
+  callback recv_proxy_header/2 recv_proxy_header(socket(), timeout()) -> {ok, ranch_proxy_header:proxy_info()}
+       | {error, closed | atom()}
+       | {error, protocol_error, atom()}
+  callback secure/0 secure() -> boolean()
+  callback send/2 send(socket(), iodata()) -> ok | {error, atom()}
+  callback sendfile/2 sendfile(socket(), file:name_all() | file:fd()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  callback sendfile/4 sendfile(socket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  callback sendfile/5 sendfile(socket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer(), sendfile_opts()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  callback setopts/2 setopts(socket(), opts()) -> ok | {error, atom()}
+  callback shutdown/2 shutdown(socket(), read | write | read_write) -> ok | {error, atom()}
+  callback sockname/1 sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()} | {local, binary()}}
+       | {error, atom()}
+  spec chunk_size/1 chunk_size(sendfile_opts()) -> pos_integer()
+  spec read_size/3 read_size(non_neg_integer(), non_neg_integer(), non_neg_integer()) -> non_neg_integer()
+  spec sendfile/6 sendfile(module(), socket(), file:name_all() | file:fd(), non_neg_integer(), non_neg_integer(), sendfile_opts()) -> {ok, non_neg_integer()}
+       | {error, atom()}
+  spec sendfile_loop/6 sendfile_loop(module(), socket(), file:fd(), non_neg_integer(), non_neg_integer(), pos_integer()) -> {ok, non_neg_integer()}
+       | {error, any()}
+  type opts/0 :: any()
+  type sendfile_opts/0 :: [{chunk_size, non_neg_integer()}]
+  type socket/0 :: any()
+  type stats/0 :: any()

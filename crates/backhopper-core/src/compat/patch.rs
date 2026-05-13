@@ -1,16 +1,22 @@
 //! Unified-diff parser plus `Patch<S>` typestate pipeline.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use crate::compat::call_sites::{
+    DynamicCall, extract_definitions_into, extract_dynamic_into, extract_into,
+};
+use crate::compat::scope::{PinScope, UntrackedTally};
 use crate::errors::PatchError;
-use crate::model::names::{Arity, FunctionName, ModuleName};
+use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName};
 use crate::model::pin::Pin;
-use crate::model::snapshot::{Snapshot, state};
+use crate::model::snapshot::{ArityMatch, Snapshot, Visibility, state};
 use crate::model::symbol::{SymbolKind, SymbolRef};
-use crate::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict};
+use crate::model::verdict::{
+    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, Unanalyzed, Verdict,
+};
 
 pub const PATCH_SIZE_LIMIT: usize = 64 * 1024 * 1024;
 
@@ -88,6 +94,7 @@ pub struct Patch<S = Raw> {
     pub files: Vec<PatchedFile>,
     referenced: Vec<SymbolRef>,
     defined: Vec<SymbolRef>,
+    dynamic_calls: Vec<DynamicCall>,
     verdicts: Vec<PinVerdict>,
     _state: PhantomData<S>,
 }
@@ -107,6 +114,7 @@ impl Patch<Raw> {
             files,
             referenced: Vec::new(),
             defined: Vec::new(),
+            dynamic_calls: Vec::new(),
             verdicts: Vec::new(),
             _state: PhantomData,
         })
@@ -115,6 +123,7 @@ impl Patch<Raw> {
     pub fn analyze(self, _language: Language) -> Patch<Analyzed> {
         let mut referenced: Vec<SymbolRef> = Vec::new();
         let mut defined: Vec<SymbolRef> = Vec::new();
+        let mut dynamic_calls: Vec<DynamicCall> = Vec::new();
         for file in &self.files {
             if file.binary || file.language != Language::Erlang {
                 continue;
@@ -123,8 +132,9 @@ impl Patch<Raw> {
                 for line in &hunk.lines {
                     match line {
                         HunkLine::Added(text) | HunkLine::Context(text) => {
-                            crate::compat::call_sites::extract_into(text, &mut referenced);
-                            crate::compat::call_sites::extract_definitions_into(text, &mut defined);
+                            extract_into(text, &mut referenced);
+                            extract_definitions_into(text, &mut defined);
+                            extract_dynamic_into(text, &mut dynamic_calls);
                         }
                         HunkLine::Removed(_) => {}
                     }
@@ -139,6 +149,7 @@ impl Patch<Raw> {
             files: self.files,
             referenced,
             defined,
+            dynamic_calls,
             verdicts: Vec::new(),
             _state: PhantomData,
         }
@@ -178,6 +189,32 @@ impl PinFiles {
     }
 }
 
+/// Inputs for one pin's evaluation: identity, snapshot, optional files, scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinContext {
+    pub pin: Pin,
+    pub snapshot: Snapshot<state::Canonical>,
+    pub files: Option<PinFiles>,
+    pub scope: PinScope,
+}
+
+impl PinContext {
+    pub fn new(pin: Pin, snapshot: Snapshot<state::Canonical>, scope: PinScope) -> Self {
+        Self {
+            pin,
+            snapshot,
+            files: None,
+            scope,
+        }
+    }
+
+    #[must_use]
+    pub fn with_files(mut self, files: PinFiles) -> Self {
+        self.files = Some(files);
+        self
+    }
+}
+
 impl Patch<Analyzed> {
     pub fn referenced(&self) -> &[SymbolRef] {
         &self.referenced
@@ -188,13 +225,21 @@ impl Patch<Analyzed> {
     }
 
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
-        let verdict = build_verdict(&self.files, &self.referenced, &self.defined, snapshot, None);
+        let (verdict, _) = evaluate_pin(
+            &self.files,
+            &self.referenced,
+            &self.defined,
+            snapshot,
+            None,
+            None,
+        );
         let mut verdicts = self.verdicts.clone();
-        verdicts.push(PinVerdict { pin, verdict });
+        verdicts.push(PinVerdict::new(pin, verdict));
         Patch {
             files: self.files,
             referenced: self.referenced,
             defined: self.defined,
+            dynamic_calls: self.dynamic_calls,
             verdicts,
             _state: PhantomData,
         }
@@ -203,11 +248,15 @@ impl Patch<Analyzed> {
     pub fn against_series(self, snapshots: &[(Pin, Snapshot<state::Canonical>)]) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap) in snapshots {
-            let verdict = build_verdict(&self.files, &self.referenced, &self.defined, snap, None);
-            results.push(PinVerdict {
-                pin: pin.clone(),
-                verdict,
-            });
+            let (verdict, _) = evaluate_pin(
+                &self.files,
+                &self.referenced,
+                &self.defined,
+                snap,
+                None,
+                None,
+            );
+            results.push(PinVerdict::new(pin.clone(), verdict));
         }
         SeriesVerdict::from_results(results)
     }
@@ -218,19 +267,74 @@ impl Patch<Analyzed> {
     ) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap, files) in snapshots {
-            let verdict = build_verdict(
+            let (verdict, _) = evaluate_pin(
                 &self.files,
                 &self.referenced,
                 &self.defined,
                 snap,
                 Some(files),
+                None,
             );
-            results.push(PinVerdict {
-                pin: pin.clone(),
-                verdict,
-            });
+            results.push(PinVerdict::new(pin.clone(), verdict));
         }
         SeriesVerdict::from_results(results)
+    }
+
+    /// Scope-aware evaluation. Out-of-scope call sites and record
+    /// references are skipped per pin and tallied series-wide into a
+    /// `Diagnostics` envelope kept strictly outside `Verdict.reasons`.
+    pub fn evaluate_series(self, contexts: &[PinContext]) -> SeriesEvaluation {
+        let series_modules: BTreeSet<ModuleName> = contexts
+            .iter()
+            .flat_map(|c| c.scope.modules().iter().cloned())
+            .collect();
+        let series_records: BTreeSet<RecordName> = contexts
+            .iter()
+            .flat_map(|c| c.scope.records().iter().cloned())
+            .collect();
+        let mut untracked_calls = UntrackedTally::default();
+        let mut untracked_records: BTreeMap<RecordName, usize> = BTreeMap::new();
+        for r in &self.referenced {
+            if self.defined.contains(r) {
+                continue;
+            }
+            match &r.kind {
+                SymbolKind::Function { mfa } if !series_modules.contains(&mfa.module) => {
+                    untracked_calls.record(mfa.module.clone());
+                }
+                SymbolKind::Record { name } if !series_records.contains(name) => {
+                    *untracked_records.entry(name.clone()).or_insert(0) += 1;
+                }
+                _ => {}
+            }
+        }
+        let mut results = Vec::with_capacity(contexts.len());
+        for ctx in contexts {
+            let (verdict, tracked_refs) = evaluate_pin(
+                &self.files,
+                &self.referenced,
+                &self.defined,
+                &ctx.snapshot,
+                ctx.files.as_ref(),
+                Some(&ctx.scope),
+            );
+            results.push(PinVerdict::new(ctx.pin.clone(), verdict).with_tracked_refs(tracked_refs));
+        }
+        let mut unanalyzed = Unanalyzed::default();
+        for d in &self.dynamic_calls {
+            match d {
+                DynamicCall::Apply => unanalyzed.apply += 1,
+                DynamicCall::VariableDispatch => unanalyzed.variable_dispatch += 1,
+            }
+        }
+        SeriesEvaluation {
+            verdict: SeriesVerdict::from_results(results),
+            diagnostics: Diagnostics {
+                untracked_calls: untracked_calls.into_map(),
+                untracked_records,
+                unanalyzed,
+            },
+        }
     }
 }
 
@@ -240,26 +344,39 @@ impl Patch<Verdicted> {
     }
 }
 
-fn build_verdict(
+fn evaluate_pin(
     files: &[PatchedFile],
     referenced: &[SymbolRef],
     defined: &[SymbolRef],
     snapshot: &Snapshot<state::Canonical>,
     pin_files: Option<&PinFiles>,
-) -> Verdict {
+    scope: Option<&PinScope>,
+) -> (Verdict, usize) {
     let mut reasons: Vec<Reason> = Vec::new();
     if let Some(pf) = pin_files {
         check_files_against_pin(files, pf, &mut reasons);
     }
+    let mut tracked_refs = 0usize;
     for r in referenced {
         if defined.contains(r) {
             continue;
         }
         match &r.kind {
             SymbolKind::Function { mfa } => {
+                if let Some(s) = scope
+                    && !s.contains_module(&mfa.module)
+                {
+                    continue;
+                }
+                tracked_refs += 1;
                 analyze_function_reference(r, mfa, snapshot, &mut reasons);
             }
             SymbolKind::Record { name } => {
+                if let Some(s) = scope
+                    && !s.contains_record(name)
+                {
+                    continue;
+                }
                 if !record_present(snapshot, name) {
                     reasons.push(Reason::MissingSymbol {
                         symbol: r.clone(),
@@ -271,7 +388,7 @@ fn build_verdict(
             _ => {}
         }
     }
-    Verdict::from_reasons(reasons)
+    (Verdict::from_reasons(reasons), tracked_refs)
 }
 
 fn check_files_against_pin(files: &[PatchedFile], pin_files: &PinFiles, reasons: &mut Vec<Reason>) {
@@ -323,12 +440,10 @@ fn hunk_context_matches(hunk: &Hunk, target_lines: &[&str]) -> bool {
 
 fn analyze_function_reference(
     r: &SymbolRef,
-    mfa: &crate::model::names::Mfa,
+    mfa: &Mfa,
     snapshot: &Snapshot<state::Canonical>,
     reasons: &mut Vec<Reason>,
 ) {
-    use crate::model::snapshot::Visibility;
-
     if let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module)
         && module.visibility == Visibility::Hidden
     {
@@ -363,12 +478,7 @@ fn analyze_function_reference(
     }
 }
 
-fn is_function_deprecated(
-    snapshot: &Snapshot<state::Canonical>,
-    mfa: &crate::model::names::Mfa,
-) -> bool {
-    use crate::model::snapshot::ArityMatch;
-
+fn is_function_deprecated(snapshot: &Snapshot<state::Canonical>, mfa: &Mfa) -> bool {
     let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module) else {
         return false;
     };
@@ -389,10 +499,7 @@ fn is_function_deprecated(
     false
 }
 
-fn record_present(
-    snapshot: &Snapshot<state::Canonical>,
-    name: &crate::model::names::RecordName,
-) -> bool {
+fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> bool {
     snapshot
         .headers()
         .iter()

@@ -17,8 +17,8 @@ pub enum CliError {
     #[error("io error: {0}")]
     Io(#[from] io::Error),
 
-    #[error("config not found: {0}")]
-    ConfigNotFound(PathBuf),
+    #[error("config not found; tried (in order): {}", tried_display(.tried))]
+    ConfigNotFound { tried: Vec<PathBuf> },
 
     #[error("output error: {0}")]
     OutputError(String),
@@ -35,12 +35,20 @@ impl CliError {
         match self {
             Self::Core(e) => map_core(e),
             Self::Io(_) => SysExits::IoErr,
-            Self::ConfigNotFound(_) => SysExits::NoInput,
+            Self::ConfigNotFound { .. } => SysExits::NoInput,
             Self::OutputError(_) => SysExits::IoErr,
             Self::InvalidInput(_) => SysExits::Usage,
             Self::Other(_) => SysExits::Software,
         }
     }
+}
+
+fn tried_display(paths: &[PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn map_core(e: &CoreError) -> SysExits {

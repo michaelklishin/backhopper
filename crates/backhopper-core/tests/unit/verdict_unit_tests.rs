@@ -34,13 +34,10 @@ fn deprecated_only_is_requires_adaptation() {
 fn series_verdict_summarizes_results() {
     let pin1 = Pin::new(ProjectName::new("a").unwrap(), TagName::new("v1").unwrap());
     let pin2 = Pin::new(ProjectName::new("b").unwrap(), TagName::new("v1").unwrap());
-    let r1 = PinVerdict {
-        pin: pin1,
-        verdict: Verdict::Compatible,
-    };
-    let r2 = PinVerdict {
-        pin: pin2,
-        verdict: Verdict::Incompatible {
+    let r1 = PinVerdict::new(pin1, Verdict::Compatible);
+    let r2 = PinVerdict::new(
+        pin2,
+        Verdict::Incompatible {
             reasons: vec![Reason::ArityChanged {
                 module: ModuleName::new("foo").unwrap(),
                 function: FunctionName::new("bar").unwrap(),
@@ -48,7 +45,7 @@ fn series_verdict_summarizes_results() {
                 found: vec![Arity::new(3)],
             }],
         },
-    };
+    );
     let s = SeriesVerdict::from_results(vec![r1, r2]);
     assert_eq!(s.summary.compatible, 1);
     assert_eq!(s.summary.incompatible, 1);

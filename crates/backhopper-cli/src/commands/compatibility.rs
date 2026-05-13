@@ -1,26 +1,32 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use backhopper_core::Error as CoreError;
-use backhopper_core::compat::patch::{Language, Patch, PinFiles};
-use backhopper_core::config::Config;
+use backhopper_core::compat::is_otp_module;
+use backhopper_core::compat::patch::{Language, Patch, PinContext, PinFiles};
+use backhopper_core::compat::scope::{PinScope, parse_module_names};
+use backhopper_core::config::{Config, Project};
 use backhopper_core::git::GitRepo;
-use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{ModuleName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::SeriesVerdict;
+use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_core::model::verdict::{Diagnostics, SeriesEvaluation, SeriesVerdict};
 
-use crate::cli::{CompatibilityCmd, GlobalArgs};
+use crate::cli::{CompatibilityCmd, DiagnosticsFlags, GlobalArgs};
 use crate::commands::context::{load_config, open_store_read};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
+use crate::tables::render_evaluation_table;
 
 #[derive(Debug, Serialize)]
 struct CompatPayload {
     queried_against: QueriedAgainst,
     results: SeriesVerdict,
+    #[serde(skip_serializing_if = "Diagnostics::is_empty")]
+    diagnostics: Diagnostics,
 }
 
 #[derive(Debug, Serialize)]
@@ -44,20 +50,22 @@ pub fn handle(args: &GlobalArgs, cmd: CompatibilityCmd) -> CliResult<i32> {
             tag,
             series,
             explain: _,
+            diagnostics,
             patch_file,
         } => {
             let bytes = read_patch_input(patch_file)?;
-            run_compat_patch(args, &cfg, &bytes, project, tag, series)
+            run_compat_patch(args, &cfg, &bytes, project, tag, series, diagnostics)
         }
         CompatibilityCmd::Commit {
             project,
             tag,
             series,
             repo,
+            diagnostics,
             commit,
         } => {
             let bytes = commit_patch_bytes(&repo, &commit)?;
-            run_compat_patch(args, &cfg, &bytes, project, tag, series)
+            run_compat_patch(args, &cfg, &bytes, project, tag, series, diagnostics)
         }
         CompatibilityCmd::Range {
             project,
@@ -66,42 +74,59 @@ pub fn handle(args: &GlobalArgs, cmd: CompatibilityCmd) -> CliResult<i32> {
             repo,
             range,
             merge_commit,
+            diagnostics,
         } => {
             let bytes = range_patch_bytes(&repo, range.as_deref(), merge_commit.as_deref())?;
-            run_compat_patch(args, &cfg, &bytes, project, tag, series)
+            run_compat_patch(args, &cfg, &bytes, project, tag, series, diagnostics)
         }
     }
 }
 
-fn build_pin_files(cfg: &Config, pin: &Pin, touched_paths: &[PathBuf]) -> CliResult<PinFiles> {
-    if touched_paths.is_empty() {
+fn build_pin_files(
+    project: &Project,
+    pin: &Pin,
+    scope: &PinScope,
+    touched_paths: &[PathBuf],
+) -> CliResult<PinFiles> {
+    let in_scope: Vec<(PathBuf, PathBuf)> = touched_paths
+        .iter()
+        .filter_map(|p| scope.rewrite_path(p).map(|r| (p.clone(), r.to_path_buf())))
+        .collect();
+    if in_scope.is_empty() {
         return Ok(PinFiles::new());
     }
-    let project = cfg
-        .project(&pin.project)
-        .map_err(|e| CliError::Core(e.into()))?;
     let repo = GitRepo::open(project.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
     let commit = repo
         .resolve_tag(&pin.tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let needed: BTreeSet<String> = touched_paths
+    let needed: BTreeSet<String> = in_scope
         .iter()
-        .map(|p| p.to_string_lossy().into_owned())
+        .map(|(_, project_path)| project_path.to_string_lossy().into_owned())
         .collect();
     let blobs = repo
         .read_paths_at_commit(&commit, |p| needed.contains(p))
         .map_err(|e| CliError::Core(e.into()))?;
-    let mut files = PinFiles::new();
     let present: BTreeMap<String, Vec<u8>> = blobs
         .into_iter()
         .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
         .collect();
-    for path in touched_paths {
-        let key = path.to_string_lossy().into_owned();
+    let mut files = PinFiles::new();
+    for (original_path, project_path) in &in_scope {
+        let key = project_path.to_string_lossy().into_owned();
         let contents = present.get(&key).cloned();
-        files = files.with(path.clone(), contents);
+        files = files.with(original_path.clone(), contents);
     }
     Ok(files)
+}
+
+fn build_pin_scope(project: &Project, snapshot: &Snapshot<state::Canonical>) -> PinScope {
+    let extra: Vec<_> = parse_module_names(
+        project
+            .public_modules
+            .iter()
+            .chain(project.internal_modules.iter()),
+    );
+    PinScope::from_snapshot(project.name.clone(), snapshot, extra)
 }
 
 fn read_patch_input(file: Option<PathBuf>) -> CliResult<Vec<u8>> {
@@ -122,7 +147,9 @@ fn read_patch_input(file: Option<PathBuf>) -> CliResult<Vec<u8>> {
 
 fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
     let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let to = CommitSha::new(commit.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?;
+    let to = g
+        .resolve_rev(commit)
+        .map_err(|e| CliError::Core(e.into()))?;
     let from = g
         .parent_commit(&to)
         .map_err(|e| CliError::Core(e.into()))?
@@ -143,18 +170,19 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>, merge: Option<&str>) -> C
                 .split_once("..")
                 .ok_or_else(|| CliError::InvalidInput(format!("invalid range {:?}", r)))?;
             (
-                CommitSha::new(a.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?,
-                CommitSha::new(b.to_owned()).map_err(|e| CliError::Core(CoreError::Name(e)))?,
+                g.resolve_rev(a).map_err(|e| CliError::Core(e.into()))?,
+                g.resolve_rev(b).map_err(|e| CliError::Core(e.into()))?,
             )
         }
-        (None, Some(merge_sha)) => {
-            let merge = CommitSha::new(merge_sha.to_owned())
-                .map_err(|e| CliError::Core(CoreError::Name(e)))?;
+        (None, Some(merge_spec)) => {
+            let merge = g
+                .resolve_rev(merge_spec)
+                .map_err(|e| CliError::Core(e.into()))?;
             let parents = g.parents(&merge).map_err(|e| CliError::Core(e.into()))?;
             if parents.len() < 2 {
                 return Err(CliError::InvalidInput(format!(
                     "{} is not a merge commit (parents: {})",
-                    merge_sha,
+                    merge_spec,
                     parents.len()
                 )));
             }
@@ -181,6 +209,7 @@ fn run_compat_patch(
     project: Option<ProjectName>,
     tag: Option<TagName>,
     series: Option<SeriesName>,
+    diagnostics: DiagnosticsFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let pins: Vec<Pin> = match (&project, &tag, &series) {
@@ -204,15 +233,19 @@ fn run_compat_patch(
         .filter_map(|f| f.new_path.clone().or_else(|| f.old_path.clone()))
         .collect();
     let analyzed = patch.analyze(Language::Erlang);
-    let mut snapshots_with_files = Vec::with_capacity(pins.len());
+    let mut contexts = Vec::with_capacity(pins.len());
     for pin in &pins {
+        let project = cfg
+            .project(&pin.project)
+            .map_err(|e| CliError::Core(e.into()))?;
         let snap = store
             .read(&pin.project, &pin.tag)
             .map_err(|e| CliError::Core(e.into()))?;
-        let files = build_pin_files(cfg, pin, &touched_paths)?;
-        snapshots_with_files.push((pin.clone(), snap, files));
+        let scope = build_pin_scope(project, &snap);
+        let files = build_pin_files(project, pin, &scope, &touched_paths)?;
+        contexts.push(PinContext::new(pin.clone(), snap, scope).with_files(files));
     }
-    let series_verdict = analyzed.against_series_with_files(&snapshots_with_files);
+    let evaluation = analyzed.evaluate_series(&contexts);
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),
@@ -232,21 +265,134 @@ fn run_compat_patch(
     };
     let payload = CompatPayload {
         queried_against: queried,
-        results: series_verdict.clone(),
+        results: evaluation.verdict.clone(),
+        diagnostics: evaluation.diagnostics.clone(),
     };
+    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     let ctx = OutputContext::new(args.formatter, "compatibility patch");
-    let exit = series_verdict.worst_exit_code();
+    let exit = evaluation.worst_exit_code();
     render_with_exit(&ctx, &payload, exit, |w| {
+        render_text(w, &evaluation, &known_projects, diagnostics)
+    })
+}
+
+fn render_text(
+    w: &mut dyn Write,
+    evaluation: &SeriesEvaluation,
+    known_projects: &[ProjectName],
+    flags: DiagnosticsFlags,
+) -> CliResult<()> {
+    let v = &evaluation.verdict;
+    writeln!(
+        w,
+        "compatible: {}, requires_adaptation: {}, incompatible: {}",
+        v.summary.compatible, v.summary.requires_adaptation, v.summary.incompatible,
+    )?;
+    writeln!(w)?;
+    writeln!(w, "{}", render_evaluation_table(evaluation))?;
+    let show_section = flags.show_untracked_calls || flags.show_otp_calls;
+    if show_section && !evaluation.diagnostics.is_empty() {
+        render_untracked_section(
+            w,
+            &evaluation.diagnostics,
+            known_projects,
+            flags.show_otp_calls,
+        )?;
+    }
+    Ok(())
+}
+
+fn render_untracked_section(
+    w: &mut dyn Write,
+    diagnostics: &Diagnostics,
+    known_projects: &[ProjectName],
+    show_otp: bool,
+) -> CliResult<()> {
+    let call_rows: Vec<(&ModuleName, usize, &'static str, String)> = diagnostics
+        .untracked_calls
+        .iter()
+        .filter_map(|(module, count)| {
+            let otp = is_otp_module(module);
+            if otp && !show_otp {
+                return None;
+            }
+            let (kind, hint) = annotate(module, otp, known_projects);
+            Some((module, *count, kind, hint))
+        })
+        .collect();
+    if !call_rows.is_empty() {
+        writeln!(w)?;
         writeln!(
             w,
-            "compatible: {}, requires_adaptation: {}, incompatible: {}",
-            series_verdict.summary.compatible,
-            series_verdict.summary.requires_adaptation,
-            series_verdict.summary.incompatible,
+            "Untracked module calls (informational, not a verdict input):"
         )?;
-        for r in &series_verdict.results {
-            writeln!(w, "  {}: {:?}", r.pin, r.verdict)?;
+        for (module, count, kind, hint) in call_rows {
+            let plural = if count == 1 { "" } else { "s" };
+            writeln!(
+                w,
+                "  {:<40} {} call{} {}",
+                module,
+                count,
+                plural,
+                format_annotation(kind, &hint),
+            )?;
         }
-        Ok(())
-    })
+    }
+    if !diagnostics.untracked_records.is_empty() {
+        writeln!(w)?;
+        writeln!(w, "Untracked records (informational, not a verdict input):")?;
+        for (record, count) in &diagnostics.untracked_records {
+            let plural = if *count == 1 { "" } else { "s" };
+            writeln!(w, "  #{:<39} {} reference{}", record, count, plural)?;
+        }
+    }
+    if !diagnostics.unanalyzed.is_empty() {
+        writeln!(w)?;
+        writeln!(
+            w,
+            "Unanalyzed dynamic calls (informational, not a verdict input):"
+        )?;
+        if diagnostics.unanalyzed.apply > 0 {
+            writeln!(
+                w,
+                "  {:<40} {} (apply/spawn/spawn_link/spawn_monitor/spawn_opt/hibernate)",
+                "apply-family BIFs", diagnostics.unanalyzed.apply,
+            )?;
+        }
+        if diagnostics.unanalyzed.variable_dispatch > 0 {
+            writeln!(
+                w,
+                "  {:<40} {} (Mod:fun(...), mod:F(...), Mod:F(...))",
+                "variable-dispatch calls", diagnostics.unanalyzed.variable_dispatch,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn annotate(
+    module: &ModuleName,
+    is_otp: bool,
+    known_projects: &[ProjectName],
+) -> (&'static str, String) {
+    if is_otp {
+        return ("OTP stdlib", String::new());
+    }
+    let name = module.as_str();
+    let candidate = name
+        .split_once('_')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(name);
+    if known_projects.iter().any(|p| p.as_str() == candidate) {
+        return ("tracked project, unscoped call", candidate.to_owned());
+    }
+    ("untracked project?", candidate.to_owned())
+}
+
+fn format_annotation(kind: &str, hint: &str) -> String {
+    if hint.is_empty() {
+        format!("({kind})")
+    } else {
+        format!("({kind}: {hint})")
+    }
 }

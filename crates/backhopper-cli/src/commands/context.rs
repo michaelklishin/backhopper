@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use backhopper_core::Error as CoreError;
 use backhopper_core::config::Config;
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
 
@@ -12,10 +13,12 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
     if let Some(p) = &args.config {
         return Ok(p.clone());
     }
+    let mut tried: Vec<PathBuf> = Vec::new();
     let cwd = PathBuf::from("./backhopper.toml");
     if cwd.exists() {
         return Ok(cwd);
     }
+    tried.push(cwd);
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         let candidate = PathBuf::from(xdg)
             .join("backhopper")
@@ -23,6 +26,7 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         if candidate.exists() {
             return Ok(candidate);
         }
+        tried.push(candidate);
     }
     if let Ok(home) = std::env::var("HOME") {
         let candidate = PathBuf::from(home)
@@ -32,13 +36,14 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         if candidate.exists() {
             return Ok(candidate);
         }
+        tried.push(candidate);
     }
-    Err(CliError::ConfigNotFound(cwd))
+    Err(CliError::ConfigNotFound { tried })
 }
 
 pub fn load_config(args: &GlobalArgs) -> CliResult<Config> {
     let path = resolve_config_path(args)?;
-    Config::load(&path).map_err(|e| CliError::Core(backhopper_core::Error::Config(e)))
+    Config::load(&path).map_err(|e| CliError::Core(CoreError::Config(e)))
 }
 
 pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
@@ -50,12 +55,12 @@ pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
 
 pub fn open_store_read(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<ReadOnly>> {
     let dir = snapshot_dir(args, cfg);
-    SnapshotStore::open(dir).map_err(|e| CliError::Core(backhopper_core::Error::Store(e)))
+    SnapshotStore::open(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
 }
 
 pub fn open_store_mut(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<Mutable>> {
     let dir = snapshot_dir(args, cfg);
-    SnapshotStore::open_mut(dir).map_err(|e| CliError::Core(backhopper_core::Error::Store(e)))
+    SnapshotStore::open_mut(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
 }
 
 pub fn snapshot_dir_for_path(p: &Path) -> PathBuf {

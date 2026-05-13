@@ -1,2 +1,2 @@
-mod extractor_does_not_panic;
-mod tokenizer_balance;
+mod extractor_does_not_panic_proptests;
+mod tokenizer_balance_proptests;

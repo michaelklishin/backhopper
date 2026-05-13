@@ -1,1 +1,1 @@
-mod extractor_does_not_panic;
+mod extractor_does_not_panic_proptests;

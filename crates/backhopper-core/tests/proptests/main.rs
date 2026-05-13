@@ -1,4 +1,6 @@
-mod mfa_round_trip;
-mod snapshot_round_trip;
-mod sort_idempotent;
-mod spec_normalizer;
+mod dynamic_calls_proptests;
+mod mfa_round_trip_proptests;
+mod scope_filter_proptests;
+mod snapshot_round_trip_proptests;
+mod sort_idempotent_proptests;
+mod spec_normalizer_proptests;

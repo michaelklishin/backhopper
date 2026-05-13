@@ -1,0 +1,90 @@
+# backhopper snapshot
+# format-version: 1
+# project: seshat
+# tag: v1.0.0
+# commit: af2db001cc51c5a360627cbacdce2149b5695378
+# scanned-paths: src/**/*.erl, include/**/*.hrl, src/**/*.hrl
+# generated-by: backhopper 0.2.0
+# generated-at: 2026-05-13T02:57:18.007859Z
+
+module seshat
+  export counters/1
+  export counters/2
+  export counters/3
+  export delete/2
+  export delete_group/1
+  export fetch/2
+  export format/1
+  export format/2
+  export new/3
+  export new/4
+  export new_group/1
+  export prom_format/2
+  export prom_format/3
+  export resolve_fields_spec/1
+  spec build_counters_map/2 build_counters_map(counters:counters_ref(), fields_spec()) -> #{atom() => integer()}
+  spec counters/1 counters(group()) -> #{id() => #{atom() => integer()}}
+  spec counters/2 counters(group(), id()) -> #{atom() => integer()} | undefined
+  spec counters/3 counters(group(), id(), [atom()]) -> #{atom() => integer()} | undefined
+  spec delete/2 delete(group(), id()) -> ok
+  spec delete_group/1 delete_group(group()) -> ok
+  spec do_prom_format/2 do_prom_format(format_result(), string()) -> iodata()
+  spec fetch/2 fetch(group(), id()) -> undefined | counters:counters_ref()
+  spec format/1 format(group()) -> format_result()
+  spec format/2 format(group(), format_options()) -> format_result()
+  spec new/3 new(group(), id(), fields_spec()) -> counters:counters_ref()
+  spec new/4 new(group(), id(), fields_spec(), labels()) -> counters:counters_ref()
+  spec new_counter/5 new_counter(group(), id(), [field_spec()], fields_spec(), labels()) -> counters:counters_ref()
+  spec new_group/1 new_group(group()) -> group_ref()
+  spec prom_format/2 prom_format(group(), string()) -> iodata()
+  spec prom_format/3 prom_format(group(), string(), [atom()]) -> iodata()
+  spec prometheus_type/1 prometheus_type(metric_type()) -> prometheus_type()
+  spec register_counter/5 register_counter(group(), id(), counters:counters_ref(), fields_spec(), labels()) -> ok
+  spec resolve_fields_spec/1 resolve_fields_spec(fields_spec()) -> [field_spec()]
+  spec with_prometheus_suffix/2 with_prometheus_suffix(binary(), metric_type()) -> binary()
+
+module seshat_app
+  behaviour application
+  export start/2
+  export stop/1
+
+module seshat_counters_server
+  behaviour gen_server
+  export code_change/3
+  export create_table/1
+  export delete_table/1
+  export get_table/1
+  export get_tables/0
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module seshat_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0
+
+header src/seshat.hrl
+  type field_spec/0 :: {Name :: atom(), Index :: pos_integer(), Type :: metric_type(), Help :: string()}
+  type fields_spec/0 :: [field_spec()] | {persistent_term, term()}
+  type format_options/0 :: #{metrics => all | [atom()], labels => as_map | as_binary, filter_fun => function()}
+  type format_result/0 :: #{Name :: binary() => #{type => prometheus_type(), help => string(), values => #{labels() => float()}}}
+  type group/0 :: term()
+  type id/0 :: term()
+  type label_name/0 :: atom()
+  type label_value/0 :: atom() | unicode:chardata()
+  type labels/0 :: labels_map() | binary()
+  type labels_map/0 :: #{label_name() => label_value()}
+  type metric_type/0 :: counter | gauge | {counter | gauge, metric_unit()}
+  type metric_unit/0 :: ratio | time_s | time_ms
+  type prometheus_type/0 :: counter | gauge
+  opaque group_ref/0
+  record entry
+    field id :: term()
+    field cref :: counters:counters_ref()
+    field field_spec :: fields_spec()
+    field labels :: labels_map()
+    field rendered_labels :: binary()

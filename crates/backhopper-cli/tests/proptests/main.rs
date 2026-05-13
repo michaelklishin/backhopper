@@ -1,1 +1,1 @@
-mod arg_parsing;
+mod arg_parsing_proptests;

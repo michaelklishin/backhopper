@@ -21,6 +21,12 @@ pub struct TagInfo {
     pub branch: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TagListing {
+    pub tags: Vec<TagName>,
+    pub skipped: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlobAtPath {
     pub path: PathBuf,
@@ -41,23 +47,32 @@ impl GitRepo {
     }
 
     pub fn list_tags(&self) -> Result<Vec<TagName>, GitError> {
+        Ok(self.list_tag_refs()?.tags)
+    }
+
+    pub fn list_tag_refs(&self) -> Result<TagListing, GitError> {
         let platform = self
             .repo
             .references()
             .map_err(|e| GitError::Gix(e.to_string()))?;
         let iter = platform.tags().map_err(|e| GitError::Gix(e.to_string()))?;
         let mut tags: Vec<TagName> = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
         for r in iter {
             let r = r.map_err(|e| GitError::Gix(e.to_string()))?;
             let full = r.name().as_bstr().to_string();
-            if let Some(short) = full.strip_prefix("refs/tags/")
-                && let Ok(t) = short.parse::<TagName>()
-            {
-                tags.push(t);
+            let Some(short) = full.strip_prefix("refs/tags/") else {
+                skipped.push(full);
+                continue;
+            };
+            match short.parse::<TagName>() {
+                Ok(t) => tags.push(t),
+                Err(_) => skipped.push(short.to_owned()),
             }
         }
         tags.sort_by(|a, b| version_cmp(a.as_str(), b.as_str()));
-        Ok(tags)
+        skipped.sort();
+        Ok(TagListing { tags, skipped })
     }
 
     pub fn resolve_rev(&self, spec: &str) -> Result<CommitSha, GitError> {

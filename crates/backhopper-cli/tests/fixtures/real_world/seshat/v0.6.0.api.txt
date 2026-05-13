@@ -1,0 +1,63 @@
+# backhopper snapshot
+# format-version: 1
+# project: seshat
+# tag: v0.6.0
+# commit: 289ab0b3f1947da499610df148bf24364a15fd8a
+# scanned-paths: src/**/*.erl, include/**/*.hrl, src/**/*.hrl
+# generated-by: backhopper 0.2.0
+# generated-at: 2026-05-13T02:57:18.011212Z
+
+module seshat
+  export counters/2
+  export counters/3
+  export delete/2
+  export delete_group/1
+  export fetch/2
+  export format/1
+  export new/3
+  export new_group/1
+  export overview/1
+  export overview/2
+  export_type field_spec/0
+  export_type fields_spec/0
+  export_type group_ref/0
+  spec counters/2 counters(group(), name()) -> #{atom() => integer()} | undefined
+  spec counters/3 counters(group(), name(), [atom()]) -> #{atom() => integer()} | undefined
+  spec delete/2 delete(group(), name()) -> ok
+  spec delete_group/1 delete_group(group()) -> ok
+  spec fetch/2 fetch(group(), name()) -> undefined | counters:counters_ref()
+  spec format/1 format(group()) -> format_result()
+  spec new/3 new(group(), name(), fields_spec()) -> counters:counters_ref()
+  spec new_group/1 new_group(group()) -> group_ref()
+  spec overview/1 overview(group()) -> #{name() => #{atom() => integer()}}
+  spec overview/2 overview(group(), name()) -> #{atom() => integer()} | undefined
+  type field_spec/0 :: {Name :: atom(), Position :: pos_integer(), Type :: counter | gauge, Description :: string()}
+  type fields_spec/0 :: [field_spec()] | {persistent_term, term()}
+  type format_result/0 :: #{FieldName :: atom() => #{type => counter | gauge, help => string(), values => #{name() => integer()}}}
+  type group/0 :: term()
+  type name/0 :: term()
+  opaque group_ref/0
+
+module seshat_app
+  behaviour application
+  export start/2
+  export stop/1
+
+module seshat_counters_server
+  behaviour gen_server
+  export code_change/3
+  export create_table/1
+  export delete_table/1
+  export get_table/1
+  export get_tables/0
+  export handle_call/3
+  export handle_cast/2
+  export handle_info/2
+  export init/1
+  export start_link/0
+  export terminate/2
+
+module seshat_sup
+  behaviour supervisor
+  export init/1
+  export start_link/0

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::{ConfigError, NameError};
 use crate::model::names::{ProjectName, SeriesName, TagName};
+use crate::model::pin::Pin;
 
 pub const CONFIG_VERSION: u32 = 1;
 
@@ -111,7 +112,7 @@ pub struct Project {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Series {
     pub name: SeriesName,
-    pub pins: Vec<crate::model::pin::Pin>,
+    pub pins: Vec<Pin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -182,7 +183,7 @@ impl Config {
                     });
                 }
                 let tag = TagName::new(pin.tag).map_err(ConfigError::Name)?;
-                pins.push(crate::model::pin::Pin::new(project, tag));
+                pins.push(Pin::new(project, tag));
             }
             series.push(Series {
                 name: SeriesName::new(s.name).map_err(ConfigError::Name)?,
