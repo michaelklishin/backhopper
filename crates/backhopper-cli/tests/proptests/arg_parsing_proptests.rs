@@ -17,14 +17,14 @@ proptest! {
     }
 
     #[test]
-    fn api_lookup_parses_multiple_mfas(
+    fn snapshots_lookup_parses_multiple_mfas(
         m in "[a-z][a-z0-9_]{0,5}",
         f in "[a-z][a-z0-9_]{0,5}",
         a in 0u8..=5
     ) {
         let mfa = format!("{}:{}/{}", m, f, a);
         let argv = vec![
-            "backhopper", "api", "lookup",
+            "backhopper", "snapshots", "lookup",
             "--project", "p",
             "--tag", "v1",
             "--mfa", &mfa,

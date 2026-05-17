@@ -71,10 +71,10 @@ fn ra_upstream_clone_then_discover() {
         .unwrap()
         .timeout(Duration::from_mins(2))
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "ra",
             "--formatter",
@@ -106,10 +106,10 @@ fn khepri_upstream_clone_then_lookup() {
         .unwrap()
         .timeout(Duration::from_mins(2))
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "khepri",
             "--formatter",

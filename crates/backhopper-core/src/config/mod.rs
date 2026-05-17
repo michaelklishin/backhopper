@@ -1,5 +1,7 @@
 //! `backhopper.toml` schema and loader.
 
+use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -128,7 +130,7 @@ impl Config {
         if !path.exists() {
             return Err(ConfigError::NotFound(path.to_path_buf()));
         }
-        let text = std::fs::read_to_string(path)?;
+        let text = fs::read_to_string(path)?;
         let raw: ConfigFile = toml::from_str(&text)?;
         Self::from_raw(path.to_path_buf(), raw)
     }
@@ -210,6 +212,41 @@ impl Config {
             .iter()
             .find(|s| &s.name == name)
             .ok_or_else(|| ConfigError::UnknownSeries(name.to_string()))
+    }
+
+    /// Projects configured globally but not pinned by `series`,
+    /// sorted alphabetically.
+    pub fn projects_missing_from_series(&self, series: &Series) -> Vec<ProjectName> {
+        let pinned: BTreeSet<&ProjectName> = series.pins.iter().map(|p| &p.project).collect();
+        let mut missing: Vec<ProjectName> = self
+            .projects
+            .iter()
+            .map(|p| &p.name)
+            .filter(|n| !pinned.contains(*n))
+            .cloned()
+            .collect();
+        missing.sort();
+        missing
+    }
+
+    /// Like [`series_by_name`](Self::series_by_name) but also emits a
+    /// `tracing::warn!` per configured project the series does not pin.
+    pub fn series_by_name_with_coverage_check(
+        &self,
+        name: &SeriesName,
+    ) -> Result<&Series, ConfigError> {
+        let series = self.series_by_name(name)?;
+        let missing = self.projects_missing_from_series(series);
+        if !missing.is_empty() {
+            let names: Vec<&str> = missing.iter().map(ProjectName::as_str).collect();
+            tracing::warn!(
+                series = %name,
+                missing_projects = ?names,
+                "series {} pins {} project(s); these configured projects have no pin: {}. Was this intentional?",
+                name, series.pins.len(), names.join(", ")
+            );
+        }
+        Ok(series)
     }
 
     pub fn snapshot_dir(&self) -> PathBuf {

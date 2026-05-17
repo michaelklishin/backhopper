@@ -1,13 +1,17 @@
 //! Parse RabbitMQ's `rabbitmq-components.mk` dep pins.
 //!
-//! Two real-world line shapes:
-//!  * `dep_NAME = hex VERSION`            (e.g. `dep_ra = hex 3.1.6`)
-//!  * `dep_NAME = git URL TAG`            (e.g. `dep_osiris = git https://... v1.13.1`)
-//!  * `dep_NAME = git_rmq NAME TAG`       (vendored fork: `dep_cowboy = git_rmq cowboy 2.13.0`)
+//! Three real-world line shapes:
+//!  * `dep_NAME = hex VERSION`           (e.g. `dep_ra = hex 3.1.6`)
+//!  * `dep_NAME = git URL TAG`           (e.g. `dep_osiris = git https://... v1.13.1`)
+//!  * `dep_NAME = git_rmq NAME TAG`      (vendored fork: `dep_cowboy = git_rmq cowboy 2.13.0`)
 //!
-//! `hex` versions are bare (`3.1.6`); `git`/`git_rmq` versions are real
+//! `hex` versions are bare (`3.1.6`); `git` and `git_rmq` versions are real
 //! tag names. Callers map a `hex` version back to a tag by applying the
 //! project's `tag_prefix` from config.
+//!
+//! This module is RabbitMQ-specific glue and lives in the CLI: the
+//! `backhopper-core` library has no business knowing about a particular
+//! project's makefile conventions.
 
 use std::sync::OnceLock;
 

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use backhopper_core::compat::patch::{Language, Patch, PinContext};
+use backhopper_core::compat::arg_shape::ArgShape;
+use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, RecordName, TagName,
@@ -14,7 +15,19 @@ use backhopper_core::model::verdict::{
 };
 use time::OffsetDateTime;
 
+use bel7_cli::TableStyle;
+
 use backhopper_cli::tables::render_evaluation_table;
+
+const ALL_TABLE_STYLES: &[TableStyle] = &[
+    TableStyle::Modern,
+    TableStyle::Borderless,
+    TableStyle::Markdown,
+    TableStyle::Sharp,
+    TableStyle::Ascii,
+    TableStyle::Psql,
+    TableStyle::Dots,
+];
 
 fn header(project: &str) -> SnapshotHeader {
     SnapshotHeader {
@@ -55,7 +68,7 @@ fn snapshot_with_module(
 fn table_contains_pin_and_verdict_columns() {
     let snap = snapshot_with_module("ra", "ra", &[("start", 0)]);
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
-    let context = PinContext::new(pin_for("ra"), snap, scope);
+    let context = EvaluationContext::new(pin_for("ra"), snap, scope);
     let diff = "\
 diff --git a/x.erl b/x.erl
 --- a/x.erl
@@ -66,9 +79,9 @@ diff --git a/x.erl b/x.erl
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .evaluate_series(&[context]);
-    let text = render_evaluation_table(&eval);
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("ra@v1.0.0"), "table: {}", text);
     assert!(text.contains("Compatible"), "table: {}", text);
     assert!(
@@ -82,7 +95,7 @@ diff --git a/x.erl b/x.erl
 fn table_lists_missing_symbol_reason_with_mfa_detail() {
     let snap = snapshot_with_module("ra", "ra", &[("start", 0)]);
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
-    let context = PinContext::new(pin_for("ra"), snap, scope);
+    let context = EvaluationContext::new(pin_for("ra"), snap, scope);
     let diff = "\
 diff --git a/x.erl b/x.erl
 --- a/x.erl
@@ -93,9 +106,9 @@ diff --git a/x.erl b/x.erl
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .evaluate_series(&[context]);
-    let text = render_evaluation_table(&eval);
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("Incompatible"), "table: {}", text);
     assert!(text.contains("MissingSymbol"), "table: {}", text);
     assert!(text.contains("ra:gone/3"), "table: {}", text);
@@ -121,8 +134,159 @@ fn table_handles_synthetic_record_fields_changed_reason() {
         )]),
         diagnostics: Diagnostics::default(),
     };
-    let text = render_evaluation_table(&eval);
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("RecordFields"), "table: {}", text);
     assert!(text.contains("FileAbsent"), "table: {}", text);
     assert!(text.contains("src/a.erl"), "table: {}", text);
+}
+
+#[test]
+fn every_bel7_table_style_renders_pin_and_verdict() {
+    let snap = snapshot_with_module("ra", "ra", &[("start", 0)]);
+    let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
+    let context = EvaluationContext::new(pin_for("ra"), snap, scope);
+    let diff = "\
+diff --git a/x.erl b/x.erl
+--- a/x.erl
++++ b/x.erl
+@@ -1,1 +1,2 @@
+ -module(x).
++go() -> ra:start().
+";
+    let eval = Patch::parse(diff.as_bytes())
+        .unwrap()
+        .analyze()
+        .evaluate_series(&[context]);
+    for style in ALL_TABLE_STYLES {
+        let text = render_evaluation_table(&eval, *style);
+        assert!(
+            text.contains("ra@v1.0.0"),
+            "style {style:?} dropped pin column: {text}"
+        );
+        assert!(
+            text.contains("Compatible"),
+            "style {style:?} dropped verdict column: {text}"
+        );
+    }
+}
+
+#[test]
+fn markdown_style_uses_pipe_separators() {
+    let snap = snapshot_with_module("ra", "ra", &[("start", 0)]);
+    let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
+    let context = EvaluationContext::new(pin_for("ra"), snap, scope);
+    let diff = "\
+diff --git a/x.erl b/x.erl
+--- a/x.erl
++++ b/x.erl
+@@ -1,1 +1,2 @@
+ -module(x).
++go() -> ra:start().
+";
+    let eval = Patch::parse(diff.as_bytes())
+        .unwrap()
+        .analyze()
+        .evaluate_series(&[context]);
+    let md = render_evaluation_table(&eval, TableStyle::Markdown);
+    assert!(md.contains('|'), "markdown table should use pipes: {md}");
+    assert!(
+        md.contains("|---") || md.contains("|--"),
+        "markdown table should have header separator: {md}"
+    );
+}
+
+#[test]
+fn clause_mismatch_reason_renders_call_args_and_pin_clauses() {
+    let eval = SeriesEvaluation {
+        verdict: SeriesVerdict::from_results(vec![PinVerdict::new(
+            pin_for("ra"),
+            Verdict::Incompatible {
+                reasons: vec![Reason::ClauseMismatch {
+                    module: ModuleName::new("ra").unwrap(),
+                    function: FunctionName::new("mode").unwrap(),
+                    arity: Arity::new(1),
+                    call_args: vec![ArgShape::Atom {
+                        name: "restart".into(),
+                    }],
+                    pin_clauses: vec![
+                        vec![ArgShape::Atom {
+                            name: "start".into(),
+                        }],
+                        vec![ArgShape::Atom {
+                            name: "stop".into(),
+                        }],
+                    ],
+                }],
+            },
+        )]),
+        diagnostics: Diagnostics::default(),
+    };
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
+    assert!(text.contains("ClauseMismatch"), "table: {}", text);
+    assert!(text.contains("ra:mode/1"), "table: {}", text);
+    assert!(text.contains("'restart'"), "table: {}", text);
+    assert!(text.contains("'start'"), "table: {}", text);
+    assert!(text.contains("'stop'"), "table: {}", text);
+}
+
+#[test]
+fn untracked_module_missing_reason_renders_in_table() {
+    let eval = SeriesEvaluation {
+        verdict: SeriesVerdict::from_results(vec![PinVerdict::new(
+            pin_for("ra"),
+            Verdict::Incompatible {
+                reasons: vec![Reason::UntrackedModuleMissing {
+                    module: ModuleName::new("rabbit_mgmt_wm_user").unwrap(),
+                }],
+            },
+        )]),
+        diagnostics: Diagnostics::default(),
+    };
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
+    assert!(text.contains("UntrackedModuleMissing"), "table: {}", text);
+    assert!(text.contains("rabbit_mgmt_wm_user"), "table: {}", text);
+}
+
+#[test]
+fn unsupported_file_type_reason_renders_in_table() {
+    let eval = SeriesEvaluation {
+        verdict: SeriesVerdict::from_results(vec![PinVerdict::new(
+            pin_for("demo"),
+            Verdict::RequiresAdaptation {
+                reasons: vec![Reason::UnsupportedFileType {
+                    path: PathBuf::from("lib/foo.ex"),
+                }],
+            },
+        )]),
+        diagnostics: Diagnostics::default(),
+    };
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
+    assert!(text.contains("UnsupportedFileType"), "table: {}", text);
+    assert!(text.contains("lib/foo.ex"), "table: {}", text);
+}
+
+#[test]
+fn ascii_style_avoids_box_drawing_characters() {
+    let snap = snapshot_with_module("ra", "ra", &[("start", 0)]);
+    let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
+    let context = EvaluationContext::new(pin_for("ra"), snap, scope);
+    let diff = "\
+diff --git a/x.erl b/x.erl
+--- a/x.erl
++++ b/x.erl
+@@ -1,1 +1,2 @@
+ -module(x).
++go() -> ra:start().
+";
+    let eval = Patch::parse(diff.as_bytes())
+        .unwrap()
+        .analyze()
+        .evaluate_series(&[context]);
+    let ascii = render_evaluation_table(&eval, TableStyle::Ascii);
+    for ch in ascii.chars() {
+        assert!(
+            ch.is_ascii(),
+            "ascii table should be 7-bit clean, got `{ch}`",
+        );
+    }
 }

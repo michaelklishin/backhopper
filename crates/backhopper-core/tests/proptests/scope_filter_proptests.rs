@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 use time::OffsetDateTime;
 
-use backhopper_core::compat::patch::{Language, Patch, PinContext};
+use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
@@ -60,7 +60,7 @@ proptest! {
         let snap: Snapshot<state::Canonical> =
             Snapshot::from_extracted(header(project), modules, vec![]).into_canonical();
         let scope = PinScope::from_snapshot(ProjectName::new(project).unwrap(), &snap, []);
-        let context = PinContext::new(
+        let context = EvaluationContext::new(
             Pin::new(
                 ProjectName::new(project).unwrap(),
                 TagName::new("v1.0.0").unwrap(),
@@ -78,7 +78,7 @@ proptest! {
         }
         let eval = Patch::parse(diff.as_bytes())
             .unwrap()
-            .analyze(Language::Erlang)
+            .analyze()
             .evaluate_series(&[context]);
         let r0 = &eval.verdict.results[0];
         prop_assert_eq!(r0.tracked_refs, tracked.len());

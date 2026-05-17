@@ -16,6 +16,12 @@ const MAX_FUNCTION_NAME_LEN: usize = 256;
 const MAX_TYPE_NAME_LEN: usize = 256;
 const MAX_RECORD_NAME_LEN: usize = 256;
 const MAX_FIELD_NAME_LEN: usize = 256;
+const MAX_APPLICATION_NAME_LEN: usize = 128;
+const MAX_BEHAVIOUR_NAME_LEN: usize = 256;
+const MAX_ATTRIBUTE_NAME_LEN: usize = 64;
+const MAX_CALLBACK_NAME_LEN: usize = 256;
+
+const APPLICATION_PATTERN: &str = "[a-z][a-z0-9_]{0,127}";
 
 const PROJECT_PATTERN: &str = "[a-z][a-z0-9_-]{0,63}";
 const SERIES_PATTERN: &str = "[a-z][a-z0-9_.-]{0,63}";
@@ -26,6 +32,10 @@ fn is_project_name_char(c: char) -> bool {
 
 fn is_series_name_char(c: char) -> bool {
     is_project_name_char(c) || c == '.'
+}
+
+fn is_application_name_char(c: char) -> bool {
+    c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'
 }
 
 fn validate_simple_name(
@@ -278,6 +288,43 @@ string_newtype!(FieldName, "field name", MAX_FIELD_NAME_LEN, |v: &str| {
     validate_erlang_name("field name", v, MAX_FIELD_NAME_LEN)
 });
 
+string_newtype!(
+    ApplicationName,
+    "application name",
+    MAX_APPLICATION_NAME_LEN,
+    |v: &str| {
+        validate_simple_name(
+            "application name",
+            v,
+            MAX_APPLICATION_NAME_LEN,
+            |c| c.is_ascii_lowercase(),
+            is_application_name_char,
+            APPLICATION_PATTERN,
+        )
+    }
+);
+
+string_newtype!(
+    BehaviourName,
+    "behaviour name",
+    MAX_BEHAVIOUR_NAME_LEN,
+    |v: &str| { validate_module_name("behaviour name", v, MAX_BEHAVIOUR_NAME_LEN) }
+);
+
+string_newtype!(
+    AttributeName,
+    "attribute name",
+    MAX_ATTRIBUTE_NAME_LEN,
+    |v: &str| { validate_erlang_name("attribute name", v, MAX_ATTRIBUTE_NAME_LEN) }
+);
+
+string_newtype!(
+    CallbackName,
+    "callback name",
+    MAX_CALLBACK_NAME_LEN,
+    |v: &str| { validate_erlang_name("callback name", v, MAX_CALLBACK_NAME_LEN) }
+);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Arity(u8);
@@ -354,7 +401,7 @@ impl AsRef<str> for CommitSha {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Mfa {
     pub module: ModuleName,
     pub function: FunctionName,

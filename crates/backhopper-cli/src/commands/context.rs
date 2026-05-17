@@ -1,5 +1,6 @@
 //! Shared command context: load config, open store.
 
+use std::env;
 use std::path::{Path, PathBuf};
 
 use backhopper_core::Error as CoreError;
@@ -10,7 +11,7 @@ use crate::cli::GlobalArgs;
 use crate::errors::{CliError, CliResult};
 
 pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
-    if let Some(p) = &args.config {
+    if let Some(p) = &args.config_file_path {
         return Ok(p.clone());
     }
     let mut tried: Vec<PathBuf> = Vec::new();
@@ -19,7 +20,7 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         return Ok(cwd);
     }
     tried.push(cwd);
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
         let candidate = PathBuf::from(xdg)
             .join("backhopper")
             .join("backhopper.toml");
@@ -28,7 +29,7 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         }
         tried.push(candidate);
     }
-    if let Ok(home) = std::env::var("HOME") {
+    if let Ok(home) = env::var("HOME") {
         let candidate = PathBuf::from(home)
             .join(".config")
             .join("backhopper")
@@ -47,7 +48,7 @@ pub fn load_config(args: &GlobalArgs) -> CliResult<Config> {
 }
 
 pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
-    if let Some(dir) = &args.snapshot_dir {
+    if let Some(dir) = &args.snapshot_dir_path {
         return dir.clone();
     }
     cfg.snapshot_dir()

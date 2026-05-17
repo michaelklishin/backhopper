@@ -1,0 +1,16 @@
+{
+  "pin": {
+    "project": "ra",
+    "tag": "v2.0.0"
+  },
+  "verdict": {
+    "verdict": "requires_adaptation",
+    "reasons": [
+      {
+        "kind": "unsupported_file_type",
+        "path": "lib/foo.ex"
+      }
+    ]
+  },
+  "tracked_refs": 0
+}

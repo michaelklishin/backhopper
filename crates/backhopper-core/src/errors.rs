@@ -175,6 +175,9 @@ pub enum PatchError {
     #[error("input exceeds size limit ({size} > {limit} bytes)")]
     SizeLimit { size: usize, limit: usize },
 
+    #[error("patch is not valid UTF-8 (first invalid byte at offset {offset})")]
+    InvalidUtf8 { offset: usize },
+
     #[error("unsupported file type: {0}")]
     UnsupportedFileType(String),
 

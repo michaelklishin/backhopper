@@ -36,10 +36,10 @@ fn api_diff_reports_added_export() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -48,9 +48,9 @@ fn api_diff_reports_added_export() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
-            "api",
+            "snapshots",
             "diff",
             "--project",
             "demo",
@@ -74,10 +74,10 @@ fn snapshots_list_shows_both_tags() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -86,7 +86,7 @@ fn snapshots_list_shows_both_tags() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
             "list",

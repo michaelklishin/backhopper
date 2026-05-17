@@ -1,0 +1,38 @@
+{
+  "pin": {
+    "project": "ra",
+    "tag": "v2.0.0"
+  },
+  "verdict": {
+    "verdict": "incompatible",
+    "reasons": [
+      {
+        "kind": "clause_mismatch",
+        "module": "ra",
+        "function": "mode",
+        "arity": 1,
+        "call_args": [
+          {
+            "kind": "atom",
+            "name": "restart"
+          }
+        ],
+        "pin_clauses": [
+          [
+            {
+              "kind": "atom",
+              "name": "start"
+            }
+          ],
+          [
+            {
+              "kind": "atom",
+              "name": "stop"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "tracked_refs": 1
+}

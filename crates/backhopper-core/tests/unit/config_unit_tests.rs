@@ -77,3 +77,75 @@ pins = [{ project = "ghost", tag = "v1" }]
     let r = Config::load(&path);
     assert!(r.is_err());
 }
+
+#[test]
+fn projects_missing_from_series_reports_unpinned_projects() {
+    let tmp = TempDir::new().unwrap();
+    let body = r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/tmp/ra.git"
+[[project]]
+name = "osiris"
+git_url = "/tmp/osiris.git"
+[[project]]
+name = "cowboy"
+git_url = "/tmp/cowboy.git"
+[[series]]
+name = "partial"
+pins = [{ project = "ra", tag = "v1" }]
+"#;
+    let path = write_config(&tmp, body);
+    let cfg = Config::load(&path).unwrap();
+    let series = cfg
+        .series_by_name(&SeriesName::new("partial").unwrap())
+        .unwrap();
+    let missing = cfg.projects_missing_from_series(series);
+    let names: Vec<&str> = missing.iter().map(|n| n.as_str()).collect();
+    assert_eq!(names, vec!["cowboy", "osiris"]);
+}
+
+#[test]
+fn projects_missing_from_series_empty_when_all_pinned() {
+    let tmp = TempDir::new().unwrap();
+    let body = r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/tmp/ra.git"
+[[series]]
+name = "complete"
+pins = [{ project = "ra", tag = "v1" }]
+"#;
+    let path = write_config(&tmp, body);
+    let cfg = Config::load(&path).unwrap();
+    let series = cfg
+        .series_by_name(&SeriesName::new("complete").unwrap())
+        .unwrap();
+    assert!(cfg.projects_missing_from_series(series).is_empty());
+}
+
+#[test]
+fn series_by_name_with_coverage_check_returns_same_series() {
+    let tmp = TempDir::new().unwrap();
+    let body = r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/tmp/ra.git"
+[[project]]
+name = "osiris"
+git_url = "/tmp/osiris.git"
+[[series]]
+name = "partial"
+pins = [{ project = "ra", tag = "v1" }]
+"#;
+    let path = write_config(&tmp, body);
+    let cfg = Config::load(&path).unwrap();
+    let name = SeriesName::new("partial").unwrap();
+    let direct = cfg.series_by_name(&name).unwrap();
+    let checked = cfg.series_by_name_with_coverage_check(&name).unwrap();
+    assert_eq!(direct.name, checked.name);
+    assert_eq!(direct.pins.len(), checked.pins.len());
+}

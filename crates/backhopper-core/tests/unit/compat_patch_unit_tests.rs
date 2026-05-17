@@ -1,4 +1,5 @@
 use backhopper_core::compat::patch::{Language, Patch};
+use backhopper_core::errors::PatchError;
 
 const SIMPLE_DIFF: &str = "\
 diff --git a/src/foo.erl b/src/foo.erl
@@ -21,9 +22,7 @@ fn parses_a_minimal_unified_diff() {
 
 #[test]
 fn analyze_collects_referenced_calls() {
-    let p = Patch::parse(SIMPLE_DIFF.as_bytes())
-        .unwrap()
-        .analyze(Language::Erlang);
+    let p = Patch::parse(SIMPLE_DIFF.as_bytes()).unwrap().analyze();
     let calls: Vec<String> = p
         .referenced()
         .iter()
@@ -50,4 +49,20 @@ fn rejects_oversized_input() {
     let huge = vec![b'a'; 65 * 1024 * 1024];
     let r = Patch::parse(&huge);
     assert!(r.is_err());
+}
+
+#[test]
+fn rejects_invalid_utf8_with_offset() {
+    let mut bytes = b"diff --git a/x b/x\n".to_vec();
+    bytes.push(0xFF);
+    match Patch::parse(&bytes) {
+        Err(PatchError::InvalidUtf8 { offset }) => {
+            assert_eq!(
+                offset,
+                bytes.len() - 1,
+                "offset should point at the bad byte"
+            );
+        }
+        other => panic!("expected InvalidUtf8, got {:?}", other),
+    }
 }

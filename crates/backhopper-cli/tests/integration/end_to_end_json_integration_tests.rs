@@ -27,7 +27,7 @@ fn config_validate_json_returns_ok_true() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "config",
             "validate",

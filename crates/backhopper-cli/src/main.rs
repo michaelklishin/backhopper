@@ -1,13 +1,15 @@
-use std::process::ExitCode;
+use std::process;
+
+use bel7_cli::{ExitCodeExt, print_error};
 
 use backhopper_cli::run;
 
-fn main() -> ExitCode {
+fn main() -> process::ExitCode {
     match run() {
-        Ok(code) => code,
+        Ok(code) => process::ExitCode::from(code as u8),
         Err(e) => {
-            eprintln!("backhopper: {e}");
-            ExitCode::from(1)
+            print_error(format!("backhopper: {e}"));
+            process::ExitCode::from(e.exit_code().to_i32() as u8)
         }
     }
 }

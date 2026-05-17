@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{Arity, FieldName, FunctionName, ModuleName, RecordName, TagName};
 use crate::model::pin::Pin;
 use crate::model::symbol::SymbolRef;
@@ -83,6 +84,20 @@ pub enum Reason {
     UnsupportedFileType {
         path: PathBuf,
     },
+    UntrackedModuleMissing {
+        module: ModuleName,
+    },
+    /// Call-site argument shapes don't satisfy any clause head at the
+    /// pin. Emitted when both the call and the pin's clause patterns
+    /// are concrete enough to compare; `Unknown` on either side is the
+    /// escape hatch that suppresses the reason.
+    ClauseMismatch {
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+        call_args: Vec<ArgShape>,
+        pin_clauses: Vec<Vec<ArgShape>>,
+    },
 }
 
 impl Reason {
@@ -95,6 +110,8 @@ impl Reason {
                 | Self::FileAbsent { .. }
                 | Self::NowHidden { .. }
                 | Self::RecordFieldsChanged { .. }
+                | Self::UntrackedModuleMissing { .. }
+                | Self::ClauseMismatch { .. }
         )
     }
 }

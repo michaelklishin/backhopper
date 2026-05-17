@@ -1,6 +1,6 @@
 use time::OffsetDateTime;
 
-use backhopper_core::compat::patch::{Language, Patch};
+use backhopper_core::compat::patch::Patch;
 use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
@@ -62,7 +62,7 @@ diff --git a/x.erl b/x.erl
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series(&[(pin(), snap)]);
     let r0 = &v.results[0];
     assert!(matches!(
@@ -101,7 +101,7 @@ diff --git a/x.erl b/x.erl
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series(&[(pin(), snap)]);
     let r0 = &v.results[0];
     assert!(
@@ -129,7 +129,7 @@ diff --git a/x.erl b/x.erl
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series(&[(pin(), snap)]);
     let r0 = &v.results[0];
     assert!(
@@ -153,7 +153,7 @@ diff --git a/x.erl b/x.erl
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series(&[(pin(), snap)]);
     let r0 = &v.results[0];
     assert!(r0.verdict.is_compatible() || matches!(r0.verdict, Verdict::Compatible));

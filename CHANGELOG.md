@@ -1,5 +1,5 @@
 # Changelog
 
-## v0.2.0 (in development)
+## v0.4.0 (in development)
 
 Initial release.

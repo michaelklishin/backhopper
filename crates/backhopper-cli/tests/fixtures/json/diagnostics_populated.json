@@ -1,0 +1,13 @@
+{
+  "untracked_calls": {
+    "io": 2,
+    "lists": 5
+  },
+  "untracked_records": {
+    "config": 1
+  },
+  "unanalyzed": {
+    "apply": 3,
+    "variable_dispatch": 1
+  }
+}

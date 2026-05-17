@@ -1,0 +1,16 @@
+{
+  "pin": {
+    "project": "ra",
+    "tag": "v2.0.0"
+  },
+  "verdict": {
+    "verdict": "incompatible",
+    "reasons": [
+      {
+        "kind": "untracked_module_missing",
+        "module": "rabbit_mgmt_wm_user"
+      }
+    ]
+  },
+  "tracked_refs": 0
+}

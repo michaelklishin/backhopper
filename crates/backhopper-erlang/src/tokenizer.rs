@@ -5,6 +5,22 @@
 //! Attributes come in two shapes that this captures uniformly:
 //!  * `-name(args).`  body = `(args)`
 //!  * `-name body.`   body = `body`
+//!
+//! Note: a sibling lexer lives at `backhopper_xref_reader::scanner`. Both
+//! must handle the same Erlang lexical rules (string/quoted-atom/char-literal
+//! escapes, line comments, bracket balancing), but they serve different
+//! purposes and have not been factored together:
+//!
+//!  * this module is *block-oriented*: one pass per file produces a
+//!    `Vec<AttributeBlock>` consumed by `attributes.rs`; it does not track
+//!    column or byte offsets
+//!  * the xref-reader `Scanner` is *cursor-based*: it exposes peek/advance
+//!    with `Pos` (line, column, byte offset) so call-site detection can
+//!    record precise `Loc` spans for each external/local call
+//!
+//! Consolidation is plausible (the string/quote/char-literal skipping is
+//! identical) but would require Position-tracking everywhere; defer until
+//! a third consumer makes the cost worthwhile.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributeBlock {

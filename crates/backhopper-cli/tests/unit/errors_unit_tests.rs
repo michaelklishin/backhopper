@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use sysexits::ExitCode;
+use bel7_cli::{ExitCode, ExitCodeProvider};
 
 use backhopper_cli::CliError;
 
@@ -9,6 +9,10 @@ fn config_not_found_maps_to_no_input() {
     let e = CliError::ConfigNotFound {
         tried: vec![PathBuf::from("/x")],
     };
+    assert_eq!(
+        <CliError as ExitCodeProvider>::exit_code(&e),
+        ExitCode::NoInput
+    );
     assert_eq!(e.exit_code(), ExitCode::NoInput);
 }
 

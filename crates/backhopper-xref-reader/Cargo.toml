@@ -1,0 +1,35 @@
+[package]
+name        = "backhopper-xref-reader"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "Erlang source to call-graph reader for backhopper-xref"
+
+[lints]
+workspace = true
+
+[dependencies]
+backhopper-core        = { workspace = true }
+backhopper-erlang      = { workspace = true }
+backhopper-xref-graph  = { workspace = true }
+serde                  = { workspace = true }
+thiserror              = { workspace = true }
+tracing                = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "proptests"
+path = "tests/proptests/main.rs"

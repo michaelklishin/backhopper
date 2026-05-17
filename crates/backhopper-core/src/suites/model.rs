@@ -1,0 +1,116 @@
+//! Types for suite selection.
+
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+use crate::app_src::AppSrcSpec;
+use crate::model::names::{ApplicationName, ModuleName};
+
+/// A test-suite module reference. `module` ends in `_SUITE` by
+/// convention but the constructor does not enforce this.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SuiteRef {
+    pub application: ApplicationName,
+    pub module: ModuleName,
+    pub path: PathBuf,
+}
+
+/// Why a suite was included in the plan. A suite can appear under
+/// multiple reasons when more than one rule fires.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SuiteInclusionReason {
+    /// The suite file itself appears in the diff.
+    TestModified { path: PathBuf },
+    /// Fast unit or property suite swept because its application has
+    /// modified source and the suite references at least one of the
+    /// modified modules.
+    UnitOrPropSweep {
+        application: ApplicationName,
+        triggering_modules: Vec<ModuleName>,
+    },
+    /// Suite is in the same application as a modified module and
+    /// references that module by name.
+    SameAppCaller {
+        application: ApplicationName,
+        module: ModuleName,
+    },
+    /// Suite is in a different application from a modified library
+    /// module and references that module by name.
+    CrossAppCaller {
+        library_application: ApplicationName,
+        module: ModuleName,
+    },
+    /// Suite was included by a user-configured rule.
+    ConfiguredRule {
+        rule_name: String,
+        triggering_path: PathBuf,
+    },
+}
+
+/// Plan input. The caller assembles diff, discovered apps, and any
+/// extra rules from config.
+#[derive(Debug, Clone)]
+pub struct PlanInput {
+    pub repo_root: PathBuf,
+    pub modified_paths: Vec<PathBuf>,
+    pub apps: Vec<AppSrcSpec>,
+    pub library_apps: Vec<ApplicationName>,
+    pub extra_rules: Vec<ExtraRule>,
+}
+
+/// One entry in the plan: the suite plus every rule that included it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuitePlanEntry {
+    pub suite: SuiteRef,
+    pub reasons: Vec<SuiteInclusionReason>,
+}
+
+/// Output of `plan()`. Entries are sorted by suite; reasons within
+/// each entry are in rule-application order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuitePlan {
+    pub entries: Vec<SuitePlanEntry>,
+}
+
+impl SuitePlan {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// User-configured rule. The library API accepts a `Vec<ExtraRule>`
+/// in `PlanInput`. TOML-loaded `[[suites.extra_rule]]` support is
+/// not yet wired through `Config`: callers must supply rules
+/// programmatically.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtraRule {
+    pub name: String,
+    pub trigger: ExtraRuleTrigger,
+    pub include_suites: Vec<SuiteRefSpec>,
+}
+
+/// Path-glob trigger expression. Today only suffix and contains
+/// matching are exposed: deliberately constrained so the surface
+/// stays small until users push for more.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExtraRuleTrigger {
+    /// Fires when any modified path's file name matches `suffix`.
+    PathSuffix { suffix: String },
+    /// Fires when any modified path contains `fragment`.
+    PathContains { fragment: String },
+}
+
+/// A suite to include when an `ExtraRule` fires. The caller resolves
+/// these against the discovered tree at plan time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuiteRefSpec {
+    pub application: ApplicationName,
+    pub module: ModuleName,
+}

@@ -1,22 +1,26 @@
 # backhopper
 
-`backhopper` captures the public API of Erlang and Elixir projects at every
-git tag and answers compatibility questions against those captures.
+`backhopper` is a tool that simplifies dependency compatibility analysis
+of git commits (patches) for Erlang- and Elixir-based tools. 
 
-It is built to make backport automation safer. When a patch from a newer
-release line is cherry-picked into an older one, the older line usually
-pins older versions of its dependencies; a call to a function added in a
-newer dep version then compiles fine on the source branch and breaks on
-the target. `backhopper` turns that mismatch into a mechanical query.
+Given a set of public API snapshots of dependencies, it can detect whether a patch uses any API
+elements that are not available in a specific dependency version.
 
 
-## Intended Use Cases
+## What Problem It Solves
 
-`backhopper` fits projects that pin specific dependency versions per
-release line and routinely cherry-pick patches across lines. The
-compatibility command accepts a patch, a commit, a range, or a merge
-commit, extracts every call site, record reference, and dispatch pattern,
-then resolves each against the pinned snapshots.
+When a pull request or a commit (patch) is backported, it has to be
+verified against the public API of an older set of dependencies,
+ideally before the backporting is done.
+
+Tools such as `xref` require backporting before such verification
+can happen.
+
+`backhopper` turns the tables, allowing the essential part of such API
+compatibility verification to happen before backporting. It records the
+public API of each dependency at every git tag, then checks any patch,
+commit, range, or merge commit against the dependency versions a target
+branch uses.
 
 
 ## Project Maturity
@@ -40,21 +44,25 @@ backhopper help
 All command groups and individual commands support `--help`:
 
 ```shell
-backhopper compatibility --help
-backhopper compatibility commit --help
+backhopper check --help
+backhopper check commit --help
 
 backhopper snapshots --help
-backhopper api --help
+backhopper snapshots lookup --help
 ```
+
+Prefixes are inferred when unambiguous, so `backhopper sn li` is the same as
+`backhopper snapshots list`.
 
 
 ### Configuration
 
-`backhopper` reads a TOML config (`backhopper.toml` in the working
-directory by default; override with `-c` or `BACKHOPPER_CONFIG_FILE_PATH`).
+`backhopper` reads a TOML config file. By default it looks for
+`backhopper.toml` in the current directory; override the path with `-c`
+or the `BACKHOPPER_CONFIG_FILE_PATH` environment variable.
 
-Each project gets a single entry; release lines are described as named
-"series" that pin one tag per project. A small example:
+Each dependency is a "project". Each release line is a named "series"
+that pins one tag per project. Example:
 
 ```toml
 config_version = 1
@@ -81,17 +89,19 @@ pins = [
 
 ### Capturing Snapshots
 
-`snapshots discover` walks every tag of a project, parses the public
-surface, and writes one canonical text file per tag:
+`snapshots generate` walks every git tag of a project, parses the public
+API, and writes one text file per tag:
 
 ```shell
-backhopper snapshots discover --project lib_a
+backhopper snapshots generate --project lib_a
 ```
 
-Re-running is incremental: only new tags are scanned.
+Re-running is cheap; only new tags are scanned. To preview what would be
+captured without writing anything, add `--dry-run`. To list tags that have
+no snapshot on disk yet without touching the store:
 
 ```shell
-backhopper snapshots update
+backhopper snapshots list_tags --project lib_a
 ```
 
 
@@ -100,52 +110,63 @@ backhopper snapshots update
 For ad-hoc questions ("was this function exported at v1.8.0?"):
 
 ```shell
-backhopper api lookup --project lib_a --tag v2.0.4 \
-                      --mfa some_module:some_function/2
+backhopper snapshots lookup --project lib_a --tag v2.0.4 \
+                            --mfa some_module:some_function/2
 
-backhopper api modules --project lib_a --tag v2.0.4
+backhopper snapshots modules --project lib_a --tag v2.0.4
 
-backhopper api diff --project lib_a --from v2.0.3 --to v2.0.4
+backhopper snapshots diff --project lib_a --from v2.0.3 --to v2.0.4
 ```
 
 
 ### Checking a Patch Against a Series
 
-The core operation. Given a commit on a newer branch, verify it lands
-cleanly against a series that pins older dependency versions:
+This is the main thing the tool does. Given a commit on a newer branch,
+check whether it will still work against a series that pins older
+dependency versions:
 
 ```shell
-backhopper compatibility commit --series stable-3.x \
-                                --repo /path/to/your_repo.git \
-                                1a2b3c4d
+backhopper check commit --series stable-3.x \
+                        --repo-dir-path /path/to/your_repo.git \
+                        1a2b3c4d
 ```
 
-Short SHAs, tags, or any rev spec `git rev-parse` understands are fine.
+Short SHAs, tags, or anything `git rev-parse` understands are accepted.
 
-For a commit range, or for a merge commit (which expands to its first
-parent against the merge SHA):
+For a commit range, or for a merge commit (which expands to the diff
+between the merge's first parent and the merge itself):
 
 ```shell
-backhopper compatibility range --series stable-3.x \
-                               --repo /path/to/your_repo.git \
-                               --range v3.0.0..HEAD
+backhopper check range --series stable-3.x \
+                       --repo-dir-path /path/to/your_repo.git \
+                       --range v3.0.0..HEAD
 
-backhopper compatibility range --series stable-3.x \
-                               --repo /path/to/your_repo.git \
-                               --merge-commit 9f8e7d6c
+backhopper check range --series stable-3.x \
+                       --repo-dir-path /path/to/your_repo.git \
+                       --merge-commit 9f8e7d6c
 ```
 
-A raw unified diff also works, piped or from a file:
+A raw unified diff also works, either piped in or read from a file:
 
 ```shell
 git format-patch -1 --stdout HEAD | \
-  backhopper compatibility patch --series stable-3.x
+  backhopper check patch --series stable-3.x
 
-backhopper compatibility patch --series stable-3.x /path/to/the.patch
+backhopper check patch --series stable-3.x /path/to/the.patch
 ```
 
-A clean run is terse on purpose: one row per pin, the verdict, and the
-count of tracked symbols that were checked.
+For many commits at once, `check batch` evaluates each commit against one
+or more series in a single invocation:
+
+```shell
+backhopper check batch \
+    --series stable-3.x,stable-4.x \
+    --repo-dir-path /path/to/your_repo.git \
+    --commits-file-path candidates.txt
+```
+
+A clean run prints one row per pinned dependency: the verdict and how
+many symbols were checked.
 
 ```
 compatible: 2, requires_adaptation: 0, incompatible: 0
@@ -158,43 +179,46 @@ compatible: 2, requires_adaptation: 0, incompatible: 0
 └──────────────────┴────────────┴────────┴──────────────────────────────┘
 ```
 
-A `0 tracked symbols referenced` pin means the patch never touched that
-project's surface, so the verdict is unconditional. A non-zero count is
-the trust signal: `backhopper` actually checked that many call sites.
+`0 tracked symbols referenced` means the patch never touched that
+project's API surface, so the verdict is trivially safe. A non-zero
+count is the trust signal: `backhopper` actually checked that many
+call sites against the pinned tag.
 
 
 ### Seeing What Was Skipped
 
-The verdict only covers tracked projects. Anything else (OTP stdlib,
-third-party libraries you didn't configure, dynamic dispatch through
-variables) is kept out so it doesn't drown the signal. Add
-`--show-untracked-calls` to see what was skipped:
+The verdict only covers tracked projects. Calls to anything else — the
+OTP standard library, third-party libraries you did not configure, or
+dynamic dispatch through variables — are deliberately left out so they
+do not drown the signal. Add `--show-untracked-calls` to see what was
+skipped:
 
 ```shell
-backhopper compatibility commit --series stable-3.x \
-                                --repo /path/to/your_repo.git \
-                                --show-untracked-calls 1a2b3c4d
+backhopper check commit --series stable-3.x \
+                        --repo-dir-path /path/to/your_repo.git \
+                        --show-untracked-calls 1a2b3c4d
 ```
 
-The footer groups what it found into three categories, each strictly
-informational:
+The footer groups skipped items into three categories. All three are
+informational only and never change the verdict:
 
-* **Untracked module calls**: calls to modules owned by no tracked
-  project. The annotation suggests a candidate project name (a module
-  named `something_helper` is reported as "project: something?") so it's
-  easy to tell whether you forgot to track something versus whether the
-  call is genuinely outside the tool's scope
-* **Untracked records**: `#name{...}` references for records that no
-  tracked snapshot declares. Same shape as untracked calls but for the
+* **Untracked module calls** are calls to modules that no tracked project
+  owns. The output suggests a guess at a project name (a module called
+  `something_helper` is reported as "project: something?") so you can
+  tell whether you forgot to track a dependency or whether the call is
+  genuinely outside the tool's scope
+* **Untracked records** are `#name{...}` references for records that no
+  tracked snapshot declares. Same idea as untracked calls but for the
   record namespace
-* **Unanalyzed dynamic dispatch**: `apply/3`, the `spawn` family, and
-  `Mod:fun(...)` patterns where the module or function name is a variable.
-  These can't be resolved statically; `backhopper` counts them so they're
+* **Unanalyzed dynamic dispatch** is `apply/3`, the `spawn` family, and
+  `Mod:fun(...)` where the module or function name is a variable. These
+  cannot be resolved statically. `backhopper` counts them so they are
   visible rather than silently dropped
 
-OTP stdlib calls (`lists`, `gen_server`, `application`, ...) are
-suppressed by default even with `--show-untracked-calls` on, because they
-rarely change the conclusion. Add `--show-otp-calls` to include them.
+Calls to the OTP standard library (`lists`, `gen_server`, `application`,
+and so on) are suppressed by default even when `--show-untracked-calls`
+is on, because they rarely change the conclusion. Add `--show-otp-calls`
+to include them.
 
 
 ### JSON Output
@@ -202,13 +226,13 @@ rarely change the conclusion. Add `--show-otp-calls` to include them.
 Every command accepts `--formatter json`:
 
 ```shell
-backhopper --formatter json compatibility commit \
+backhopper --formatter json check commit \
     --series stable-3.x \
-    --repo /path/to/your_repo.git \
+    --repo-dir-path /path/to/your_repo.git \
     1a2b3c4d
 ```
 
-Diagnostics live under `data.diagnostics`, strictly separate from
+Diagnostics live under `data.diagnostics`, kept separate from
 `data.results` so a JSON consumer cannot mistake them for actionable
 verdicts.
 
@@ -219,6 +243,12 @@ verdicts.
    store, `gix`-based git access, and the compatibility analyzer
  * `crates/backhopper-erlang` is the Erlang source surface extractor
  * `crates/backhopper-elixir` is the Elixir source surface extractor
+ * `crates/backhopper-xref-graph` provides the call-graph primitives
+   (vertices, relations, set algebra, transitive closure)
+ * `crates/backhopper-xref-reader` turns Erlang source into call-graph
+   input
+ * `crates/backhopper-xref` is the cross-reference façade and the
+   test-suite selection adapter
  * `crates/backhopper-cli` is the `backhopper` command line tool
 
 

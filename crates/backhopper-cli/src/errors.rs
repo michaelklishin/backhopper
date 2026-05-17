@@ -1,7 +1,9 @@
+//! CLI error type. Maps to BSD `sysexits` via `bel7_cli::ExitCodeProvider`.
+
 use std::io;
 use std::path::PathBuf;
 
-use sysexits::ExitCode as SysExits;
+use bel7_cli::{ExitCode, ExitCodeProvider, codes};
 use thiserror::Error;
 
 use backhopper_core::Error as CoreError;
@@ -30,16 +32,22 @@ pub enum CliError {
     Other(String),
 }
 
-impl CliError {
-    pub fn exit_code(&self) -> SysExits {
+impl ExitCodeProvider for CliError {
+    fn exit_code(&self) -> ExitCode {
         match self {
             Self::Core(e) => map_core(e),
-            Self::Io(_) => SysExits::IoErr,
-            Self::ConfigNotFound { .. } => SysExits::NoInput,
-            Self::OutputError(_) => SysExits::IoErr,
-            Self::InvalidInput(_) => SysExits::Usage,
-            Self::Other(_) => SysExits::Software,
+            Self::Io(_) => codes::IO_ERR,
+            Self::ConfigNotFound { .. } => codes::NO_INPUT,
+            Self::OutputError(_) => codes::IO_ERR,
+            Self::InvalidInput(_) => codes::USAGE,
+            Self::Other(_) => codes::SOFTWARE,
         }
+    }
+}
+
+impl CliError {
+    pub fn exit_code(&self) -> ExitCode {
+        <Self as ExitCodeProvider>::exit_code(self)
     }
 }
 
@@ -51,20 +59,20 @@ fn tried_display(paths: &[PathBuf]) -> String {
         .join(", ")
 }
 
-fn map_core(e: &CoreError) -> SysExits {
+fn map_core(e: &CoreError) -> ExitCode {
     match e {
-        CoreError::Snapshot(_) => SysExits::DataErr,
+        CoreError::Snapshot(_) => codes::DATA_ERR,
         CoreError::Store(s) => match s {
-            StoreError::SnapshotNotFound { .. } | StoreError::RootMissing(_) => SysExits::NoInput,
-            _ => SysExits::IoErr,
+            StoreError::SnapshotNotFound { .. } | StoreError::RootMissing(_) => codes::NO_INPUT,
+            _ => codes::IO_ERR,
         },
         CoreError::Config(c) => match c {
-            ConfigError::NotFound(_) => SysExits::NoInput,
-            _ => SysExits::DataErr,
+            ConfigError::NotFound(_) => codes::NO_INPUT,
+            _ => codes::DATA_ERR,
         },
-        CoreError::Git(_) => SysExits::IoErr,
-        CoreError::Patch(_) => SysExits::DataErr,
-        CoreError::Name(_) => SysExits::Usage,
-        CoreError::Io(_) => SysExits::IoErr,
+        CoreError::Git(_) => codes::IO_ERR,
+        CoreError::Patch(_) => codes::DATA_ERR,
+        CoreError::Name(_) => codes::USAGE,
+        CoreError::Io(_) => codes::IO_ERR,
     }
 }

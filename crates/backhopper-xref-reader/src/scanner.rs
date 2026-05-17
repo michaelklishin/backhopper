@@ -1,0 +1,274 @@
+//! Byte-level scanner for Erlang source.
+//!
+//! Tracks position (line, column, byte offset), skips comments and strings,
+//! and exposes helpers the reader uses to find function clauses and call
+//! sites. Not a full Erlang tokenizer: just what the v1 xref reader needs.
+//!
+//! Note: a sibling lexer lives at `backhopper_erlang::tokenizer`. Both must
+//! handle the same Erlang lexical rules (string/quoted-atom/char-literal
+//! escapes, comments, bracket balancing). They serve different purposes:
+//!
+//!  * this scanner is *cursor-based* and Position-tracking, used by the
+//!    xref reader to record precise `Loc` spans for each call site
+//!  * the erlang tokenizer is *block-oriented*: one pass produces a
+//!    `Vec<AttributeBlock>` and never tracks position
+//!
+//! Consolidation is plausible but deferred; see the note in
+//! `backhopper_erlang::tokenizer` for the trade-off.
+
+#[derive(Debug, Clone, Copy)]
+pub struct Pos {
+    pub line: u32,
+    pub column: u32,
+    pub byte_offset: u32,
+}
+
+impl Pos {
+    pub const fn start() -> Self {
+        Self {
+            line: 1,
+            column: 1,
+            byte_offset: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Scanner<'a> {
+    src: &'a str,
+    bytes: &'a [u8],
+    pos: Pos,
+}
+
+impl<'a> Scanner<'a> {
+    pub fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            bytes: src.as_bytes(),
+            pos: Pos::start(),
+        }
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.pos
+    }
+
+    pub fn src(&self) -> &'a str {
+        self.src
+    }
+
+    pub fn src_slice(&self, start: usize, end: usize) -> &'a str {
+        &self.src[start..end]
+    }
+
+    /// Set position. Used for backtracking when a heuristic match fails.
+    pub fn set_pos(&mut self, pos: Pos) {
+        self.pos = pos;
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.pos.byte_offset as usize >= self.bytes.len()
+    }
+
+    pub fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.pos.byte_offset as usize).copied()
+    }
+
+    pub fn peek_at(&self, offset: usize) -> Option<u8> {
+        self.bytes
+            .get(self.pos.byte_offset as usize + offset)
+            .copied()
+    }
+
+    pub fn advance(&mut self) -> Option<u8> {
+        let p = self.pos.byte_offset as usize;
+        if p >= self.bytes.len() {
+            return None;
+        }
+        let b = self.bytes[p];
+        self.pos.byte_offset += 1;
+        if b == b'\n' {
+            self.pos.line += 1;
+            self.pos.column = 1;
+        } else {
+            self.pos.column += 1;
+        }
+        Some(b)
+    }
+
+    pub fn skip_line(&mut self) {
+        while let Some(b) = self.peek() {
+            self.advance();
+            if b == b'\n' {
+                break;
+            }
+        }
+    }
+
+    /// Skip whitespace and Erlang `% ...` comments. Stops at the first
+    /// non-trivia byte.
+    pub fn skip_trivia(&mut self) {
+        loop {
+            match self.peek() {
+                Some(b) if b.is_ascii_whitespace() => {
+                    self.advance();
+                }
+                Some(b'%') => self.skip_line(),
+                _ => break,
+            }
+        }
+    }
+
+    /// Consume a string literal starting at `"`, leaving the cursor
+    /// just past the closing quote. Handles escaped characters minimally.
+    pub fn consume_string(&mut self) {
+        debug_assert_eq!(self.peek(), Some(b'"'));
+        self.advance();
+        while let Some(b) = self.peek() {
+            self.advance();
+            if b == b'\\' {
+                self.advance();
+                continue;
+            }
+            if b == b'"' {
+                break;
+            }
+        }
+    }
+
+    /// Consume a quoted-atom literal starting at `'`, leaving the cursor
+    /// just past the closing quote. Does not validate the contents.
+    pub fn consume_quoted_atom(&mut self) {
+        debug_assert_eq!(self.peek(), Some(b'\''));
+        self.advance();
+        while let Some(b) = self.peek() {
+            self.advance();
+            if b == b'\\' {
+                self.advance();
+                continue;
+            }
+            if b == b'\'' {
+                break;
+            }
+        }
+    }
+
+    /// Consume a `$c`, `$\n`, or `$\^X` character literal.
+    pub fn consume_char_literal(&mut self) {
+        debug_assert_eq!(self.peek(), Some(b'$'));
+        self.advance();
+        if self.peek() == Some(b'\\') {
+            self.advance();
+            if self.peek() == Some(b'^') {
+                self.advance();
+            }
+            self.advance();
+        } else {
+            self.advance();
+        }
+    }
+
+    /// Read an unquoted identifier (atom or variable). Returns the slice
+    /// of source covered.
+    pub fn consume_identifier(&mut self) -> &'a str {
+        let start = self.pos.byte_offset as usize;
+        while let Some(b) = self.peek() {
+            if b.is_ascii_alphanumeric() || b == b'_' || b == b'@' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let end = self.pos.byte_offset as usize;
+        &self.src[start..end]
+    }
+
+    /// Read a `?MACRO` reference returning the macro name without the `?`.
+    pub fn consume_macro_ref(&mut self) -> &'a str {
+        debug_assert_eq!(self.peek(), Some(b'?'));
+        self.advance();
+        let start = self.pos.byte_offset as usize;
+        while let Some(b) = self.peek() {
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let end = self.pos.byte_offset as usize;
+        &self.src[start..end]
+    }
+
+    /// Skip a balanced parenthesized expression, beginning at `(`.
+    /// Tracks nested `()`, `[]`, `{}`, strings, and atoms.
+    pub fn skip_balanced_parens(&mut self) -> u32 {
+        debug_assert_eq!(self.peek(), Some(b'('));
+        self.advance();
+        let mut depth: i32 = 1;
+        let mut top_level_commas: u32 = 0;
+        while let Some(b) = self.peek() {
+            match b {
+                b'(' => {
+                    depth += 1;
+                    self.advance();
+                }
+                b')' => {
+                    depth -= 1;
+                    self.advance();
+                    if depth == 0 {
+                        return top_level_commas;
+                    }
+                }
+                b'[' | b'{' => {
+                    // Inner brackets: track depth through them.
+                    let opener = b;
+                    let closer = if opener == b'[' { b']' } else { b'}' };
+                    self.advance();
+                    let mut inner = 1i32;
+                    while let Some(b2) = self.peek() {
+                        match b2 {
+                            x if x == opener => {
+                                inner += 1;
+                                self.advance();
+                            }
+                            x if x == closer => {
+                                inner -= 1;
+                                self.advance();
+                                if inner == 0 {
+                                    break;
+                                }
+                            }
+                            b'"' => self.consume_string(),
+                            b'\'' => self.consume_quoted_atom(),
+                            b'%' => self.skip_line(),
+                            _ => {
+                                self.advance();
+                            }
+                        }
+                    }
+                }
+                b',' if depth == 1 => {
+                    top_level_commas += 1;
+                    self.advance();
+                }
+                b'"' => self.consume_string(),
+                b'\'' => self.consume_quoted_atom(),
+                b'%' => self.skip_line(),
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+        top_level_commas
+    }
+}
+
+/// Returns the arity inferred from the argument-list source `(a, b, c)`.
+/// Empty parens yields 0; one or more top-level commas yields commas+1.
+pub fn arity_from_commas(top_level_commas: u32, had_any_content: bool) -> u32 {
+    if had_any_content {
+        top_level_commas + 1
+    } else {
+        0
+    }
+}

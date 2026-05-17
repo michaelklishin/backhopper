@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
 use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, SeriesName, TagName,
+    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FunctionName,
+    Mfa, ModuleName, ProjectName, SeriesName, TagName,
 };
 
 #[test]
@@ -98,4 +99,48 @@ fn commit_sha_validates_40_hex_lowercase() {
 fn function_name_round_trip() {
     let f = FunctionName::from_str("foo_bar@1").unwrap();
     assert_eq!(f.to_string(), "foo_bar@1");
+}
+
+#[test]
+fn application_name_accepts_lowercase_underscore() {
+    assert!(ApplicationName::new("rabbit".to_owned()).is_ok());
+    assert!(ApplicationName::new("rabbitmq_management".to_owned()).is_ok());
+    assert!(ApplicationName::new("kernel".to_owned()).is_ok());
+}
+
+#[test]
+fn application_name_rejects_uppercase_and_dashes() {
+    assert!(ApplicationName::new("Rabbit".to_owned()).is_err());
+    assert!(ApplicationName::new("rabbit-mq".to_owned()).is_err());
+    assert!(ApplicationName::new(String::new()).is_err());
+}
+
+#[test]
+fn behaviour_name_round_trips() {
+    let b = BehaviourName::from_str("gen_server").unwrap();
+    assert_eq!(b.to_string(), "gen_server");
+}
+
+#[test]
+fn attribute_name_accepts_erlang_atoms() {
+    assert!(AttributeName::new("vsn".to_owned()).is_ok());
+    assert!(AttributeName::new("compile".to_owned()).is_ok());
+}
+
+#[test]
+fn callback_name_round_trips() {
+    let c = CallbackName::from_str("handle_call").unwrap();
+    assert_eq!(c.to_string(), "handle_call");
+}
+
+#[test]
+fn mfa_implements_ord_for_btree_keys() {
+    use std::collections::BTreeMap;
+    let m1: Mfa = "a:b/0".parse().unwrap();
+    let m2: Mfa = "a:c/0".parse().unwrap();
+    let mut map = BTreeMap::new();
+    map.insert(m1.clone(), 1);
+    map.insert(m2.clone(), 2);
+    let keys: Vec<&Mfa> = map.keys().collect();
+    assert_eq!(keys, vec![&m1, &m2]);
 }

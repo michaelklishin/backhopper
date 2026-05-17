@@ -2,8 +2,8 @@
 
 ## Overview
 
-`backhopper` is a Rust CLI that records the public API of Erlang/Elixir
-projects across all their git tags into deterministic textual snapshots,
+`backhopper` is a Rust CLI that records the public API of Erlang and
+Elixir projects across all their git tags into deterministic textual snapshots,
 and answers compatibility questions against those snapshots. Its
 primary purpose is to remove the manual research step gating RabbitMQ
 patch backports across release branches and dependency versions
@@ -30,13 +30,14 @@ cargo nextest run -E "test(test_name)"
 ```
 
 Coverage gate (Phase 1): `cargo llvm-cov --workspace --lib --tests`
-must report ≥ 90% line coverage on `backhopper-core` and
-`backhopper-erlang`. The CLI crate is exempt because integration
+must report at least 90% line coverage on `backhopper-core`,
+`backhopper-erlang`, `backhopper-xref-graph`, `backhopper-xref-reader`,
+and `backhopper-xref`. The CLI crate is exempt because integration
 tests cover it through the process boundary.
 
 ## Repository Layout
 
-The repo is a Cargo workspace with four crates:
+The repo is a Cargo workspace with multiple crates:
 
  * `crates/backhopper-core/`: model types, snapshot I/O, store, config,
    git access (via `gix`), compatibility analysis. No `clap`. No I/O
@@ -45,8 +46,15 @@ The repo is a Cargo workspace with four crates:
    tokenizer, attribute parser, spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
    in earlier phases)
- * `crates/backhopper-cli/`: the binary — `clap` parser, command
-   dispatch, `--formatter` text/json output
+ * `crates/backhopper-xref-graph/`: whole-program call-graph primitives
+   (vertices, relations, set algebra, transitive closure). No Erlang
+   knowledge
+ * `crates/backhopper-xref-reader/`: Erlang source to call-graph
+   reader; depends on `backhopper-erlang` and `backhopper-xref-graph`
+ * `crates/backhopper-xref/`: cross-reference façade — predefined
+   analyses, `XrefDiff`, and the test-suite-selection adapter
+ * `crates/backhopper-cli/`: the binary: a `clap`-based parser, command
+   dispatch, output formatters
 
 Per-crate `tests/` directories use the layout `unit/`, `integration/`,
 `proptests/`, `fixtures/`. Each becomes a single test binary under
@@ -62,15 +70,15 @@ depends only on its own crate.
  * `src/model/names.rs`: newtypes (`ProjectName`, `TagName`, `Mfa`,
    `Arity`, `CommitSha`, etc.) — every domain primitive is its own type
  * `src/model/snapshot.rs`: `Snapshot<S>` with type-state
-   (`Unsorted`/`Canonical`)
+   (`Unsorted` and `Canonical`)
  * `src/model/verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
    Incompatible }` and `Reason` enums
  * `src/snapshot/format.rs`: canonical writer
  * `src/snapshot/parser.rs`: canonical reader (rejects non-canonical
    input)
  * `src/snapshot/sort.rs`: canonicalization
- * `src/snapshot/spec_normalize.rs`: `-spec`/`-callback` pretty-printer
- * `src/store/fs.rs`: `SnapshotStore<M>` (`ReadOnly`/`Mutable`)
+ * `src/snapshot/spec_normalize.rs`: `-spec` and `-callback` pretty-printer
+ * `src/store/fs.rs`: `SnapshotStore<M>` (`ReadOnly` and `Mutable`)
  * `src/config/mod.rs`: `backhopper.toml` schema, `deny_unknown_fields`
  * `src/git/mod.rs`: `GitRepo` wrapping `gix::Repository`
  * `src/compat/patch.rs`: unified-diff parser, `Patch<S>` type-state
@@ -91,13 +99,57 @@ depends only on its own crate.
  * `src/deprecated.rs`: collapses the four real source forms into one
  * `src/visibility.rs`: `@hidden`, `-doc(hidden)`, `internal_modules`
 
+### `backhopper-xref-graph`
+
+ * `src/state.rs`: sealed `Mode` and `Phase` markers (`Functions`,
+   `Modules`, `Building`, `Built`)
+ * `src/vertex.rs`, `src/call.rs`: `Vertex`, `FunctionRef`,
+   `FunctionSig`, `CallKind`, `CallTarget`
+ * `src/relation.rs`: `Relation` and `VertexSet` algebra; transitive
+   closure via Tarjan SCC plus DAG reachability
+ * `src/graph.rs`: `CallGraph<M, P>`, `ModuleSummary`, `Deprecation`
+ * `src/loc.rs`: `Loc`, `Position`, `PathId`, `PathInterner`
+
+### `backhopper-xref-reader`
+
+ * `src/scanner.rs`: byte-level Erlang scanner with position tracking
+ * `src/reader/`: `SourceReader` plus the per-concern submodules `scan`
+   (`ModuleBuilder` and the top-level scan loop), `attributes` (parses
+   `-module`, `-export`, `-import`, `-behaviour`, `-callback`,
+   `-deprecated`, and `-on_load`), and `calls` (call-site extraction:
+   `m:f(args)`, `f(args)`, `?MODULE:f(args)`, and unresolved variants)
+ * `src/application.rs`: `ProjectLayout`, `ApplicationAssignment`
+ * `src/model.rs`: `ModuleData`, `CallSite`, `ReadOutput`
+
+### `backhopper-xref`
+
+ * `src/builder.rs`: `XrefBuilder`
+ * `src/xref.rs`: `Xref<M>` façade
+ * `src/analysis.rs`: predefined analyses (undefined-call,
+   exports-not-used, locals-not-used, deprecated-call,
+   callers, callees, cycles, behaviour conformance)
+ * `src/diff.rs`: `XrefDiff` and `diff_xrefs`
+ * `src/suites.rs`: `suites_referencing`, `suites_referencing_mfas`,
+   `is_suite_module`
+ * `src/result.rs`: typed result structs and `Display` impls
+
 ### `backhopper-cli`
 
  * `src/main.rs`: entry point
- * `src/cli/mod.rs`: `clap`-based parser, command groups
- * `src/cli/dispatch.rs`: command dispatching
- * `src/commands/{projects,series,snapshots,api,compatibility,config,completions,version}.rs`
- * `src/output.rs`: text/json formatter dispatch
+ * `src/cli/mod.rs`: `clap` derive parser. Top-level groups:
+   `projects`, `series`, `snapshots`, `check`, `config`, `shell`,
+   `xref`, `suites`, `rabbitmq`, `version`. `infer_subcommands = true`
+   so `backhopper sn li` resolves to `backhopper snapshots list`
+ * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,tree_source}.rs`:
+   per-group argument shapes. Multi-word verbs use per-variant
+   `#[command(name = "list_callers")]` to render in snake_case while
+   args stay kebab-case (clap default)
+ * `src/commands/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,rabbitmq_components,version,tree_source}.rs`:
+   command handlers. `rabbitmq_components` is the RabbitMQ
+   `rabbitmq-components.mk` parser (CLI-local, never in `backhopper-core`)
+ * `src/commands/mod.rs`: dispatcher (matches `Group::*` to handlers)
+ * `src/output.rs`: text and JSON formatter dispatch. JSON envelope is
+   `{schema_version, command, data, exit_code}` for every command
  * `src/tables.rs`: `tabled`-based renderers
  * `src/errors.rs`: CLI error type, `ExitCodeProvider` impl
 
@@ -119,14 +171,25 @@ depends only on its own crate.
    would be a regression from a pure-Rust posture
  * `clap` (`derive`, `env`): CLI parsing. Newtypes implement `FromStr`
    so command arguments parse directly into the right type
- * `clap_complete`, `clap_complete_nushell`: shell completions
  * `serde`, `serde_json`, `toml`: serialization, config
  * `thiserror`: error enums in library crates; `anyhow` only at
    `backhopper-cli`'s `main` boundary
- * `tracing`, `tracing-subscriber` (`env-filter`): logging
- * `tabled`, `owo-colors`: text output
- * `bel7-cli`: exit-code mapping, table styles, completion glue
- * `sysexits`: exit-code constants
+ * `tracing`, `tracing-subscriber` (`env-filter`): logging. ANSI is
+   gated by `bel7_cli::should_colorize_stderr` so the layer honors
+   `NO_COLOR` and non-TTY destinations
+ * `tabled`: text-table rendering. Styling is governed by
+   `bel7_cli::TableStyle` (the `--table-style` global flag), not by
+   direct `Style::*` calls
+ * `bel7-cli` (`tables`, `clap`, `completions`, `progress`, `errors`,
+   `serde`): the single ecosystem-wide CLI toolkit. Provides exit-code
+   mapping (`ExitCodeProvider`, `ExitCodeExt`, `codes` constants,
+   `run_with_exit_code`), shell-completion generation
+   (`CompletionShell::detect`, `generate_completions`), table styling
+   (`TableStyle`), color decisions (`should_colorize`,
+   `should_colorize_stderr`, `print_error`), and progress reporting
+   (`InteractiveReporter`, `NonInteractiveReporter`, `QuietReporter`).
+   `sysexits` and the `clap_complete` and `clap_complete_nushell` crates
+   are pulled in transitively; do not depend on them directly
  * `proptest`: property tests (dev-dependency only)
  * `assert_cmd`, `predicates`, `insta`, `tempfile`: CLI test
    harness (dev-dependencies in `backhopper-cli`)
@@ -136,8 +199,8 @@ We deliberately do *not* take `tokio`, `tar`, `walkdir`, `unidiff`,
 
 ## Target Rust Version
 
- * Recent stable Rust (e.g. `1.94`+). MSRV pinned via
-   `rust-toolchain.toml` and bumped deliberately
+ * Recent stable Rust (`1.95`+). MSRV pinned via the workspace
+   `Cargo.toml` `rust-version` field and bumped deliberately
 
 ## Rust Code Style
 
@@ -146,8 +209,12 @@ We deliberately do *not* take `tokio`, `tar`, `walkdir`, `unidiff`,
    function-local `use` statements
  * Avoid fully-qualified type names as much as possible; always use a
    module-level `use` if there is no ambiguity in the scope
- * Add unit/integration/property tests under `tests/{unit,integration,proptests}/`,
-   never inline in implementation files
+ * Reduce macro use where possible; prefer reducing duplication via
+   the type system (generics, traits, type-state). Some duplication is
+   acceptable when the alternative is forced indirection
+ * Add unit, integration, and property tests under
+   `tests/{unit,integration,proptests}/`, never inline in
+   implementation files
  * At the end of each task, run `cargo fmt --all`
  * At the end of each task, run `RUSTFLAGS="-D warnings" cargo clippy
    --workspace --all-features` and fix any warnings
@@ -221,8 +288,13 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
 
  * Only add very important comments, both in tests and implementation;
    identifier names and the diff are the documentation
+
  * No multi-line comment blocks. One short line, above the line it
    describes, when needed at all
+ * Comments always sit on their own line *above* the code they document.
+   Never as a trailing `// ...` after the code on the same line
+ * Use `:` as the sentence connector inside `//` comments, never ` - `
+   or ` — `
  * No comments referencing the current task, fix number, or callers
 
 ## Git Instructions
@@ -238,6 +310,13 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
  * Never add full stops to Markdown list items
  * Use `*` for bullets in Markdown files (matches the user's other
    Rust projects)
+ * Wrap Rust identifiers (types, methods, traits, modules, crate
+   names, paths) in backticks in Markdown prose. `// ...` line
+   comments inside code are an exception: backticks read as noise
+   there
+ * Use "X and Y" in prose, never "X/Y" slash-shorthand. Unit fractions
+   (`bytes/edge`), single-concept abbreviations (`I/O`), and paths or
+   code (`tests/unit/`, `m:f/a`) are the exceptions
 
 ## After Completing a Task
 
@@ -292,7 +371,7 @@ Three workflows live under `.github/workflows/`:
  * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
    `NEXT_RELEASE_VERSION` repo variable, publishes every crate to
    crates.io in dependency order via Trusted Publishing, builds binary
-   archives for eight targets, builds deb/rpm/MSI packages, signs the
+   archives for eight targets, builds deb, rpm, and MSI packages, signs the
    archives with `cosign`, generates SBOMs, generates Homebrew, AUR,
    and Winget manifests, and creates the GitHub Release
  * `verify-packages.yaml`: post-release smoke test of the Debian, RPM,

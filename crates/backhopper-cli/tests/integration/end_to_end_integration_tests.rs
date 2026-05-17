@@ -35,7 +35,15 @@ fn help_text_contains_command_groups() {
     let assert = cmd.args(["--help"]).assert();
     let output = assert.success().get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    for grp in ["projects", "series", "snapshots", "api", "compatibility"] {
+    for grp in [
+        "projects",
+        "series",
+        "snapshots",
+        "check",
+        "shell",
+        "xref",
+        "rabbitmq",
+    ] {
         assert!(stdout.contains(grp), "help missing {}: {}", grp, stdout);
     }
 }
@@ -47,7 +55,7 @@ fn config_validate_accepts_well_formed_file() {
     let cfg = write_config(work.path(), repo.dir.path(), &snap);
     let mut cmd = Command::cargo_bin("backhopper").unwrap();
     cmd.args([
-        "--config",
+        "--config-file-path",
         cfg.to_str().unwrap(),
         "config",
         "validate",
@@ -66,10 +74,10 @@ fn discover_writes_snapshot_for_each_tag() {
     let cfg = write_config(work.path(), repo.dir.path(), &snap);
     let mut cmd = Command::cargo_bin("backhopper").unwrap();
     cmd.args([
-        "--config",
+        "--config-file-path",
         cfg.to_str().unwrap(),
         "snapshots",
-        "discover",
+        "generate",
         "--project",
         "demo",
     ])
@@ -95,10 +103,10 @@ fn api_lookup_reports_found_and_missing() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -107,9 +115,9 @@ fn api_lookup_reports_found_and_missing() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
-            "api",
+            "snapshots",
             "lookup",
             "--project",
             "demo",
@@ -137,10 +145,10 @@ fn snapshots_show_pretty_prints_canonical_text() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -149,7 +157,7 @@ fn snapshots_show_pretty_prints_canonical_text() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
             "show",
@@ -175,10 +183,10 @@ fn snapshots_verify_passes_on_unchanged_repo() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -187,7 +195,7 @@ fn snapshots_verify_passes_on_unchanged_repo() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
             "verify",

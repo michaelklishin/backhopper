@@ -1,18 +1,44 @@
 //! Clap-based command-line parser definition.
+//!
+//! Per-group argument shapes live in sibling modules (`projects`, `series`,
+//! `snapshots`, …) so each command's surface area is local to one file.
 
 use std::path::PathBuf;
 
+use bel7_cli::TableStyle;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
-use backhopper_core::model::names::{Mfa, ProjectName, SeriesName, TagName};
+pub mod check;
+pub mod config;
+pub mod projects;
+pub mod rabbitmq;
+pub mod series;
+pub mod shell;
+pub mod snapshots;
+pub mod suites;
+pub mod tree_source;
+pub mod xref;
+
+pub use check::{CheckCmd, CheckOutputFlags, SourcePinArgs};
+pub use config::ConfigCmd;
+pub use projects::ProjectsCmd;
+pub use rabbitmq::RabbitmqCmd;
+pub use series::SeriesCmd;
+pub use shell::{CompletionsCmd, ShellCmd};
+pub use snapshots::SnapshotsCmd;
+pub use suites::SuitesCmd;
+pub use tree_source::TreeSource;
+pub use xref::XrefCmd;
 
 #[derive(Debug, Parser)]
 #[command(
+    // Clap's `clap::crate_name!` macro is not used intentionally: `CARGO_PKG_NAME` is "backhopper-cli", but the binary is "backhopper".
     name = "backhopper",
-    version,
+    version = env!("CARGO_PKG_VERSION"),
     about = "Record Erlang/Elixir public APIs per git tag and answer compatibility questions",
     propagate_version = true,
-    arg_required_else_help = true
+    arg_required_else_help = true,
+    infer_subcommands = true,
 )]
 pub struct Cli {
     #[command(flatten)]
@@ -31,22 +57,22 @@ pub struct GlobalArgs {
         global = true,
         help = "Path to backhopper.toml"
     )]
-    pub config: Option<PathBuf>,
+    pub config_file_path: Option<PathBuf>,
 
     #[arg(
         long,
         short = 's',
-        env = "BACKHOPPER_SNAPSHOT_DIR",
+        env = "BACKHOPPER_SNAPSHOT_DIR_PATH",
         global = true,
-        help = "Override snapshot_dir from config"
+        help = "Override the snapshot directory; takes precedence over the config's snapshot_dir"
     )]
-    pub snapshot_dir: Option<PathBuf>,
+    pub snapshot_dir_path: Option<PathBuf>,
 
     #[arg(
         long,
         env = "BACKHOPPER_FORMATTER",
         global = true,
-        default_value_t = Formatter::Json,
+        default_value_t = Formatter::Text,
         value_enum,
         help = "Output formatter",
     )]
@@ -76,13 +102,11 @@ pub struct GlobalArgs {
     #[arg(
         long,
         global = true,
-        default_value = "modern",
+        value_enum,
+        default_value_t = TableStyle::Modern,
         help = "Style preset for the text formatter"
     )]
-    pub table_style: String,
-
-    #[arg(long, global = true, help = "Plan only; do not write to disk")]
-    pub dry_run: bool,
+    pub table_style: TableStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -93,232 +117,51 @@ pub enum Formatter {
 
 #[derive(Debug, Subcommand)]
 pub enum Group {
+    /// Inspect configured projects.
     Projects {
         #[command(subcommand)]
         cmd: ProjectsCmd,
     },
+    /// Inspect configured release series.
     Series {
         #[command(subcommand)]
         cmd: SeriesCmd,
     },
+    /// Manage and query API snapshots.
     Snapshots {
         #[command(subcommand)]
         cmd: SnapshotsCmd,
     },
-    Api {
+    /// Check compatibility of patches, commits, ranges, and batches.
+    Check {
         #[command(subcommand)]
-        cmd: ApiCmd,
+        cmd: CheckCmd,
     },
-    Compatibility {
-        #[command(subcommand)]
-        cmd: CompatibilityCmd,
-    },
+    /// Inspect or validate the loaded configuration file.
     Config {
         #[command(subcommand)]
         cmd: ConfigCmd,
     },
-    Completions {
+    /// Shell-related helpers (completion scripts).
+    Shell {
         #[command(subcommand)]
-        cmd: CompletionsCmd,
+        cmd: ShellCmd,
     },
+    /// Whole-program cross-reference queries over an Erlang source tree.
+    Xref {
+        #[command(subcommand)]
+        cmd: XrefCmd,
+    },
+    /// Test-suite selection for RabbitMQ-style backport batches.
+    Suites {
+        #[command(subcommand)]
+        cmd: SuitesCmd,
+    },
+    /// RabbitMQ-specific commands.
+    Rabbitmq {
+        #[command(subcommand)]
+        cmd: RabbitmqCmd,
+    },
+    /// Print the `backhopper` version.
     Version,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ProjectsCmd {
-    List,
-    Show {
-        #[arg(long)]
-        project: ProjectName,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum SeriesCmd {
-    List,
-    Show {
-        #[arg(long)]
-        series: SeriesName,
-    },
-    InferFromRabbitmq {
-        #[arg(long)]
-        repo: PathBuf,
-        #[arg(long, conflicts_with = "all_branches")]
-        branch: Option<String>,
-        #[arg(long, conflicts_with = "branch")]
-        all_branches: bool,
-        #[arg(
-            long,
-            value_delimiter = ',',
-            default_values_t = default_branches(),
-            help = "Branches to walk when --all-branches (comma-separated)",
-        )]
-        branches: Vec<String>,
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long, help = "Print warnings for skipped or commit-pinned deps")]
-        show_skipped: bool,
-    },
-}
-
-fn default_branches() -> Vec<String> {
-    vec![
-        "main".into(),
-        "v4.3.x".into(),
-        "v4.2.x".into(),
-        "v4.1.x".into(),
-        "v4.0.x".into(),
-    ]
-}
-
-#[derive(Debug, Subcommand)]
-pub enum SnapshotsCmd {
-    Discover {
-        #[arg(long)]
-        project: Option<ProjectName>,
-    },
-    Update {
-        #[arg(long)]
-        project: Option<ProjectName>,
-        #[arg(long, help = "Skip ls-remote freshness check")]
-        no_remote_check: bool,
-    },
-    List {
-        #[arg(long)]
-        project: ProjectName,
-    },
-    Show {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-    },
-    Verify {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-    },
-    Rebuild {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ApiCmd {
-    Lookup {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-        #[arg(long, action = clap::ArgAction::Append, required = true)]
-        mfa: Vec<Mfa>,
-        #[arg(long)]
-        include_hidden: bool,
-    },
-    Modules {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-        #[arg(long)]
-        include_hidden: bool,
-    },
-    Exports {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-        #[arg(long)]
-        module: String,
-    },
-    Diff {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        from: TagName,
-        #[arg(long)]
-        to: TagName,
-    },
-}
-
-#[derive(Debug, Args, Clone, Copy, Default)]
-pub struct DiagnosticsFlags {
-    #[arg(
-        long,
-        help = "Print untracked module calls in the text-mode footer (informational, not a verdict input)"
-    )]
-    pub show_untracked_calls: bool,
-    #[arg(
-        long,
-        help = "Include OTP stdlib calls in the untracked-calls footer (implies --show-untracked-calls)"
-    )]
-    pub show_otp_calls: bool,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum CompatibilityCmd {
-    Patch {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
-        #[arg(long)]
-        explain: bool,
-        #[command(flatten)]
-        diagnostics: DiagnosticsFlags,
-        #[arg(value_name = "PATCH_FILE")]
-        patch_file: Option<PathBuf>,
-    },
-    Commit {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo: PathBuf,
-        #[command(flatten)]
-        diagnostics: DiagnosticsFlags,
-        #[arg(value_name = "COMMIT_SHA")]
-        commit: String,
-    },
-    Range {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo: PathBuf,
-        #[arg(long, conflicts_with = "merge_commit")]
-        range: Option<String>,
-        #[arg(long)]
-        merge_commit: Option<String>,
-        #[command(flatten)]
-        diagnostics: DiagnosticsFlags,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ConfigCmd {
-    Path,
-    Show,
-    Validate,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum CompletionsCmd {
-    Bash,
-    Zsh,
-    Fish,
-    Nushell,
-    Pwsh,
 }

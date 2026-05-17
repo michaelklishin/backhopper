@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use time::OffsetDateTime;
 
-use backhopper_core::compat::patch::{Language, Patch, PinFiles};
+use backhopper_core::compat::patch::{EvaluationFiles, Patch};
 use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
@@ -52,10 +52,10 @@ fn pin() -> Pin {
 
 #[test]
 fn file_absent_when_path_missing_at_pin() {
-    let files = PinFiles::new().with(PathBuf::from("src/demo.erl"), None);
+    let files = EvaluationFiles::new().with(PathBuf::from("src/demo.erl"), None);
     let series = Patch::parse(PATCH.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series_with_files(&[(pin(), snapshot(), files)]);
     let r0 = &series.results[0];
     assert!(
@@ -68,13 +68,13 @@ fn file_absent_when_path_missing_at_pin() {
 
 #[test]
 fn no_drift_when_context_matches() {
-    let files = PinFiles::new().with(
+    let files = EvaluationFiles::new().with(
         PathBuf::from("src/demo.erl"),
         Some(ORIGINAL.as_bytes().to_vec()),
     );
     let series = Patch::parse(PATCH.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series_with_files(&[(pin(), snapshot(), files)]);
     let r0 = &series.results[0];
     assert!(
@@ -88,13 +88,13 @@ fn no_drift_when_context_matches() {
 #[test]
 fn context_drift_reported_when_target_diverges() {
     let drifted = "-module(demo).\n-export([greet/2]).\ngreet(Name, _) -> Name.\n";
-    let files = PinFiles::new().with(
+    let files = EvaluationFiles::new().with(
         PathBuf::from("src/demo.erl"),
         Some(drifted.as_bytes().to_vec()),
     );
     let series = Patch::parse(PATCH.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series_with_files(&[(pin(), snapshot(), files)]);
     let r0 = &series.results[0];
     assert!(
@@ -107,10 +107,10 @@ fn context_drift_reported_when_target_diverges() {
 
 #[test]
 fn pin_files_unset_for_path_yields_no_file_check() {
-    let files = PinFiles::new();
+    let files = EvaluationFiles::new();
     let series = Patch::parse(PATCH.as_bytes())
         .unwrap()
-        .analyze(Language::Erlang)
+        .analyze()
         .against_series_with_files(&[(pin(), snapshot(), files)]);
     let r0 = &series.results[0];
     assert!(

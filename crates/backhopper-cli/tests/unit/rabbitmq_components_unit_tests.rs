@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use backhopper_core::rabbitmq::{
+use backhopper_cli::commands::rabbitmq_components::{
     DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
 };
 

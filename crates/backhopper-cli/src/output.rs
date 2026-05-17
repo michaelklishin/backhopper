@@ -1,6 +1,9 @@
-//! Output formatter dispatch: JSON vs text.
+//! Formatter dispatch for the CLI: a single envelope shape for JSON,
+//! a closure for text. The JSON body always carries `schema_version`,
+//! `command`, `data`, and `exit_code` so clients can parse without
+//! conditionals.
 
-use std::io::Write;
+use std::io::{self, Write};
 
 use serde::Serialize;
 use serde_json::json;
@@ -13,7 +16,6 @@ pub struct OutputContext {
     pub formatter: Formatter,
     pub command: &'static str,
     pub schema_version: u32,
-    pub table_style: String,
 }
 
 impl OutputContext {
@@ -22,7 +24,6 @@ impl OutputContext {
             formatter,
             command,
             schema_version: 1,
-            table_style: String::from("modern"),
         }
     }
 }
@@ -32,23 +33,7 @@ where
     T: Serialize,
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
 {
-    let mut stdout = std::io::stdout().lock();
-    match out.formatter {
-        Formatter::Json => {
-            let body = json!({
-                "schema_version": out.schema_version,
-                "command":        out.command,
-                "data":           payload,
-            });
-            serde_json::to_writer_pretty(&mut stdout, &body)
-                .map_err(|e| CliError::OutputError(e.to_string()))?;
-            writeln!(stdout)?;
-        }
-        Formatter::Text => {
-            text_render(&mut stdout)?;
-        }
-    }
-    Ok(())
+    render_with_exit(out, payload, 0, text_render).map(|_| ())
 }
 
 pub fn render_with_exit<T, FT>(
@@ -61,7 +46,7 @@ where
     T: Serialize,
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
 {
-    let mut stdout = std::io::stdout().lock();
+    let mut stdout = io::stdout().lock();
     match out.formatter {
         Formatter::Json => {
             let body = json!({

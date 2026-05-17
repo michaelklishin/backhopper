@@ -29,10 +29,10 @@ fn otp_only_patch_is_compatible_with_zero_tracked_refs() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -52,11 +52,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let default_output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "text",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -88,11 +88,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let opt_in_output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "text",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -129,10 +129,10 @@ fn show_untracked_calls_without_show_otp_calls_hides_otp_only_entries() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -152,11 +152,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "text",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -188,10 +188,10 @@ fn show_otp_calls_alone_implies_show_untracked_calls() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -211,11 +211,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
         Command::cargo_bin("backhopper")
             .unwrap()
             .args([
-                "--config",
+                "--config-file-path",
                 cfg.to_str().unwrap(),
                 "--formatter",
                 "text",
-                "compatibility",
+                "check",
                 "patch",
                 "--project",
                 "demo",
@@ -243,10 +243,10 @@ fn record_defined_in_untracked_project_does_not_flag_incompatible() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -265,11 +265,11 @@ diff --git a/deps/rabbit/src/rabbit_amqp_reader.erl b/deps/rabbit/src/rabbit_amq
     let output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "text",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -302,10 +302,10 @@ fn patch_touching_another_projects_deps_path_is_ignored() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -324,11 +324,11 @@ diff --git a/deps/rabbit/src/rabbit_misc.erl b/deps/rabbit/src/rabbit_misc.erl
     let output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "text",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -357,10 +357,10 @@ fn json_output_carries_tracked_refs_and_diagnostics() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -379,11 +379,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "json",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",
@@ -411,10 +411,10 @@ fn dynamic_dispatch_shows_under_show_untracked_calls() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -436,11 +436,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
         Command::cargo_bin("backhopper")
             .unwrap()
             .args([
-                "--config",
+                "--config-file-path",
                 cfg.to_str().unwrap(),
                 "--formatter",
                 "text",
-                "compatibility",
+                "check",
                 "patch",
                 "--project",
                 "demo",
@@ -474,10 +474,10 @@ fn unanalyzed_block_hidden_without_show_untracked_calls() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -498,11 +498,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
         Command::cargo_bin("backhopper")
             .unwrap()
             .args([
-                "--config",
+                "--config-file-path",
                 cfg.to_str().unwrap(),
                 "--formatter",
                 "text",
-                "compatibility",
+                "check",
                 "patch",
                 "--project",
                 "demo",
@@ -532,10 +532,10 @@ fn json_output_carries_unanalyzed_counts() {
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "discover",
+            "generate",
             "--project",
             "demo",
         ])
@@ -555,11 +555,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let output = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
             "json",
-            "compatibility",
+            "check",
             "patch",
             "--project",
             "demo",

@@ -1,0 +1,10 @@
+{
+  "pin": {
+    "project": "ra",
+    "tag": "v2.0.0"
+  },
+  "verdict": {
+    "verdict": "compatible"
+  },
+  "tracked_refs": 3
+}

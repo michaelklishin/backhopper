@@ -1,4 +1,9 @@
+mod app_src_robustness_proptests;
+mod arg_shape_proptests;
+mod compat_apply_family_proptests;
+mod diff_parser_proptests;
 mod dynamic_calls_proptests;
+mod evaluation_typestate_proptests;
 mod mfa_round_trip_proptests;
 mod scope_filter_proptests;
 mod snapshot_round_trip_proptests;

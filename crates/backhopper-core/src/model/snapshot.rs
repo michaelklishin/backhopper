@@ -5,11 +5,13 @@
 //!  * the parser produces `Snapshot<Canonical>` and rejects any
 //!    non-canonical input
 
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
     Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
     TypeName,
@@ -69,6 +71,12 @@ pub struct Module {
     pub types: Vec<TypeDecl>,
     pub opaques: Vec<TypeArity>,
     pub deprecations: Vec<Deprecation>,
+    /// Per-export clause-head patterns: the disjunction of clauses that
+    /// define this function. Populated by the source extractor (when it
+    /// gains this capability). Used by the analyzer to flag calls whose
+    /// argument shape doesn't satisfy any clause head at the pin.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clause_heads: BTreeMap<FunArity, Vec<Vec<ArgShape>>>,
 }
 
 impl Module {
@@ -85,6 +93,7 @@ impl Module {
             types: Vec::new(),
             opaques: Vec::new(),
             deprecations: Vec::new(),
+            clause_heads: BTreeMap::new(),
         }
     }
 }
@@ -108,7 +117,7 @@ impl HrlFile {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FunArity {
     pub name: FunctionName,
     pub arity: Arity,

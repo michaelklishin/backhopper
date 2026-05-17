@@ -6,18 +6,20 @@ pub mod errors;
 pub mod output;
 pub mod tables;
 
-use std::process::ExitCode;
+use std::env;
+use std::io;
 
+use bel7_cli::should_colorize_stderr;
 use clap::Parser;
+use tracing_subscriber::EnvFilter;
 
-pub use cli::{Cli, GlobalArgs, Group};
+pub use cli::{Cli, CompletionsCmd, GlobalArgs, Group, ShellCmd};
 pub use errors::{CliError, CliResult};
 
-pub fn run() -> CliResult<ExitCode> {
+pub fn run() -> CliResult<i32> {
     let cli = Cli::parse();
     init_logging(&cli.global);
-    let exit = commands::dispatch(cli)?;
-    Ok(ExitCode::from(exit as u8))
+    commands::dispatch(cli)
 }
 
 fn init_logging(args: &GlobalArgs) {
@@ -31,9 +33,10 @@ fn init_logging(args: &GlobalArgs) {
             _ => "trace",
         }
     };
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| level.to_owned());
+    let filter = env::var("RUST_LOG").unwrap_or_else(|_| level.to_owned());
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
-        .with_writer(std::io::stderr)
+        .with_env_filter(EnvFilter::new(filter))
+        .with_writer(io::stderr)
+        .with_ansi(should_colorize_stderr())
         .try_init();
 }

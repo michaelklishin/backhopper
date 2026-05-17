@@ -64,11 +64,11 @@ fn infer_from_rabbitmq_against_synthetic_components_mk() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
-            "series",
-            "infer-from-rabbitmq",
-            "--repo",
+            "rabbitmq",
+            "infer_series",
+            "--repo-dir-path",
             repo.dir.path().to_str().unwrap(),
             "--branch",
             "main",
@@ -94,11 +94,11 @@ fn infer_from_rabbitmq_uses_explicit_name() {
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .args([
-            "--config",
+            "--config-file-path",
             cfg.to_str().unwrap(),
-            "series",
-            "infer-from-rabbitmq",
-            "--repo",
+            "rabbitmq",
+            "infer_series",
+            "--repo-dir-path",
             repo.dir.path().to_str().unwrap(),
             "--branch",
             "main",

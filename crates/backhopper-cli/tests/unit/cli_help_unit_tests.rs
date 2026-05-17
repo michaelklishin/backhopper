@@ -7,13 +7,60 @@ fn cli_command_metadata_is_well_formed() {
     let mut cmd = Cli::command();
     cmd.build();
     assert_eq!(cmd.get_name(), "backhopper");
-    assert!(cmd.get_subcommands().any(|s| s.get_name() == "projects"));
-    assert!(cmd.get_subcommands().any(|s| s.get_name() == "snapshots"));
-    assert!(
-        cmd.get_subcommands()
-            .any(|s| s.get_name() == "compatibility")
-    );
-    assert!(cmd.get_subcommands().any(|s| s.get_name() == "completions"));
+    let names: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+    for expected in ["projects", "snapshots", "check", "shell"] {
+        assert!(names.contains(&expected), "missing subcommand: {expected}");
+    }
+}
+
+#[test]
+fn completions_subcommand_accepts_shell_as_value_enum() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let shell = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "shell")
+        .expect("shell subcommand missing");
+    let completions = shell
+        .get_subcommands()
+        .find(|s| s.get_name() == "completions")
+        .expect("completions subcommand missing under shell");
+    let shell_arg = completions
+        .get_arguments()
+        .find(|a| a.get_id().as_str() == "shell")
+        .expect("shell positional argument missing on completions");
+    let values: Vec<String> = shell_arg
+        .get_possible_values()
+        .iter()
+        .map(|v| v.get_name().to_owned())
+        .collect();
+    for expected in ["bash", "zsh", "fish", "nushell", "powershell"] {
+        assert!(
+            values.iter().any(|v| v == expected),
+            "shell value `{expected}` missing from {values:?}"
+        );
+    }
+}
+
+#[test]
+fn table_style_arg_accepts_bel7_value_enum() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let arg = cmd
+        .get_arguments()
+        .find(|a| a.get_id().as_str() == "table_style")
+        .expect("table_style global flag missing");
+    let values: Vec<String> = arg
+        .get_possible_values()
+        .iter()
+        .map(|v| v.get_name().to_owned())
+        .collect();
+    for expected in ["modern", "markdown", "ascii", "psql"] {
+        assert!(
+            values.iter().any(|v| v == expected),
+            "table style `{expected}` missing from {values:?}"
+        );
+    }
 }
 
 #[test]
@@ -30,12 +77,12 @@ fn projects_group_has_list_and_show() {
 }
 
 #[test]
-fn compatibility_group_has_patch_commit_range() {
+fn check_group_has_patch_commit_range() {
     let mut cmd = Cli::command();
     cmd.build();
     let group = cmd
         .get_subcommands()
-        .find(|s| s.get_name() == "compatibility")
+        .find(|s| s.get_name() == "check")
         .unwrap();
     let names: Vec<_> = group.get_subcommands().map(|s| s.get_name()).collect();
     assert!(names.contains(&"patch"));
@@ -44,12 +91,12 @@ fn compatibility_group_has_patch_commit_range() {
 }
 
 #[test]
-fn compatibility_patch_advertises_diagnostic_flags() {
+fn check_patch_advertises_diagnostic_flags() {
     let mut cmd = Cli::command();
     cmd.build();
     let group = cmd
         .get_subcommands()
-        .find(|s| s.get_name() == "compatibility")
+        .find(|s| s.get_name() == "check")
         .unwrap();
     let patch = group
         .get_subcommands()

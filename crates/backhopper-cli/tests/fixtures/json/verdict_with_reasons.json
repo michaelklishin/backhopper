@@ -1,0 +1,23 @@
+{
+  "pin": {
+    "project": "ra",
+    "tag": "v2.0.0"
+  },
+  "verdict": {
+    "verdict": "incompatible",
+    "reasons": [
+      {
+        "kind": "arity_changed",
+        "module": "ra",
+        "function": "start",
+        "expected": 2,
+        "found": [0]
+      },
+      {
+        "kind": "now_hidden",
+        "module": "ra_internal"
+      }
+    ]
+  },
+  "tracked_refs": 2
+}

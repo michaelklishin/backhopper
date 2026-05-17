@@ -1,2 +1,4 @@
+mod app_src_discovery_integration_tests;
 mod git_repo_integration_tests;
 mod helpers;
+mod suites_plan_integration_tests;

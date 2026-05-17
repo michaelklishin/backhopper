@@ -1,5 +1,8 @@
 use backhopper_core::SymbolKind;
-use backhopper_core::compat::call_sites::{DynamicCall, extract_dynamic_into, extract_into};
+use backhopper_core::compat::arg_shape::ArgShape;
+use backhopper_core::compat::call_sites::{
+    DynamicCall, extract_call_args_into, extract_dynamic_into, extract_into,
+};
 
 #[test]
 fn extracts_two_arg_call() {
@@ -131,4 +134,131 @@ fn nested_dynamic_dispatch_counts_each_occurrence() {
             .count(),
         2
     );
+}
+
+#[test]
+fn extract_call_args_classifies_atom_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:mode(start)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:mode/1");
+    let (_, args) = entry.expect("ra:mode/1 captured");
+    assert_eq!(
+        args,
+        &vec![ArgShape::Atom {
+            name: "start".into(),
+        }]
+    );
+}
+
+#[test]
+fn extract_call_args_classifies_variable_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:mode(Cmd)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:mode/1");
+    let (_, args) = entry.expect("ra:mode/1 captured");
+    assert_eq!(args, &vec![ArgShape::Variable]);
+}
+
+#[test]
+fn extract_call_args_classifies_tuple_actuals_with_size() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:cast({register, Name, Pid})", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:cast/1");
+    let (_, args) = entry.expect("ra:cast/1 captured");
+    assert_eq!(args, &vec![ArgShape::Tuple { size: 3 }]);
+}
+
+#[test]
+fn extract_call_args_classifies_record_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:apply(#cfg{id = X})", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:apply/1");
+    let (_, args) = entry.expect("ra:apply/1 captured");
+    let names: Vec<&str> = args
+        .iter()
+        .filter_map(|a| match a {
+            ArgShape::Record { name } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, vec!["cfg"]);
+}
+
+#[test]
+fn extract_call_args_handles_multiple_positional_arguments() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:new(start, 42, \"label\")", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:new/3");
+    let (_, args) = entry.expect("ra:new/3 captured");
+    assert_eq!(args.len(), 3);
+    assert!(matches!(args[0], ArgShape::Atom { ref name } if name == "start"));
+    assert!(matches!(args[1], ArgShape::Integer));
+    assert!(matches!(args[2], ArgShape::String));
+}
+
+#[test]
+fn extract_call_args_handles_zero_arity() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:init()", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:init/0");
+    let (_, args) = entry.expect("ra:init/0 captured");
+    assert!(args.is_empty());
+}
+
+#[test]
+fn extract_call_args_classifies_list_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:items([1, 2, 3])", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:items/1");
+    let (_, args) = entry.expect("ra:items/1 captured");
+    assert_eq!(args, &vec![ArgShape::List]);
+}
+
+#[test]
+fn extract_call_args_classifies_binary_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:emit(<<\"hello\">>)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:emit/1");
+    let (_, args) = entry.expect("ra:emit/1 captured");
+    assert_eq!(args, &vec![ArgShape::Binary]);
+}
+
+#[test]
+fn extract_call_args_classifies_float_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:set(1.5)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:set/1");
+    let (_, args) = entry.expect("ra:set/1 captured");
+    assert_eq!(args, &vec![ArgShape::Float]);
+}
+
+#[test]
+fn extract_call_args_classifies_negative_integer_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:set(-7)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:set/1");
+    let (_, args) = entry.expect("ra:set/1 captured");
+    assert_eq!(args, &vec![ArgShape::Integer]);
+}
+
+#[test]
+fn extract_call_args_classifies_quoted_atom_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:emit('special atom')", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:emit/1");
+    let (_, args) = entry.expect("ra:emit/1 captured");
+    assert!(
+        matches!(&args[0], ArgShape::Atom { name } if name == "special atom"),
+        "args={:?}",
+        args
+    );
+}
+
+#[test]
+fn extract_call_args_classifies_fun_reference_actuals() {
+    let mut out = Vec::new();
+    extract_call_args_into("ra:start(fun erlang:apply/2)", &mut out);
+    let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:start/1");
+    let (_, args) = entry.expect("ra:start/1 captured");
+    assert_eq!(args, &vec![ArgShape::Fun]);
 }
