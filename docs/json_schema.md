@@ -1,7 +1,8 @@
 # JSON Output Schema
 
-Every `backhopper` command supports `--formatter json`. The output is a
-single JSON object with a stable envelope:
+Every `backhopper` command supports `--formatter json` except
+`shell completions`, which emits raw shell-completion scripts. The
+JSON output is a single object with a stable envelope:
 
 ```json
 {
@@ -46,9 +47,28 @@ are the authoritative schema. `cargo doc --no-deps` renders them with
 field-level documentation. The examples below are normative for the
 envelope and informative for `data`.
 
-## Common payload types
+## Flag interactions
 
-### `data` for `check {patch, commit, range}`
+A few flags add fields or reasons to `data`:
+
+* `--source-tag <T>` or `--source-series <name>` on `check`: enables
+  source-pin diffing. Verdicts can then carry `signature_changed` and
+  `record_fields_changed` reasons against the source snapshot
+* `--resolve-untracked-modules --repo-dir-path <p>` on `check`:
+  cross-references each untracked-call module name against the
+  target-pin checkout. Modules missing from the checkout produce
+  `untracked_module_missing` reasons that flip the verdict to
+  `incompatible`
+* `--summary-only` on `check {patch, commit, range, batch}`: affects
+  the text formatter only. The JSON payload is unchanged
+
+## `check` payloads
+
+### `data` for `check patch`, `check commit`, `check range`
+
+`check commit` and `check range` both build a unified diff and route
+through the same handler as `check patch`. The envelope's `command`
+field reads `"check patch"` for all three.
 
 ```json
 {
@@ -182,6 +202,8 @@ All three fields are omitted when empty (`is_empty` skip).
 }
 ```
 
+## `snapshots` payloads
+
 ### `data` for `snapshots list`
 
 ```json
@@ -237,19 +259,187 @@ Array of per-project entries:
 }
 ```
 
-### `data` for `version`
+### `data` for `snapshots show`
+
+The full `Snapshot<Canonical>` value, including `header`, `modules`,
+and `headers`. Refer to `backhopper_core::model::snapshot::Snapshot`
+for the field-by-field schema. The text formatter writes the canonical
+on-disk form; the JSON formatter serializes the same data via
+`serde`.
+
+### `data` for `snapshots verify`
 
 ```json
 {
-  "name": "backhopper",
-  "version": "0.4.0"
+  "project": "ra",
+  "tag":     "v2.0.0",
+  "matches": true
 }
 ```
 
-### `data` for `series list`, `series show`, `projects list`, `projects show`
+`matches` is `false` (and `exit_code` is `1`) when the on-disk
+snapshot differs from a fresh extraction of the tag.
 
-Self-documenting: each carries a `name` (or `project`) field plus
-configuration-derived data. Refer to the Rust payload structs.
+### `data` for `snapshots rebuild`
+
+```json
+{
+  "project": "ra",
+  "tag":     "v2.0.0",
+  "rebuilt": true
+}
+```
+
+`rebuilt` is `false` when `--dry-run` is set.
+
+### `data` for `snapshots modules`
+
+```json
+{
+  "project": "ra",
+  "tag":     "v2.0.0",
+  "modules": [
+    { "name": "ra", "visibility": "public", "exports": 12, "callbacks": 0 }
+  ],
+  "headers": ["include/ra.hrl"]
+}
+```
+
+### `data` for `snapshots exports`
+
+```json
+{
+  "project": "ra",
+  "tag":     "v2.0.0",
+  "module":  "ra",
+  "exports": ["start/0", "start/1", "stop/0"]
+}
+```
+
+`exit_code` is `1` when the module isn't present in the snapshot.
+
+### `data` for `snapshots diff`
+
+```json
+{
+  "project": "ra",
+  "from":    "v2.0.0",
+  "to":      "v2.1.0",
+  "modules_added":   ["ra_new_mod"],
+  "modules_removed": ["ra_old_mod"],
+  "exports_added":   [{ "module": "ra", "fun_arity": "fresh/1" }],
+  "exports_removed": [{ "module": "ra", "fun_arity": "gone/0" }]
+}
+```
+
+## `config` payloads
+
+### `data` for `config path`
+
+```json
+{ "path": "/Users/me/work/backhopper.toml" }
+```
+
+### `data` for `config show`
+
+The full parsed configuration: defaults, projects, series. Refer to
+`backhopper_core::config::Config` for the field-by-field schema.
+
+### `data` for `config validate`
+
+```json
+{ "ok": true }
+```
+
+`exit_code` is `0` on a valid file, non-zero on a parse or validation
+error (in which case the error is printed to stderr instead).
+
+## `xref` payloads
+
+Every `xref` subcommand returns an `AnalysisResult` value. The JSON
+shape follows the underlying struct one-to-one. All share the same
+top-level convention: a single field carrying the entries
+(`entries`, or a domain-named alternative).
+
+### `data` for `xref list_callers` and `xref list_callees`
+
+```json
+{
+  "target": { "module": "rabbit_db", "function": "set", "arity": 2 },
+  "entries": [
+    {
+      "caller": { "module": "rabbit_vhost", "function": "save", "arity": 1 },
+      "kind":   "direct",
+      "locations": [{ "path_id": 7, "start": {"line": 42, "column": 5, "byte_offset": 1234} }]
+    }
+  ]
+}
+```
+
+`list_callees` swaps `caller` for `callee` (a `FunctionRef`, which can
+be `concrete`, `unresolved_module`, `unresolved_function`, or
+`unresolved_both`). `--transitive` walks the relation's closure.
+
+### `data` for `xref list_undefined`, `list_unused_exports`, `list_unused_locals`, `list_deprecated_calls`, `list_unresolved`
+
+A single object with an `entries` array of the matching call sites or
+function references. The shape of each entry depends on the analysis:
+
+* `list_undefined`: `[{ caller, callee_module, callee_function, callee_arity, location }]`
+* `list_unused_exports`: `[{ mfa, def_loc }]`
+* `list_unused_locals`: `[{ mfa, def_loc }]`
+* `list_deprecated_calls`: `[{ caller, target, tier, location }]`
+* `list_unresolved`: `[UnresolvedCallSite]` (see the `CallKind` and
+  `FunctionRef` types in `backhopper-xref-graph`)
+
+### `data` for `xref list_module_deps`
+
+```json
+{
+  "source":  "rabbit_db",
+  "entries": ["rabbit_misc", "rabbit_log"]
+}
+```
+
+`--forward` reports the modules that `source` calls; the default
+reports modules that call `source`.
+
+### `data` for `xref list_behaviour_users`
+
+```json
+{
+  "behaviour": "gen_server",
+  "entries":   ["rabbit_amqqueue", "rabbit_channel"]
+}
+```
+
+### `data` for `xref list_module_cycles`
+
+```json
+{
+  "cycles": [
+    ["mod_a", "mod_b", "mod_a"]
+  ]
+}
+```
+
+## `suites` payloads
+
+### `data` for `suites list_for_modules`, `suites list_for_mfas`
+
+```json
+[
+  { "application": "rabbit", "module": "vhost_SUITE" },
+  { "application": "rabbit", "module": "metadata_store_phase1_SUITE" }
+]
+```
+
+Each entry's `application` is `null` when the suite couldn't be
+mapped to an in-tree application.
+
+### `data` for `suites list_callers_of`
+
+The same `CallersOf` shape as `xref list_callers`.
 
 ### `data` for `suites plan`
 
@@ -281,11 +471,83 @@ Entries are sorted by `suite`. Each entry carries one or more
 | `cross_app_caller` | `library_application`, `module` |
 | `configured_rule` | `rule_name`, `triggering_path` |
 
+## `rabbitmq` payloads
+
+### `data` for `rabbitmq infer_series`
+
+```json
+{
+  "series": [
+    {
+      "name": "rabbitmq-4.1",
+      "pins": [
+        { "project": "ra", "tag": "v2.16.13" },
+        { "project": "khepri", "tag": "v0.16.0" }
+      ]
+    }
+  ]
+}
+```
+
+Inferred from a RabbitMQ checkout's `rabbitmq-components.mk` plus the
+project list in the workspace config.
+
+## `projects` and `series` payloads
+
+### `data` for `projects list`
+
+Array of project descriptors:
+
+```json
+[
+  {
+    "name": "ra",
+    "git_url": "/path/to/ra.git",
+    "language": "erlang",
+    "tag_prefix": "v"
+  }
+]
+```
+
+### `data` for `projects show`
+
+A single project descriptor (same shape as one entry above), plus the
+configured `public_modules`, `internal_modules`, and `scan_paths`
+lists.
+
+### `data` for `series list`, `series show`
+
+Array of (or single) series descriptors:
+
+```json
+{
+  "name": "rabbitmq-4.1",
+  "pins": [
+    { "project": "ra", "tag": "v2.16.13" }
+  ]
+}
+```
+
+## `version`
+
+```json
+{
+  "name": "backhopper",
+  "version": "0.4.0"
+}
+```
+
 ## Drift-guarded fixtures
 
 The unit-test suite under
 `crates/backhopper-cli/tests/unit/json_envelope_unit_tests.rs`
-serializes representative payloads against checked-in JSON fixtures
-under `crates/backhopper-cli/tests/fixtures/json/`. Any divergence
-between the Rust types and these fixtures fails CI; the fixtures must
-be regenerated and reviewed when intentional changes ship.
+serializes representative `Verdict` and `Diagnostics` payloads against
+checked-in JSON fixtures under
+`crates/backhopper-cli/tests/fixtures/json/`. Coverage today:
+`verdict_compatible`, `verdict_with_reasons`, `verdict_with_clause_mismatch`,
+`verdict_with_untracked_module_missing`, `verdict_with_unsupported_file_type`,
+`diagnostics_populated`. The drift guard locks the `Verdict` and
+`Diagnostics` types and the `Reason` and `ArgShape` enums; it does
+not lock the full per-command envelope. Any divergence between the
+Rust types and these fixtures fails CI; the fixtures must be
+regenerated and reviewed when intentional changes ship.
