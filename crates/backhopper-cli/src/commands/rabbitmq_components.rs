@@ -108,17 +108,17 @@ pub fn series_name_for_branch(branch: &str) -> String {
     let trimmed = branch.strip_prefix("refs/heads/").unwrap_or(branch);
     let trimmed = trimmed.strip_prefix("refs/tags/").unwrap_or(trimmed);
     if trimmed == "main" || trimmed == "master" {
-        return format!("rabbitmq-{}", trimmed);
+        return format!("rabbitmq-{trimmed}");
     }
     let stripped = trimmed.strip_suffix(".x").unwrap_or(trimmed);
     let stripped = stripped.strip_prefix('v').unwrap_or(stripped);
-    format!("rabbitmq-{}", stripped)
+    format!("rabbitmq-{stripped}")
 }
 
 pub fn version_to_tag(version: &str, tag_prefix: &str) -> String {
     if version.starts_with(tag_prefix) {
         version.to_owned()
     } else {
-        format!("{}{}", tag_prefix, version)
+        format!("{tag_prefix}{version}")
     }
 }

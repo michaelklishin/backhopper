@@ -9,7 +9,7 @@ use crate::compat::arg_shape::{ArgShape, satisfies_any};
 use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile};
 use crate::compat::scope::PinScope;
 use crate::model::names::{Arity, FieldName, FunctionName, Mfa, ModuleName, RecordName};
-use crate::model::snapshot::{ArityMatch, FunArity, Snapshot, Visibility, state};
+use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
 use crate::model::symbol::{SymbolKind, SymbolRef};
 use crate::model::verdict::{Reason, Verdict};
 
@@ -29,8 +29,6 @@ pub(crate) fn evaluate_pin(
     if let Some(pf) = pin_files {
         check_files_against_pin(files, pf, &mut reasons);
     }
-    // Index defined symbols once: each pin in a series re-walks the same
-    // `referenced` list, so the prior O(N×M) scan dominated.
     let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
     let mut tracked_refs = 0usize;
     for r in referenced {
@@ -91,9 +89,7 @@ fn check_clause_mismatches(
             _ => None,
         })
         .collect();
-    // Group calls by MFA so we can report at most one ClauseMismatch
-    // per MFA but still notice the case where one call matches and
-    // another doesn't.
+    // Group per MFA so we report at most one `ClauseMismatch` per MFA while still catching a one-matches-one-doesn't mix.
     let mut grouped: BTreeMap<(ModuleName, FunctionName, Arity), Vec<&Vec<ArgShape>>> =
         BTreeMap::new();
     for (mfa, args) in call_args {
@@ -112,7 +108,7 @@ fn check_clause_mismatches(
         if signature_already.contains(&key) {
             continue;
         }
-        let Some(module) = snapshot.modules().iter().find(|m| m.name == module_name) else {
+        let Some(module) = snapshot.module_named(&module_name) else {
             continue;
         };
         let fun_arity = FunArity {
@@ -196,15 +192,16 @@ fn analyze_function_reference(
     source_snapshot: Option<&Snapshot<state::Canonical>>,
     reasons: &mut Vec<Reason>,
 ) {
-    if let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module)
-        && module.visibility == Visibility::Hidden
+    let module = snapshot.module_named(&mfa.module);
+    if let Some(m) = module
+        && m.visibility == Visibility::Hidden
     {
         reasons.push(Reason::NowHidden {
             module: mfa.module.clone(),
         });
         return;
     }
-    if is_function_deprecated(snapshot, mfa) {
+    if module.is_some_and(|m| is_function_deprecated_in(m, &mfa.function, mfa.arity)) {
         reasons.push(Reason::DeprecatedUsage {
             symbol: r.clone(),
             since: None,
@@ -212,7 +209,9 @@ fn analyze_function_reference(
         });
     }
     if !snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity) {
-        let alt_arities = collect_alt_arities(snapshot, &mfa.module, &mfa.function);
+        let alt_arities = module
+            .map(|m| collect_alt_arities_in(m, &mfa.function))
+            .unwrap_or_default();
         if !alt_arities.is_empty() && !alt_arities.contains(&mfa.arity) {
             reasons.push(Reason::ArityChanged {
                 module: mfa.module.clone(),
@@ -272,14 +271,12 @@ fn find_spec<'a>(
     function: &FunctionName,
     arity: Arity,
 ) -> Option<&'a str> {
-    snapshot
-        .modules()
-        .iter()
-        .find(|m| &m.name == module)?
+    let m = snapshot.module_named(module)?;
+    let idx = m
         .specs
-        .iter()
-        .find(|s| &s.name == function && s.arity == arity)
-        .map(|s| s.signature.as_str())
+        .binary_search_by(|s| s.name.cmp(function).then(s.arity.cmp(&arity)))
+        .ok()?;
+    Some(m.specs[idx].signature.as_str())
 }
 
 fn find_record_fields(
@@ -294,20 +291,17 @@ fn find_record_fields(
     })
 }
 
-fn is_function_deprecated(snapshot: &Snapshot<state::Canonical>, mfa: &Mfa) -> bool {
-    let Some(module) = snapshot.modules().iter().find(|m| m.name == mfa.module) else {
-        return false;
-    };
+fn is_function_deprecated_in(module: &Module, function: &FunctionName, arity: Arity) -> bool {
     for d in &module.deprecations {
         if d.module_wide {
             return true;
         }
         if let Some(f) = &d.function
-            && f == &mfa.function
+            && f == function
         {
             match d.arity_match {
                 ArityMatch::Any => return true,
-                ArityMatch::Exact { arity } if arity == mfa.arity => return true,
+                ArityMatch::Exact { arity: a } if a == arity => return true,
                 ArityMatch::Exact { .. } => {}
             }
         }
@@ -322,21 +316,11 @@ fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> b
         .any(|h| h.records.iter().any(|r| &r.name == name))
 }
 
-fn collect_alt_arities(
-    snapshot: &Snapshot<state::Canonical>,
-    module: &ModuleName,
-    function: &FunctionName,
-) -> Vec<Arity> {
-    snapshot
-        .modules()
+fn collect_alt_arities_in(module: &Module, function: &FunctionName) -> Vec<Arity> {
+    module
+        .exports
         .iter()
-        .find(|m| &m.name == module)
-        .map(|m| {
-            m.exports
-                .iter()
-                .filter(|fa| &fa.name == function)
-                .map(|fa| fa.arity)
-                .collect()
-        })
-        .unwrap_or_default()
+        .filter(|fa| &fa.name == function)
+        .map(|fa| fa.arity)
+        .collect()
 }

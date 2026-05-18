@@ -241,15 +241,23 @@ impl Snapshot<state::Canonical> {
         function: &FunctionName,
         arity: Arity,
     ) -> bool {
+        let Some(m) = self.module_named(module) else {
+            return false;
+        };
+        let target = FunArity {
+            name: function.clone(),
+            arity,
+        };
+        m.exports.binary_search(&target).is_ok()
+    }
+
+    /// Look up a module by name in O(log n): canonical snapshots keep
+    /// `modules` sorted by `name`.
+    pub fn module_named(&self, name: &ModuleName) -> Option<&Module> {
         self.modules
-            .iter()
-            .find(|m| &m.name == module)
-            .map(|m| {
-                m.exports
-                    .iter()
-                    .any(|fa| &fa.name == function && fa.arity == arity)
-            })
-            .unwrap_or(false)
+            .binary_search_by(|m| m.name.cmp(name))
+            .ok()
+            .map(|idx| &self.modules[idx])
     }
 
     pub(crate) fn from_canonical_parts(

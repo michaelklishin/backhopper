@@ -66,23 +66,23 @@ impl SuiteMatcher for SubstringMatcher {
 /// before each match must not be part of an atom identifier, so
 /// `not_rabbit_db:` does not match `rabbit_db`.
 pub fn text_references_module(text: &str, module: &ModuleName) -> bool {
-    let needle = format!("{}:", module.as_str());
+    text_references_named_module(text, module.as_str())
+}
+
+pub(crate) fn text_references_named_module(text: &str, name: &str) -> bool {
+    let bytes = text.as_bytes();
     let mut start = 0usize;
-    while let Some(rel) = text[start..].find(&needle) {
+    while let Some(rel) = text[start..].find(name) {
         let pos = start + rel;
-        let prev_ok = pos == 0
-            || text
-                .as_bytes()
-                .get(pos.saturating_sub(1))
-                .is_none_or(|&b| !is_atom_char(b as char));
-        if prev_ok {
+        if bytes.get(pos + name.len()) == Some(&b':') && (pos == 0 || !is_atom_byte(bytes[pos - 1]))
+        {
             return true;
         }
-        start = pos + needle.len();
+        start = pos + name.len();
     }
     false
 }
 
-fn is_atom_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '@'
+fn is_atom_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
 }

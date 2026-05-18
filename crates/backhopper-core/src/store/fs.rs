@@ -147,7 +147,7 @@ impl SnapshotStore<Mutable> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let temp = path.with_extension("api.txt.tmp");
+        let temp = temp_sibling(&path);
         let mut file = fs::File::create(&temp)?;
         format::write(snapshot, &mut file).map_err(StoreError::Snapshot)?;
         file.flush()?;
@@ -172,4 +172,10 @@ fn ensure_no_parent_escape(candidate: &Path) -> Result<(), StoreError> {
         }
     }
     Ok(())
+}
+
+fn temp_sibling(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".tmp");
+    PathBuf::from(s)
 }

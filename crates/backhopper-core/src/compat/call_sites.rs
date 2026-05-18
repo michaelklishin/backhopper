@@ -437,8 +437,6 @@ fn classify_arg(raw: &str) -> ArgShape {
         if s.starts_with("fun ") || s == "fun" {
             return ArgShape::Fun;
         }
-        // Anything else lowercase: probably a function call or a macro
-        // we can't classify confidently. Stay safe.
         return ArgShape::Unknown;
     }
     ArgShape::Unknown

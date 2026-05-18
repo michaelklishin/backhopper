@@ -183,9 +183,9 @@ impl Patch<Raw> {
                 Language::Other => {}
             }
         }
-        referenced.sort_by_key(symbol_sort_key);
+        referenced.sort();
         referenced.dedup();
-        defined.sort_by_key(symbol_sort_key);
+        defined.sort();
         defined.dedup();
         unsupported_files.sort();
         unsupported_files.dedup();
@@ -395,7 +395,7 @@ impl Patch<Analyzed> {
             None,
             None,
         );
-        let mut verdicts = self.verdicts.clone();
+        let mut verdicts = self.verdicts;
         verdicts.push(PinVerdict::new(pin, verdict));
         Patch {
             files: self.files,
@@ -519,8 +519,4 @@ impl Patch<Verdicted> {
     pub fn verdicts(&self) -> &[PinVerdict] {
         &self.verdicts
     }
-}
-
-fn symbol_sort_key(s: &SymbolRef) -> String {
-    serde_json::to_string(s).unwrap_or_default()
 }

@@ -24,12 +24,9 @@ fn parses_record_with_default_and_type() {
     let r = parse_record("(s, {x :: integer() | undefined = 0})").unwrap();
     assert_eq!(r.fields.len(), 1);
     assert_eq!(r.fields[0].name, "x");
-    assert!(
-        r.fields[0]
-            .type_repr
-            .as_deref()
-            .unwrap()
-            .contains("integer()")
+    assert_eq!(
+        r.fields[0].type_repr.as_deref(),
+        Some("integer() | undefined")
     );
 }
 
@@ -38,4 +35,20 @@ fn parses_record_without_fields() {
     let r = parse_record("(empty, {})").unwrap();
     assert_eq!(r.name, "empty");
     assert!(r.fields.is_empty());
+}
+
+#[test]
+fn parses_record_field_with_default_before_type() {
+    let r = parse_record("(s, {x = 0 :: integer()})").unwrap();
+    assert_eq!(r.fields.len(), 1);
+    assert_eq!(r.fields[0].name, "x");
+    assert_eq!(r.fields[0].type_repr.as_deref(), Some("integer()"));
+}
+
+#[test]
+fn parses_record_field_with_only_default() {
+    let r = parse_record("(s, {x = 7})").unwrap();
+    assert_eq!(r.fields.len(), 1);
+    assert_eq!(r.fields[0].name, "x");
+    assert_eq!(r.fields[0].type_repr, None);
 }

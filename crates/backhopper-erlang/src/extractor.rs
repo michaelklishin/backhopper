@@ -136,7 +136,7 @@ impl ErlangExtractor {
 
     pub fn extract_header_file(&self, path: &str, source: &str) -> HrlFile {
         let blocks = iterate_attributes(source);
-        let mut hrl = HrlFile::new(strip_leading_components(path));
+        let mut hrl = HrlFile::new(path);
         for block in &blocks {
             let Some(parsed) = classify(block) else {
                 continue;
@@ -292,8 +292,4 @@ fn into_deprecation(d: ParsedDeprecation) -> Option<Deprecation> {
         reason: d.reason,
         module_wide: false,
     })
-}
-
-fn strip_leading_components(path: &str) -> String {
-    path.to_string()
 }

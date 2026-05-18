@@ -4,23 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SymbolKind {
-    Function {
-        mfa: Mfa,
-    },
-    Type {
-        module: ModuleName,
-        name: TypeName,
-        arity: Arity,
-    },
-    Record {
-        name: RecordName,
-    },
-    Macro {
-        name: String,
-    },
     Behaviour {
         module: ModuleName,
     },
@@ -29,9 +15,23 @@ pub enum SymbolKind {
         function: FunctionName,
         arity: Arity,
     },
+    Function {
+        mfa: Mfa,
+    },
+    Macro {
+        name: String,
+    },
+    Record {
+        name: RecordName,
+    },
+    Type {
+        module: ModuleName,
+        name: TypeName,
+        arity: Arity,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SymbolRef {
     #[serde(flatten)]
     pub kind: SymbolKind,

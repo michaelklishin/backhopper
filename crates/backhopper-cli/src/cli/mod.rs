@@ -30,9 +30,9 @@ pub use suites::SuitesCmd;
 pub use tree_source::TreeSource;
 pub use xref::XrefCmd;
 
+// `CARGO_PKG_NAME` is "backhopper-cli"; the user-facing binary is "backhopper".
 #[derive(Debug, Parser)]
 #[command(
-    // Clap's `clap::crate_name!` macro is not used intentionally: `CARGO_PKG_NAME` is "backhopper-cli", but the binary is "backhopper".
     name = "backhopper",
     version = env!("CARGO_PKG_VERSION"),
     about = "Record Erlang/Elixir public APIs per git tag and answer compatibility questions",

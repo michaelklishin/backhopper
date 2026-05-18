@@ -108,11 +108,11 @@ fn parse_hunk_header(rest: &str, lineno: usize) -> Result<Hunk, PatchError> {
     let mut parts = rest.split(' ');
     let old = parts.next().ok_or_else(|| PatchError::Malformed {
         line: lineno,
-        detail: format!("expected old range in hunk header at line {}", lineno),
+        detail: "expected old range in hunk header".into(),
     })?;
     let new = parts.next().ok_or_else(|| PatchError::Malformed {
         line: lineno,
-        detail: format!("expected new range in hunk header at line {}", lineno),
+        detail: "expected new range in hunk header".into(),
     })?;
     let (old_start, old_count) = parse_range(old.trim_start_matches('-'), lineno)?;
     let (new_start, new_count) = parse_range(new.trim_start_matches('+'), lineno)?;
@@ -132,11 +132,11 @@ fn parse_range(s: &str, lineno: usize) -> Result<(usize, usize), PatchError> {
     };
     let start = start.parse::<usize>().map_err(|_| PatchError::Malformed {
         line: lineno,
-        detail: format!("malformed start in {:?}", s),
+        detail: format!("malformed start in {s:?}"),
     })?;
     let count = count.parse::<usize>().map_err(|_| PatchError::Malformed {
         line: lineno,
-        detail: format!("malformed count in {:?}", s),
+        detail: format!("malformed count in {s:?}"),
     })?;
     Ok((start, count))
 }

@@ -36,7 +36,7 @@ impl PinScope {
         Self {
             modules,
             records,
-            path_prefixes: vec![format!("deps/{}/", project)],
+            path_prefixes: vec![format!("deps/{project}/")],
         }
     }
 

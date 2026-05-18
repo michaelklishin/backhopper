@@ -29,11 +29,9 @@ pub fn parse_record(body: &str) -> Option<ParsedRecord> {
     if name.is_empty() {
         return None;
     }
-    let mut fields_text = String::new();
-    let rest_joined = parts[1..].join(",");
-    fields_text.push_str(rest_joined.trim());
-    let fields_text_trimmed = fields_text.trim();
-    let fields_inner = fields_text_trimmed
+    let fields_text = parts[1..].join(",");
+    let fields_inner = fields_text
+        .trim()
         .strip_prefix('{')
         .and_then(|s| s.strip_suffix('}'))
         .map(str::trim)
@@ -68,16 +66,12 @@ fn parse_record_field(s: &str) -> Option<ParsedRecordField> {
             type_repr: None,
         });
     }
-    let after_default = match rest.find('=') {
-        Some(eq_idx) => {
-            let before_eq = rest[..eq_idx].trim();
-            before_eq.to_string()
+    let type_repr = rest.find("::").map(|idx| {
+        let after_colon = rest[idx + 2..].trim();
+        match after_colon.find('=') {
+            Some(eq_idx) => after_colon[..eq_idx].trim().to_string(),
+            None => after_colon.to_string(),
         }
-        None => rest.to_string(),
-    };
-    let type_repr = match after_default.find("::") {
-        Some(idx) => Some(after_default[idx + 2..].trim().to_string()),
-        None => None,
-    };
+    });
     Some(ParsedRecordField { name, type_repr })
 }

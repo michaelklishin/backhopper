@@ -346,7 +346,7 @@ fn glob_match(pattern: &str, path: &str) -> bool {
 
 fn suffix_match(suffix: &str, path: &str) -> bool {
     if let Some(ext) = suffix.strip_prefix("*.") {
-        path.ends_with(&format!(".{}", ext))
+        path.rsplit_once('.').is_some_and(|(_, e)| e == ext)
     } else {
         suffix.is_empty() || path.ends_with(suffix)
     }
@@ -463,7 +463,7 @@ fn lookup(
     let mut results = Vec::with_capacity(mfas.len());
     let mut all_found = true;
     for mfa in &mfas {
-        let module = snapshot.modules().iter().find(|m| m.name == mfa.module);
+        let module = snapshot.module_named(&mfa.module);
         let allowed = match module {
             Some(m) => include_hidden || matches!(m.visibility, Visibility::Public),
             None => true,
@@ -556,7 +556,7 @@ fn exports(
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
     let mod_name = ModuleName::from_str(&module).map_err(|e| CliError::Core(CoreError::Name(e)))?;
-    let m: Option<&Module> = snapshot.modules().iter().find(|m| m.name == mod_name);
+    let m: Option<&Module> = snapshot.module_named(&mod_name);
     let exports: Vec<String> = m
         .map(|m| {
             m.exports
@@ -610,45 +610,30 @@ fn diff(
 }
 
 fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
-    let a_modules: BTreeSet<String> = a.modules().iter().map(|m| m.name.to_string()).collect();
-    let b_modules: BTreeSet<String> = b.modules().iter().map(|m| m.name.to_string()).collect();
-    let modules_added: Vec<_> = b_modules.difference(&a_modules).cloned().collect();
-    let modules_removed: Vec<_> = a_modules.difference(&b_modules).cloned().collect();
+    let a_names: BTreeSet<&ModuleName> = a.modules().iter().map(|m| &m.name).collect();
+    let b_names: BTreeSet<&ModuleName> = b.modules().iter().map(|m| &m.name).collect();
+    let modules_added: Vec<String> = b_names
+        .difference(&a_names)
+        .map(|n| n.to_string())
+        .collect();
+    let modules_removed: Vec<String> = a_names
+        .difference(&b_names)
+        .map(|n| n.to_string())
+        .collect();
     let mut exports_added = Vec::new();
     let mut exports_removed = Vec::new();
-    let module_names: BTreeSet<_> = a_modules.union(&b_modules).cloned().collect();
-    for name in module_names {
-        let a_exports: BTreeSet<String> = a
-            .modules()
-            .iter()
-            .find(|m| m.name.as_str() == name)
-            .map(|m| {
-                m.exports
-                    .iter()
-                    .map(|fa| format!("{}/{}", fa.name, fa.arity))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let b_exports: BTreeSet<String> = b
-            .modules()
-            .iter()
-            .find(|m| m.name.as_str() == name)
-            .map(|m| {
-                m.exports
-                    .iter()
-                    .map(|fa| format!("{}/{}", fa.name, fa.arity))
-                    .collect()
-            })
-            .unwrap_or_default();
+    for name in a_names.union(&b_names) {
+        let a_exports = module_export_set(a, name);
+        let b_exports = module_export_set(b, name);
         for added in b_exports.difference(&a_exports) {
             exports_added.push(DiffExport {
-                module: name.clone(),
+                module: name.to_string(),
                 fun_arity: added.clone(),
             });
         }
         for removed in a_exports.difference(&b_exports) {
             exports_removed.push(DiffExport {
-                module: name.clone(),
+                module: name.to_string(),
                 fun_arity: removed.clone(),
             });
         }
@@ -662,4 +647,15 @@ fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) 
         exports_added,
         exports_removed,
     }
+}
+
+fn module_export_set(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+    s.module_named(name)
+        .map(|m| {
+            m.exports
+                .iter()
+                .map(|fa| format!("{}/{}", fa.name, fa.arity))
+                .collect()
+        })
+        .unwrap_or_default()
 }

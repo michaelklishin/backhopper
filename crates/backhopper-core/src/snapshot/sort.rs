@@ -63,12 +63,5 @@ fn arity_match_cmp(a: &Deprecation, b: &Deprecation) -> Ordering {
 }
 
 fn dedupe_consecutive<T, F: Fn(&T, &T) -> bool>(v: &mut Vec<T>, eq: F) {
-    let mut i = 1;
-    while i < v.len() {
-        if eq(&v[i - 1], &v[i]) {
-            v.remove(i);
-        } else {
-            i += 1;
-        }
-    }
+    v.dedup_by(|a, b| eq(a, b));
 }

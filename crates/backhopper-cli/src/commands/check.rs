@@ -291,8 +291,7 @@ fn scan_erl_modules(repo_dir: &Path) -> CliResult<BTreeSet<String>> {
 fn resolve_rev_with_hint(g: &GitRepo, repo: &Path, rev: &str) -> CliResult<CommitSha> {
     g.resolve_rev(rev).map_err(|e| match e {
         GitError::CommitNotFound(_) => CliError::InvalidInput(format!(
-            "commit {} not found in repository {}: did you forget to `git fetch`?",
-            rev,
+            "commit {rev} not found in repository {}: did you forget to `git fetch`?",
             repo.display()
         )),
         other => CliError::Core(other.into()),
@@ -350,7 +349,7 @@ fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
     let from = g
         .parent_commit(&to)
         .map_err(|e| CliError::Core(e.into()))?
-        .ok_or_else(|| CliError::InvalidInput(format!("commit {} has no parent", commit)))?;
+        .ok_or_else(|| CliError::InvalidInput(format!("commit {commit} has no parent")))?;
     let text = g
         .diff_commits_unified(&from, &to, |p| {
             p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
@@ -365,7 +364,7 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>, merge: Option<&str>) -> C
         (Some(r), None) => {
             let (a, b) = r
                 .split_once("..")
-                .ok_or_else(|| CliError::InvalidInput(format!("invalid range {:?}", r)))?;
+                .ok_or_else(|| CliError::InvalidInput(format!("invalid range {r:?}")))?;
             (
                 resolve_rev_with_hint(&g, repo, a)?,
                 resolve_rev_with_hint(&g, repo, b)?,
@@ -776,7 +775,7 @@ fn run_batch(
         let bytes = commit_patch_bytes(repo, commit)?;
         let source_files = load_source_files_at_parent(repo, commit)?;
         for (name, pins) in &resolved_series {
-            let item_label = format!("{} @ {}", commit, name);
+            let item_label = format!("{commit} @ {name}");
             let source_pins = resolve_source_pins(cfg, pins, None, None, Some(name), source)?;
             let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
             current += 1;

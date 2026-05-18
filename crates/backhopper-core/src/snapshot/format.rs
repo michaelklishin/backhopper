@@ -135,38 +135,36 @@ fn write_keyword_signature<W: Write>(
     head: &str,
     body: &str,
 ) -> io::Result<()> {
-    let combined = if body.is_empty() {
-        head.to_owned()
-    } else {
-        format!("{} {}", head, body)
-    };
-    let mut iter = combined.split('\n');
-    if let Some(first) = iter.next() {
-        writeln!(w, "  {} {}", keyword, first)?;
+    if body.is_empty() {
+        writeln!(w, "  {keyword} {head}")?;
+        return Ok(());
     }
-    for cont in iter {
-        writeln!(w, "{}", cont)?;
+    let mut lines = body.split('\n');
+    let first = lines.next().unwrap_or("");
+    writeln!(w, "  {keyword} {head} {first}")?;
+    for cont in lines {
+        writeln!(w, "{cont}")?;
     }
     Ok(())
 }
 
 fn write_deprecation<W: Write>(d: &Deprecation, w: &mut W) -> io::Result<()> {
-    let head = match (&d.function, &d.arity_match, d.module_wide) {
-        (_, _, true) => String::from("deprecated module"),
-        (Some(f), ArityMatch::Exact { arity }, _) => format!("deprecated {}/{}", f, arity),
-        (Some(f), ArityMatch::Any, _) => format!("deprecated {}/*", f),
-        (None, _, _) => String::from("deprecated *"),
-    };
-    let mut tail = String::new();
+    write!(w, "  ")?;
+    match (&d.function, &d.arity_match, d.module_wide) {
+        (_, _, true) => write!(w, "deprecated module")?,
+        (Some(f), ArityMatch::Exact { arity }, _) => write!(w, "deprecated {f}/{arity}")?,
+        (Some(f), ArityMatch::Any, _) => write!(w, "deprecated {f}/*")?,
+        (None, _, _) => write!(w, "deprecated *")?,
+    }
     if let Some(since) = &d.since {
-        tail.push_str(&format!(" since {}", since));
+        write!(w, " since {since}")?;
     }
     if let Some(rep) = &d.replacement {
-        tail.push_str(&format!(" use {}/{}", rep.function, rep.arity));
+        write!(w, " use {}/{}", rep.function, rep.arity)?;
     }
     if let Some(reason) = &d.reason {
-        tail.push_str(&format!(" reason {:?}", reason));
+        write!(w, " reason {reason:?}")?;
     }
-    writeln!(w, "  {}{}", head, tail)?;
+    writeln!(w)?;
     Ok(())
 }

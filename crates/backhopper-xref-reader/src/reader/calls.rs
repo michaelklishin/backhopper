@@ -605,10 +605,8 @@ fn parse_literal_args(
                 if depth == 0 {
                     let end = sc.pos().byte_offset as usize;
                     let slice = sc.src_slice(arg_start, end);
-                    if !slice.trim().is_empty() || !args.is_empty() {
-                        if !slice.trim().is_empty() {
-                            args.push(classify_literal_arg(slice));
-                        }
+                    if !slice.trim().is_empty() {
+                        args.push(classify_literal_arg(slice));
                     }
                     sc.advance();
                     return args;

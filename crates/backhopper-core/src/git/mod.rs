@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::str;
 
@@ -85,7 +86,7 @@ impl GitRepo {
     }
 
     pub fn resolve_tag(&self, tag: &TagName) -> Result<CommitSha, GitError> {
-        let spec = format!("refs/tags/{}^{{commit}}", tag);
+        let spec = format!("refs/tags/{tag}^{{commit}}");
         let object = self
             .repo
             .rev_parse_single(spec.as_str())
@@ -244,9 +245,9 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     if body.is_empty() {
         return;
     }
-    out.push_str(&format!("diff --git a/{} b/{}\n", display, display));
-    out.push_str(&format!("--- a/{}\n", display));
-    out.push_str(&format!("+++ b/{}\n", display));
+    let _ = writeln!(out, "diff --git a/{display} b/{display}");
+    let _ = writeln!(out, "--- a/{display}");
+    let _ = writeln!(out, "+++ b/{display}");
     out.push_str(&body);
     if !body.ends_with('\n') {
         out.push('\n');

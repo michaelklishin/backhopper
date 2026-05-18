@@ -102,8 +102,7 @@ impl Xref<Functions> {
             return false;
         };
         for b in &summary.behaviours {
-            // We collected required callbacks on the behaviour itself only
-            // when the behaviour-defining module was loaded. Look it up.
+            // Callbacks were recorded on the behaviour module's summary: look it up by `ModuleName`.
             let beh_module = ModuleName::new(b.as_str().to_owned()).ok();
             if let Some(bm) = beh_module {
                 if let Some(beh_summary) = self.graph().module(&bm) {

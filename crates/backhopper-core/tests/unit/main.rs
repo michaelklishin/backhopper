@@ -14,6 +14,7 @@ mod library_derivation_unit_tests;
 mod names_unit_tests;
 mod otp_unit_tests;
 mod scope_unit_tests;
+mod snapshot_lookup_unit_tests;
 mod snapshot_round_trip_unit_tests;
 mod sort_unit_tests;
 mod spec_normalize_unit_tests;

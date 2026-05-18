@@ -256,5 +256,6 @@ fn include_lib_key(path: &Path) -> Option<String> {
     }
     let app = parts[include_idx - 1];
     let rest = &parts[include_idx..];
-    Some(format!("{}/{}", app, rest.join("/")))
+    let tail = rest.join("/");
+    Some(format!("{app}/{tail}"))
 }

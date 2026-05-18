@@ -9,16 +9,16 @@ use backhopper_core::model::names::ModuleName;
 use backhopper_core::model::snapshot::Visibility;
 
 pub fn detect_visibility_hints(source: &str) -> VisibilityHints {
-    let mut hints = VisibilityHints::default();
     for line in source.lines() {
         let trimmed = line.trim_start();
-        if trimmed.starts_with("%% @hidden") || trimmed.starts_with("%%@hidden") {
-            hints.hidden = true;
-        } else if trimmed.starts_with("-doc(hidden)") {
-            hints.hidden = true;
+        if trimmed.starts_with("%% @hidden")
+            || trimmed.starts_with("%%@hidden")
+            || trimmed.starts_with("-doc(hidden)")
+        {
+            return VisibilityHints { hidden: true };
         }
     }
-    hints
+    VisibilityHints::default()
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

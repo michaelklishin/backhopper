@@ -273,11 +273,11 @@ fn parse_attr_signature(name: &str, body: &str) -> Option<(u8, String)> {
     let arity = if args.trim().is_empty() {
         0
     } else {
-        (count_top_level_commas(&args) + 1).min(255) as u8
+        (count_top_level_commas(args) + 1).min(255) as u8
     };
     let after = rest.trim_start();
     let rhs = after.strip_prefix("::").unwrap_or(after).trim();
-    let signature = format!("{}({}) :: {}", name, args.trim(), rhs);
+    let signature = format!("{name}({}) :: {rhs}", args.trim());
     Some((arity, signature))
 }
 
@@ -285,15 +285,14 @@ fn parse_attr_signature(name: &str, body: &str) -> Option<(u8, String)> {
 fn parse_attr_type_decl(_name: &str, body: &str) -> Option<(u8, String)> {
     let trimmed = body.trim_start();
     let (args, rest) = if trimmed.starts_with('(') {
-        let (a, r) = take_balanced_parens(trimmed)?;
-        (a, r)
+        take_balanced_parens(trimmed)?
     } else {
-        (String::new(), trimmed.to_owned())
+        ("", trimmed)
     };
     let arity = if args.trim().is_empty() {
         0
     } else {
-        (count_top_level_commas(&args) + 1).min(255) as u8
+        (count_top_level_commas(args) + 1).min(255) as u8
     };
     let after = rest.trim_start();
     let rhs = after.strip_prefix("::").unwrap_or(after).trim();
@@ -359,7 +358,7 @@ fn is_balanced(s: &str) -> bool {
     paren <= 0 && brace <= 0 && brack <= 0 && !in_str && !in_atom_quote
 }
 
-fn take_balanced_parens(s: &str) -> Option<(String, String)> {
+fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
     if !s.starts_with('(') {
         return None;
     }
@@ -382,8 +381,7 @@ fn take_balanced_parens(s: &str) -> Option<(String, String)> {
             ')' if !in_str && !in_atom_quote => {
                 depth -= 1;
                 if depth == 0 {
-                    let inside = s[1..i].to_owned();
-                    return Some((inside, s[i + 1..].to_owned()));
+                    return Some((&s[1..i], &s[i + 1..]));
                 }
             }
             _ => {}
@@ -439,7 +437,7 @@ fn depth_delta_for_def(line: &str) -> i32 {
 }
 
 fn extra_block_openers(line: &str) -> i32 {
-    let trimmed = line.trim_start();
+    let trimmed = line.trim();
     if trimmed.starts_with("def ")
         || trimmed.starts_with("defp ")
         || trimmed.starts_with("defmacro ")
@@ -451,7 +449,7 @@ fn extra_block_openers(line: &str) -> i32 {
     for keyword in [
         "if ", "case ", "cond ", "with ", "for ", "fn ", "try ", "receive ",
     ] {
-        if trimmed.starts_with(keyword) && (trimmed.ends_with(" do") || trimmed.contains(" do\n")) {
+        if trimmed.starts_with(keyword) && trimmed.ends_with(" do") {
             delta += 1;
         }
     }
