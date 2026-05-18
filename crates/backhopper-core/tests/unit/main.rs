@@ -18,5 +18,6 @@ mod snapshot_round_trip_unit_tests;
 mod sort_unit_tests;
 mod spec_normalize_unit_tests;
 mod store_unit_tests;
+mod suite_matcher_unit_tests;
 mod verdict_reasons_unit_tests;
 mod verdict_unit_tests;

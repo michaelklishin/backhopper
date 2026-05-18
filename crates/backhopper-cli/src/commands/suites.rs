@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 use backhopper_core::app_src::{AppSrcSpec, DiscoveryWarning, discover};
 use backhopper_core::model::names::ApplicationName;
 use backhopper_core::suites::{
-    BuildSystem, PlanInput, SuiteInclusionReason, SuitePlan, derive_library_apps, plan,
+    BuildSystem, PlanInput, SuiteInclusionReason, SuitePlan, derive_library_apps, plan_with_matcher,
 };
 use backhopper_xref::{is_suite_module, suites_referencing, suites_referencing_mfas};
+use backhopper_xref_reader::AstSuiteMatcher;
 
 use crate::cli::suites::SuitesPlanArgs;
 use crate::cli::{GlobalArgs, SuitesCmd};
@@ -85,7 +86,8 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
         library_apps,
         extra_rules: vec![],
     };
-    let result = plan(&input);
+    let mut matcher = AstSuiteMatcher::new();
+    let result = plan_with_matcher(&input, &mut matcher);
     render_plan(global, &result, build_system)?;
     Ok(0)
 }

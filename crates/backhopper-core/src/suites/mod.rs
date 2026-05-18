@@ -10,6 +10,7 @@
 
 mod hints;
 mod library;
+mod matcher;
 mod model;
 mod plan;
 mod rules;
@@ -17,8 +18,9 @@ mod scan;
 
 pub use hints::BuildSystem;
 pub use library::derive_library_apps;
+pub use matcher::{SubstringMatcher, SuiteMatcher, text_references_module};
 pub use model::{
     ExtraRule, ExtraRuleTrigger, PlanInput, SuiteInclusionReason, SuitePlan, SuitePlanEntry,
     SuiteRef, SuiteRefSpec,
 };
-pub use plan::plan;
+pub use plan::{plan, plan_with_matcher};

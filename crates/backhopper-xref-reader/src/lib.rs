@@ -10,9 +10,11 @@ pub mod macros;
 pub mod model;
 pub mod reader;
 pub mod scanner;
+pub mod suite_matcher;
 
 pub use application::{ApplicationAssignment, ProjectLayout};
 pub use errors::{ReadError, ReadWarning};
 pub use macros::{MacroKey, MacroTable, parse_define};
 pub use model::{CallSite, ModuleData, ReadOutput};
 pub use reader::SourceReader;
+pub use suite_matcher::AstSuiteMatcher;

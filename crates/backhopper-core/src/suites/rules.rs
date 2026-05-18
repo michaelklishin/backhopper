@@ -6,6 +6,7 @@ use std::slice;
 
 use crate::app_src::AppSrcSpec;
 use crate::model::names::{ApplicationName, ModuleName};
+use crate::suites::matcher::SuiteMatcher;
 use crate::suites::model::{ExtraRule, ExtraRuleTrigger, SuiteInclusionReason, SuiteRef};
 use crate::suites::scan;
 
@@ -89,17 +90,13 @@ pub(crate) fn apply_test_modified(
 pub(crate) fn apply_same_app_caller(
     classification: &ModifiedClassification,
     discovered: &[SuiteRef],
-    suite_text_cache: &mut BTreeMap<PathBuf, String>,
+    matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     for m in &classification.modified_modules {
         let Some(app) = &m.application else { continue };
         for suite in discovered.iter().filter(|s| &s.application == app) {
-            let refs = scan::modules_referenced_in_suite(
-                &suite.path,
-                slice::from_ref(&m.module),
-                suite_text_cache,
-            );
+            let refs = matcher.modules_referenced_in_suite(&suite.path, slice::from_ref(&m.module));
             if refs.is_empty() {
                 continue;
             }
@@ -120,7 +117,7 @@ pub(crate) fn apply_cross_app_caller(
     classification: &ModifiedClassification,
     discovered: &[SuiteRef],
     library_apps: &[ApplicationName],
-    suite_text_cache: &mut BTreeMap<PathBuf, String>,
+    matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     let library_set: BTreeSet<&ApplicationName> = library_apps.iter().collect();
@@ -130,11 +127,7 @@ pub(crate) fn apply_cross_app_caller(
             continue;
         }
         for suite in discovered.iter().filter(|s| &s.application != app) {
-            let refs = scan::modules_referenced_in_suite(
-                &suite.path,
-                slice::from_ref(&m.module),
-                suite_text_cache,
-            );
+            let refs = matcher.modules_referenced_in_suite(&suite.path, slice::from_ref(&m.module));
             if refs.is_empty() {
                 continue;
             }
@@ -155,7 +148,7 @@ pub(crate) fn apply_cross_app_caller(
 pub(crate) fn apply_unit_or_prop_sweep(
     classification: &ModifiedClassification,
     discovered: &[SuiteRef],
-    suite_text_cache: &mut BTreeMap<PathBuf, String>,
+    matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     let mut by_app: BTreeMap<ApplicationName, Vec<ModuleName>> = BTreeMap::new();
@@ -173,7 +166,7 @@ pub(crate) fn apply_unit_or_prop_sweep(
             .filter(|s| &s.application == app)
             .filter(|s| is_unit_or_prop_suite(&s.module))
         {
-            let refs = scan::modules_referenced_in_suite(&suite.path, modules, suite_text_cache);
+            let refs = matcher.modules_referenced_in_suite(&suite.path, modules);
             if refs.is_empty() {
                 continue;
             }

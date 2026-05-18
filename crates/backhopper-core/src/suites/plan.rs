@@ -2,36 +2,32 @@
 //! configured rules into one ordered output.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
+use crate::suites::matcher::{SubstringMatcher, SuiteMatcher};
 use crate::suites::model::{PlanInput, SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef};
 use crate::suites::{rules, scan};
 
+/// Plans against the default substring matcher. Use
+/// `plan_with_matcher` to inject an AST-aware strategy.
 pub fn plan(input: &PlanInput) -> SuitePlan {
+    let mut matcher = SubstringMatcher::new();
+    plan_with_matcher(input, &mut matcher)
+}
+
+pub fn plan_with_matcher(input: &PlanInput, matcher: &mut dyn SuiteMatcher) -> SuitePlan {
     let discovered = scan::enumerate_suites(&input.repo_root, &input.apps);
     let classification = rules::classify(&input.modified_paths, &input.apps, &input.repo_root);
-    let mut suite_text_cache: BTreeMap<PathBuf, String> = BTreeMap::new();
     let mut accum: BTreeMap<SuiteRef, Vec<SuiteInclusionReason>> = BTreeMap::new();
     rules::apply_test_modified(&classification, &discovered, &mut accum);
-    rules::apply_same_app_caller(
-        &classification,
-        &discovered,
-        &mut suite_text_cache,
-        &mut accum,
-    );
+    rules::apply_same_app_caller(&classification, &discovered, matcher, &mut accum);
     rules::apply_cross_app_caller(
         &classification,
         &discovered,
         &input.library_apps,
-        &mut suite_text_cache,
+        matcher,
         &mut accum,
     );
-    rules::apply_unit_or_prop_sweep(
-        &classification,
-        &discovered,
-        &mut suite_text_cache,
-        &mut accum,
-    );
+    rules::apply_unit_or_prop_sweep(&classification, &discovered, matcher, &mut accum);
     rules::apply_configured_rules(
         &input.extra_rules,
         &input.modified_paths,

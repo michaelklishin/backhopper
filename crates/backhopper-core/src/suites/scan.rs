@@ -1,6 +1,5 @@
 //! File-system scanning helpers for suite selection.
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -108,49 +107,4 @@ fn collect_suites_in(app: &ApplicationName, dir: &Path, out: &mut Vec<SuiteRef>)
             });
         }
     }
-}
-
-/// Whether `text` references `module` as `module:fn(` somewhere.
-/// Cheap substring + boundary check, deliberately not a real parser:
-/// false positives are tolerable (they over-include suites), false
-/// negatives are not.
-pub(crate) fn text_references_module(text: &str, module: &ModuleName) -> bool {
-    let needle = format!("{}:", module.as_str());
-    let mut start = 0usize;
-    while let Some(rel) = text[start..].find(&needle) {
-        let pos = start + rel;
-        let prev_ok = pos == 0
-            || text
-                .as_bytes()
-                .get(pos.saturating_sub(1))
-                .is_none_or(|&b| !is_atom_char(b as char));
-        if prev_ok {
-            return true;
-        }
-        start = pos + needle.len();
-    }
-    false
-}
-
-fn is_atom_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '@'
-}
-
-/// Reads `suite.path` (lazily, with a cache) and returns the set of
-/// `triggering` modules it references. Empty set means no reference.
-pub(crate) fn modules_referenced_in_suite(
-    suite_path: &Path,
-    triggering: &[ModuleName],
-    cache: &mut BTreeMap<PathBuf, String>,
-) -> BTreeSet<ModuleName> {
-    let text = cache
-        .entry(suite_path.to_path_buf())
-        .or_insert_with(|| fs::read_to_string(suite_path).unwrap_or_default());
-    let mut out = BTreeSet::new();
-    for m in triggering {
-        if text_references_module(text, m) {
-            out.insert(m.clone());
-        }
-    }
-    out
 }

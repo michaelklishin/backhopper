@@ -119,6 +119,7 @@ dependencies = [
  "backhopper-elixir",
  "backhopper-erlang",
  "backhopper-xref",
+ "backhopper-xref-reader",
  "bel7-cli",
  "clap",
  "insta",
@@ -215,6 +216,7 @@ dependencies = [
  "backhopper-xref-graph",
  "proptest",
  "serde",
+ "tempfile",
  "thiserror",
  "tracing",
 ]

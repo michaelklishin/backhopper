@@ -16,10 +16,11 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-backhopper-core   = { workspace = true }
-backhopper-erlang = { workspace = true }
-backhopper-elixir = { workspace = true }
-backhopper-xref   = { workspace = true }
+backhopper-core        = { workspace = true }
+backhopper-erlang      = { workspace = true }
+backhopper-elixir      = { workspace = true }
+backhopper-xref        = { workspace = true }
+backhopper-xref-reader = { workspace = true }
 
 anyhow                 = { workspace = true }
 bel7-cli               = { workspace = true }
