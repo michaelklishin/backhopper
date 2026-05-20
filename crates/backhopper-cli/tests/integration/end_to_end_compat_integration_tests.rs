@@ -436,36 +436,3 @@ fn resolve_untracked_modules_stays_compatible_when_file_present() {
         .assert()
         .success();
 }
-
-#[test]
-fn resolve_untracked_modules_without_repo_dir_path_errors_out() {
-    let (repo, work) = build_repo();
-    let snap = work.path().join("snapshots");
-    let cfg = write_config(work.path(), repo.dir.path(), &snap);
-    generate_snapshot(&cfg);
-    let patch_file = write_patch_to_temp(PATCH_REFERENCING_UNTRACKED);
-    let assert = Command::cargo_bin("backhopper")
-        .unwrap()
-        .args([
-            "--config-file-path",
-            cfg.to_str().unwrap(),
-            "check",
-            "patch",
-            "--project",
-            "demo",
-            "--tag",
-            "v1.0.0",
-            "--resolve-untracked-modules",
-            "--formatter",
-            "text",
-            patch_file.path().to_str().unwrap(),
-        ])
-        .assert()
-        .failure();
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
-    assert!(
-        stderr.contains("--repo-dir-path"),
-        "expected error mentioning --repo-dir-path, got: {}",
-        stderr
-    );
-}

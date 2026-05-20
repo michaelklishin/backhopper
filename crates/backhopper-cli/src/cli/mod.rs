@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use bel7_cli::TableStyle;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
+pub mod bisect;
 pub mod check;
 pub mod config;
 pub mod projects;
@@ -23,6 +24,7 @@ pub mod suites;
 pub mod tree_source;
 pub mod xref;
 
+pub use bisect::BisectCmd;
 pub use check::{CheckCmd, CheckOutputFlags, SourcePinArgs};
 pub use config::ConfigCmd;
 pub use projects::ProjectsCmd;
@@ -34,7 +36,7 @@ pub use suites::SuitesCmd;
 pub use tree_source::TreeSource;
 pub use xref::XrefCmd;
 
-// `CARGO_PKG_NAME` is "backhopper-cli"; the user-facing binary is "backhopper".
+// CARGO_PKG_NAME is "backhopper-cli"; the user-facing binary is "backhopper".
 #[derive(Debug, Parser)]
 #[command(
     name = "backhopper",
@@ -140,6 +142,11 @@ pub enum Group {
     Check {
         #[command(subcommand)]
         cmd: CheckCmd,
+    },
+    /// Bisect across stored tags to find the verdict-flip point.
+    Bisect {
+        #[command(subcommand)]
+        cmd: BisectCmd,
     },
     /// Inspect or validate the loaded configuration file.
     Config {

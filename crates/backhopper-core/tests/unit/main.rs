@@ -22,6 +22,7 @@ mod scope_unit_tests;
 mod snapshot_lookup_unit_tests;
 mod snapshot_record_continuation_unit_tests;
 mod snapshot_round_trip_unit_tests;
+mod snapshot_show_filter_unit_tests;
 mod sort_unit_tests;
 mod spec_normalize_unit_tests;
 mod store_unit_tests;

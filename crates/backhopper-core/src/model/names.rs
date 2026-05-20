@@ -112,7 +112,7 @@ fn validate_tag_name(value: &str) -> Result<(), NameError> {
             });
         }
     }
-    if value == "." || value == ".." || value.starts_with(".") || value.ends_with(".") {
+    if value == "." || value == ".." || value.starts_with('.') || value.ends_with('.') {
         return Err(NameError::PatternMismatch {
             kind: "tag",
             value: value.to_owned(),

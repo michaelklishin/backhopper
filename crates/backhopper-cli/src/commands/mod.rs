@@ -4,6 +4,7 @@
 
 //! Command dispatch.
 
+pub mod bisect;
 pub mod check;
 pub mod config;
 pub mod context;
@@ -27,6 +28,7 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Series { cmd } => series::handle(&cli.global, cmd),
         Group::Snapshots { cmd } => snapshots::handle(&cli.global, cmd),
         Group::Check { cmd } => check::handle(&cli.global, cmd),
+        Group::Bisect { cmd } => bisect::handle(&cli.global, cmd),
         Group::Config { cmd } => config::handle(&cli.global, cmd),
         Group::Shell { cmd } => shell::handle(&cli.global, cmd),
         Group::Xref { cmd } => xref::handle(&cli.global, cmd),

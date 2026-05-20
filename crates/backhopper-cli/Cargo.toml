@@ -31,6 +31,7 @@ serde_json             = { workspace = true }
 tabled                 = { workspace = true }
 thiserror              = { workspace = true }
 time                   = { workspace = true }
+toml_edit              = { workspace = true }
 tracing                = { workspace = true }
 tracing-subscriber     = { workspace = true }
 

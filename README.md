@@ -144,6 +144,23 @@ added type ra_machine:command/1
 An arity change will result in one removal and one addition to the same
 function (or type).
 
+To diff two whole release series at once, one section per project:
+
+```shell
+backhopper snapshots diff --from-series stable-3.x --to-series stable-4.x
+```
+
+
+### Finding When a Symbol Appeared and Disappeared
+
+```shell
+backhopper snapshots lookup --project lib_a --all-tags \
+                            --mfa lib_a:some_function/1
+```
+
+Walks every stored tag and reports the first and last tag at which each
+MFA was present.
+
 
 ### Checking a Patch Against a Series
 
@@ -189,6 +206,32 @@ backhopper check batch \
     --series stable-3.x,stable-4.x \
     --repo-dir-path /path/to/your_repo.git \
     --commits-file-path candidates.txt
+```
+
+For one commit against several series, `check multi` is the focused form:
+
+```shell
+backhopper check multi \
+    --series stable-3.x,stable-4.x \
+    1a2b3c4d
+```
+
+To skip cloning, `check pr` resolves a GitHub PR URL via the `gh` CLI:
+
+```shell
+backhopper check pr --series stable-3.x \
+    https://github.com/owner/repo/pull/123
+```
+
+
+### Bisecting Across a Project's Tags
+
+`bisect commit` walks every stored tag of a project and reports the
+newest tag at which the commit's verdict is still `Compatible`, plus the
+tag where it flips:
+
+```shell
+backhopper bisect commit --project lib_a 1a2b3c4d
 ```
 
 A clean run prints one row per pinned dependency: the verdict and how

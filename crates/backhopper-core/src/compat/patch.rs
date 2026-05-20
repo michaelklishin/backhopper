@@ -502,7 +502,8 @@ impl Patch<Analyzed> {
             );
             results.push(
                 PinVerdict::new(ctx.pin().clone(), r.verdict)
-                    .with_tracked_ref_details(r.tracked_refs),
+                    .with_tracked_ref_details(r.tracked_refs)
+                    .with_source_delta_details(r.source_deltas),
             );
         }
         let mut unanalyzed = Unanalyzed::default();

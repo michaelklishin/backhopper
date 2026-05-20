@@ -5,7 +5,7 @@
 use backhopper_core::model::names::{Arity, FunctionName, Mfa, ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolRef;
-use backhopper_core::model::verdict::{PinVerdict, Verdict};
+use backhopper_core::model::verdict::{PinVerdict, SourceDelta, Verdict};
 
 fn pin(project: &str, tag: &str) -> Pin {
     Pin {
@@ -65,4 +65,46 @@ fn with_tracked_refs_does_not_clear_details_when_set_first() {
     let after = pv.with_tracked_refs(42);
     assert_eq!(after.tracked_ref_details.len(), 1);
     assert_eq!(after.tracked_refs, 42);
+}
+
+#[test]
+fn source_delta_details_round_trip_through_json() {
+    let delta = SourceDelta {
+        module: ModuleName::new("ra").unwrap(),
+        function: FunctionName::new("start").unwrap(),
+        arity: Arity::new(1),
+        source_spec: "start(A :: integer()) -> ok".into(),
+        target_spec: "start(A :: pos_integer()) -> ok".into(),
+    };
+    let pv = PinVerdict::new(pin("ra", "v2.16.13"), Verdict::Compatible)
+        .with_source_delta_details(vec![delta]);
+    let json = serde_json::to_string(&pv).unwrap();
+    let back: PinVerdict = serde_json::from_str(&json).unwrap();
+    assert_eq!(pv, back);
+    assert!(json.contains("\"source_delta_details\""), "{json}");
+    assert!(json.contains("\"source_spec\""), "{json}");
+    assert!(json.contains("\"target_spec\""), "{json}");
+}
+
+#[test]
+fn empty_source_delta_details_is_omitted_from_json() {
+    let pv = PinVerdict::new(pin("ra", "v2.16.13"), Verdict::Compatible);
+    let json = serde_json::to_string(&pv).unwrap();
+    assert!(!json.contains("source_delta_details"), "{json}");
+}
+
+#[test]
+fn pin_verdict_can_carry_both_tracked_refs_and_source_deltas() {
+    let pv = PinVerdict::new(pin("ra", "v2.16.13"), Verdict::Compatible)
+        .with_tracked_ref_details(vec![SymbolRef::function(mfa("ra", "x", 0))])
+        .with_source_delta_details(vec![SourceDelta {
+            module: ModuleName::new("ra").unwrap(),
+            function: FunctionName::new("x").unwrap(),
+            arity: Arity::new(0),
+            source_spec: "x() -> ok".into(),
+            target_spec: "x() -> {ok, term()}".into(),
+        }]);
+    assert_eq!(pv.tracked_refs, 1);
+    assert_eq!(pv.tracked_ref_details.len(), 1);
+    assert_eq!(pv.source_delta_details.len(), 1);
 }

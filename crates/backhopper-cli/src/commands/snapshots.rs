@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -13,8 +14,10 @@ use time::OffsetDateTime;
 use backhopper_core::Error as CoreError;
 use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project};
-use backhopper_core::git::GitRepo;
-use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, TagName};
+use backhopper_core::git::{GitRepo, version_cmp};
+use std::collections::BTreeMap;
+
+use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
@@ -130,10 +133,15 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             project,
             no_remote_check: _,
             dry_run,
-        } => generate(args, &cfg, project, dry_run),
+            since,
+        } => generate(args, &cfg, project, dry_run, since),
         SnapshotsCmd::List { project } => list(args, &cfg, project),
-        SnapshotsCmd::Show { project, tag } => show(args, &cfg, project, tag),
-        SnapshotsCmd::Verify { project, tag } => verify(args, &cfg, project, tag),
+        SnapshotsCmd::Show {
+            project,
+            tag,
+            module,
+        } => show(args, &cfg, project, tag, module),
+        SnapshotsCmd::Verify { project, tag, all } => verify(args, &cfg, project, tag, all),
         SnapshotsCmd::Rebuild {
             project,
             tag,
@@ -144,7 +152,8 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             tag,
             mfa,
             include_hidden,
-        } => lookup(args, &cfg, project, tag, mfa, include_hidden),
+            all_tags,
+        } => lookup(args, &cfg, project, tag, mfa, include_hidden, all_tags),
         SnapshotsCmd::Modules {
             project,
             tag,
@@ -155,7 +164,13 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             tag,
             module,
         } => exports(args, &cfg, project, tag, module),
-        SnapshotsCmd::Diff { project, from, to } => diff(args, &cfg, project, from, to),
+        SnapshotsCmd::Diff {
+            project,
+            from,
+            to,
+            from_series,
+            to_series,
+        } => diff(args, &cfg, project, from, to, from_series, to_series),
     }
 }
 
@@ -203,6 +218,7 @@ fn generate(
     cfg: &Config,
     project: Option<ProjectName>,
     dry_run: bool,
+    since: Option<TagName>,
 ) -> CliResult<i32> {
     let store = open_store_mut(args, cfg)?;
     let projects: Vec<&Project> = match project {
@@ -211,7 +227,7 @@ fn generate(
     };
     let mut payloads = Vec::new();
     for p in projects {
-        payloads.push(generate_one(p, &store, dry_run)?);
+        payloads.push(generate_one(p, &store, dry_run, since.as_ref())?);
     }
     let ctx = OutputContext::new(args.formatter, "snapshots generate");
     render(&ctx, &payloads, |w| {
@@ -246,14 +262,16 @@ fn generate_one(
     p: &Project,
     store: &SnapshotStore<Mutable>,
     dry_run: bool,
+    since: Option<&TagName>,
 ) -> CliResult<DiscoverPayload> {
     let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
     let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
+    let tags = filter_tags_since(listing.tags, since);
     let mut captured = 0usize;
     let mut skipped = 0usize;
     let mut failed: Vec<DiscoverFailure> = Vec::new();
     let mut captured_tags = Vec::new();
-    for tag in listing.tags {
+    for tag in tags {
         if store.has(&p.name, &tag) {
             skipped += 1;
             continue;
@@ -288,6 +306,15 @@ fn generate_one(
         tags: captured_tags,
         ignored_non_tag_refs: listing.skipped,
     })
+}
+
+pub fn filter_tags_since(tags: Vec<TagName>, since: Option<&TagName>) -> Vec<TagName> {
+    let Some(since) = since else {
+        return tags;
+    };
+    tags.into_iter()
+        .filter(|t| version_cmp(t.as_str(), since.as_str()) != Ordering::Greater)
+        .collect()
 }
 
 fn build_snapshot(
@@ -396,12 +423,46 @@ fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<i32>
     Ok(0)
 }
 
-fn show(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -> CliResult<i32> {
+#[derive(Debug, Serialize)]
+struct ShowModulePayload<'a> {
+    header: &'a SnapshotHeader,
+    module: Option<&'a Module>,
+    found: bool,
+}
+
+fn show(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: ProjectName,
+    tag: TagName,
+    module: Option<ModuleName>,
+) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
     let ctx = OutputContext::new(args.formatter, "snapshots show");
+    if let Some(name) = &module {
+        let module_ref = snapshot.module_named(name);
+        let found = module_ref.is_some();
+        let payload = ShowModulePayload {
+            header: snapshot.header(),
+            module: module_ref,
+            found,
+        };
+        let exit = if found { 0 } else { 1 };
+        render_with_exit(&ctx, &payload, exit, |w| {
+            let mut buf: Vec<u8> = Vec::new();
+            format::write_module_filtered(&snapshot, name, &mut buf)
+                .map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
+            w.write_all(&buf)?;
+            if !found {
+                writeln!(w, "module {name} not present in {project} {tag}")?;
+            }
+            Ok(())
+        })?;
+        return Ok(exit);
+    }
     render(&ctx, &snapshot, |w| {
         let text =
             format::to_string(&snapshot).map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
@@ -411,7 +472,30 @@ fn show(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -> 
     Ok(0)
 }
 
-fn verify(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -> CliResult<i32> {
+fn verify(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: Option<ProjectName>,
+    tag: Option<TagName>,
+    all: bool,
+) -> CliResult<i32> {
+    if all {
+        return verify_all(args, cfg);
+    }
+    let project = project.ok_or_else(|| {
+        CliError::InvalidInput("--project is required unless --all is set".into())
+    })?;
+    let tag =
+        tag.ok_or_else(|| CliError::InvalidInput("--tag is required unless --all is set".into()))?;
+    verify_one(args, cfg, project, tag)
+}
+
+fn verify_one(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: ProjectName,
+    tag: TagName,
+) -> CliResult<i32> {
     let p = cfg
         .project(&project)
         .map_err(|e| CliError::Core(e.into()))?;
@@ -436,6 +520,58 @@ fn verify(args: &GlobalArgs, cfg: &Config, project: ProjectName, tag: TagName) -
             writeln!(w, "ok: {} {}", project, tag)?;
         } else {
             writeln!(w, "drift: {} {}", project, tag)?;
+        }
+        Ok(())
+    })
+}
+
+#[derive(Debug, Serialize)]
+struct VerifyAllFailure {
+    project: String,
+    tag: String,
+    reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct VerifyAllPayload {
+    verified: usize,
+    failed: Vec<VerifyAllFailure>,
+}
+
+fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
+    let store = open_store_read(args, cfg)?;
+    let projects = store
+        .list_projects()
+        .map_err(|e| CliError::Core(e.into()))?;
+    let mut verified = 0usize;
+    let mut failed: Vec<VerifyAllFailure> = Vec::new();
+    for project in projects {
+        let tags = store
+            .list_tags(&project)
+            .map_err(|e| CliError::Core(e.into()))?;
+        for tag in tags {
+            match store.read(&project, &tag) {
+                Ok(_) => verified += 1,
+                Err(e) => failed.push(VerifyAllFailure {
+                    project: project.to_string(),
+                    tag: tag.to_string(),
+                    reason: e.to_string(),
+                }),
+            }
+        }
+    }
+    let payload = VerifyAllPayload { verified, failed };
+    let exit = if payload.failed.is_empty() { 0 } else { 1 };
+    let ctx = OutputContext::new(args.formatter, "snapshots verify");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        writeln!(
+            w,
+            "verified: {}, failed: {}",
+            payload.verified,
+            payload.failed.len()
+        )?;
+        for f in &payload.failed {
+            writeln!(w, "  {} {}: {}", f.project, f.tag, f.reason)?;
         }
         Ok(())
     })
@@ -473,14 +609,35 @@ fn rebuild(
     Ok(0)
 }
 
+#[derive(Debug, Serialize)]
+pub struct LookupAllTagsRow {
+    pub mfa: String,
+    pub first_tag: Option<String>,
+    pub last_tag: Option<String>,
+    pub tags_present: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct LookupAllTagsPayload {
+    project: String,
+    rows: Vec<LookupAllTagsRow>,
+}
+
 fn lookup(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
-    tag: TagName,
+    tag: Option<TagName>,
     mfas: Vec<Mfa>,
     include_hidden: bool,
+    all_tags: bool,
 ) -> CliResult<i32> {
+    if all_tags {
+        return lookup_all_tags(args, cfg, project, mfas, include_hidden);
+    }
+    let tag = tag.ok_or_else(|| {
+        CliError::InvalidInput("--tag is required unless --all-tags is set".into())
+    })?;
     let store = open_store_read(args, cfg)?;
     let snapshot = store
         .read(&project, &tag)
@@ -523,6 +680,95 @@ fn lookup(
                 if r.found { "found" } else { "missing" },
                 r.visibility.as_deref().unwrap_or("-")
             )?;
+        }
+        Ok(())
+    })
+}
+
+fn lookup_all_tags(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: ProjectName,
+    mfas: Vec<Mfa>,
+    include_hidden: bool,
+) -> CliResult<i32> {
+    let store = open_store_read(args, cfg)?;
+    let mut tags = store
+        .list_tags(&project)
+        .map_err(|e| CliError::Core(e.into()))?;
+    if tags.is_empty() {
+        return Err(CliError::InvalidInput(format!(
+            "no snapshots on disk for project {project}"
+        )));
+    }
+    // list_tags is lexicographic: re-sort by version_cmp so iteration is oldest-first.
+    tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
+    // parse each snapshot once and check every MFA against it in the same pass.
+    let mut firsts: Vec<Option<String>> = vec![None; mfas.len()];
+    let mut lasts: Vec<Option<String>> = vec![None; mfas.len()];
+    let mut counts: Vec<usize> = vec![0; mfas.len()];
+    for tag in &tags {
+        let snapshot = store
+            .read(&project, tag)
+            .map_err(|e| CliError::Core(e.into()))?;
+        for (i, mfa) in mfas.iter().enumerate() {
+            let module = snapshot.module_named(&mfa.module);
+            let allowed = match module {
+                Some(m) => include_hidden || matches!(m.visibility, Visibility::Public),
+                None => true,
+            };
+            let target = FunArity {
+                name: mfa.function.clone(),
+                arity: mfa.arity,
+            };
+            let present =
+                allowed && module.is_some_and(|m| m.exports.binary_search(&target).is_ok());
+            if present {
+                if firsts[i].is_none() {
+                    firsts[i] = Some(tag.to_string());
+                }
+                lasts[i] = Some(tag.to_string());
+                counts[i] += 1;
+            }
+        }
+    }
+    let rows: Vec<LookupAllTagsRow> = mfas
+        .iter()
+        .enumerate()
+        .map(|(i, mfa)| LookupAllTagsRow {
+            mfa: mfa.to_string(),
+            first_tag: firsts[i].clone(),
+            last_tag: lasts[i].clone(),
+            tags_present: counts[i],
+        })
+        .collect();
+    let exit = if rows.iter().all(|r| r.tags_present > 0) {
+        0
+    } else {
+        1
+    };
+    let payload = LookupAllTagsPayload {
+        project: project.to_string(),
+        rows,
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots lookup");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        for r in &payload.rows {
+            match (&r.first_tag, &r.last_tag) {
+                (Some(f), Some(l)) if f == l => {
+                    writeln!(w, "{}\tpresent at {} only", r.mfa, f)?;
+                }
+                (Some(f), Some(l)) => {
+                    writeln!(
+                        w,
+                        "{}\tpresent {}..{}\t({} tags)",
+                        r.mfa, f, l, r.tags_present
+                    )?;
+                }
+                _ => {
+                    writeln!(w, "{}\tnot present in any stored snapshot", r.mfa)?;
+                }
+            }
         }
         Ok(())
     })
@@ -610,7 +856,36 @@ fn exports(
     Ok(if m.is_some() { 0 } else { 1 })
 }
 
+#[derive(Debug, Serialize)]
+pub struct CrossSeriesDiffPayload {
+    pub from_series: String,
+    pub to_series: String,
+    pub projects: Vec<DiffPayload>,
+}
+
 fn diff(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: Option<ProjectName>,
+    from: Option<TagName>,
+    to: Option<TagName>,
+    from_series: Option<SeriesName>,
+    to_series: Option<SeriesName>,
+) -> CliResult<i32> {
+    match (project, from, to, from_series, to_series) {
+        (Some(project), Some(from), Some(to), None, None) => {
+            diff_single_project(args, cfg, project, from, to)
+        }
+        (None, None, None, Some(from_series), Some(to_series)) => {
+            diff_cross_series(args, cfg, from_series, to_series)
+        }
+        _ => Err(CliError::InvalidInput(
+            "pass either --project --from --to or --from-series --to-series".into(),
+        )),
+    }
+}
+
+fn diff_single_project(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
@@ -628,6 +903,55 @@ fn diff(
     let ctx = OutputContext::new(args.formatter, "snapshots diff");
     render(&ctx, &result, |w| {
         render_diff_text(w, &result).map_err(CliError::from)
+    })?;
+    Ok(0)
+}
+
+fn diff_cross_series(
+    args: &GlobalArgs,
+    cfg: &Config,
+    from_series: SeriesName,
+    to_series: SeriesName,
+) -> CliResult<i32> {
+    let from = cfg
+        .series_by_name(&from_series)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let to = cfg
+        .series_by_name(&to_series)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let store = open_store_read(args, cfg)?;
+    let to_pins: BTreeMap<&ProjectName, &TagName> =
+        to.pins.iter().map(|p| (&p.project, &p.tag)).collect();
+    let mut projects: Vec<DiffPayload> = Vec::new();
+    for pin in &from.pins {
+        let Some(to_tag) = to_pins.get(&pin.project) else {
+            continue;
+        };
+        let a = store
+            .read(&pin.project, &pin.tag)
+            .map_err(|e| CliError::Core(e.into()))?;
+        let b = store
+            .read(&pin.project, to_tag)
+            .map_err(|e| CliError::Core(e.into()))?;
+        projects.push(compute_diff(&a, &b));
+    }
+    let payload = CrossSeriesDiffPayload {
+        from_series: from_series.to_string(),
+        to_series: to_series.to_string(),
+        projects,
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots diff");
+    render(&ctx, &payload, |w| {
+        let mut first = true;
+        for d in &payload.projects {
+            if !first {
+                writeln!(w)?;
+            }
+            first = false;
+            writeln!(w, "# project: {} ({} -> {})", d.project, d.from, d.to)?;
+            render_diff_text(w, d).map_err(CliError::from)?;
+        }
+        Ok(())
     })?;
     Ok(0)
 }

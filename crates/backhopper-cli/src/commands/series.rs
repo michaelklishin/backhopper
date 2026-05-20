@@ -3,10 +3,12 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
 use serde::Serialize;
+use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value, value};
 
 use backhopper_core::config::{Config, Project};
 use backhopper_core::git::GitRepo;
@@ -119,7 +121,15 @@ pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<i32> {
             from_branch,
             repo_dir_path,
             series_name,
-        } => sync(args, &cfg, &from_branch, &repo_dir_path, series_name),
+            overwrite,
+        } => sync(
+            args,
+            &cfg,
+            &from_branch,
+            &repo_dir_path,
+            series_name,
+            overwrite,
+        ),
     }
 }
 
@@ -148,6 +158,7 @@ fn sync(
     from_branch: &str,
     repo_dir_path: &Path,
     series_name: SeriesName,
+    overwrite: bool,
 ) -> CliResult<i32> {
     let repo = GitRepo::open(repo_dir_path).map_err(|e| CliError::Core(e.into()))?;
     let commit = repo
@@ -167,11 +178,63 @@ fn sync(
         ))
     })?;
     let payload = build_sync_output(text, &series_name, &cfg.projects)?;
+    if overwrite {
+        let path = &cfg.config_path;
+        let existing = fs::read_to_string(path).map_err(CliError::Io)?;
+        let updated = apply_sync_to_config_text(&existing, &payload)?;
+        fs::write(path, updated).map_err(CliError::Io)?;
+        eprintln!("wrote {} pins to {}", payload.pins.len(), path.display());
+        return Ok(0);
+    }
     let ctx = OutputContext::new(args.formatter, "series sync");
     render(&ctx, &payload, |w| {
         render_sync_text(&payload, w).map_err(CliError::from)
     })?;
     Ok(0)
+}
+
+pub fn apply_sync_to_config_text(existing: &str, payload: &SyncOutput) -> CliResult<String> {
+    let mut doc: DocumentMut = existing.parse().map_err(|e: toml_edit::TomlError| {
+        CliError::InvalidInput(format!("invalid TOML in config: {e}"))
+    })?;
+    let series_array = doc
+        .entry("series")
+        .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+        .as_array_of_tables_mut()
+        .ok_or_else(|| {
+            CliError::InvalidInput("config 'series' key is not an array of tables".into())
+        })?;
+    let new_block = build_series_table(payload);
+    let mut replaced = false;
+    for table in series_array.iter_mut() {
+        let matches = table
+            .get("name")
+            .and_then(|v| v.as_str())
+            .is_some_and(|n| n == payload.name);
+        if matches {
+            *table = new_block.clone();
+            replaced = true;
+            break;
+        }
+    }
+    if !replaced {
+        series_array.push(new_block);
+    }
+    Ok(doc.to_string())
+}
+
+fn build_series_table(payload: &SyncOutput) -> Table {
+    let mut table = Table::new();
+    table["name"] = value(payload.name.as_str());
+    let mut pins = Array::new();
+    for pin in &payload.pins {
+        let mut inline = InlineTable::new();
+        inline.insert("project", pin.project.as_str().into());
+        inline.insert("tag", pin.tag.as_str().into());
+        pins.push(Value::InlineTable(inline));
+    }
+    table["pins"] = value(pins);
+    table
 }
 
 fn pin_payload_for(pin: &DepPin, project: &Project) -> CliResult<PinPayload> {

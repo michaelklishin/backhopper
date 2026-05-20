@@ -12,6 +12,7 @@ use std::io::{self, Write};
 use time::format_description::well_known::Rfc3339;
 
 use crate::errors::SnapshotError;
+use crate::model::names::ModuleName;
 use crate::model::snapshot::{
     ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, Module, Snapshot, SnapshotHeader, Visibility,
     state,
@@ -48,6 +49,21 @@ pub fn to_string(snapshot: &Snapshot<state::Canonical>) -> Result<String, Snapsh
     String::from_utf8(buf).map_err(|e| SnapshotError::InvalidUtf8 {
         offset: e.utf8_error().valid_up_to(),
     })
+}
+
+/// Write the canonical header followed by the single named module's section.
+/// Returns `Ok(false)` if no such module is present in the snapshot.
+pub fn write_module_filtered<W: Write>(
+    snapshot: &Snapshot<state::Canonical>,
+    module: &ModuleName,
+    w: &mut W,
+) -> Result<bool, SnapshotError> {
+    write_header(snapshot.header(), w)?;
+    let Some(m) = snapshot.module_named(module) else {
+        return Ok(false);
+    };
+    write_module(m, w)?;
+    Ok(true)
 }
 
 fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> {

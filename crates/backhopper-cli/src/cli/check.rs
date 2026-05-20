@@ -66,9 +66,10 @@ pub enum CheckCmd {
         series: Option<SeriesName>,
         #[arg(
             long,
-            help = "Target checkout for resolving untracked modules. Required when --resolve-untracked-modules is set"
+            default_value = ".",
+            help = "Target checkout for resolving untracked modules. Used when --resolve-untracked-modules is set"
         )]
-        repo_dir_path: Option<PathBuf>,
+        repo_dir_path: PathBuf,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -111,6 +112,40 @@ pub enum CheckCmd {
         source: SourcePinArgs,
         #[command(flatten)]
         diagnostics: CheckOutputFlags,
+    },
+    /// Check a GitHub PR. The diff comes from `gh pr diff`.
+    Pr {
+        #[arg(long, conflicts_with = "series")]
+        project: Option<ProjectName>,
+        #[arg(long, requires = "project")]
+        tag: Option<TagName>,
+        #[arg(long)]
+        series: Option<SeriesName>,
+        #[arg(long, default_value = ".")]
+        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        source: SourcePinArgs,
+        #[command(flatten)]
+        diagnostics: CheckOutputFlags,
+        /// PR URL like `https://github.com/owner/repo/pull/123`.
+        #[arg(value_name = "PR_URL")]
+        pr_url: String,
+    },
+    /// Evaluate ONE commit against multiple series. Produces a per-series
+    /// summary row plus a worst-case verdict across all series.
+    Multi {
+        /// Series to evaluate against. Repeat the flag or use a
+        /// comma-separated list.
+        #[arg(long, required = true, value_delimiter = ',')]
+        series: Vec<SeriesName>,
+        #[arg(long, default_value = ".")]
+        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        source: SourcePinArgs,
+        #[command(flatten)]
+        diagnostics: CheckOutputFlags,
+        #[arg(value_name = "COMMIT_SHA")]
+        commit: String,
     },
     /// Evaluate many commits against one or more series. One row per
     /// (commit, series) pair. Blank lines and `#` comments in the

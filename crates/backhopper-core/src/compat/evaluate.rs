@@ -15,7 +15,7 @@ use crate::compat::scope::PinScope;
 use crate::model::names::{Arity, FieldName, FunctionName, Mfa, ModuleName, RecordName};
 use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
 use crate::model::symbol::{SymbolKind, SymbolRef};
-use crate::model::verdict::{Reason, Verdict};
+use crate::model::verdict::{Reason, SourceDelta, Verdict};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn evaluate_pin(
@@ -35,6 +35,7 @@ pub(crate) fn evaluate_pin(
     }
     let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
     let mut tracked_refs: Vec<SymbolRef> = Vec::new();
+    let mut source_deltas: Vec<SourceDelta> = Vec::new();
     for r in referenced {
         if defined_index.contains(r) {
             continue;
@@ -48,6 +49,9 @@ pub(crate) fn evaluate_pin(
                 }
                 tracked_refs.push(r.clone());
                 analyze_function_reference(r, mfa, snapshot, source_snapshot, &mut reasons);
+                if let Some(src) = source_snapshot {
+                    record_source_delta(mfa, snapshot, src, &mut source_deltas);
+                }
             }
             SymbolKind::Record { name } => {
                 if let Some(s) = scope
@@ -75,12 +79,44 @@ pub(crate) fn evaluate_pin(
     EvaluationResult {
         verdict: Verdict::from_reasons(reasons),
         tracked_refs,
+        source_deltas,
     }
 }
 
 pub(crate) struct EvaluationResult {
     pub verdict: Verdict,
     pub tracked_refs: Vec<SymbolRef>,
+    pub source_deltas: Vec<SourceDelta>,
+}
+
+fn record_source_delta(
+    mfa: &Mfa,
+    target: &Snapshot<state::Canonical>,
+    source: &Snapshot<state::Canonical>,
+    out: &mut Vec<SourceDelta>,
+) {
+    let already = out
+        .iter()
+        .any(|d| d.module == mfa.module && d.function == mfa.function && d.arity == mfa.arity);
+    if already {
+        return;
+    }
+    let Some(target_spec) = find_spec(target, &mfa.module, &mfa.function, mfa.arity) else {
+        return;
+    };
+    let Some(source_spec) = find_spec(source, &mfa.module, &mfa.function, mfa.arity) else {
+        return;
+    };
+    if target_spec == source_spec {
+        return;
+    }
+    out.push(SourceDelta {
+        module: mfa.module.clone(),
+        function: mfa.function.clone(),
+        arity: mfa.arity,
+        source_spec: source_spec.to_string(),
+        target_spec: target_spec.to_string(),
+    });
 }
 
 fn check_clause_mismatches(

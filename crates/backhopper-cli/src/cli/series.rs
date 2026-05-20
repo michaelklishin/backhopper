@@ -26,5 +26,9 @@ pub enum SeriesCmd {
         repo_dir_path: PathBuf,
         #[arg(long)]
         series_name: SeriesName,
+        /// Rewrite the named `[[series]]` block in the loaded config file
+        /// (preserves comments and unrelated content).
+        #[arg(long)]
+        overwrite: bool,
     },
 }

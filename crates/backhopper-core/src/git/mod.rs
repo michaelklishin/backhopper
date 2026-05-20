@@ -253,7 +253,7 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     }
 }
 
-fn version_cmp(a: &str, b: &str) -> Ordering {
+pub fn version_cmp(a: &str, b: &str) -> Ordering {
     let a_parts = parse_version(a);
     let b_parts = parse_version(b);
     a_parts.cmp(&b_parts).reverse()

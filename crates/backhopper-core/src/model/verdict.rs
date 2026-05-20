@@ -128,6 +128,17 @@ pub struct PinVerdict {
     pub tracked_refs: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tracked_ref_details: Vec<SymbolRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_delta_details: Vec<SourceDelta>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceDelta {
+    pub module: ModuleName,
+    pub function: FunctionName,
+    pub arity: Arity,
+    pub source_spec: String,
+    pub target_spec: String,
 }
 
 impl PinVerdict {
@@ -137,6 +148,7 @@ impl PinVerdict {
             verdict,
             tracked_refs: 0,
             tracked_ref_details: Vec::new(),
+            source_delta_details: Vec::new(),
         }
     }
 
@@ -150,6 +162,12 @@ impl PinVerdict {
     pub fn with_tracked_ref_details(mut self, details: Vec<SymbolRef>) -> Self {
         self.tracked_refs = details.len();
         self.tracked_ref_details = details;
+        self
+    }
+
+    #[must_use]
+    pub fn with_source_delta_details(mut self, deltas: Vec<SourceDelta>) -> Self {
+        self.source_delta_details = deltas;
         self
     }
 }

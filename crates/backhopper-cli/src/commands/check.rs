@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str;
 
 use bel7_cli::{
@@ -78,7 +79,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 project,
                 tag,
                 series,
-                repo_dir_path.as_deref(),
+                Some(&repo_dir_path),
                 &FileMap::new(),
                 &source,
                 diagnostics,
@@ -135,6 +136,44 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 diagnostics,
             )
         }
+        CheckCmd::Pr {
+            project,
+            tag,
+            series,
+            repo_dir_path,
+            source,
+            diagnostics,
+            pr_url,
+        } => {
+            let bytes = pr_patch_bytes(&pr_url)?;
+            run_check_patch(
+                args,
+                &cfg,
+                &bytes,
+                project,
+                tag,
+                series,
+                Some(&repo_dir_path),
+                &FileMap::new(),
+                &source,
+                diagnostics,
+            )
+        }
+        CheckCmd::Multi {
+            series,
+            repo_dir_path,
+            source,
+            diagnostics,
+            commit,
+        } => run_multi(
+            args,
+            &cfg,
+            &series,
+            &repo_dir_path,
+            &commit,
+            &source,
+            diagnostics,
+        ),
         CheckCmd::Batch {
             series,
             repo_dir_path,
@@ -151,6 +190,74 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             diagnostics,
         ),
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PrCoordinates {
+    pub owner: String,
+    pub repo: String,
+    pub number: u32,
+}
+
+pub fn parse_pr_url(url: &str) -> Result<PrCoordinates, String> {
+    let stripped = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+        .ok_or_else(|| {
+            format!("expected https://github.com/<owner>/<repo>/pull/<n>, got {url:?}")
+        })?;
+    let mut parts = stripped.split('/');
+    let owner = parts
+        .next()
+        .ok_or_else(|| format!("missing owner in {url:?}"))?;
+    let repo = parts
+        .next()
+        .ok_or_else(|| format!("missing repo in {url:?}"))?;
+    let pull = parts
+        .next()
+        .ok_or_else(|| format!("missing 'pull' segment in {url:?}"))?;
+    if pull != "pull" {
+        return Err(format!("expected /pull/ segment in {url:?}, got {pull:?}"));
+    }
+    let number_str = parts
+        .next()
+        .ok_or_else(|| format!("missing PR number in {url:?}"))?;
+    let number: u32 = number_str
+        .parse()
+        .map_err(|_| format!("PR number {number_str:?} is not a positive integer"))?;
+    if owner.is_empty() || repo.is_empty() {
+        return Err(format!("empty owner or repo in {url:?}"));
+    }
+    Ok(PrCoordinates {
+        owner: owner.into(),
+        repo: repo.into(),
+        number,
+    })
+}
+
+fn pr_patch_bytes(url: &str) -> CliResult<Vec<u8>> {
+    let coords = parse_pr_url(url).map_err(CliError::InvalidInput)?;
+    let output = Command::new("gh")
+        .arg("pr")
+        .arg("diff")
+        .arg(coords.number.to_string())
+        .arg("--repo")
+        .arg(format!("{}/{}", coords.owner, coords.repo))
+        .output()
+        .map_err(|e| {
+            CliError::InvalidInput(format!(
+                "failed to invoke `gh pr diff`: {e} (is the `gh` CLI installed?)"
+            ))
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CliError::InvalidInput(format!(
+            "`gh pr diff {}` failed: {}",
+            coords.number,
+            stderr.trim()
+        )));
+    }
+    Ok(output.stdout)
 }
 
 fn build_pin_files(
@@ -241,7 +348,9 @@ fn resolve_untracked_modules_against_tree(
         }
         let new_verdict = Verdict::from_reasons(reasons);
         updated_results.push(
-            PinVerdict::new(pv.pin, new_verdict).with_tracked_ref_details(pv.tracked_ref_details),
+            PinVerdict::new(pv.pin, new_verdict)
+                .with_tracked_ref_details(pv.tracked_ref_details)
+                .with_source_delta_details(pv.source_delta_details),
         );
     }
     evaluation.verdict = SeriesVerdict::from_results(updated_results);
@@ -348,7 +457,7 @@ fn load_files_at(g: &GitRepo, commit: &CommitSha) -> CliResult<FileMap> {
     Ok(map)
 }
 
-fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
+pub fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
     let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
     let to = resolve_rev_with_hint(&g, repo, commit)?;
     let from = g
@@ -514,21 +623,39 @@ fn render_text(
 }
 
 fn render_explain_section(w: &mut dyn Write, results: &[PinVerdict]) -> CliResult<()> {
-    let any = results.iter().any(|r| !r.tracked_ref_details.is_empty());
-    if !any {
+    let any_refs = results.iter().any(|r| !r.tracked_ref_details.is_empty());
+    let any_deltas = results.iter().any(|r| !r.source_delta_details.is_empty());
+    if !any_refs && !any_deltas {
         return Ok(());
     }
-    writeln!(w)?;
-    writeln!(w, "tracked call sites per pin:")?;
-    for r in results {
-        if r.tracked_ref_details.is_empty() {
-            continue;
+    if any_refs {
+        writeln!(w)?;
+        writeln!(w, "tracked call sites per pin:")?;
+        for r in results {
+            if r.tracked_ref_details.is_empty() {
+                continue;
+            }
+            writeln!(w, "  {} @ {}", r.pin.project, r.pin.tag)?;
+            for sym in &r.tracked_ref_details {
+                match &sym.kind {
+                    SymbolKind::Function { mfa } => writeln!(w, "    {mfa}")?,
+                    other => writeln!(w, "    {other:?}")?,
+                }
+            }
         }
-        writeln!(w, "  {} @ {}", r.pin.project, r.pin.tag)?;
-        for sym in &r.tracked_ref_details {
-            match &sym.kind {
-                SymbolKind::Function { mfa } => writeln!(w, "    {mfa}")?,
-                other => writeln!(w, "    {other:?}")?,
+    }
+    if any_deltas {
+        writeln!(w)?;
+        writeln!(w, "source vs target spec drift per pin:")?;
+        for r in results {
+            if r.source_delta_details.is_empty() {
+                continue;
+            }
+            writeln!(w, "  {} @ {}", r.pin.project, r.pin.tag)?;
+            for d in &r.source_delta_details {
+                writeln!(w, "    {}:{}/{}", d.module, d.function, d.arity)?;
+                writeln!(w, "      source: {}", d.source_spec)?;
+                writeln!(w, "      target: {}", d.target_spec)?;
             }
         }
     }
@@ -825,6 +952,70 @@ fn run_batch(
         results,
     };
     let ctx = OutputContext::new(args.formatter, "check batch");
+    render_with_exit(&ctx, &payload, worst_exit, |w| {
+        render_batch_text(w, &payload.results, diagnostics)
+    })
+}
+
+#[derive(Debug, Serialize)]
+struct MultiPayload {
+    commit: String,
+    queried_against: Vec<BatchQuery>,
+    results: Vec<BatchResult>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_multi(
+    args: &GlobalArgs,
+    cfg: &Config,
+    series_names: &[SeriesName],
+    repo: &Path,
+    commit: &str,
+    source: &SourcePinArgs,
+    diagnostics: CheckOutputFlags,
+) -> CliResult<i32> {
+    let store = open_store_read(args, cfg)?;
+    let bytes = commit_patch_bytes(repo, commit)?;
+    let source_files = load_source_files_at_parent(repo, commit)?;
+    let mut resolved_series: Vec<(SeriesName, Vec<Pin>)> = Vec::with_capacity(series_names.len());
+    for name in series_names {
+        let s = cfg
+            .series_by_name_with_coverage_check(name)
+            .map_err(|e| CliError::Core(e.into()))?;
+        resolved_series.push((name.clone(), s.pins.clone()));
+    }
+    let queried: Vec<BatchQuery> = resolved_series
+        .iter()
+        .map(|(name, pins)| BatchQuery {
+            series: name.to_string(),
+            pins: pins
+                .iter()
+                .map(|p| PinPayload {
+                    project: p.project.to_string(),
+                    tag: p.tag.to_string(),
+                })
+                .collect(),
+        })
+        .collect();
+    let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
+    let mut worst_exit: i32 = 0;
+    for (name, pins) in &resolved_series {
+        let source_pins = resolve_source_pins(cfg, pins, None, None, Some(name), source)?;
+        let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
+        worst_exit = worst_exit.max(evaluation.worst_exit_code());
+        results.push(BatchResult {
+            commit: commit.to_owned(),
+            series: name.to_string(),
+            verdict: evaluation.verdict.clone(),
+            diagnostics: evaluation.diagnostics.clone(),
+        });
+    }
+    let payload = MultiPayload {
+        commit: commit.to_owned(),
+        queried_against: queried,
+        results,
+    };
+    let ctx = OutputContext::new(args.formatter, "check multi");
     render_with_exit(&ctx, &payload, worst_exit, |w| {
         render_batch_text(w, &payload.results, diagnostics)
     })
