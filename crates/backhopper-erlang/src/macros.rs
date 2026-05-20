@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Narrow macro expansion for the small set we have to support.
 
 pub fn try_expand_in_export_list(s: &str, module_name: Option<&str>) -> Option<String> {

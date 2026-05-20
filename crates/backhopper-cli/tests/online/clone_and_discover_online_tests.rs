@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use core::time::Duration;
 use std::path::{Path, PathBuf};
 use std::process::Command as Std;

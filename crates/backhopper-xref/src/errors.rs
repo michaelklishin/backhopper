@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use backhopper_core::ApplicationName;
 use backhopper_xref_graph::GraphError;
 use backhopper_xref_reader::ReadError;

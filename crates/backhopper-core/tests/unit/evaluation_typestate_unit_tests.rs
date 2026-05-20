@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Type-state checks for the `EvaluationContext<S>` pipeline. These
 //! tests assert at the value level what the type system already enforces
 //! at compile time: `Pinned` → `Scoped` → `Sourced` is the only path,

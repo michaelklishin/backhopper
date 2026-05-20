@@ -1,9 +1,13 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `XrefBuilder`: collects modules and produces an [`Xref`](crate::xref::Xref).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use backhopper_core::{ApplicationName, ModuleName};
+use backhopper_core::{ApplicationName, Mfa, ModuleName};
 use backhopper_xref_graph::{
     Building, CallGraph, CallTarget, FunctionRef, Functions, LocalFunctionRef, ModuleSummary,
     VertexSet,
@@ -27,11 +31,13 @@ impl XrefBuilder {
         Self::default()
     }
 
+    #[must_use]
     pub fn with_layout(mut self, layout: ProjectLayout) -> Self {
         self.layout = layout;
         self
     }
 
+    #[must_use]
     pub fn with_builtins(mut self, b: VertexSet) -> Self {
         self.builtins = b;
         self
@@ -94,7 +100,8 @@ impl XrefBuilder {
     pub fn build(self) -> Result<Xref<Functions>, XrefError> {
         let mut graph: CallGraph<Functions, Building> = CallGraph::new();
         graph.set_builtins(self.builtins);
-        for (name, data) in &self.modules {
+        let mut modules = self.modules;
+        for (name, data) in &modules {
             let summary = ModuleSummary {
                 application: data.application.assigned().cloned(),
                 exports: data.exports.clone(),
@@ -106,36 +113,34 @@ impl XrefBuilder {
             };
             graph.insert_module(name.clone(), summary);
         }
-        for data in self.modules.values() {
-            let module = &data.module;
-            for (sig, loc) in &data.definitions {
-                let mfa = data.function_mfa(sig);
-                graph.record_definition(mfa, loc.clone());
+        for (_, data) in std::mem::take(&mut modules) {
+            let module = data.module;
+            for (sig, loc) in data.definitions {
+                let mfa = Mfa::new(module.clone(), sig.name, sig.arity);
+                graph.record_definition(mfa, loc);
             }
-            if let Some(sig) = &data.on_load {
-                graph.record_on_load(data.function_mfa(sig));
+            if let Some(sig) = data.on_load {
+                graph.record_on_load(Mfa::new(module.clone(), sig.name, sig.arity));
             }
-            for (sig, dep) in &data.deprecated {
-                graph.record_deprecation(data.function_mfa(sig), dep.clone());
+            for (sig, dep) in data.deprecated {
+                graph.record_deprecation(Mfa::new(module.clone(), sig.name, sig.arity), dep);
             }
-            for cs in &data.local_calls {
-                if let CallTarget::Local(LocalFunctionRef::Concrete { function, arity }) =
-                    &cs.callee
+            for cs in data.local_calls {
+                if let CallTarget::Local(LocalFunctionRef::Concrete { function, arity }) = cs.callee
                 {
-                    let caller = data.function_mfa(&cs.caller);
-                    let callee =
-                        backhopper_core::Mfa::new(module.clone(), function.clone(), *arity);
+                    let caller = Mfa::new(module.clone(), cs.caller.name, cs.caller.arity);
+                    let callee = Mfa::new(module.clone(), function, arity);
                     graph.insert_local_call(caller, callee);
                 }
             }
-            for cs in &data.external_calls {
-                if let CallTarget::External(FunctionRef::Concrete(callee)) = &cs.callee {
-                    let caller = data.function_mfa(&cs.caller);
-                    graph.insert_external_call(caller, callee.clone());
+            for cs in data.external_calls {
+                if let CallTarget::External(FunctionRef::Concrete(callee)) = cs.callee {
+                    let caller = Mfa::new(module.clone(), cs.caller.name, cs.caller.arity);
+                    graph.insert_external_call(caller, callee);
                 }
             }
-            for u in &data.unresolved {
-                graph.insert_unresolved(u.clone());
+            for u in data.unresolved {
+                graph.insert_unresolved(u);
             }
         }
         Ok(Xref::from_graph(graph.finish(), self.warnings))

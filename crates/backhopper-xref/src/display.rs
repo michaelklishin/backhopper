@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Human-readable formatting for the typed result structs in `result`.
 //!
 //! Kept separate from `result.rs` so the library data types stay free of

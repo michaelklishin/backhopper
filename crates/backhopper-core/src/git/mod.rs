@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Git access through `gix`. The whole crate's git seam lives here.
 
 use std::cmp::Ordering;
@@ -176,11 +180,6 @@ impl GitRepo {
             }
         }
         Ok(branches)
-    }
-
-    pub fn path_exists_at_tag(&self, tag: &TagName, path: &str) -> Result<bool, GitError> {
-        let blobs = self.read_paths_at_tag(tag, |p| p == path)?;
-        Ok(!blobs.is_empty())
     }
 
     pub fn parents(&self, commit: &CommitSha) -> Result<Vec<CommitSha>, GitError> {

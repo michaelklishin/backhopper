@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::io;
 use std::path::PathBuf;
 
@@ -57,6 +61,9 @@ pub enum NameError {
 
     #[error("invalid commit sha {value:?}: must be exactly 40 lowercase hex characters")]
     InvalidCommitSha { value: String },
+
+    #[error("invalid arity: {raw:?} could not be parsed as an integer in 0..=255")]
+    InvalidArityParse { raw: String },
 
     #[error("invalid arity {value}: must be 0..=255")]
     InvalidArity { value: i64 },

@@ -1,15 +1,14 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Conditional compilation tracker for `-ifdef`/`-ifndef`/`-if`/`-else`/`-endif`.
 //!
 //! Semantics: every conditional branch is recorded (we want symbols visible to
 //! queries with optional include-hidden / include-test). Only `-ifdef(TEST)`
 //! flips a `test_only` tag on entries inside it. `-else` flips that tag.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CondState {
-    Active,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CondStack {
     frames: Vec<Frame>,
 }
@@ -21,11 +20,7 @@ struct Frame {
 
 impl CondStack {
     pub fn new() -> Self {
-        Self { frames: Vec::new() }
-    }
-
-    pub fn current(&self) -> CondState {
-        CondState::Active
+        Self::default()
     }
 
     pub fn is_test_only(&self) -> bool {
@@ -58,11 +53,5 @@ impl CondStack {
 
     pub fn pop_endif(&mut self) {
         self.frames.pop();
-    }
-}
-
-impl Default for CondStack {
-    fn default() -> Self {
-        Self::new()
     }
 }

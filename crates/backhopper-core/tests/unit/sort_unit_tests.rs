@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::snapshot::{FunArity, HrlFile, Module};
 use backhopper_core::snapshot::sort::canonicalize;
@@ -65,4 +69,26 @@ fn canonicalize_dedupes_consecutive_duplicates_in_exports() {
     let mut headers: Vec<HrlFile> = Vec::new();
     canonicalize(&mut modules, &mut headers);
     assert_eq!(modules[0].exports.len(), 1);
+}
+
+#[test]
+fn canonicalize_dedupes_duplicate_modules() {
+    let mut modules = vec![
+        Module::new(ModuleName::new("ra").unwrap()),
+        Module::new(ModuleName::new("ra").unwrap()),
+    ];
+    let mut headers: Vec<HrlFile> = Vec::new();
+    canonicalize(&mut modules, &mut headers);
+    assert_eq!(modules.len(), 1);
+}
+
+#[test]
+fn canonicalize_dedupes_behaviours() {
+    let mut m = Module::new(ModuleName::new("ra").unwrap());
+    m.behaviours.push(ModuleName::new("gen_server").unwrap());
+    m.behaviours.push(ModuleName::new("gen_server").unwrap());
+    let mut modules = vec![m];
+    let mut headers: Vec<HrlFile> = Vec::new();
+    canonicalize(&mut modules, &mut headers);
+    assert_eq!(modules[0].behaviours.len(), 1);
 }

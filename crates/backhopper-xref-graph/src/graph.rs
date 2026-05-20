@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! The aggregate `CallGraph` type.
 //!
 //! Mode (`Functions` vs `Modules`) and phase (`Building` vs `Built`) are
@@ -138,15 +142,9 @@ impl<M: Mode> CallGraph<M, Building> {
     pub fn insert_external_call(&mut self, caller: Mfa, callee: Mfa) {
         let caller_mod = caller.module.clone();
         let callee_mod = callee.module.clone();
-        self.external_calls.insert(
-            Vertex::Function(caller.clone()),
-            Vertex::Function(callee.clone()),
-        );
+        self.external_calls
+            .insert(Vertex::Function(caller), Vertex::Function(callee));
         if caller_mod != callee_mod {
-            self.module_edges.insert(
-                Vertex::Module(caller_mod.clone()),
-                Vertex::Module(callee_mod.clone()),
-            );
             let caller_app = self
                 .modules
                 .get(&caller_mod)
@@ -155,11 +153,13 @@ impl<M: Mode> CallGraph<M, Building> {
                 .modules
                 .get(&callee_mod)
                 .and_then(|m| m.application.clone());
-            if let (Some(a), Some(b)) = (caller_app, callee_app) {
-                if a != b {
-                    self.application_edges
-                        .insert(Vertex::Application(a), Vertex::Application(b));
-                }
+            self.module_edges
+                .insert(Vertex::Module(caller_mod), Vertex::Module(callee_mod));
+            if let (Some(a), Some(b)) = (caller_app, callee_app)
+                && a != b
+            {
+                self.application_edges
+                    .insert(Vertex::Application(a), Vertex::Application(b));
             }
         }
     }

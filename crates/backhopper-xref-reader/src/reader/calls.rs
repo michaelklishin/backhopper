@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Call-site detection: tries each of `?MODULE:f(...)`, `mod:fun(...)`,
 //! variable-module or variable-function variants, then bare local calls.
 //! Walks recursively into argument lists so nested call sites are surfaced
@@ -240,13 +244,11 @@ pub(super) fn try_call_site(
                 let f = sc.consume_identifier();
                 sc.skip_trivia();
                 if sc.peek() == Some(b'(') {
-                    let head_owned = head.to_owned();
-                    let f_owned = f.to_owned();
-                    if head_owned == "erlang" && APPLY_FAMILY.contains(&f_owned.as_str()) {
-                        return record_apply_family_call(sc, &f_owned, caller, b, pos);
+                    if head == "erlang" && APPLY_FAMILY.contains(&f) {
+                        return record_apply_family_call(sc, f, caller, b, pos);
                     }
                     let arity = scan_args_for_calls(sc, caller, b);
-                    record_external_call(b, caller, &head_owned, &f_owned, arity, pos, sc.pos());
+                    record_external_call(b, caller, head, f, arity, pos, sc.pos());
                     return true;
                 } else if sc.peek() == Some(b'/') {
                     sc.advance();
@@ -319,18 +321,18 @@ pub(super) fn try_call_site(
 
     if matches!(byte, Some(b'a'..=b'z')) {
         let save = sc.pos();
-        let f = sc.consume_identifier().to_string();
+        let f = sc.consume_identifier();
         sc.skip_trivia();
         if sc.peek() == Some(b'(') {
-            if KEYWORDS.contains(&f.as_str()) {
+            if KEYWORDS.contains(&f) {
                 sc.set_pos(save);
                 return false;
             }
-            if APPLY_FAMILY.contains(&f.as_str()) {
-                return record_apply_family_call(sc, &f, caller, b, pos);
+            if APPLY_FAMILY.contains(&f) {
+                return record_apply_family_call(sc, f, caller, b, pos);
             }
             let arity = scan_args_for_calls(sc, caller, b);
-            record_local_call(b, caller, &f, arity, pos, sc.pos());
+            record_local_call(b, caller, f, arity, pos, sc.pos());
             return true;
         }
         sc.set_pos(save);
@@ -691,7 +693,7 @@ fn count_top_level_commas(s: &str) -> u32 {
     while i < bytes.len() {
         let c = bytes[i];
         if c == b'\\' && (in_str || in_atom) {
-            i += 2;
+            i = (i + 2).min(bytes.len());
             continue;
         }
         match c {

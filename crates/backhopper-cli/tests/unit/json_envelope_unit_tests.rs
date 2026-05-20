@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Drift-guard: known payloads serialized through `serde_json` must
 //! match the checked-in fixtures under `tests/fixtures/json/`. If a
 //! Rust type changes shape, this test fails until the fixture is

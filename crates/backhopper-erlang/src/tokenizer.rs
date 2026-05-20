@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Strip comments, handle quoted atoms and strings, and locate attribute bodies.
 //!
 //! For each line starting with `-NAME` at column 0, we collect everything up

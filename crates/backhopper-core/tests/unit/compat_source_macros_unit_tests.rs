@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::path::PathBuf;
 
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
@@ -117,4 +121,18 @@ fn build_table_ignores_attributes_other_than_define_and_include() {
     let files = FileMap::new();
     let table = build_macro_table(source, &PathBuf::from("m.erl"), &files);
     assert!(table.is_empty());
+}
+
+#[test]
+fn build_table_does_not_panic_on_trailing_backslash_in_string_literal() {
+    let source = "-define(BAD, \"trailing\\\n";
+    let files = FileMap::new();
+    let _ = build_macro_table(source, &PathBuf::from("m.erl"), &files);
+}
+
+#[test]
+fn build_table_does_not_panic_on_trailing_backslash_in_quoted_atom() {
+    let source = "-define(BAD, 'foo\\";
+    let files = FileMap::new();
+    let _ = build_macro_table(source, &PathBuf::from("m.erl"), &files);
 }

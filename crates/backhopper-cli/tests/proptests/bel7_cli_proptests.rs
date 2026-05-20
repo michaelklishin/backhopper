@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Property tests for the `bel7-cli` integration surfaces in the CLI:
 //! every `TableStyle` parses round-trip; every `CompletionShell` value
 //! survives parsing through the top-level argv. The index is taken

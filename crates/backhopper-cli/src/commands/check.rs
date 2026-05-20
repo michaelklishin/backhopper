@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
@@ -21,6 +25,7 @@ use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_core::model::symbol::SymbolKind;
 use backhopper_core::model::verdict::{
     Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, Verdict,
 };
@@ -60,7 +65,6 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             project,
             tag,
             series,
-            explain: _,
             repo_dir_path,
             source,
             diagnostics,
@@ -173,14 +177,14 @@ fn build_pin_files(
     let blobs = repo
         .read_paths_at_commit(&commit, |p| needed.contains(p))
         .map_err(|e| CliError::Core(e.into()))?;
-    let present: BTreeMap<String, Vec<u8>> = blobs
+    let mut present: BTreeMap<String, Vec<u8>> = blobs
         .into_iter()
         .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
         .collect();
     let mut files = EvaluationFiles::new();
     for (original_path, project_path) in &in_scope {
         let key = project_path.to_string_lossy().into_owned();
-        let contents = present.get(&key).cloned();
+        let contents = present.remove(&key);
         files = files.with(original_path.clone(), contents);
     }
     Ok(files)
@@ -236,8 +240,9 @@ fn resolve_untracked_modules_against_tree(
             });
         }
         let new_verdict = Verdict::from_reasons(reasons);
-        updated_results
-            .push(PinVerdict::new(pv.pin, new_verdict).with_tracked_refs(pv.tracked_refs));
+        updated_results.push(
+            PinVerdict::new(pv.pin, new_verdict).with_tracked_ref_details(pv.tracked_ref_details),
+        );
     }
     evaluation.verdict = SeriesVerdict::from_results(updated_results);
     Ok(())
@@ -279,9 +284,9 @@ fn scan_erl_modules(repo_dir: &Path) -> CliResult<BTreeSet<String>> {
                 continue;
             }
             let name = entry.file_name();
-            let name_str = name.to_string_lossy().to_string();
+            let name_str = name.to_string_lossy();
             if let Some(stem) = name_str.strip_suffix(".erl") {
-                out.insert(stem.to_string());
+                out.insert(stem.to_owned());
             }
         }
     }
@@ -493,6 +498,9 @@ fn render_text(
     )?;
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
+    if flags.explain {
+        render_explain_section(w, &evaluation.verdict.results)?;
+    }
     let show_section = flags.show_untracked_calls || flags.show_otp_calls;
     if show_section && !evaluation.diagnostics.is_empty() {
         render_untracked_section(
@@ -501,6 +509,28 @@ fn render_text(
             known_projects,
             flags.show_otp_calls,
         )?;
+    }
+    Ok(())
+}
+
+fn render_explain_section(w: &mut dyn Write, results: &[PinVerdict]) -> CliResult<()> {
+    let any = results.iter().any(|r| !r.tracked_ref_details.is_empty());
+    if !any {
+        return Ok(());
+    }
+    writeln!(w)?;
+    writeln!(w, "tracked call sites per pin:")?;
+    for r in results {
+        if r.tracked_ref_details.is_empty() {
+            continue;
+        }
+        writeln!(w, "  {} @ {}", r.pin.project, r.pin.tag)?;
+        for sym in &r.tracked_ref_details {
+            match &sym.kind {
+                SymbolKind::Function { mfa } => writeln!(w, "    {mfa}")?,
+                other => writeln!(w, "    {other:?}")?,
+            }
+        }
     }
     Ok(())
 }
@@ -855,6 +885,9 @@ fn render_batch_text(
             r.verdict.summary.requires_adaptation,
             r.verdict.summary.incompatible,
         )?;
+        if flags.explain {
+            render_explain_section(w, &r.verdict.results)?;
+        }
     }
     Ok(())
 }

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Whole-program call-graph primitives for `backhopper-xref`.
 //!
 //! This crate has no Erlang knowledge. It provides:

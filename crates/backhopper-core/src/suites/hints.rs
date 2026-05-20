@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Build-system detection: looks at the repo root to figure out
 //! which Erlang build tool is in use, so we can emit a footer hint
 //! after suite-selection output.

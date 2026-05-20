@@ -1,11 +1,13 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Top-level Erlang source extractor: tokens → typed `Module` and `HrlFile` records.
 
 use std::path::PathBuf;
 use std::str::{self, FromStr};
 
-use backhopper_core::model::names::{
-    Arity, FieldName, FunctionName, ModuleName, RecordName, TypeName,
-};
+use backhopper_core::model::names::{Arity, FieldName, FunctionName, RecordName, TypeName};
 use backhopper_core::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, HrlFile, Module, RecordDecl, RecordField, SpecSig,
     TypeArity, TypeDecl,
@@ -79,7 +81,6 @@ impl ErlangExtractor {
         let hints = detect_visibility_hints(source);
         let mut module: Option<Module> = None;
         let mut cond = CondStack::new();
-        let mut module_name: Option<ModuleName> = None;
         let mut hidden_via_attr = false;
         let mut has_non_test_export = false;
         let mut has_only_test_exports = false;
@@ -89,9 +90,7 @@ impl ErlangExtractor {
             };
             match parsed {
                 ParsedAttribute::Module(name) => {
-                    let m = Module::new(name.clone());
-                    module = Some(m);
-                    module_name = Some(name);
+                    module = Some(Module::new(name));
                 }
                 ParsedAttribute::IfDef(ident) => cond.push_ifdef(&ident),
                 ParsedAttribute::IfnDef(ident) => cond.push_ifndef(&ident),
@@ -115,23 +114,18 @@ impl ErlangExtractor {
                 }
             }
         }
-        if let Some(mut m) = module {
-            let test_only = has_only_test_exports && !has_non_test_export;
-            if let Some(name) = module_name {
-                m.visibility = classify_visibility(
-                    &name,
-                    VisibilityHints {
-                        hidden: hidden_via_attr || hints.hidden,
-                    },
-                    test_only,
-                    &self.public_modules,
-                    &self.internal_modules,
-                );
-            }
-            Some(m)
-        } else {
-            None
-        }
+        let mut m = module?;
+        let test_only = has_only_test_exports && !has_non_test_export;
+        m.visibility = classify_visibility(
+            &m.name,
+            VisibilityHints {
+                hidden: hidden_via_attr || hints.hidden,
+            },
+            test_only,
+            &self.public_modules,
+            &self.internal_modules,
+        );
+        Some(m)
     }
 
     pub fn extract_header_file(&self, path: &str, source: &str) -> HrlFile {

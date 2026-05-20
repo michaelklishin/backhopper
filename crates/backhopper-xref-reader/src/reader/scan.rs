@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `ModuleBuilder` plus the top-level `scan` loop. Attribute parsing and
 //! call-site detection live in sibling modules.
 
@@ -142,10 +146,10 @@ pub(crate) fn scan_attributes(
         }
         if at_line_start && byte == b'-' {
             sc.advance();
-            let name = sc.consume_identifier().to_string();
+            let name = sc.consume_identifier();
             sc.skip_trivia();
             let body = consume_attribute_body(&mut sc);
-            handle_attribute(&name, &body, b, warnings);
+            handle_attribute(name, body, b, warnings);
             at_line_start = false;
             continue;
         }
@@ -184,14 +188,11 @@ pub(crate) fn fold_header_into(source: &str, b: &mut ModuleBuilder) {
         }
         if at_line_start && byte == b'-' {
             sc.advance();
-            let name = sc.consume_identifier().to_string();
+            let name = sc.consume_identifier();
             sc.skip_trivia();
             let body = consume_attribute_body(&mut sc);
-            if matches!(
-                name.as_str(),
-                "define" | "include" | "include_lib" | "record"
-            ) {
-                handle_attribute(&name, &body, b, &mut sink);
+            if matches!(name, "define" | "include" | "include_lib" | "record") {
+                handle_attribute(name, body, b, &mut sink);
             }
             at_line_start = false;
             continue;

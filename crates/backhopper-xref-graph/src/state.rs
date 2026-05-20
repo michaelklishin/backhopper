@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Sealed type-state markers for [`CallGraph`](crate::graph::CallGraph).
 //!
 //! Mode picks which edge sets the graph stores; phase distinguishes the

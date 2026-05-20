@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Translate raw attribute blocks into typed pieces of an Erlang module.
 
 use std::str::FromStr;
@@ -133,8 +137,10 @@ fn parse_single_fun_arity(s: &str) -> Option<FunArity> {
 }
 
 fn strip_string(s: &str) -> String {
-    s.trim()
-        .trim_start_matches('"')
-        .trim_end_matches('"')
-        .to_string()
+    let trimmed = s.trim();
+    trimmed
+        .strip_prefix('"')
+        .and_then(|x| x.strip_suffix('"'))
+        .unwrap_or(trimmed)
+        .to_owned()
 }

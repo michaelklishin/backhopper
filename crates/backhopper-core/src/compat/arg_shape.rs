@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Coarse classification of argument shapes at call sites and clause heads.
 //!
 //! A clause-head pattern is encoded as `Vec<ArgShape>`: one entry per

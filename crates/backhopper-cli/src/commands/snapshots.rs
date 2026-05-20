@@ -1,4 +1,9 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::collections::BTreeSet;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -10,7 +15,7 @@ use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project};
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, TagName};
-use backhopper_core::model::snapshot::{Module, SnapshotHeader, Visibility, state};
+use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
 use backhopper_elixir::ElixirExtractor;
@@ -80,21 +85,41 @@ struct ModuleSummary {
     callbacks: usize,
 }
 
-#[derive(Debug, Serialize)]
-struct DiffPayload {
-    project: String,
-    from: String,
-    to: String,
-    modules_added: Vec<String>,
-    modules_removed: Vec<String>,
-    exports_added: Vec<DiffExport>,
-    exports_removed: Vec<DiffExport>,
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct DiffPayload {
+    pub project: String,
+    pub from: String,
+    pub to: String,
+    pub modules_added: Vec<String>,
+    pub modules_removed: Vec<String>,
+    pub exports_added: Vec<QualifiedFunArity>,
+    pub exports_removed: Vec<QualifiedFunArity>,
+    pub types_added: Vec<QualifiedTypeArity>,
+    pub types_removed: Vec<QualifiedTypeArity>,
+    pub callbacks_added: Vec<QualifiedFunArity>,
+    pub callbacks_removed: Vec<QualifiedFunArity>,
+    pub headers_added: Vec<String>,
+    pub headers_removed: Vec<String>,
+    pub records_added: Vec<QualifiedRecord>,
+    pub records_removed: Vec<QualifiedRecord>,
 }
 
-#[derive(Debug, Serialize)]
-struct DiffExport {
-    module: String,
-    fun_arity: String,
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+pub struct QualifiedFunArity {
+    pub module: String,
+    pub fun_arity: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+pub struct QualifiedTypeArity {
+    pub module: String,
+    pub type_arity: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+pub struct QualifiedRecord {
+    pub header: String,
+    pub record: String,
 }
 
 pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
@@ -468,7 +493,11 @@ fn lookup(
             Some(m) => include_hidden || matches!(m.visibility, Visibility::Public),
             None => true,
         };
-        let found = allowed && snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity);
+        let target = FunArity {
+            name: mfa.function.clone(),
+            arity: mfa.arity,
+        };
+        let found = allowed && module.is_some_and(|m| m.exports.binary_search(&target).is_ok());
         if !found {
             all_found = false;
         }
@@ -598,18 +627,52 @@ fn diff(
     let result = compute_diff(&a, &b);
     let ctx = OutputContext::new(args.formatter, "snapshots diff");
     render(&ctx, &result, |w| {
-        for added in &result.exports_added {
-            writeln!(w, "+ export {} {}", added.module, added.fun_arity)?;
-        }
-        for removed in &result.exports_removed {
-            writeln!(w, "- export {} {}", removed.module, removed.fun_arity)?;
-        }
-        Ok(())
+        render_diff_text(w, &result).map_err(CliError::from)
     })?;
     Ok(0)
 }
 
-fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
+pub fn render_diff_text<W: Write + ?Sized>(w: &mut W, d: &DiffPayload) -> io::Result<()> {
+    for name in &d.modules_removed {
+        writeln!(w, "removed module {name}")?;
+    }
+    for name in &d.modules_added {
+        writeln!(w, "added module {name}")?;
+    }
+    for q in &d.exports_removed {
+        writeln!(w, "removed export {}:{}", q.module, q.fun_arity)?;
+    }
+    for q in &d.exports_added {
+        writeln!(w, "added export {}:{}", q.module, q.fun_arity)?;
+    }
+    for q in &d.callbacks_removed {
+        writeln!(w, "removed callback {}:{}", q.module, q.fun_arity)?;
+    }
+    for q in &d.callbacks_added {
+        writeln!(w, "added callback {}:{}", q.module, q.fun_arity)?;
+    }
+    for q in &d.types_removed {
+        writeln!(w, "removed type {}:{}", q.module, q.type_arity)?;
+    }
+    for q in &d.types_added {
+        writeln!(w, "added type {}:{}", q.module, q.type_arity)?;
+    }
+    for h in &d.headers_removed {
+        writeln!(w, "removed header {h}")?;
+    }
+    for h in &d.headers_added {
+        writeln!(w, "added header {h}")?;
+    }
+    for r in &d.records_removed {
+        writeln!(w, "removed record {}:{}", r.header, r.record)?;
+    }
+    for r in &d.records_added {
+        writeln!(w, "added record {}:{}", r.header, r.record)?;
+    }
+    Ok(())
+}
+
+pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
     let a_names: BTreeSet<&ModuleName> = a.modules().iter().map(|m| &m.name).collect();
     let b_names: BTreeSet<&ModuleName> = b.modules().iter().map(|m| &m.name).collect();
     let modules_added: Vec<String> = b_names
@@ -622,21 +685,70 @@ fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) 
         .collect();
     let mut exports_added = Vec::new();
     let mut exports_removed = Vec::new();
+    let mut types_added = Vec::new();
+    let mut types_removed = Vec::new();
+    let mut callbacks_added = Vec::new();
+    let mut callbacks_removed = Vec::new();
     for name in a_names.union(&b_names) {
-        let a_exports = module_export_set(a, name);
-        let b_exports = module_export_set(b, name);
-        for added in b_exports.difference(&a_exports) {
-            exports_added.push(DiffExport {
-                module: name.to_string(),
-                fun_arity: added.clone(),
-            });
-        }
-        for removed in a_exports.difference(&b_exports) {
-            exports_removed.push(DiffExport {
-                module: name.to_string(),
-                fun_arity: removed.clone(),
-            });
-        }
+        let module_str = name.to_string();
+        diff_named_set(
+            module_str.as_str(),
+            module_exports(a, name),
+            module_exports(b, name),
+            &mut exports_added,
+            &mut exports_removed,
+            |module, fa| QualifiedFunArity {
+                module: module.into(),
+                fun_arity: fa,
+            },
+        );
+        diff_named_set(
+            module_str.as_str(),
+            module_callbacks(a, name),
+            module_callbacks(b, name),
+            &mut callbacks_added,
+            &mut callbacks_removed,
+            |module, fa| QualifiedFunArity {
+                module: module.into(),
+                fun_arity: fa,
+            },
+        );
+        diff_named_set(
+            module_str.as_str(),
+            module_types(a, name),
+            module_types(b, name),
+            &mut types_added,
+            &mut types_removed,
+            |module, ta| QualifiedTypeArity {
+                module: module.into(),
+                type_arity: ta,
+            },
+        );
+    }
+    let a_headers: BTreeSet<&str> = a.headers().iter().map(|h| h.path.as_str()).collect();
+    let b_headers: BTreeSet<&str> = b.headers().iter().map(|h| h.path.as_str()).collect();
+    let headers_added: Vec<String> = b_headers
+        .difference(&a_headers)
+        .map(|s| (*s).to_owned())
+        .collect();
+    let headers_removed: Vec<String> = a_headers
+        .difference(&b_headers)
+        .map(|s| (*s).to_owned())
+        .collect();
+    let mut records_added = Vec::new();
+    let mut records_removed = Vec::new();
+    for path in a_headers.union(&b_headers) {
+        diff_named_set(
+            path,
+            hrl_records(a, path),
+            hrl_records(b, path),
+            &mut records_added,
+            &mut records_removed,
+            |header, record| QualifiedRecord {
+                header: header.into(),
+                record,
+            },
+        );
     }
     DiffPayload {
         project: a.header().project.to_string(),
@@ -646,10 +758,36 @@ fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) 
         modules_removed,
         exports_added,
         exports_removed,
+        types_added,
+        types_removed,
+        callbacks_added,
+        callbacks_removed,
+        headers_added,
+        headers_removed,
+        records_added,
+        records_removed,
     }
 }
 
-fn module_export_set(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+fn diff_named_set<T, F>(
+    parent: &str,
+    a: BTreeSet<String>,
+    b: BTreeSet<String>,
+    added: &mut Vec<T>,
+    removed: &mut Vec<T>,
+    qualify: F,
+) where
+    F: Fn(&str, String) -> T,
+{
+    for s in b.difference(&a) {
+        added.push(qualify(parent, s.clone()));
+    }
+    for s in a.difference(&b) {
+        removed.push(qualify(parent, s.clone()));
+    }
+}
+
+fn module_exports(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
     s.module_named(name)
         .map(|m| {
             m.exports
@@ -657,5 +795,41 @@ fn module_export_set(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTree
                 .map(|fa| format!("{}/{}", fa.name, fa.arity))
                 .collect()
         })
+        .unwrap_or_default()
+}
+
+fn module_callbacks(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+    s.module_named(name)
+        .map(|m| {
+            m.callbacks
+                .iter()
+                .map(|cb| format!("{}/{}", cb.name, cb.arity))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn module_types(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+    s.module_named(name)
+        .map(|m| {
+            m.types
+                .iter()
+                .map(|t| format!("{}/{}", t.name, t.arity))
+                .chain(
+                    m.export_types
+                        .iter()
+                        .map(|t| format!("{}/{}", t.name, t.arity)),
+                )
+                .chain(m.opaques.iter().map(|t| format!("{}/{}", t.name, t.arity)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn hrl_records(s: &Snapshot<state::Canonical>, path: &str) -> BTreeSet<String> {
+    s.headers()
+        .iter()
+        .find(|h| h.path == path)
+        .map(|h| h.records.iter().map(|r| r.name.to_string()).collect())
         .unwrap_or_default()
 }

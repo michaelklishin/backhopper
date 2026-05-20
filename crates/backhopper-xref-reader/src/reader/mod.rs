@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! The `SourceReader` orchestrator.
 //!
 //! For each `.erl` source it produces a `ModuleData` with exports, imports,
@@ -169,31 +173,31 @@ impl HeaderIndex {
         out
     }
 
-    fn find_for_include(&self, source_dir: Option<&Path>, raw: &Path) -> Option<HeaderEntry> {
+    fn find_for_include(&self, source_dir: Option<&Path>, raw: &Path) -> Option<&HeaderEntry> {
         if let Some(dir) = source_dir {
             let candidate = dir.join(raw);
             if let Some(entry) = self.by_full_path.get(&candidate) {
-                return Some(entry.clone());
+                return Some(entry);
             }
         }
         if let Some(entry) = self.by_full_path.get(raw) {
-            return Some(entry.clone());
+            return Some(entry);
         }
         let base = raw.file_name().and_then(|n| n.to_str())?;
-        self.by_basename.get(base).and_then(|v| v.first().cloned())
+        self.by_basename.get(base).and_then(|v| v.first())
     }
 
-    fn find_for_include_lib(&self, raw: &Path) -> Option<HeaderEntry> {
-        let key = raw.to_string_lossy().to_string();
-        if let Some(entry) = self.by_include_lib.get(&key) {
-            return Some(entry.clone());
+    fn find_for_include_lib(&self, raw: &Path) -> Option<&HeaderEntry> {
+        let key = raw.to_string_lossy();
+        if let Some(entry) = self.by_include_lib.get(key.as_ref()) {
+            return Some(entry);
         }
-        let normalized = key.trim_start_matches("./").to_owned();
-        if let Some(entry) = self.by_include_lib.get(&normalized) {
-            return Some(entry.clone());
+        let normalized = key.trim_start_matches("./");
+        if let Some(entry) = self.by_include_lib.get(normalized) {
+            return Some(entry);
         }
         let base = raw.file_name().and_then(|n| n.to_str())?;
-        self.by_basename.get(base).and_then(|v| v.first().cloned())
+        self.by_basename.get(base).and_then(|v| v.first())
     }
 }
 
@@ -237,11 +241,11 @@ fn resolve_includes(
     }
 }
 
-fn resolve_one(
-    headers: &HeaderIndex,
+fn resolve_one<'a>(
+    headers: &'a HeaderIndex,
     source_dir: Option<&Path>,
     raw: &Path,
-) -> Option<HeaderEntry> {
+) -> Option<&'a HeaderEntry> {
     if is_include_lib_shape(raw) {
         if let Some(e) = headers.find_for_include_lib(raw) {
             return Some(e);

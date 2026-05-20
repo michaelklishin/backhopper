@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Formatter dispatch for the CLI: a single envelope shape for JSON,
 //! a closure for text. The JSON body always carries `schema_version`,
 //! `command`, `data`, and `exit_code` so clients can parse without

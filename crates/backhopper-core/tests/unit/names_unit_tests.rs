@@ -1,5 +1,10 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::str::FromStr;
 
+use backhopper_core::errors::NameError;
 use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FunctionName,
     Mfa, ModuleName, ProjectName, SeriesName, TagName,
@@ -66,6 +71,30 @@ fn arity_round_trip_via_from_str() {
     assert!(Arity::from_str("256").is_err());
     assert!(Arity::from_str("-1").is_err());
     assert!(Arity::from_str("abc").is_err());
+}
+
+#[test]
+fn arity_out_of_range_reports_actual_value() {
+    match Arity::from_str("256") {
+        Err(NameError::InvalidArity { value }) => assert_eq!(value, 256),
+        other => panic!("expected InvalidArity(256), got {other:?}"),
+    }
+    match Arity::from_str("-1") {
+        Err(NameError::InvalidArity { value }) => assert_eq!(value, -1),
+        other => panic!("expected InvalidArity(-1), got {other:?}"),
+    }
+}
+
+#[test]
+fn arity_non_numeric_reports_raw_input() {
+    match Arity::from_str("abc") {
+        Err(NameError::InvalidArityParse { raw }) => assert_eq!(raw, "abc"),
+        other => panic!("expected InvalidArityParse(\"abc\"), got {other:?}"),
+    }
+    match Arity::from_str("") {
+        Err(NameError::InvalidArityParse { raw }) => assert_eq!(raw, ""),
+        other => panic!("expected InvalidArityParse(\"\"), got {other:?}"),
+    }
 }
 
 #[test]

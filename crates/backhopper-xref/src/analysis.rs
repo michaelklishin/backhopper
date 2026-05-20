@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Predefined analyses.
 //!
 //! Each method on [`Xref`] returns a typed [`result`](crate::result) struct
@@ -102,7 +106,6 @@ impl Xref<Functions> {
             return false;
         };
         for b in &summary.behaviours {
-            // Callbacks were recorded on the behaviour module's summary: look it up by `ModuleName`.
             let beh_module = ModuleName::new(b.as_str().to_owned()).ok();
             if let Some(bm) = beh_module {
                 if let Some(beh_summary) = self.graph().module(&bm) {

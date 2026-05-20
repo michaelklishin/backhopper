@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Build a per-file `MacroTable` from raw `.erl` and `.hrl` source.
 //!
 //! Walks the file for `-define`, `-include`, and `-include_lib`
@@ -150,7 +154,7 @@ fn skip_string(source: &str, start: usize) -> usize {
     let mut i = start;
     while i < bytes.len() {
         match bytes[i] {
-            b'\\' => i += 2,
+            b'\\' => i = (i + 2).min(bytes.len()),
             b'"' => return i + 1,
             _ => i += 1,
         }
@@ -163,7 +167,7 @@ fn skip_atom(source: &str, start: usize) -> usize {
     let mut i = start;
     while i < bytes.len() {
         match bytes[i] {
-            b'\\' => i += 2,
+            b'\\' => i = (i + 2).min(bytes.len()),
             b'\'' => return i + 1,
             _ => i += 1,
         }
@@ -200,18 +204,22 @@ impl FileMap {
     }
 
     pub fn insert(&mut self, path: PathBuf, body: String) {
-        let entry = HeaderBody {
-            path: path.clone(),
-            body: body.clone(),
-        };
-        if let Some(base) = path.file_name().and_then(|n| n.to_str()) {
-            self.by_basename
-                .entry(base.to_owned())
-                .or_default()
-                .push(entry.clone());
+        let base = path.file_name().and_then(|n| n.to_str()).map(str::to_owned);
+        let lib_key = include_lib_key(&path);
+        if let Some(base) = base {
+            self.by_basename.entry(base).or_default().push(HeaderBody {
+                path: path.clone(),
+                body: body.clone(),
+            });
         }
-        if let Some(key) = include_lib_key(&path) {
-            self.by_include_lib.insert(key, entry);
+        if let Some(key) = lib_key {
+            self.by_include_lib.insert(
+                key,
+                HeaderBody {
+                    path: path.clone(),
+                    body: body.clone(),
+                },
+            );
         }
         self.by_path.insert(path, body);
     }

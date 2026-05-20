@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `-spec` / `-callback` / `-type` body parsing.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +27,7 @@ pub fn parse_callable_signature(body: &str) -> Option<ParsedSignature> {
         return None;
     }
     let (args, rest_after_args) = take_balanced_parens(after_name)?;
-    let arity = count_top_level_commas(&args) + if args.trim().is_empty() { 0 } else { 1 };
+    let arity = count_top_level_commas(args) + if args.trim().is_empty() { 0 } else { 1 };
     let rest = rest_after_args.trim_start();
     let after_arrow = rest.strip_prefix("->")?.trim_start();
     let signature = format!("{}({}) -> {}", name, args.trim(), after_arrow.trim());
@@ -50,13 +54,13 @@ pub fn parse_type_decl(body: &str) -> Option<(String, u8, String)> {
         return None;
     }
     let (args, rest_after_args) = take_balanced_parens(after_name)?;
-    let arity = count_top_level_commas(&args) + if args.trim().is_empty() { 0 } else { 1 };
+    let arity = count_top_level_commas(args) + if args.trim().is_empty() { 0 } else { 1 };
     let rest = rest_after_args.trim_start();
     let after_op = rest.strip_prefix("::")?.trim_start();
     Some((name, arity.min(255) as u8, after_op.trim().to_string()))
 }
 
-fn take_balanced_parens(s: &str) -> Option<(String, &str)> {
+fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
     if !s.starts_with('(') {
         return None;
     }
@@ -79,8 +83,7 @@ fn take_balanced_parens(s: &str) -> Option<(String, &str)> {
             ')' if !in_string && !in_atom_quote => {
                 depth -= 1;
                 if depth == 0 {
-                    let inside = s[1..i].to_string();
-                    return Some((inside, &s[i + 1..]));
+                    return Some((&s[1..i], &s[i + 1..]));
                 }
             }
             _ => {}

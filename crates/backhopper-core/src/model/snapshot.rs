@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `Snapshot<S>` with the type-state pattern.
 //!
 //! The two states `Unsorted` and `Canonical` enforce that:
@@ -209,6 +213,7 @@ impl Snapshot<state::Unsorted> {
         }
     }
 
+    #[must_use]
     pub fn into_canonical(mut self) -> Snapshot<state::Canonical> {
         canonicalize(&mut self.modules, &mut self.headers);
         Snapshot {

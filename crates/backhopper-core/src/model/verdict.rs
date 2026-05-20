@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -122,6 +126,8 @@ pub struct PinVerdict {
     pub verdict: Verdict,
     #[serde(default)]
     pub tracked_refs: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tracked_ref_details: Vec<SymbolRef>,
 }
 
 impl PinVerdict {
@@ -130,12 +136,20 @@ impl PinVerdict {
             pin,
             verdict,
             tracked_refs: 0,
+            tracked_ref_details: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn with_tracked_refs(mut self, n: usize) -> Self {
         self.tracked_refs = n;
+        self
+    }
+
+    #[must_use]
+    pub fn with_tracked_ref_details(mut self, details: Vec<SymbolRef>) -> Self {
+        self.tracked_refs = details.len();
+        self.tracked_ref_details = details;
         self
     }
 }

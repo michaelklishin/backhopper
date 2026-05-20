@@ -1,7 +1,13 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::path::PathBuf;
 
 use backhopper_core::SymbolRef;
-use backhopper_core::model::names::{Arity, FunctionName, ModuleName, ProjectName, TagName};
+use backhopper_core::model::names::{
+    Arity, FunctionName, ModuleName, ProjectName, RecordName, TagName,
+};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict};
 
@@ -28,6 +34,62 @@ fn deprecated_only_is_requires_adaptation() {
     };
     let v = Verdict::from_reasons(vec![r]);
     assert!(matches!(v, Verdict::RequiresAdaptation { .. }));
+}
+
+#[test]
+fn deprecated_only_does_not_block() {
+    let r = Reason::DeprecatedUsage {
+        symbol: SymbolRef::macro_use("X"),
+        since: None,
+        replacement: None,
+    };
+    assert!(!r.is_blocking());
+}
+
+#[test]
+fn context_drift_only_does_not_block() {
+    let r = Reason::ContextDrift {
+        path: PathBuf::from("a.erl"),
+        hunk_index: 0,
+    };
+    assert!(!r.is_blocking());
+}
+
+#[test]
+fn missing_symbol_blocks() {
+    let r = Reason::MissingSymbol {
+        symbol: SymbolRef::macro_use("X"),
+        first_seen_at_tag: None,
+        suggested_replacement: None,
+    };
+    assert!(r.is_blocking());
+}
+
+#[test]
+fn record_fields_changed_blocks() {
+    let r = Reason::RecordFieldsChanged {
+        record: RecordName::new("cfg").unwrap(),
+        expected: vec![],
+        found: vec![],
+    };
+    assert!(r.is_blocking());
+}
+
+#[test]
+fn requires_adaptation_only_has_non_blocking_reasons() {
+    let r = Reason::DeprecatedUsage {
+        symbol: SymbolRef::macro_use("X"),
+        since: None,
+        replacement: None,
+    };
+    let v = Verdict::from_reasons(vec![r]);
+    assert_eq!(v.reasons().len(), 1);
+    assert!(!v.is_compatible());
+}
+
+#[test]
+fn compatible_has_no_reasons_accessor() {
+    assert!(Verdict::Compatible.reasons().is_empty());
 }
 
 #[test]

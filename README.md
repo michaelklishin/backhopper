@@ -114,9 +114,35 @@ backhopper snapshots lookup --project lib_a --tag v2.0.4 \
                             --mfa some_module:some_function/2
 
 backhopper snapshots modules --project lib_a --tag v2.0.4
-
-backhopper snapshots diff --project lib_a --from v2.0.3 --to v2.0.4
 ```
+
+
+### Diffing the API Between Two Tags
+
+`snapshots diff` emits a structured delta across modules, exports,
+callbacks, types, headers, and records in a text format.
+
+The format is very minimalistic: just `added` and `removed` prefixes,
+and each line is module-qualified:
+
+```shell
+backhopper snapshots diff --project ra --from v2.15.2 --to v3.1.2
+```
+
+produces
+
+```
+removed module ra_file_handle
+added module ra_kv
+removed export ra:start_cluster/2
+added export ra:transfer_leadership/3
+added callback ra_machine:live_indexes/1
+removed type ra_machine:command/0
+added type ra_machine:command/1
+```
+
+An arity change will result in one removal and one addition to the same
+function (or type).
 
 
 ### Checking a Patch Against a Series
@@ -183,6 +209,30 @@ compatible: 2, requires_adaptation: 0, incompatible: 0
 project's API surface, so the verdict is trivially safe. A non-zero
 count is the trust signal: `backhopper` actually checked that many
 call sites against the pinned tag.
+
+
+### Explaining a Non-Zero Count
+
+The verdict table reports metrics suc has `tracked symbols referenced: N` but not
+which call sites contributed. Adding `--explain` will report the details per pinned
+dependency:
+
+```shell
+backhopper check commit --series stable-3.x \
+                        --repo-dir-path /path/to/your_repo.git \
+                        --explain 1a2b3c4d
+```
+
+```
+tracked call sites per pin:
+  lib_b @ v1.8.0
+    lib_b:new_function/2
+    lib_b:other_function/1
+```
+
+When a pin is `Incompatible`, this is the fastest way to see which MFA
+in the patch broke against the pinned tag. In JSON output the same
+data lands under `data.results.results[*].tracked_ref_details`.
 
 
 ### Seeing What Was Skipped

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `.app.src` discovery and parsing.
 //!
 //! Walks a source tree, finds every `*.app.src` file, and extracts

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Snapshot fixtures captured from real ra, khepri, osiris, cowboy,
 //! seshat, ranch (Erlang), and plug (Elixir) checkouts. They serve as
 //! a regression corpus for the parser and store, and as a known-good

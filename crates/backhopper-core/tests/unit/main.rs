@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 mod app_src_unit_tests;
 mod arg_shape_unit_tests;
 mod build_system_unit_tests;
@@ -10,11 +14,13 @@ mod config_unit_tests;
 mod context_drift_unit_tests;
 mod evaluation_typestate_unit_tests;
 mod evaluation_unit_tests;
+mod explain_payload_unit_tests;
 mod library_derivation_unit_tests;
 mod names_unit_tests;
 mod otp_unit_tests;
 mod scope_unit_tests;
 mod snapshot_lookup_unit_tests;
+mod snapshot_record_continuation_unit_tests;
 mod snapshot_round_trip_unit_tests;
 mod sort_unit_tests;
 mod spec_normalize_unit_tests;

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! CLI error type. Maps to BSD `sysexits` via `bel7_cli::ExitCodeProvider`.
 
 use std::io;

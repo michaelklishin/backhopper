@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Pluggable strategy for "does this suite reference module M?".
 //!
 //! The built-in [`SubstringMatcher`] does a cheap byte-level substring
@@ -41,9 +45,14 @@ impl SubstringMatcher {
     }
 
     fn cached_text(&mut self, suite_path: &Path) -> &str {
+        if !self.cache.contains_key(suite_path) {
+            let text = fs::read_to_string(suite_path).unwrap_or_default();
+            self.cache.insert(suite_path.to_path_buf(), text);
+        }
         self.cache
-            .entry(suite_path.to_path_buf())
-            .or_insert_with(|| fs::read_to_string(suite_path).unwrap_or_default())
+            .get(suite_path)
+            .map(String::as_str)
+            .unwrap_or_default()
     }
 }
 

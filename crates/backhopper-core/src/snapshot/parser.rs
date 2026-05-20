@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Canonical reader for the snapshot file format.
 //!
 //! Produces `Snapshot<Canonical>` only when the input parses *and* is in
@@ -47,8 +51,6 @@ impl<'a> Parser<'a> {
         let header = self.parse_header()?;
         let mut modules: Vec<Module> = Vec::new();
         let mut headers: Vec<HrlFile> = Vec::new();
-        let mut last_module_name: Option<ModuleName> = None;
-        let mut last_header_path: Option<String> = None;
         let mut headers_started = false;
         loop {
             self.skip_blank();
@@ -64,30 +66,28 @@ impl<'a> Parser<'a> {
                 }
                 self.advance();
                 let name = ModuleName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
-                if let Some(prev) = &last_module_name
-                    && name <= *prev
+                if let Some(prev) = modules.last()
+                    && name <= prev.name
                 {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
                         detail: format!("modules out of order at {}", name),
                     });
                 }
-                last_module_name = Some(name.clone());
                 let module = self.parse_module_body(name)?;
                 modules.push(module);
             } else if let Some(rest) = line.strip_prefix("header ") {
                 headers_started = true;
                 self.advance();
                 let path = rest.trim().to_owned();
-                if let Some(prev) = &last_header_path
-                    && path <= *prev
+                if let Some(prev) = headers.last()
+                    && path.as_str() <= prev.path.as_str()
                 {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
                         detail: format!("headers out of order at {}", path),
                     });
                 }
-                last_header_path = Some(path.clone());
                 let hrl = self.parse_header_body(path)?;
                 headers.push(hrl);
             } else {
@@ -350,28 +350,7 @@ impl<'a> Parser<'a> {
             } else if let Some(rest) = trimmed.strip_prefix("record ") {
                 state.advance(HrlEntryClass::Record, lineno)?;
                 let name = RecordName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
-                let mut fields: Vec<RecordField> = Vec::new();
-                while let Some((flineno, fline)) = self.peek() {
-                    if !fline.starts_with("    ") {
-                        break;
-                    }
-                    let ftrimmed = &fline[4..];
-                    self.advance();
-                    let Some(fbody) = ftrimmed.strip_prefix("field ") else {
-                        return Err(SnapshotError::UnexpectedToken {
-                            line: flineno,
-                            detail: format!("expected 'field', got {:?}", ftrimmed),
-                        });
-                    };
-                    let (fname_str, ftype_repr) = match fbody.split_once(" :: ") {
-                        Some((n, t)) => (n.trim(), Some(t.trim().to_owned())),
-                        None => (fbody.trim(), None),
-                    };
-                    fields.push(RecordField {
-                        name: FieldName::from_str(fname_str).map_err(SnapshotError::Name)?,
-                        type_repr: ftype_repr,
-                    });
-                }
+                let fields = self.parse_record_fields()?;
                 hrl.records.push(RecordDecl { name, fields });
             } else {
                 return Err(SnapshotError::UnexpectedToken {
@@ -381,6 +360,52 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(hrl)
+    }
+
+    fn parse_record_fields(&mut self) -> Result<Vec<RecordField>, SnapshotError> {
+        let mut fields: Vec<RecordField> = Vec::new();
+        while let Some((flineno, fline)) = self.peek() {
+            if !fline.starts_with("    ") {
+                break;
+            }
+            let ftrimmed = &fline[4..];
+            if let Some(fbody) = ftrimmed.strip_prefix("field ") {
+                self.advance();
+                let (fname_str, ftype_repr) = match fbody.split_once(" :: ") {
+                    Some((n, t)) => (n.trim(), Some(t.trim().to_owned())),
+                    None => (fbody.trim(), None),
+                };
+                fields.push(RecordField {
+                    name: FieldName::from_str(fname_str).map_err(SnapshotError::Name)?,
+                    type_repr: ftype_repr,
+                });
+            } else if fline.starts_with("     ") {
+                let Some(last) = fields.last_mut() else {
+                    return Err(SnapshotError::UnexpectedToken {
+                        line: flineno,
+                        detail: format!("expected 'field', got {:?}", ftrimmed),
+                    });
+                };
+                let Some(repr) = last.type_repr.as_mut() else {
+                    return Err(SnapshotError::UnexpectedToken {
+                        line: flineno,
+                        detail: format!(
+                            "type continuation but the previous field has no '::' type: {:?}",
+                            fline,
+                        ),
+                    });
+                };
+                self.advance();
+                repr.push('\n');
+                repr.push_str(fline);
+            } else {
+                return Err(SnapshotError::UnexpectedToken {
+                    line: flineno,
+                    detail: format!("expected 'field', got {:?}", ftrimmed),
+                });
+            }
+        }
+        Ok(fields)
     }
 
     fn collect_continuation(&mut self, first: String) -> String {

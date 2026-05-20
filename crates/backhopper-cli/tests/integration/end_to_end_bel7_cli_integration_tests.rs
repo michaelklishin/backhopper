@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! End-to-end coverage for the `bel7-cli` adoption: completion-shell
 //! values, table-style values, and an invalid-input exit code wired
 //! through `ExitCodeProvider`.

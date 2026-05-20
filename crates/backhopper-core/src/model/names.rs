@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Newtypes for every domain primitive: `String` should never represent a
 //! project name, tag, module, function, or commit SHA.
 
@@ -351,7 +355,7 @@ impl FromStr for Arity {
     fn from_str(s: &str) -> Result<Self, NameError> {
         let parsed: i64 = s
             .parse()
-            .map_err(|_| NameError::InvalidArity { value: -1 })?;
+            .map_err(|_| NameError::InvalidArityParse { raw: s.to_owned() })?;
         if !(0..=255).contains(&parsed) {
             return Err(NameError::InvalidArity { value: parsed });
         }

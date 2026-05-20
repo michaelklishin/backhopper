@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `-define` table and macro-body expansion helpers.
 //!
 //! Macros are keyed by `(name, optional arity)`: value macros use
@@ -51,7 +55,7 @@ fn split_define_head(s: &str) -> Option<(&str, &str)> {
     while i < bytes.len() {
         let c = bytes[i];
         if c == b'\\' && (in_str || in_atom) {
-            i += 2;
+            i = (i + 2).min(bytes.len());
             continue;
         }
         match c {

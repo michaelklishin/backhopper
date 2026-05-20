@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Renderers for text-mode output: every table takes a `bel7_cli::TableStyle`
 //! so the global `--table-style` flag governs all tables uniformly.
 

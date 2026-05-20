@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Canonical pretty-printer for `-spec`/`-callback`/`-type` right-hand sides.
 //!
 //! The job: produce a single canonical string for any given semantic
@@ -102,8 +106,9 @@ fn collapse_whitespace(input: &str) -> String {
             prev_space = false;
         }
     }
-    let trimmed = out.trim_end_matches(' ');
-    trimmed.to_owned()
+    let new_len = out.trim_end_matches(' ').len();
+    out.truncate(new_len);
+    out
 }
 
 fn wrap_top_level_alternatives(input: &str) -> String {

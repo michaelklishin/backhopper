@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Per-pin evaluation of an analyzed patch. Pure functions: take a
 //! snapshot plus optional file bytes and scope, return reasons.
 
@@ -24,13 +28,13 @@ pub(crate) fn evaluate_pin(
     source_snapshot: Option<&Snapshot<state::Canonical>>,
     pin_files: Option<&EvaluationFiles>,
     scope: Option<&PinScope>,
-) -> (Verdict, usize) {
+) -> EvaluationResult {
     let mut reasons: Vec<Reason> = Vec::new();
     if let Some(pf) = pin_files {
         check_files_against_pin(files, pf, &mut reasons);
     }
     let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
-    let mut tracked_refs = 0usize;
+    let mut tracked_refs: Vec<SymbolRef> = Vec::new();
     for r in referenced {
         if defined_index.contains(r) {
             continue;
@@ -42,7 +46,7 @@ pub(crate) fn evaluate_pin(
                 {
                     continue;
                 }
-                tracked_refs += 1;
+                tracked_refs.push(r.clone());
                 analyze_function_reference(r, mfa, snapshot, source_snapshot, &mut reasons);
             }
             SymbolKind::Record { name } => {
@@ -68,7 +72,15 @@ pub(crate) fn evaluate_pin(
     for path in unsupported_files {
         reasons.push(Reason::UnsupportedFileType { path: path.clone() });
     }
-    (Verdict::from_reasons(reasons), tracked_refs)
+    EvaluationResult {
+        verdict: Verdict::from_reasons(reasons),
+        tracked_refs,
+    }
+}
+
+pub(crate) struct EvaluationResult {
+    pub verdict: Verdict,
+    pub tracked_refs: Vec<SymbolRef>,
 }
 
 fn check_clause_mismatches(
@@ -89,7 +101,6 @@ fn check_clause_mismatches(
             _ => None,
         })
         .collect();
-    // Group per MFA so we report at most one `ClauseMismatch` per MFA while still catching a one-matches-one-doesn't mix.
     let mut grouped: BTreeMap<(ModuleName, FunctionName, Arity), Vec<&Vec<ArgShape>>> =
         BTreeMap::new();
     for (mfa, args) in call_args {
@@ -104,8 +115,7 @@ fn check_clause_mismatches(
             .push(args);
     }
     for ((module_name, function_name, arity), call_groups) in grouped {
-        let key = (module_name.clone(), function_name.clone(), arity);
-        if signature_already.contains(&key) {
+        if signature_already.contains(&(module_name.clone(), function_name.clone(), arity)) {
             continue;
         }
         let Some(module) = snapshot.module_named(&module_name) else {
@@ -119,7 +129,7 @@ fn check_clause_mismatches(
             continue;
         };
         let Some(failing) = call_groups
-            .iter()
+            .into_iter()
             .find(|args| !satisfies_any(args, clauses))
         else {
             continue;
@@ -128,7 +138,7 @@ fn check_clause_mismatches(
             module: module_name,
             function: function_name,
             arity,
-            call_args: (*failing).clone(),
+            call_args: failing.clone(),
             pin_clauses: clauses.clone(),
         });
     }
@@ -141,10 +151,10 @@ fn check_files_against_pin(
 ) {
     for file in files {
         let path = match (&file.new_path, &file.old_path) {
-            (Some(p), _) | (None, Some(p)) => p.clone(),
+            (Some(p), _) | (None, Some(p)) => p,
             (None, None) => continue,
         };
-        let Some(slot) = pin_files.get(&path) else {
+        let Some(slot) = pin_files.get(path) else {
             continue;
         };
         let Some(bytes) = slot else {
@@ -192,26 +202,33 @@ fn analyze_function_reference(
     source_snapshot: Option<&Snapshot<state::Canonical>>,
     reasons: &mut Vec<Reason>,
 ) {
-    let module = snapshot.module_named(&mfa.module);
-    if let Some(m) = module
-        && m.visibility == Visibility::Hidden
-    {
+    let Some(module) = snapshot.module_named(&mfa.module) else {
+        reasons.push(Reason::MissingSymbol {
+            symbol: r.clone(),
+            first_seen_at_tag: None,
+            suggested_replacement: None,
+        });
+        return;
+    };
+    if module.visibility == Visibility::Hidden {
         reasons.push(Reason::NowHidden {
             module: mfa.module.clone(),
         });
         return;
     }
-    if module.is_some_and(|m| is_function_deprecated_in(m, &mfa.function, mfa.arity)) {
+    if is_function_deprecated_in(module, &mfa.function, mfa.arity) {
         reasons.push(Reason::DeprecatedUsage {
             symbol: r.clone(),
             since: None,
             replacement: None,
         });
     }
-    if !snapshot.lookup_export(&mfa.module, &mfa.function, mfa.arity) {
-        let alt_arities = module
-            .map(|m| collect_alt_arities_in(m, &mfa.function))
-            .unwrap_or_default();
+    let target = FunArity {
+        name: mfa.function.clone(),
+        arity: mfa.arity,
+    };
+    if module.exports.binary_search(&target).is_err() {
+        let alt_arities = collect_alt_arities_in(module, &mfa.function);
         if !alt_arities.is_empty() && !alt_arities.contains(&mfa.arity) {
             reasons.push(Reason::ArityChanged {
                 module: mfa.module.clone(),

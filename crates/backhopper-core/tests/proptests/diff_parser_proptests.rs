@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Property checks for the unified-diff parser. The parser is fed
 //! arbitrary byte input and asserted to never panic, never read out of
 //! bounds, and never lose well-formed hunks. The parser is `pub(crate)`,

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Top-level Elixir source extractor: text → typed `Module` records.
 
 use std::collections::BTreeSet;
@@ -139,7 +143,7 @@ fn collect_module_recursive(
         warn!("invalid Elixir module name: {}", full);
         return;
     };
-    let mut module = Module::new(module_name.clone());
+    let mut module = Module::new(module_name);
     let mut depth: i32 = 1;
     let mut hidden = false;
     let mut exports: BTreeSet<(String, u8)> = BTreeSet::new();
@@ -237,11 +241,9 @@ fn collect_module_recursive(
     module.callbacks = callbacks;
     module.specs = specs;
     module.types = types;
-    module.visibility = if ex
-        .internal_modules
-        .iter()
-        .any(|n| n == module_name.as_str())
-        || (hidden && !ex.public_modules.iter().any(|n| n == module_name.as_str()))
+    let name_str = module.name.as_str();
+    module.visibility = if ex.internal_modules.iter().any(|n| n == name_str)
+        || (hidden && !ex.public_modules.iter().any(|n| n == name_str))
     {
         Visibility::Hidden
     } else {

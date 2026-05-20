@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
@@ -26,6 +30,11 @@ pub struct CheckOutputFlags {
         help = "Resolve each untracked module's `.erl` against the target checkout; absent files flip the verdict to Incompatible"
     )]
     pub resolve_untracked_modules: bool,
+    #[arg(
+        long,
+        help = "Print each tracked call site that contributed to the per-pin `tracked symbols referenced` count"
+    )]
+    pub explain: bool,
 }
 
 /// Optional source-side pin descriptor. When set, the analyzer diffs
@@ -55,8 +64,6 @@ pub enum CheckCmd {
         tag: Option<TagName>,
         #[arg(long)]
         series: Option<SeriesName>,
-        #[arg(long)]
-        explain: bool,
         #[arg(
             long,
             help = "Target checkout for resolving untracked modules. Required when --resolve-untracked-modules is set"

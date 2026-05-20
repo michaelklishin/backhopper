@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `-attribute(...)` parsers used by the `SourceReader` orchestrator.
 
 use std::path::PathBuf;
@@ -10,7 +14,7 @@ use crate::macros::parse_define;
 use crate::reader::scan::ModuleBuilder;
 use crate::scanner::Scanner;
 
-pub(super) fn consume_attribute_body(sc: &mut Scanner<'_>) -> String {
+pub(super) fn consume_attribute_body<'a>(sc: &mut Scanner<'a>) -> &'a str {
     let start = sc.pos().byte_offset as usize;
     let mut depth = 0i32;
     while let Some(byte) = sc.peek() {
@@ -26,7 +30,7 @@ pub(super) fn consume_attribute_body(sc: &mut Scanner<'_>) -> String {
             b'.' if depth <= 0 => {
                 let end = sc.pos().byte_offset as usize;
                 sc.advance();
-                return sc.src_slice(start, end).to_string();
+                return sc.src_slice(start, end);
             }
             b'"' => sc.consume_string(),
             b'\'' => sc.consume_quoted_atom(),
@@ -37,7 +41,6 @@ pub(super) fn consume_attribute_body(sc: &mut Scanner<'_>) -> String {
         }
     }
     sc.src_slice(start, sc.pos().byte_offset as usize)
-        .to_string()
 }
 
 pub(super) fn handle_attribute(

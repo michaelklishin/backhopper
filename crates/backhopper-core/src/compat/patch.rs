@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! `Patch<S>` typestate pipeline plus its public data types.
 //!
 //! The unified-diff parser lives in `compat::diff`; the per-pin evaluator
@@ -124,6 +128,7 @@ impl Patch<Raw> {
 
     /// Run the per-file analyzer with no macro context. Equivalent to
     /// `analyze_with_macros(&BTreeMap::new())`.
+    #[must_use]
     pub fn analyze(self) -> Patch<Analyzed> {
         self.analyze_with_macros(&BTreeMap::new())
     }
@@ -141,6 +146,7 @@ impl Patch<Raw> {
     /// Calls hidden behind `?Name` and `?Name:f(args)` are resolved
     /// against the matching file's table; apply-family BIFs use it to
     /// resolve macro-module arguments.
+    #[must_use]
     pub fn analyze_with_macros(
         self,
         macros_by_path: &BTreeMap<PathBuf, MacroTable>,
@@ -176,8 +182,8 @@ impl Patch<Raw> {
                     }
                 }
                 Language::Elixir => {
-                    if let Some(path) = file.new_path.clone().or_else(|| file.old_path.clone()) {
-                        unsupported_files.push(path);
+                    if let Some(path) = file.new_path.as_ref().or(file.old_path.as_ref()) {
+                        unsupported_files.push(path.clone());
                     }
                 }
                 Language::Other => {}
@@ -384,7 +390,7 @@ impl Patch<Analyzed> {
     }
 
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
-        let (verdict, _) = evaluate_pin(
+        let result = evaluate_pin(
             &self.files,
             &self.referenced,
             &self.defined,
@@ -396,7 +402,7 @@ impl Patch<Analyzed> {
             None,
         );
         let mut verdicts = self.verdicts;
-        verdicts.push(PinVerdict::new(pin, verdict));
+        verdicts.push(PinVerdict::new(pin, result.verdict));
         Patch {
             files: self.files,
             referenced: self.referenced,
@@ -412,7 +418,7 @@ impl Patch<Analyzed> {
     pub fn against_series(self, snapshots: &[(Pin, Snapshot<state::Canonical>)]) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap) in snapshots {
-            let (verdict, _) = evaluate_pin(
+            let r = evaluate_pin(
                 &self.files,
                 &self.referenced,
                 &self.defined,
@@ -423,7 +429,7 @@ impl Patch<Analyzed> {
                 None,
                 None,
             );
-            results.push(PinVerdict::new(pin.clone(), verdict));
+            results.push(PinVerdict::new(pin.clone(), r.verdict));
         }
         SeriesVerdict::from_results(results)
     }
@@ -434,7 +440,7 @@ impl Patch<Analyzed> {
     ) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap, files) in snapshots {
-            let (verdict, _) = evaluate_pin(
+            let r = evaluate_pin(
                 &self.files,
                 &self.referenced,
                 &self.defined,
@@ -445,7 +451,7 @@ impl Patch<Analyzed> {
                 Some(files),
                 None,
             );
-            results.push(PinVerdict::new(pin.clone(), verdict));
+            results.push(PinVerdict::new(pin.clone(), r.verdict));
         }
         SeriesVerdict::from_results(results)
     }
@@ -483,7 +489,7 @@ impl Patch<Analyzed> {
         }
         let mut results = Vec::with_capacity(contexts.len());
         for ctx in contexts {
-            let (verdict, tracked_refs) = evaluate_pin(
+            let r = evaluate_pin(
                 &self.files,
                 &self.referenced,
                 &self.defined,
@@ -494,8 +500,10 @@ impl Patch<Analyzed> {
                 ctx.files(),
                 Some(ctx.scope()),
             );
-            results
-                .push(PinVerdict::new(ctx.pin().clone(), verdict).with_tracked_refs(tracked_refs));
+            results.push(
+                PinVerdict::new(ctx.pin().clone(), r.verdict)
+                    .with_tracked_ref_details(r.tracked_refs),
+            );
         }
         let mut unanalyzed = Unanalyzed::default();
         for d in &self.dynamic_calls {

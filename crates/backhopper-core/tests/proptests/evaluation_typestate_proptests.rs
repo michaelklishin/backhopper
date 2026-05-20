@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Property tests for the `EvaluationContext<S>` pipeline: any sequence
 //! of `for_pin → with_scope → with_files` must preserve `pin`, `snapshot`,
 //! `scope`, and (for `Sourced`) `files`. State-carrying inner data makes

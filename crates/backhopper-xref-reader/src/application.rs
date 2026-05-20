@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Application-membership resolution.
 
 use std::ffi::OsStr;
@@ -75,7 +79,7 @@ impl ProjectLayout {
 }
 
 fn match_under_prefix(prefix: &Path, path: &Path) -> Option<ApplicationName> {
-    // Find `<prefix...>/<app>/...` via OsStr equality so non-UTF-8 paths are safe.
+    // Match <prefix...>/<app>/... via OsStr equality so non-UTF-8 paths are safe.
     let components: Vec<&OsStr> = path.components().map(|c| c.as_os_str()).collect();
     let prefix_os: Vec<&OsStr> = prefix.components().map(|c| c.as_os_str()).collect();
     if prefix_os.is_empty() {

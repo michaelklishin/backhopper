@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 mod end_to_end_bel7_cli_integration_tests;
 mod end_to_end_compat_batch_integration_tests;
 mod end_to_end_compat_commit_integration_tests;

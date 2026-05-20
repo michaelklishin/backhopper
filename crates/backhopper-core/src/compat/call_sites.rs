@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
 //! Call-site extractor for Erlang source lines.
 //!
 //! Given a hunk line of source text, finds references to:
@@ -78,7 +82,12 @@ fn var_function_call_re() -> &'static Regex {
 }
 
 pub fn extract_into(line: &str, out: &mut Vec<SymbolRef>) {
-    extract_into_with_macros(line, &MacroTable::new(), out);
+    extract_into_with_macros(line, empty_macros(), out);
+}
+
+fn empty_macros() -> &'static MacroTable {
+    static EMPTY: OnceLock<MacroTable> = OnceLock::new();
+    EMPTY.get_or_init(MacroTable::new)
 }
 
 /// Same as `extract_into` but consults `macros` so `?Name`-style
@@ -179,15 +188,14 @@ fn apply_family_re() -> &'static Regex {
     })
 }
 
-fn resolve_apply_family(name: &str, args: &[String], macros: &MacroTable) -> Option<Mfa> {
+fn resolve_apply_family(name: &str, args: &[&str], macros: &MacroTable) -> Option<Mfa> {
     let (m_raw, f_raw, a_raw) = match (name, args.len()) {
-        ("apply", 3) => (&args[0], &args[1], &args[2]),
-        ("spawn" | "spawn_link" | "spawn_monitor" | "hibernate", 3) => {
-            (&args[0], &args[1], &args[2])
+        ("apply", 3)
+        | ("spawn" | "spawn_link" | "spawn_monitor" | "hibernate", 3)
+        | ("spawn_opt", 4) => (args[0], args[1], args[2]),
+        ("spawn" | "spawn_link" | "spawn_monitor", 4) | ("spawn_opt", 5) => {
+            (args[1], args[2], args[3])
         }
-        ("spawn" | "spawn_link" | "spawn_monitor", 4) => (&args[1], &args[2], &args[3]),
-        ("spawn_opt", 4) => (&args[0], &args[1], &args[2]),
-        ("spawn_opt", 5) => (&args[1], &args[2], &args[3]),
         _ => return None,
     };
     let module = atom_or_macro_to_module(m_raw, macros)?;
@@ -233,8 +241,7 @@ fn literal_list_length(raw: &str) -> Option<u8> {
     if trimmed.is_empty() {
         return Some(0);
     }
-    let items = split_top_level_args(&format!("{trimmed})"));
-    u8::try_from(items.len()).ok()
+    u8::try_from(count_top_level_items(s, '[', ']')).ok()
 }
 
 fn looks_like_lowercase_atom(s: &str) -> bool {
@@ -247,10 +254,10 @@ fn looks_like_lowercase_atom(s: &str) -> bool {
 }
 
 /// Splits the source between an already-consumed opening `(` and its
-/// matching `)` into top-level argument source strings. Tracks nested
+/// matching `)` into top-level argument source slices. Tracks nested
 /// parens, brackets, braces, strings, and quoted atoms.
-fn split_top_level_args(after_open_paren: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
     let mut depth = 1i32;
     let mut in_str = false;
     let mut in_atom = false;
@@ -275,15 +282,14 @@ fn split_top_level_args(after_open_paren: &str) -> Vec<String> {
                 if depth == 0 {
                     let slice = &after_open_paren[start..i];
                     if !slice.trim().is_empty() || !out.is_empty() {
-                        out.push(slice.to_owned());
+                        out.push(slice);
                     }
                     return out;
                 }
             }
             b']' | b'}' if !in_str && !in_atom => depth -= 1,
             b',' if !in_str && !in_atom && depth == 1 => {
-                let slice = &after_open_paren[start..i];
-                out.push(slice.to_owned());
+                out.push(&after_open_paren[start..i]);
                 start = i + 1;
             }
             _ => {}
@@ -293,7 +299,7 @@ fn split_top_level_args(after_open_paren: &str) -> Vec<String> {
     if start < bytes.len() {
         let slice = &after_open_paren[start..];
         if !slice.trim().is_empty() {
-            out.push(slice.to_owned());
+            out.push(slice);
         }
     }
     out
@@ -310,7 +316,7 @@ pub fn extract_call_args_into(line: &str, out: &mut Vec<(Mfa, Vec<ArgShape>)>) {
         let head_end = caps.get(0).expect("capture").end();
         let after = &line[head_end..];
         let (args, _consumed) = extract_arg_shapes(after);
-        let arity = args.len() as u8;
+        let arity = u8::try_from(args.len()).unwrap_or(u8::MAX);
         if let (Ok(m), Ok(f)) = (
             ModuleName::from_str(module),
             FunctionName::from_str(function),
@@ -384,7 +390,6 @@ fn classify_arg(raw: &str) -> ArgShape {
     }
     let first = s.chars().next().expect("non-empty");
     if first == '#' {
-        // Record reference: `#name{...}`
         let rest = &s[1..];
         let name_end = rest
             .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '@'))
@@ -409,7 +414,6 @@ fn classify_arg(raw: &str) -> ArgShape {
         return ArgShape::Binary;
     }
     if first == '\'' {
-        // Quoted atom: `'foo bar'`
         let inner = s.trim_start_matches('\'').trim_end_matches('\'');
         return ArgShape::Atom {
             name: inner.to_string(),
@@ -501,13 +505,17 @@ pub fn extract_definitions_into(line: &str, out: &mut Vec<SymbolRef>) {
     let after = &line[head_end..];
     let arity = approximate_arity(after);
     if let Ok(f) = FunctionName::from_str(&caps[1]) {
-        let placeholder_module = ModuleName::from_str("_local").expect("valid");
         out.push(SymbolRef::function(Mfa::new(
-            placeholder_module,
+            local_placeholder_module().clone(),
             f,
             Arity::new(arity),
         )));
     }
+}
+
+fn local_placeholder_module() -> &'static ModuleName {
+    static M: OnceLock<ModuleName> = OnceLock::new();
+    M.get_or_init(|| ModuleName::from_str("_local").expect("valid"))
 }
 
 fn approximate_arity(after_open_paren: &str) -> u8 {
