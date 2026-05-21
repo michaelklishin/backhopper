@@ -110,7 +110,7 @@ The defaults that snap into place (overridable field by field):
   zero-dependency Erlang RPM from Team RabbitMQ plus CT suites, and a
   few library-specific idiosyncracies)
 * `tag_pattern`: `OTP-*`
-* `min_tag`: `OTP-26.0` (the current RabbitMQ-supported OTP floor)
+* `min_tag`: `OTP-26.0` (filters out older tags; `oldest_tag` is accepted as an ailas)
 * `exclude_tag_markers`: `-rc`, `-alpha`, `-beta`, `-pre` (skip pre-release
   tags; set to `[]` to include them)
 

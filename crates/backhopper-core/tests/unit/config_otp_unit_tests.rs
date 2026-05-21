@@ -349,6 +349,41 @@ git_url = "/r.git"
 }
 
 #[test]
+fn oldest_tag_is_accepted_as_an_alias_for_min_tag() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "otp"
+git_url = "/o.git"
+layout = "erlang_otp"
+oldest_tag = "OTP-27.0"
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cfg.projects[0].min_tag.as_ref().unwrap().as_str(),
+        "OTP-27.0"
+    );
+}
+
+#[test]
+fn min_tag_and_oldest_tag_in_the_same_block_is_a_toml_error() {
+    let result: Result<ConfigFile, _> = toml::from_str(
+        r#"
+config_version = 1
+[[project]]
+name = "otp"
+git_url = "/o.git"
+layout = "erlang_otp"
+min_tag = "OTP-26.0"
+oldest_tag = "OTP-27.0"
+"#,
+    );
+    assert!(result.is_err(), "duplicate alias should not parse");
+}
+
+#[test]
 fn user_can_narrow_tag_pattern_and_min_tag_on_erlang_otp() {
     let cfg = parse(
         r#"

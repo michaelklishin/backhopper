@@ -87,6 +87,7 @@ pub struct ProjectRaw {
     pub exclude_apps: Option<Vec<String>>,
     pub excluded_subdirs: Option<Vec<String>>,
     pub tag_pattern: Option<String>,
+    #[serde(alias = "oldest_tag")]
     pub min_tag: Option<String>,
     pub exclude_tag_markers: Option<Vec<String>>,
 }
