@@ -23,6 +23,7 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: vec!["src".into()],
+        apps_scanned: Vec::new(),
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
     }

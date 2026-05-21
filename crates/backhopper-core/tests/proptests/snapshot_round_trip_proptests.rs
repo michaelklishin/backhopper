@@ -171,6 +171,7 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
             branch,
             commit: CommitSha::new(commit).unwrap(),
             scanned_paths: vec!["src".into()],
+            apps_scanned: Vec::new(),
             generated_by: "backhopper 0.4.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
         })
@@ -221,6 +222,7 @@ proptest! {
             branch: None,
             commit: CommitSha::new("0".repeat(40)).unwrap(),
             scanned_paths: vec!["include".into()],
+            apps_scanned: Vec::new(),
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         };

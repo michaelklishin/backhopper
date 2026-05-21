@@ -241,7 +241,7 @@ If a new domain primitive is needed, add it as a newtype, not a
 
 ## Type-State Pattern
 
-Three invariants are lifted into the type system. Honor them; don't
+Four invariants are lifted into the type system. Honor them; don't
 work around them with helper functions that erase the state.
 
  1. Only `Snapshot<state::Canonical>` may be written or parsed. The
@@ -253,9 +253,34 @@ work around them with helper functions that erase the state.
  3. `SnapshotStore<ReadOnly>` has no `write` method. Query commands
     take the read-only handle. Do not introduce a `write_unchecked` or
     similar escape hatch
+ 4. `PinSpec` (`Literal` or `Pattern`) lives in the config layer; the
+    compatibility pipeline only sees the resolved `Pin`. The only way
+    to obtain a `Pin` from a `PinSpec::Pattern` is
+    `PinSpec::resolve(&store)`. Do not introduce a method that returns
+    a `Pin` from a pattern spec without consulting the store
 
 If a future change needs to relax one of these, propose it in a PR
 description, not by adding an `.unwrap_state` method.
+
+## Project Layouts
+
+`ProjectLayout` enumerates three structural shapes that drive snapshot
+extraction:
+
+ * `single_app` (default): one git repo with one Erlang source tree
+   under `src/`. `scan_paths` (workspace default or project override)
+   selects which files get read
+ * `multi_app`: a generic monorepo. The user must specify `app_roots`
+   explicitly (e.g. an Elixir umbrella). No policy defaults apply
+ * `erlang_otp`: structurally `multi_app`, with RabbitMQ-derived
+   defaults baked in (the `--without-*` apps from `erlang-rpm` plus
+   `excluded_subdirs` covering `doc`, `example`, `examples`, and `test`).
+   `layout = "erlang_otp"` alone is the full config for an OTP project
+
+`ProjectLayout::defaults()` returns a `LayoutDefaults` struct that the
+config loader applies field-by-field to any unset value. List fields
+**replace** the default when specified by the user: we deliberately do
+not introduce a delta-merge mode.
 
 ## Snapshot Format Invariants
 

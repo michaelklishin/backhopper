@@ -146,6 +146,28 @@ pub enum ConfigError {
     #[error("series {series:?} pins unknown project {project:?}")]
     SeriesPinsUnknownProject { series: String, project: String },
 
+    #[error("pin pattern {pattern:?} for project {project:?} matched no snapshot tag")]
+    PinPatternNoMatch { project: String, pattern: String },
+
+    #[error(
+        "pin pattern {pattern:?} for project {project:?} could not be resolved: \
+         snapshot store error: {detail}"
+    )]
+    PinPatternStore {
+        project: String,
+        pattern: String,
+        detail: String,
+    },
+
+    #[error("pin `select` must be \"latest\" or \"oldest\", got {0:?}")]
+    PinUnknownSelect(String),
+
+    #[error("unknown project layout {0:?}: expected single_app, multi_app, or erlang_otp")]
+    UnknownProjectLayout(String),
+
+    #[error("project {project:?} has layout {layout:?} but no `app_roots` defaulted or set")]
+    LayoutWithoutAppRoots { project: String, layout: String },
+
     #[error("name error: {0}")]
     Name(#[from] NameError),
 

@@ -19,6 +19,7 @@ fn minimal_header() -> SnapshotHeader {
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: vec!["include".into()],
+        apps_scanned: Vec::new(),
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
     }

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project};
+use backhopper_core::config::{Language, Project, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::{
@@ -20,7 +20,14 @@ fn project(name: &str, tag_prefix: &str) -> Project {
         tag_prefix: tag_prefix.into(),
         public_modules: Vec::new(),
         internal_modules: Vec::new(),
+        layout: ProjectLayout::SingleApp,
         scan_paths: Vec::new(),
+        app_roots: Vec::new(),
+        include_apps: Vec::new(),
+        exclude_apps: Vec::new(),
+        excluded_subdirs: Vec::new(),
+        tag_pattern: None,
+        min_tag: None,
     }
 }
 

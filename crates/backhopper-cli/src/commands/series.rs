@@ -13,6 +13,7 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Val
 use backhopper_core::config::{Config, Project};
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{SeriesName, TagName};
+use backhopper_core::model::pin::{PinSelect, PinSpec};
 
 use crate::cli::{GlobalArgs, SeriesCmd};
 use crate::commands::context::load_config;
@@ -237,6 +238,29 @@ fn build_series_table(payload: &SyncOutput) -> Table {
     table
 }
 
+fn pin_spec_to_payload(spec: &PinSpec) -> PinPayload {
+    match spec {
+        PinSpec::Literal { project, tag } => PinPayload {
+            project: project.to_string(),
+            tag: tag.to_string(),
+        },
+        PinSpec::Pattern {
+            project,
+            pattern,
+            select,
+        } => {
+            let select_label = match select {
+                PinSelect::Latest => "latest",
+                PinSelect::Oldest => "oldest",
+            };
+            PinPayload {
+                project: project.to_string(),
+                tag: format!("{pattern} ({select_label})"),
+            }
+        }
+    }
+}
+
 fn pin_payload_for(pin: &DepPin, project: &Project) -> CliResult<PinPayload> {
     let raw_tag = match pin.source {
         DepSource::Hex => version_to_tag(&pin.version, &project.tag_prefix),
@@ -260,14 +284,7 @@ fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<i32> {
         .map_err(|e| CliError::Core(e.into()))?;
     let payload = SeriesShow {
         name: s.name.to_string(),
-        pins: s
-            .pins
-            .iter()
-            .map(|p| PinPayload {
-                project: p.project.to_string(),
-                tag: p.tag.to_string(),
-            })
-            .collect(),
+        pins: s.pins.iter().map(pin_spec_to_payload).collect(),
     };
     let ctx = OutputContext::new(args.formatter, "series show");
     render(&ctx, &payload, |w| {

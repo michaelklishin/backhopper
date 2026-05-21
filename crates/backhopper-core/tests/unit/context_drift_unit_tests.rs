@@ -35,6 +35,7 @@ fn snapshot() -> Snapshot<state::Canonical> {
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: vec!["src".into()],
+        apps_scanned: Vec::new(),
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
     };

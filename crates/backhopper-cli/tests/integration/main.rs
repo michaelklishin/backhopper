@@ -10,6 +10,7 @@ mod end_to_end_diff_integration_tests;
 mod end_to_end_infer_integration_tests;
 mod end_to_end_integration_tests;
 mod end_to_end_json_integration_tests;
+mod end_to_end_multi_app_integration_tests;
 mod end_to_end_scope_integration_tests;
 mod end_to_end_series_coverage_integration_tests;
 mod end_to_end_suites_plan_integration_tests;

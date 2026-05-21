@@ -92,6 +92,7 @@ fn snapshot_round_trip_for_realistic_module() {
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: vec!["src".into()],
+        apps_scanned: Vec::new(),
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
     };

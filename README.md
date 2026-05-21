@@ -87,6 +87,50 @@ pins = [
 ```
 
 
+### Tracking Erlang/OTP
+
+`backhopper` ships first-class support for Erlang/OTP, which is a
+multi-app monorepo of ~35 applications under `lib/`, plus `erts/`. Set
+`layout = "erlang_otp"` and a sensible default policy is applied:
+
+```toml
+[[project]]
+name    = "otp"
+git_url = "/path/to/otp.git"
+layout  = "erlang_otp"
+```
+
+The defaults that snap into place (overridable field by field):
+
+* `app_roots`: `["lib/*", "erts/preloaded"]`
+* `exclude_apps`: `odbc`, `snmp`, `ssh`, `tftp`, `ftp`, `wx`, `megaco`,
+  `edoc`, `jinterface`, `diameter` (the RabbitMQ `erlang-rpm` exclusion
+  set)
+* `excluded_subdirs`: `doc`, `example`, `examples`, `test` (matches the
+  zero-dependency Erlang RPM from Team RabbitMQ plus CT suites, and a
+  few library-specific idiosyncracies)
+* `tag_pattern`: `OTP-*`
+* `min_tag`: `OTP-26.0` (the current RabbitMQ-supported OTP floor)
+
+A series can pin OTP via a pattern instead of a literal tag, with two
+pins covering the two OTP minors the series supports:
+
+```toml
+[[series]]
+name = "rabbitmq-4.1"
+pins = [
+    { project = "ra",     tag = "v2.16.13" },
+    { project = "khepri", tag = "v0.17.0" },
+    { project = "osiris", tag = "v1.8.6" },
+    { project = "otp",    tag_pattern = "OTP-26.*", select = "latest" },
+    { project = "otp",    tag_pattern = "OTP-27.*", select = "latest" },
+]
+```
+
+`select = "latest"` and `select = "oldest"` resolve at check time against
+the snapshot store, so a freshly generated `OTP-26.2.6` snapshot is
+picked up by the next `check commit` with no config edit.
+
 ### Capturing Snapshots
 
 `snapshots generate` walks every git tag of a project, parses the public

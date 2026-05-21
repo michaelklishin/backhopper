@@ -16,6 +16,7 @@ fn header() -> SnapshotHeader {
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: Vec::new(),
+        apps_scanned: Vec::new(),
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
     }

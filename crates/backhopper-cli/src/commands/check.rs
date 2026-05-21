@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::errors::GitError;
 use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, SeriesName, TagName};
-use backhopper_core::model::pin::Pin;
+use backhopper_core::model::pin::{self, Pin, PinSpec};
 use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::symbol::SymbolKind;
 use backhopper_core::model::verdict::{
@@ -524,8 +524,8 @@ fn run_check_patch(
     diagnostics: CheckOutputFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let pins: Vec<Pin> = match (&project, &tag, &series) {
-        (Some(p), Some(t), None) => vec![Pin::new(p.clone(), t.clone())],
+    let pin_specs: Vec<PinSpec> = match (&project, &tag, &series) {
+        (Some(p), Some(t), None) => vec![PinSpec::literal(p.clone(), t.clone())],
         (None, None, Some(s)) => {
             let s = cfg
                 .series_by_name_with_coverage_check(s)
@@ -538,8 +538,10 @@ fn run_check_patch(
             ));
         }
     };
+    let pins: Vec<Pin> = resolve_pin_specs(&pin_specs, &store)?;
     let source_pins = resolve_source_pins(
         cfg,
+        &store,
         &pins,
         project.as_ref(),
         tag.as_ref(),
@@ -837,8 +839,13 @@ fn evaluate_one(
     Ok(analyzed.evaluate_series(&contexts))
 }
 
+fn resolve_pin_specs(specs: &[PinSpec], store: &SnapshotStore<ReadOnly>) -> CliResult<Vec<Pin>> {
+    pin::resolve_all(specs, store).map_err(|e| CliError::Core(e.into()))
+}
+
 fn resolve_source_pins(
     cfg: &Config,
+    store: &SnapshotStore<ReadOnly>,
     target_pins: &[Pin],
     target_project: Option<&ProjectName>,
     target_tag: Option<&TagName>,
@@ -867,15 +874,16 @@ fn resolve_source_pins(
             let src_series = cfg
                 .series_by_name(src_series_name)
                 .map_err(|e| CliError::Core(e.into()))?;
-            let mut by_project: BTreeMap<&ProjectName, &TagName> = BTreeMap::new();
-            for pin in &src_series.pins {
-                by_project.insert(&pin.project, &pin.tag);
+            let src_pins = resolve_pin_specs(&src_series.pins, store)?;
+            let mut queues: BTreeMap<ProjectName, VecDeque<Pin>> = BTreeMap::new();
+            for sp in src_pins {
+                queues.entry(sp.project.clone()).or_default().push_back(sp);
             }
             let mut out = Vec::with_capacity(target_pins.len());
             for target_pin in target_pins {
-                let mapped = by_project
-                    .get(&target_pin.project)
-                    .map(|tag| Pin::new(target_pin.project.clone(), (*tag).clone()));
+                let mapped = queues
+                    .get_mut(&target_pin.project)
+                    .and_then(|q| q.pop_front());
                 out.push(mapped);
             }
             Ok(out)
@@ -907,7 +915,8 @@ fn run_batch(
         let s = cfg
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
-        resolved_series.push((name.clone(), s.pins.clone()));
+        let pins = resolve_pin_specs(&s.pins, &store)?;
+        resolved_series.push((name.clone(), pins));
     }
     let queried: Vec<BatchQuery> = resolved_series
         .iter()
@@ -933,7 +942,8 @@ fn run_batch(
         let source_files = load_source_files_at_parent(repo, commit)?;
         for (name, pins) in &resolved_series {
             let item_label = format!("{commit} @ {name}");
-            let source_pins = resolve_source_pins(cfg, pins, None, None, Some(name), source)?;
+            let source_pins =
+                resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
             let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
             current += 1;
             reporter.progress(current, pair_count, &item_label);
@@ -982,7 +992,8 @@ fn run_multi(
         let s = cfg
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
-        resolved_series.push((name.clone(), s.pins.clone()));
+        let pins = resolve_pin_specs(&s.pins, &store)?;
+        resolved_series.push((name.clone(), pins));
     }
     let queried: Vec<BatchQuery> = resolved_series
         .iter()
@@ -1000,7 +1011,7 @@ fn run_multi(
     let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
     let mut worst_exit: i32 = 0;
     for (name, pins) in &resolved_series {
-        let source_pins = resolve_source_pins(cfg, pins, None, None, Some(name), source)?;
+        let source_pins = resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
         let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
         worst_exit = worst_exit.max(evaluation.worst_exit_code());
         results.push(BatchResult {

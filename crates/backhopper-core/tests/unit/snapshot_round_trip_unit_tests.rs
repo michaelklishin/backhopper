@@ -21,6 +21,7 @@ fn header() -> SnapshotHeader {
         branch: Some("main".into()),
         commit: CommitSha::new("0".repeat(40)).unwrap(),
         scanned_paths: vec!["src".into(), "include".into()],
+        apps_scanned: Vec::new(),
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
     }

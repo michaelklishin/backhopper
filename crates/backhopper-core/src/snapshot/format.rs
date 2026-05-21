@@ -76,6 +76,10 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
     }
     writeln!(w, "# commit: {}", header.commit)?;
     writeln!(w, "# scanned-paths: {}", header.scanned_paths.join(", "))?;
+    if !header.apps_scanned.is_empty() {
+        let names: Vec<&str> = header.apps_scanned.iter().map(|a| a.as_str()).collect();
+        writeln!(w, "# apps-scanned: {}", names.join(", "))?;
+    }
     writeln!(w, "# generated-by: {}", header.generated_by)?;
     let formatted = header
         .generated_at

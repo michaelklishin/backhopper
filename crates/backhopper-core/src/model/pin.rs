@@ -2,11 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+//! Pins as a two-stage type: `PinSpec` at config load, `Pin` after resolution.
+//!
+//! A `PinSpec` either names a concrete tag (`Literal`) or describes a set of
+//! candidate tags via a glob plus a selection rule (`Pattern`). Resolution
+//! against a snapshot store turns either form into a `Pin`, which the rest of
+//! the compatibility pipeline treats as the only pin type.
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::names::{ProjectName, TagName};
+use crate::errors::ConfigError;
+use crate::git::version_cmp;
+use crate::model::names::{ProjectName, TagGlob, TagName};
+use crate::store::SnapshotStore;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Pin {
@@ -23,5 +33,116 @@ impl Pin {
 impl fmt::Display for Pin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}@{}", self.project, self.tag)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PinSelect {
+    Latest,
+    Oldest,
+}
+
+impl PinSelect {
+    pub fn pick<'a, I>(self, tags: I) -> Option<&'a TagName>
+    where
+        I: IntoIterator<Item = &'a TagName>,
+    {
+        let iter = tags.into_iter();
+        match self {
+            Self::Latest => iter.min_by(|a, b| version_cmp(a.as_str(), b.as_str())),
+            Self::Oldest => iter.max_by(|a, b| version_cmp(a.as_str(), b.as_str())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PinSpec {
+    Literal {
+        project: ProjectName,
+        tag: TagName,
+    },
+    Pattern {
+        project: ProjectName,
+        #[serde(rename = "tag_pattern")]
+        pattern: TagGlob,
+        select: PinSelect,
+    },
+}
+
+impl PinSpec {
+    pub fn literal(project: ProjectName, tag: TagName) -> Self {
+        Self::Literal { project, tag }
+    }
+
+    pub fn pattern(project: ProjectName, pattern: TagGlob, select: PinSelect) -> Self {
+        Self::Pattern {
+            project,
+            pattern,
+            select,
+        }
+    }
+
+    pub fn project(&self) -> &ProjectName {
+        match self {
+            Self::Literal { project, .. } => project,
+            Self::Pattern { project, .. } => project,
+        }
+    }
+
+    pub fn resolve<M>(&self, store: &SnapshotStore<M>) -> Result<Pin, ConfigError> {
+        match self {
+            Self::Literal { project, tag } => Ok(Pin::new(project.clone(), tag.clone())),
+            Self::Pattern {
+                project,
+                pattern,
+                select,
+            } => {
+                let stored =
+                    store
+                        .list_tags(project)
+                        .map_err(|e| ConfigError::PinPatternStore {
+                            project: project.to_string(),
+                            pattern: pattern.to_string(),
+                            detail: e.to_string(),
+                        })?;
+                let chosen = select
+                    .pick(stored.iter().filter(|t| pattern.matches(t)))
+                    .ok_or_else(|| ConfigError::PinPatternNoMatch {
+                        project: project.to_string(),
+                        pattern: pattern.to_string(),
+                    })?;
+                Ok(Pin::new(project.clone(), chosen.clone()))
+            }
+        }
+    }
+}
+
+/// Resolve a slice of `PinSpec`s into concrete `Pin`s by consulting `store`.
+/// Returns at the first resolution failure.
+pub fn resolve_all<M>(
+    specs: &[PinSpec],
+    store: &SnapshotStore<M>,
+) -> Result<Vec<Pin>, ConfigError> {
+    specs.iter().map(|s| s.resolve(store)).collect()
+}
+
+impl fmt::Display for PinSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal { project, tag } => write!(f, "{project}@{tag}"),
+            Self::Pattern {
+                project,
+                pattern,
+                select,
+            } => {
+                let select_label = match select {
+                    PinSelect::Latest => "latest",
+                    PinSelect::Oldest => "oldest",
+                };
+                write!(f, "{project}@{pattern} ({select_label})")
+            }
+        }
     }
 }

@@ -15,8 +15,8 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::errors::{NameError, SnapshotError};
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
-    TypeName,
+    ApplicationName, Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName,
+    RecordName, TagName, TypeName,
 };
 use crate::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
@@ -106,6 +106,7 @@ impl<'a> Parser<'a> {
         let mut branch: Option<String> = None;
         let mut commit: Option<CommitSha> = None;
         let mut scanned_paths: Vec<String> = Vec::new();
+        let mut apps_scanned: Vec<ApplicationName> = Vec::new();
         let mut generated_by: Option<String> = None;
         let mut generated_at: Option<OffsetDateTime> = None;
         let mut format_version_seen = false;
@@ -161,6 +162,15 @@ impl<'a> Parser<'a> {
                         .filter(|p| !p.is_empty())
                         .collect();
                 }
+                "apps-scanned" => {
+                    apps_scanned = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(ApplicationName::from_str)
+                        .collect::<Result<_, _>>()
+                        .map_err(SnapshotError::Name)?;
+                }
                 "generated-by" => generated_by = Some(value.to_owned()),
                 "generated-at" => {
                     generated_at = Some(OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
@@ -189,6 +199,7 @@ impl<'a> Parser<'a> {
             branch,
             commit: commit.ok_or(SnapshotError::MissingHeaderKey { key: "commit" })?,
             scanned_paths,
+            apps_scanned,
             generated_by: generated_by.ok_or(SnapshotError::MissingHeaderKey {
                 key: "generated-by",
             })?,

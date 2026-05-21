@@ -15,6 +15,7 @@ use crate::errors::NameError;
 const MAX_PROJECT_NAME_LEN: usize = 64;
 const MAX_SERIES_NAME_LEN: usize = 64;
 const MAX_TAG_NAME_LEN: usize = 128;
+const MAX_TAG_GLOB_LEN: usize = 128;
 const MAX_MODULE_NAME_LEN: usize = 256;
 const MAX_FUNCTION_NAME_LEN: usize = 256;
 const MAX_TYPE_NAME_LEN: usize = 256;
@@ -77,6 +78,45 @@ fn validate_simple_name(
                 value: value.to_owned(),
             });
         }
+    }
+    Ok(())
+}
+
+fn validate_tag_glob(value: &str) -> Result<(), NameError> {
+    if value.is_empty() {
+        return Err(NameError::Empty { kind: "tag glob" });
+    }
+    if value.len() > MAX_TAG_GLOB_LEN {
+        return Err(NameError::TooLong {
+            kind: "tag glob",
+            len: value.len(),
+            max: MAX_TAG_GLOB_LEN,
+        });
+    }
+    for ch in value.chars() {
+        if ch.is_ascii_control()
+            || ch.is_whitespace()
+            || ch == '/'
+            || ch == '\\'
+            || ch == '\0'
+            || ch == ':'
+            || ch == '~'
+            || ch == '^'
+            || ch == '['
+        {
+            return Err(NameError::InvalidCharacter {
+                kind: "tag glob",
+                ch,
+                value: value.to_owned(),
+            });
+        }
+    }
+    if value == "." || value == ".." || value.starts_with('.') || value.ends_with('.') {
+        return Err(NameError::PatternMismatch {
+            kind: "tag glob",
+            value: value.to_owned(),
+            pattern: "non-empty, no path separators or git ref-magic",
+        });
     }
     Ok(())
 }
@@ -268,6 +308,44 @@ string_newtype!(SeriesName, "series name", MAX_SERIES_NAME_LEN, |v: &str| {
 });
 
 string_newtype!(TagName, "tag", MAX_TAG_NAME_LEN, validate_tag_name);
+
+string_newtype!(TagGlob, "tag glob", MAX_TAG_GLOB_LEN, validate_tag_glob);
+
+impl TagGlob {
+    /// True if `tag` matches this glob. Supports `*` (zero or more) and `?` (any one).
+    pub fn matches(&self, tag: &TagName) -> bool {
+        glob_match(self.as_str(), tag.as_str())
+    }
+}
+
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let pattern: Vec<char> = pattern.chars().collect();
+    let text: Vec<char> = text.chars().collect();
+    let mut pi = 0usize;
+    let mut ti = 0usize;
+    let mut star_p: Option<usize> = None;
+    let mut star_t: Option<usize> = None;
+    while ti < text.len() {
+        if pi < pattern.len() && (pattern[pi] == '?' || pattern[pi] == text[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < pattern.len() && pattern[pi] == '*' {
+            star_p = Some(pi);
+            star_t = Some(ti);
+            pi += 1;
+        } else if let (Some(sp), Some(st)) = (star_p, star_t) {
+            pi = sp + 1;
+            star_t = Some(st + 1);
+            ti = st + 1;
+        } else {
+            return false;
+        }
+    }
+    while pi < pattern.len() && pattern[pi] == '*' {
+        pi += 1;
+    }
+    pi == pattern.len()
+}
 
 string_newtype!(ModuleName, "module name", MAX_MODULE_NAME_LEN, |v: &str| {
     validate_module_name("module name", v, MAX_MODULE_NAME_LEN)

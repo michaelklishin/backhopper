@@ -12,14 +12,32 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::{ConfigError, NameError};
-use crate::model::names::{ProjectName, SeriesName, TagName};
-use crate::model::pin::Pin;
+use crate::model::names::{ApplicationName, ProjectName, SeriesName, TagGlob, TagName};
+use crate::model::pin::{self, Pin, PinSelect, PinSpec};
+use crate::store::SnapshotStore;
 
 pub const CONFIG_VERSION: u32 = 1;
 
 const DEFAULT_SCAN_PATHS: &[&str] = &["src/**/*.erl", "src/**/*.ex", "include/**/*.hrl"];
 const DEFAULT_SNAPSHOT_DIR: &str = "snapshots";
 const DEFAULT_FALLBACK_BRANCH: &str = "main";
+
+const ERLANG_OTP_APP_ROOTS: &[&str] = &["lib/*", "erts/preloaded"];
+const ERLANG_OTP_EXCLUDE_APPS: &[&str] = &[
+    "odbc",
+    "snmp",
+    "ssh",
+    "tftp",
+    "ftp",
+    "wx",
+    "megaco",
+    "edoc",
+    "jinterface",
+    "diameter",
+];
+const ERLANG_OTP_EXCLUDED_SUBDIRS: &[&str] = &["doc", "example", "examples", "test"];
+const ERLANG_OTP_TAG_PATTERN: &str = "OTP-*";
+const ERLANG_OTP_MIN_TAG: &str = "OTP-26.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -59,6 +77,13 @@ pub struct ProjectRaw {
     pub public_modules: Option<Vec<String>>,
     pub internal_modules: Option<Vec<String>>,
     pub scan_paths: Option<Vec<String>>,
+    pub layout: Option<String>,
+    pub app_roots: Option<Vec<String>>,
+    pub include_apps: Option<Vec<String>>,
+    pub exclude_apps: Option<Vec<String>>,
+    pub excluded_subdirs: Option<Vec<String>>,
+    pub tag_pattern: Option<String>,
+    pub min_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,10 +94,17 @@ pub struct SeriesRaw {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PinRaw {
-    pub project: String,
-    pub tag: String,
+#[serde(untagged, deny_unknown_fields)]
+pub enum PinRaw {
+    Literal {
+        project: String,
+        tag: String,
+    },
+    Pattern {
+        project: String,
+        tag_pattern: String,
+        select: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -104,6 +136,70 @@ impl FromStr for Language {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectLayout {
+    SingleApp,
+    MultiApp,
+    ErlangOtp,
+}
+
+impl ProjectLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleApp => "single_app",
+            Self::MultiApp => "multi_app",
+            Self::ErlangOtp => "erlang_otp",
+        }
+    }
+
+    pub fn defaults(self) -> LayoutDefaults {
+        match self {
+            Self::SingleApp | Self::MultiApp => LayoutDefaults::default(),
+            Self::ErlangOtp => LayoutDefaults {
+                app_roots: ERLANG_OTP_APP_ROOTS
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect(),
+                include_apps: Vec::new(),
+                exclude_apps: ERLANG_OTP_EXCLUDE_APPS
+                    .iter()
+                    .map(|s| ApplicationName::new(*s).expect("static name"))
+                    .collect(),
+                excluded_subdirs: ERLANG_OTP_EXCLUDED_SUBDIRS
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect(),
+                tag_pattern: Some(TagGlob::new(ERLANG_OTP_TAG_PATTERN).expect("static tag glob")),
+                min_tag: Some(TagName::new(ERLANG_OTP_MIN_TAG).expect("static tag")),
+            },
+        }
+    }
+}
+
+impl FromStr for ProjectLayout {
+    type Err = ConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "single_app" => Ok(Self::SingleApp),
+            "multi_app" => Ok(Self::MultiApp),
+            "erlang_otp" => Ok(Self::ErlangOtp),
+            other => Err(ConfigError::UnknownProjectLayout(other.to_owned())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LayoutDefaults {
+    pub app_roots: Vec<String>,
+    pub include_apps: Vec<ApplicationName>,
+    pub exclude_apps: Vec<ApplicationName>,
+    pub excluded_subdirs: Vec<String>,
+    pub tag_pattern: Option<TagGlob>,
+    pub min_tag: Option<TagName>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub name: ProjectName,
@@ -112,13 +208,27 @@ pub struct Project {
     pub tag_prefix: String,
     pub public_modules: Vec<String>,
     pub internal_modules: Vec<String>,
+    pub layout: ProjectLayout,
     pub scan_paths: Vec<String>,
+    pub app_roots: Vec<String>,
+    pub include_apps: Vec<ApplicationName>,
+    pub exclude_apps: Vec<ApplicationName>,
+    pub excluded_subdirs: Vec<String>,
+    pub tag_pattern: Option<TagGlob>,
+    pub min_tag: Option<TagName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Series {
     pub name: SeriesName,
-    pub pins: Vec<Pin>,
+    pub pins: Vec<PinSpec>,
+}
+
+impl Series {
+    /// Resolve every pin spec against `store`, returning concrete `Pin`s.
+    pub fn resolve_pins<M>(&self, store: &SnapshotStore<M>) -> Result<Vec<Pin>, ConfigError> {
+        pin::resolve_all(&self.pins, store)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -160,36 +270,21 @@ impl Config {
         };
         let mut projects = Vec::with_capacity(raw.projects.len());
         for p in raw.projects {
-            let language = p
-                .language
-                .as_deref()
-                .map(Language::from_str)
-                .transpose()?
-                .unwrap_or(Language::Erlang);
-            let scan_paths = p.scan_paths.unwrap_or_else(|| defaults.scan_paths.clone());
-            projects.push(Project {
-                name: ProjectName::new(p.name).map_err(ConfigError::Name)?,
-                git_url: PathBuf::from(p.git_url),
-                language,
-                tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
-                public_modules: p.public_modules.unwrap_or_default(),
-                internal_modules: p.internal_modules.unwrap_or_default(),
-                scan_paths,
-            });
+            projects.push(parse_project(p, &defaults)?);
         }
+        let project_names: BTreeSet<&ProjectName> = projects.iter().map(|p| &p.name).collect();
         let mut series = Vec::with_capacity(raw.series.len());
         for s in raw.series {
             let mut pins = Vec::with_capacity(s.pins.len());
             for pin in s.pins {
-                let project = ProjectName::new(pin.project.clone()).map_err(ConfigError::Name)?;
-                if !projects.iter().any(|p| p.name == project) {
+                let spec = parse_pin(pin)?;
+                if !project_names.contains(spec.project()) {
                     return Err(ConfigError::SeriesPinsUnknownProject {
                         series: s.name.clone(),
-                        project: pin.project,
+                        project: spec.project().to_string(),
                     });
                 }
-                let tag = TagName::new(pin.tag).map_err(ConfigError::Name)?;
-                pins.push(Pin::new(project, tag));
+                pins.push(spec);
             }
             series.push(Series {
                 name: SeriesName::new(s.name).map_err(ConfigError::Name)?,
@@ -218,10 +313,9 @@ impl Config {
             .ok_or_else(|| ConfigError::UnknownSeries(name.to_string()))
     }
 
-    /// Projects configured globally but not pinned by `series`,
-    /// sorted alphabetically.
+    /// Projects configured globally but not pinned by `series`, sorted alphabetically.
     pub fn projects_missing_from_series(&self, series: &Series) -> Vec<ProjectName> {
-        let pinned: BTreeSet<&ProjectName> = series.pins.iter().map(|p| &p.project).collect();
+        let pinned: BTreeSet<&ProjectName> = series.pins.iter().map(|p| p.project()).collect();
         let mut missing: Vec<ProjectName> = self
             .projects
             .iter()
@@ -262,6 +356,102 @@ impl Config {
                 .parent()
                 .map(|p| p.join(dir))
                 .unwrap_or_else(|| dir.clone())
+        }
+    }
+}
+
+fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigError> {
+    let layout = p
+        .layout
+        .as_deref()
+        .map(ProjectLayout::from_str)
+        .transpose()?
+        .unwrap_or(ProjectLayout::SingleApp);
+    let language = p
+        .language
+        .as_deref()
+        .map(Language::from_str)
+        .transpose()?
+        .unwrap_or(Language::Erlang);
+    let layout_defaults = layout.defaults();
+    let scan_paths = p.scan_paths.unwrap_or_else(|| match layout {
+        ProjectLayout::SingleApp => defaults.scan_paths.clone(),
+        ProjectLayout::MultiApp | ProjectLayout::ErlangOtp => Vec::new(),
+    });
+    let app_roots = p
+        .app_roots
+        .unwrap_or_else(|| layout_defaults.app_roots.clone());
+    let include_apps = match p.include_apps {
+        Some(v) => parse_app_names(v)?,
+        None => layout_defaults.include_apps.clone(),
+    };
+    let exclude_apps = match p.exclude_apps {
+        Some(v) => parse_app_names(v)?,
+        None => layout_defaults.exclude_apps.clone(),
+    };
+    let excluded_subdirs = p
+        .excluded_subdirs
+        .unwrap_or_else(|| layout_defaults.excluded_subdirs.clone());
+    let tag_pattern = match p.tag_pattern {
+        Some(s) => Some(TagGlob::new(s).map_err(ConfigError::Name)?),
+        None => layout_defaults.tag_pattern.clone(),
+    };
+    let min_tag = match p.min_tag {
+        Some(s) => Some(TagName::new(s).map_err(ConfigError::Name)?),
+        None => layout_defaults.min_tag.clone(),
+    };
+    let name = ProjectName::new(p.name).map_err(ConfigError::Name)?;
+    if matches!(layout, ProjectLayout::MultiApp | ProjectLayout::ErlangOtp) && app_roots.is_empty()
+    {
+        return Err(ConfigError::LayoutWithoutAppRoots {
+            project: name.to_string(),
+            layout: layout.as_str().to_owned(),
+        });
+    }
+    Ok(Project {
+        name,
+        git_url: PathBuf::from(p.git_url),
+        language,
+        tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
+        public_modules: p.public_modules.unwrap_or_default(),
+        internal_modules: p.internal_modules.unwrap_or_default(),
+        layout,
+        scan_paths,
+        app_roots,
+        include_apps,
+        exclude_apps,
+        excluded_subdirs,
+        tag_pattern,
+        min_tag,
+    })
+}
+
+fn parse_app_names(raw: Vec<String>) -> Result<Vec<ApplicationName>, ConfigError> {
+    raw.into_iter()
+        .map(|s| ApplicationName::new(s).map_err(ConfigError::Name))
+        .collect()
+}
+
+fn parse_pin(pin: PinRaw) -> Result<PinSpec, ConfigError> {
+    match pin {
+        PinRaw::Literal { project, tag } => {
+            let project = ProjectName::new(project).map_err(ConfigError::Name)?;
+            let tag = TagName::new(tag).map_err(ConfigError::Name)?;
+            Ok(PinSpec::literal(project, tag))
+        }
+        PinRaw::Pattern {
+            project,
+            tag_pattern,
+            select,
+        } => {
+            let project = ProjectName::new(project).map_err(ConfigError::Name)?;
+            let pattern = TagGlob::new(tag_pattern).map_err(ConfigError::Name)?;
+            let select = match select.as_str() {
+                "latest" => PinSelect::Latest,
+                "oldest" => PinSelect::Oldest,
+                other => return Err(ConfigError::PinUnknownSelect(other.to_owned())),
+            };
+            Ok(PinSpec::pattern(project, pattern, select))
         }
     }
 }

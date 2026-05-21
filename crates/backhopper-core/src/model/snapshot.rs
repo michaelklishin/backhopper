@@ -17,8 +17,8 @@ use time::OffsetDateTime;
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
-    TypeName,
+    ApplicationName, Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName,
+    RecordName, TagName, TypeName,
 };
 use crate::snapshot::sort::canonicalize;
 
@@ -39,6 +39,10 @@ pub struct SnapshotHeader {
     pub branch: Option<String>,
     pub commit: CommitSha,
     pub scanned_paths: Vec<String>,
+    /// Names of Erlang/OTP applications included in this snapshot. Populated
+    /// for `multi_app` and `erlang_otp` projects: empty for `single_app`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps_scanned: Vec<ApplicationName>,
     pub generated_by: String,
     #[serde(with = "time::serde::rfc3339")]
     pub generated_at: OffsetDateTime,
@@ -216,6 +220,8 @@ impl Snapshot<state::Unsorted> {
     #[must_use]
     pub fn into_canonical(mut self) -> Snapshot<state::Canonical> {
         canonicalize(&mut self.modules, &mut self.headers);
+        self.header.apps_scanned.sort();
+        self.header.apps_scanned.dedup();
         Snapshot {
             header: self.header,
             modules: self.modules,
@@ -288,6 +294,7 @@ impl Default for Snapshot<state::Unsorted> {
                 branch: None,
                 commit: CommitSha::new("0".repeat(40)).expect("valid"),
                 scanned_paths: Vec::new(),
+                apps_scanned: Vec::new(),
                 generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
             },

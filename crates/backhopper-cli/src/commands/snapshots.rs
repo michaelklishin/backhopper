@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -13,11 +14,11 @@ use time::OffsetDateTime;
 
 use backhopper_core::Error as CoreError;
 use backhopper_core::Snapshot;
-use backhopper_core::config::{Config, Language, Project};
+use backhopper_core::config::{Config, Language, Project, ProjectLayout};
 use backhopper_core::git::{GitRepo, version_cmp};
-use std::collections::BTreeMap;
-
-use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{
+    ApplicationName, Mfa, ModuleName, ProjectName, SeriesName, TagName,
+};
 use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
@@ -266,7 +267,7 @@ fn generate_one(
 ) -> CliResult<DiscoverPayload> {
     let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
     let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
-    let tags = filter_tags_since(listing.tags, since);
+    let tags = filter_tags_for_project(listing.tags, p, since);
     let mut captured = 0usize;
     let mut skipped = 0usize;
     let mut failed: Vec<DiscoverFailure> = Vec::new();
@@ -317,6 +318,23 @@ pub fn filter_tags_since(tags: Vec<TagName>, since: Option<&TagName>) -> Vec<Tag
         .collect()
 }
 
+/// Apply project-level tag filters (`tag_pattern`, `min_tag`) plus the CLI
+/// `--since` filter. The CLI filter stacks on top of project-level ones.
+pub fn filter_tags_for_project(
+    tags: Vec<TagName>,
+    project: &Project,
+    since: Option<&TagName>,
+) -> Vec<TagName> {
+    let mut out = tags;
+    if let Some(glob) = &project.tag_pattern {
+        out.retain(|t| glob.matches(t));
+    }
+    if let Some(min) = &project.min_tag {
+        out.retain(|t| version_cmp(t.as_str(), min.as_str()) != Ordering::Greater);
+    }
+    filter_tags_since(out, since)
+}
+
 fn build_snapshot(
     p: &Project,
     repo: &GitRepo,
@@ -325,11 +343,33 @@ fn build_snapshot(
     let commit = repo
         .resolve_tag(tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let scan_paths = p.scan_paths.clone();
-    let blobs = repo
-        .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
-        .map_err(|e| CliError::Core(e.into()))?;
-    let files: Vec<(PathBuf, Vec<u8>)> = blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+    let (files, scanned_paths, apps_scanned) = match p.layout {
+        ProjectLayout::SingleApp => {
+            let scan_paths = p.scan_paths.clone();
+            let blobs = repo
+                .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
+                .map_err(|e| CliError::Core(e.into()))?;
+            let files: Vec<(PathBuf, Vec<u8>)> =
+                blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+            (files, scan_paths, Vec::new())
+        }
+        ProjectLayout::MultiApp | ProjectLayout::ErlangOtp => {
+            let apps_set: RefCell<BTreeSet<ApplicationName>> = RefCell::new(BTreeSet::new());
+            let blobs = repo
+                .read_paths_at_commit(&commit, |path| match multi_app_match(path, p) {
+                    Some(app) => {
+                        apps_set.borrow_mut().insert(app);
+                        true
+                    }
+                    None => false,
+                })
+                .map_err(|e| CliError::Core(e.into()))?;
+            let files: Vec<(PathBuf, Vec<u8>)> =
+                blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
+            let apps: Vec<ApplicationName> = apps_set.into_inner().into_iter().collect();
+            (files, p.app_roots.clone(), apps)
+        }
+    };
     let extracted = match p.language {
         Language::Erlang => {
             let extractor =
@@ -357,13 +397,70 @@ fn build_snapshot(
         tag: tag.clone(),
         branch,
         commit,
-        scanned_paths: scan_paths,
+        scanned_paths,
+        apps_scanned,
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::now_utc(),
     };
     let (modules, headers) = extracted;
     let snapshot = Snapshot::from_extracted(header, modules, headers).into_canonical();
     Ok(snapshot)
+}
+
+/// Decide whether `path` should be included in a `multi_app` or `erlang_otp`
+/// snapshot, and if so, which application owns it. Returns `None` to drop.
+pub fn multi_app_match(path: &str, project: &Project) -> Option<ApplicationName> {
+    if !(path.ends_with(".erl") || path.ends_with(".hrl")) {
+        return None;
+    }
+    let (app, within) = classify_app_path(path, &project.app_roots)?;
+    if project.exclude_apps.iter().any(|a| a == &app) {
+        return None;
+    }
+    if !project.include_apps.is_empty() && !project.include_apps.iter().any(|a| a == &app) {
+        return None;
+    }
+    for sub in &project.excluded_subdirs {
+        if let Some(rest) = within.strip_prefix(sub.as_str())
+            && (rest.is_empty() || rest.starts_with('/'))
+        {
+            return None;
+        }
+    }
+    Some(app)
+}
+
+/// Match `path` against `app_roots` and return `(app_name, path_within_app)`.
+///
+/// Two pattern shapes are supported:
+///  * `<dir>/*`: a wildcard. The path must be `{root}/{app}/{within}`, where
+///    the Erlang app name is `{app}`.
+///  * `<dir>`: a literal directory. The path must be `{root}/{within}`, where
+///    the Erlang app name is the last path segment of `{root}` (e.g.
+///    `erts/preloaded` produces app `preloaded`).
+fn classify_app_path<'a>(
+    path: &'a str,
+    app_roots: &[String],
+) -> Option<(ApplicationName, &'a str)> {
+    for pattern in app_roots {
+        if let Some(stripped_root) = pattern.strip_suffix("/*") {
+            if let Some(after_root) = path.strip_prefix(stripped_root)
+                && let Some(after_sep) = after_root.strip_prefix('/')
+                && let Some(slash) = after_sep.find('/')
+                && let Ok(app) = ApplicationName::new(&after_sep[..slash])
+            {
+                return Some((app, &after_sep[slash + 1..]));
+            }
+        } else if let Some(after_root) = path.strip_prefix(pattern.as_str())
+            && let Some(within) = after_root.strip_prefix('/')
+        {
+            let last = pattern.rsplit('/').next().unwrap_or(pattern);
+            if let Ok(app) = ApplicationName::new(last) {
+                return Some((app, within));
+            }
+        }
+    }
+    None
 }
 
 fn matches_any(path: &str, patterns: &[String]) -> bool {
@@ -920,11 +1017,25 @@ fn diff_cross_series(
         .series_by_name(&to_series)
         .map_err(|e| CliError::Core(e.into()))?;
     let store = open_store_read(args, cfg)?;
-    let to_pins: BTreeMap<&ProjectName, &TagName> =
-        to.pins.iter().map(|p| (&p.project, &p.tag)).collect();
+    let from_resolved = from
+        .resolve_pins(&store)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let to_resolved = to
+        .resolve_pins(&store)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let mut to_by_project: BTreeMap<&ProjectName, VecDeque<&TagName>> = BTreeMap::new();
+    for pin in &to_resolved {
+        to_by_project
+            .entry(&pin.project)
+            .or_default()
+            .push_back(&pin.tag);
+    }
     let mut projects: Vec<DiffPayload> = Vec::new();
-    for pin in &from.pins {
-        let Some(to_tag) = to_pins.get(&pin.project) else {
+    for pin in &from_resolved {
+        let Some(to_tag) = to_by_project
+            .get_mut(&pin.project)
+            .and_then(|q| q.pop_front())
+        else {
             continue;
         };
         let a = store
