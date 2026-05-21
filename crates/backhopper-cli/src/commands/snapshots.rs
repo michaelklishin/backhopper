@@ -318,8 +318,9 @@ pub fn filter_tags_since(tags: Vec<TagName>, since: Option<&TagName>) -> Vec<Tag
         .collect()
 }
 
-/// Apply project-level tag filters (`tag_pattern`, `min_tag`) plus the CLI
-/// `--since` filter. The CLI filter stacks on top of project-level ones.
+/// Apply project-level tag filters (`tag_pattern`, `min_tag`,
+/// `exclude_tag_markers`) plus the CLI `--since` filter. The CLI filter stacks
+/// on top of project-level ones.
 pub fn filter_tags_for_project(
     tags: Vec<TagName>,
     project: &Project,
@@ -331,6 +332,9 @@ pub fn filter_tags_for_project(
     }
     if let Some(min) = &project.min_tag {
         out.retain(|t| version_cmp(t.as_str(), min.as_str()) != Ordering::Greater);
+    }
+    if !project.exclude_tag_markers.is_empty() {
+        out.retain(|t| !project.is_prerelease_tag(t));
     }
     filter_tags_since(out, since)
 }

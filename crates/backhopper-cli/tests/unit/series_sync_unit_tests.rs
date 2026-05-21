@@ -28,6 +28,7 @@ fn project(name: &str, tag_prefix: &str) -> Project {
         excluded_subdirs: Vec::new(),
         tag_pattern: None,
         min_tag: None,
+        exclude_tag_markers: Vec::new(),
     }
 }
 

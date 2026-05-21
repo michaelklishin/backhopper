@@ -39,6 +39,10 @@ const ERLANG_OTP_EXCLUDED_SUBDIRS: &[&str] = &["doc", "example", "examples", "te
 const ERLANG_OTP_TAG_PATTERN: &str = "OTP-*";
 const ERLANG_OTP_MIN_TAG: &str = "OTP-26.0";
 
+/// Substrings that mark a tag as a pre-release. Tags containing any of these
+/// are excluded by default at snapshot-generation time.
+const DEFAULT_EXCLUDE_TAG_MARKERS: &[&str] = &["-rc", "-alpha", "-beta", "-pre"];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigFile {
@@ -84,6 +88,7 @@ pub struct ProjectRaw {
     pub excluded_subdirs: Option<Vec<String>>,
     pub tag_pattern: Option<String>,
     pub min_tag: Option<String>,
+    pub exclude_tag_markers: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,6 +221,16 @@ pub struct Project {
     pub excluded_subdirs: Vec<String>,
     pub tag_pattern: Option<TagGlob>,
     pub min_tag: Option<TagName>,
+    pub exclude_tag_markers: Vec<String>,
+}
+
+impl Project {
+    /// True if `tag` contains any of this project's pre-release markers.
+    pub fn is_prerelease_tag(&self, tag: &TagName) -> bool {
+        self.exclude_tag_markers
+            .iter()
+            .any(|marker| tag.as_str().contains(marker))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,6 +415,12 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         Some(s) => Some(TagName::new(s).map_err(ConfigError::Name)?),
         None => layout_defaults.min_tag.clone(),
     };
+    let exclude_tag_markers = p.exclude_tag_markers.unwrap_or_else(|| {
+        DEFAULT_EXCLUDE_TAG_MARKERS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    });
     let name = ProjectName::new(p.name).map_err(ConfigError::Name)?;
     if matches!(layout, ProjectLayout::MultiApp | ProjectLayout::ErlangOtp) && app_roots.is_empty()
     {
@@ -423,6 +444,7 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         excluded_subdirs,
         tag_pattern,
         min_tag,
+        exclude_tag_markers,
     })
 }
 

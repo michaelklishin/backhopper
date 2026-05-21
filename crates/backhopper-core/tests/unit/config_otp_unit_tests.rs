@@ -283,6 +283,72 @@ fn series_resolve_pins_walks_specs_against_store() {
 }
 
 #[test]
+fn default_exclude_tag_markers_cover_common_prerelease_suffixes() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/r.git"
+"#,
+    )
+    .unwrap();
+    let markers = &cfg.projects[0].exclude_tag_markers;
+    assert!(markers.iter().any(|m| m == "-rc"));
+    assert!(markers.iter().any(|m| m == "-alpha"));
+    assert!(markers.iter().any(|m| m == "-beta"));
+    assert!(markers.iter().any(|m| m == "-pre"));
+}
+
+#[test]
+fn user_can_opt_in_to_prerelease_tags_with_empty_list() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/r.git"
+exclude_tag_markers = []
+"#,
+    )
+    .unwrap();
+    assert!(cfg.projects[0].exclude_tag_markers.is_empty());
+}
+
+#[test]
+fn user_can_extend_prerelease_marker_list() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/r.git"
+exclude_tag_markers = ["-rc", "-nightly"]
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.projects[0].exclude_tag_markers, vec!["-rc", "-nightly"]);
+}
+
+#[test]
+fn is_prerelease_tag_detects_marker_substring() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/r.git"
+"#,
+    )
+    .unwrap();
+    let p = &cfg.projects[0];
+    assert!(p.is_prerelease_tag(&TagName::new("OTP-26.0-rc1").unwrap()));
+    assert!(p.is_prerelease_tag(&TagName::new("v1.0.0-alpha").unwrap()));
+    assert!(!p.is_prerelease_tag(&TagName::new("OTP-26.0").unwrap()));
+    assert!(!p.is_prerelease_tag(&TagName::new("v1.2.3").unwrap()));
+}
+
+#[test]
 fn user_can_narrow_tag_pattern_and_min_tag_on_erlang_otp() {
     let cfg = parse(
         r#"

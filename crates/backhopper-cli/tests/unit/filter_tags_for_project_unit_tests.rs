@@ -25,6 +25,7 @@ fn project_with(tag_pattern: Option<&str>, min_tag: Option<&str>) -> Project {
         excluded_subdirs: Vec::new(),
         tag_pattern: tag_pattern.map(|s| TagGlob::new(s).unwrap()),
         min_tag: min_tag.map(|s| TagName::new(s).unwrap()),
+        exclude_tag_markers: Vec::new(),
     }
 }
 
@@ -90,4 +91,50 @@ fn no_filters_is_identity() {
     let input = tags(&["OTP-26.0", "v1.0", "R16B03"]);
     let out = filter_tags_for_project(input.clone(), &p, None);
     assert_eq!(out, input);
+}
+
+#[test]
+fn exclude_tag_markers_drops_prerelease_tags() {
+    let mut p = project_with(None, None);
+    p.exclude_tag_markers = vec!["-rc".into(), "-alpha".into()];
+    let input = tags(&[
+        "OTP-26.0",
+        "OTP-26.0-rc1",
+        "OTP-26.0-rc2",
+        "OTP-26.0-alpha",
+        "OTP-26.2.5",
+    ]);
+    let out = filter_tags_for_project(input, &p, None);
+    let names: Vec<&str> = out.iter().map(|t| t.as_str()).collect();
+    assert_eq!(names, vec!["OTP-26.0", "OTP-26.2.5"]);
+}
+
+#[test]
+fn empty_exclude_tag_markers_keeps_prerelease_tags() {
+    let mut p = project_with(None, None);
+    p.exclude_tag_markers = Vec::new();
+    let input = tags(&["OTP-26.0", "OTP-26.0-rc1"]);
+    let out = filter_tags_for_project(input, &p, None);
+    let names: Vec<&str> = out.iter().map(|t| t.as_str()).collect();
+    assert_eq!(names, vec!["OTP-26.0", "OTP-26.0-rc1"]);
+}
+
+#[test]
+fn all_four_filters_stack_for_otp_style_config() {
+    let mut p = project_with(Some("OTP-*"), Some("OTP-26.0"));
+    p.exclude_tag_markers = vec!["-rc".into()];
+    let input = tags(&[
+        "OTP-25.0",
+        "OTP-26.0",
+        "OTP-26.0-rc1",
+        "OTP-26.2.5",
+        "OTP-27.0",
+        "OTP-27.0-rc2",
+        "R16B03",
+        "v1.0",
+    ]);
+    let since = TagName::new("OTP-26.2.5").unwrap();
+    let out = filter_tags_for_project(input, &p, Some(&since));
+    let names: Vec<&str> = out.iter().map(|t| t.as_str()).collect();
+    assert_eq!(names, vec!["OTP-26.2.5", "OTP-27.0"]);
 }

@@ -111,6 +111,8 @@ The defaults that snap into place (overridable field by field):
   few library-specific idiosyncracies)
 * `tag_pattern`: `OTP-*`
 * `min_tag`: `OTP-26.0` (the current RabbitMQ-supported OTP floor)
+* `exclude_tag_markers`: `-rc`, `-alpha`, `-beta`, `-pre` (skip pre-release
+  tags; set to `[]` to include them)
 
 A series can pin OTP via a pattern instead of a literal tag, with two
 pins covering the two OTP minors the series supports:

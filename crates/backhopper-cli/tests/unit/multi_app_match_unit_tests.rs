@@ -28,6 +28,7 @@ fn otp_project() -> Project {
         excluded_subdirs: vec!["examples".into(), "test".into()],
         tag_pattern: None,
         min_tag: None,
+        exclude_tag_markers: Vec::new(),
     }
 }
 
