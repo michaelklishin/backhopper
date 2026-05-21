@@ -317,7 +317,16 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
  * No multi-line comment blocks. One short line, above the line it
    describes, when needed at all
  * Comments always sit on their own line *above* the code they document.
-   Never as a trailing `// ...` after the code on the same line
+   Never as a trailing `// ...` after the code on the same line:
+
+   ```rust
+   // Right:
+   // dropped by min_tag
+   "OTP-25.0",
+
+   // Wrong:
+   "OTP-25.0",     // dropped by min_tag
+   ```
  * Use `:` as the sentence connector inside `//` comments, never ` - `
    or ` — `
  * No comments referencing the current task, fix number, or callers
