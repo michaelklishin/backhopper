@@ -172,23 +172,23 @@ fn infer_one(
     })
 }
 
-fn resolve_branch(g: &GitRepo, branch: &str) -> Result<CommitSha, String> {
+pub fn resolve_branch(g: &GitRepo, branch: &str) -> Result<CommitSha, String> {
     let candidates = [
         branch.to_owned(),
-        format!("refs/heads/{}", branch),
-        format!("refs/tags/{}", branch),
+        format!("refs/heads/{branch}"),
+        format!("refs/tags/{branch}"),
     ];
     for spec in candidates {
-        if let Ok(tag_name) = TagName::new(spec.clone()) {
-            if let Ok(sha) = g.resolve_tag(&tag_name) {
-                return Ok(sha);
-            }
+        if let Ok(tag_name) = TagName::new(spec.clone())
+            && let Ok(sha) = g.resolve_tag(&tag_name)
+        {
+            return Ok(sha);
         }
         if let Ok(sha) = g.resolve_rev(&spec) {
             return Ok(sha);
         }
     }
-    Err(format!("could not resolve branch or rev {:?}", branch))
+    Err(format!("could not resolve branch or rev {branch:?}"))
 }
 
 fn canonicalize_pin(pin: &DepPin, tag_prefix: &str) -> String {

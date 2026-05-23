@@ -55,6 +55,55 @@ Prefixes are inferred when unambiguous, so `backhopper sn li` is the same as
 `backhopper snapshots list`.
 
 
+### Getting Started
+
+Three commands take you from an empty directory to something you can
+actually check against:
+
+```shell
+backhopper init                  # write a starter backhopper.toml
+backhopper doctor                # see what's configured and what's missing
+backhopper snapshots generate    # fill in the missing snapshots
+```
+
+`init` drops a `backhopper.toml` next to you with an absolute
+`snapshot_dir` (so it keeps working when you `cd` away later) and a
+commented-out `[[project]]` example to crib from.
+
+`doctor` is the "is everything ready?" view: it lists each series, the
+pin it expects, whether a snapshot is on disk, and, if anything is
+missing, the exact command you'd run to fix it. Pass `--check-remote`
+and it also tells you how many new tags each project has upstream past
+the latest one you've captured.
+
+Once you have a project or two in `backhopper.toml`, the day-to-day
+loop is mostly `backhopper check ...` (covered below) — and when a
+patch references a module you didn't know to track, `--suggest-projects`
+will print a copy-pasteable `[[project]]` stub for it.
+
+If you happen to be working on RabbitMQ, `init` can also seed itself
+from a checkout so you don't have to write `[[series]]` blocks by hand:
+
+```shell
+backhopper init --rabbitmq-repo-dir-path /path/to/rabbitmq-server.git
+```
+
+That walks the current set of supported branches, reads each
+`rabbitmq-components.mk`, and turns the pinned deps into a ready-to-use
+config (with `git_url = "TODO"` placeholders you fill in once).
+
+### Global Flags
+
+A handful of flags apply to every subcommand:
+
+* `--config-file-path PATH` (`-c`, env `BACKHOPPER_CONFIG_FILE_PATH`): path to `backhopper.toml`
+* `--snapshot-dir-path PATH` (`-s`, env `BACKHOPPER_SNAPSHOT_DIR_PATH`): override the snapshot directory from the config
+* `--formatter json|text` (env `BACKHOPPER_FORMATTER`): default `text`
+* `--quiet` (`-q`): drop everything except errors on stderr
+* `--verbose` (`-v`): bump log verbosity. `-v` is info, `-vv` is debug, `-vvv` is trace. `RUST_LOG` wins if set
+* `--non-interactive` (env `BACKHOPPER_NON_INTERACTIVE_MODE`): turn off progress spinners and anything that would otherwise prompt; the CI-friendly default
+* `--table-style modern|ascii|markdown|psql`: pick the look of text-mode tables
+
 ### Configuration
 
 `backhopper` reads a TOML config file. By default it looks for

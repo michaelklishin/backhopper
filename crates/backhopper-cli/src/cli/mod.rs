@@ -15,6 +15,8 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 pub mod bisect;
 pub mod check;
 pub mod config;
+pub mod doctor;
+pub mod init;
 pub mod projects;
 pub mod rabbitmq;
 pub mod series;
@@ -25,8 +27,10 @@ pub mod tree_source;
 pub mod xref;
 
 pub use bisect::BisectCmd;
-pub use check::{CheckCmd, CheckOutputFlags, SourcePinArgs};
+pub use check::{CheckCmd, CheckFlags, SourcePinArgs};
 pub use config::ConfigCmd;
+pub use doctor::DoctorCmd;
+pub use init::InitCmd;
 pub use projects::ProjectsCmd;
 pub use rabbitmq::RabbitmqCmd;
 pub use series::SeriesCmd;
@@ -123,6 +127,10 @@ pub enum Formatter {
 
 #[derive(Debug, Subcommand)]
 pub enum Group {
+    /// Print a single-shot workspace health summary (config + per-series pin coverage).
+    Doctor(DoctorCmd),
+    /// Bootstrap a starter `backhopper.toml` in the current directory (or a chosen path).
+    Init(InitCmd),
     /// Inspect configured projects.
     Projects {
         #[command(subcommand)]

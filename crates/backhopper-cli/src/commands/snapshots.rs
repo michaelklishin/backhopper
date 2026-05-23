@@ -339,7 +339,7 @@ pub fn filter_tags_for_project(
     filter_tags_since(out, since)
 }
 
-fn build_snapshot(
+pub(crate) fn build_snapshot(
     p: &Project,
     repo: &GitRepo,
     tag: &TagName,

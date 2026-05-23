@@ -109,6 +109,87 @@ fn check_patch_advertises_diagnostic_flags() {
     let arg_names: Vec<&str> = patch.get_arguments().map(|a| a.get_id().as_str()).collect();
     assert!(arg_names.contains(&"show_untracked_calls"));
     assert!(arg_names.contains(&"show_otp_calls"));
+    assert!(arg_names.contains(&"suggest_projects"));
+    assert!(arg_names.contains(&"write_suggestions"));
+    assert!(arg_names.contains(&"auto_generate"));
+}
+
+#[test]
+fn top_level_has_doctor_and_init() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let names: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+    assert!(names.contains(&"doctor"), "missing `doctor` subcommand");
+    assert!(names.contains(&"init"), "missing `init` subcommand");
+}
+
+#[test]
+fn doctor_accepts_check_remote_and_series_filter() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let doctor = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "doctor")
+        .unwrap();
+    let args: Vec<&str> = doctor
+        .get_arguments()
+        .map(|a| a.get_id().as_str())
+        .collect();
+    assert!(args.contains(&"check_remote"));
+    assert!(args.contains(&"series"));
+}
+
+#[test]
+fn init_accepts_rabbitmq_and_force() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let init = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "init")
+        .unwrap();
+    let args: Vec<&str> = init.get_arguments().map(|a| a.get_id().as_str()).collect();
+    assert!(args.contains(&"config_dir_path"));
+    // --snapshot-dir-path is the global flag, exposed via clap's `global = true`.
+    assert!(args.contains(&"snapshot_dir_path"));
+    assert!(args.contains(&"rabbitmq_repo_dir_path"));
+    assert!(args.contains(&"rabbitmq_branches"));
+    assert!(args.contains(&"force"));
+}
+
+#[test]
+fn init_global_snapshot_dir_short_flag_is_available() {
+    use clap::Parser;
+    // Regression: a local `--snapshot-dir-path` on `init` would shadow the
+    // global one's `-s` short flag, breaking `backhopper init -s /tmp/...`.
+    let parsed = Cli::try_parse_from([
+        "backhopper",
+        "init",
+        "-s",
+        "/tmp/snaps",
+        "--config-dir-path",
+        "/tmp/cfg",
+    ]);
+    assert!(
+        parsed.is_ok(),
+        "init must accept the global `-s` short flag"
+    );
+}
+
+#[test]
+fn write_suggestions_requires_suggest_projects() {
+    use clap::Parser;
+    let result = Cli::try_parse_from([
+        "backhopper",
+        "check",
+        "patch",
+        "--series",
+        "rabbitmq-4.1",
+        "--write-suggestions",
+    ]);
+    assert!(
+        result.is_err(),
+        "--write-suggestions without --suggest-projects must error"
+    );
 }
 
 #[test]

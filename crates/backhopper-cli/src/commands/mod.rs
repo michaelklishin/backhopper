@@ -4,16 +4,20 @@
 
 //! Command dispatch.
 
+pub mod auto_generate;
 pub mod bisect;
 pub mod check;
 pub mod config;
 pub mod context;
+pub mod doctor;
+pub mod init;
 pub mod projects;
 pub mod rabbitmq;
 pub mod rabbitmq_components;
 pub mod series;
 pub mod shell;
 pub mod snapshots;
+pub mod suggest;
 pub mod suites;
 pub mod tree_source;
 pub mod version;
@@ -24,6 +28,8 @@ use crate::errors::CliResult;
 
 pub fn dispatch(cli: Cli) -> CliResult<i32> {
     match cli.group {
+        Group::Doctor(cmd) => doctor::handle(&cli.global, cmd),
+        Group::Init(cmd) => init::handle(&cli.global, cmd),
         Group::Projects { cmd } => projects::handle(&cli.global, cmd),
         Group::Series { cmd } => series::handle(&cli.global, cmd),
         Group::Snapshots { cmd } => snapshots::handle(&cli.global, cmd),

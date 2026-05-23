@@ -5,7 +5,7 @@
 //! Shared command context: load config, open store.
 
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use backhopper_core::Error as CoreError;
 use backhopper_core::config::Config;
@@ -60,14 +60,36 @@ pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
 
 pub fn open_store_read(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<ReadOnly>> {
     let dir = snapshot_dir(args, cfg);
+    check_snapshot_dir_escape(args, cfg, &dir)?;
     SnapshotStore::open(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
 }
 
 pub fn open_store_mut(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<Mutable>> {
     let dir = snapshot_dir(args, cfg);
+    check_snapshot_dir_escape(args, cfg, &dir)?;
     SnapshotStore::open_mut(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
 }
 
-pub fn snapshot_dir_for_path(p: &Path) -> PathBuf {
-    p.to_path_buf()
+// Trade the store's opaque `path escape` for an actionable absolute-path hint.
+pub fn check_snapshot_dir_escape(args: &GlobalArgs, cfg: &Config, dir: &Path) -> CliResult<()> {
+    if !dir.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Ok(());
+    }
+    let configured = args
+        .snapshot_dir_path
+        .clone()
+        .unwrap_or_else(|| cfg.defaults.snapshot_dir.clone());
+    let root = if args.snapshot_dir_path.is_some() {
+        env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    } else {
+        cfg.config_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    };
+    Err(CliError::SnapshotDirEscape {
+        configured,
+        resolved: dir.to_path_buf(),
+        root,
+    })
 }

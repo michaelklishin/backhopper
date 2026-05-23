@@ -13,6 +13,12 @@ fn main() -> process::ExitCode {
         Ok(code) => process::ExitCode::from(code as u8),
         Err(e) => {
             print_error(format!("backhopper: {e}"));
+            if let Some(detail) = e.detail() {
+                eprintln!("{detail}");
+            }
+            if let Some(hint) = e.hint() {
+                eprintln!("hint: {hint}");
+            }
             process::ExitCode::from(e.exit_code().to_i32() as u8)
         }
     }

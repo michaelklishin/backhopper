@@ -9,7 +9,7 @@ use clap::{Args, Subcommand};
 use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
 
 #[derive(Debug, Args, Clone, Copy, Default)]
-pub struct CheckOutputFlags {
+pub struct CheckFlags {
     #[arg(
         long,
         help = "Print untracked module calls in the text-mode footer (informational, not a verdict input)"
@@ -35,6 +35,22 @@ pub struct CheckOutputFlags {
         help = "Print each tracked call site that contributed to the per-pin `tracked symbols referenced` count"
     )]
     pub explain: bool,
+    #[arg(
+        long,
+        help = "Group untracked calls by inferred project and emit a ready-to-paste `[[project]]` TOML stub for each candidate"
+    )]
+    pub suggest_projects: bool,
+    #[arg(
+        long,
+        requires = "suggest_projects",
+        help = "Append the suggested `[[project]]` stubs to the loaded backhopper.toml (each stub leaves git_url as a TODO marker)"
+    )]
+    pub write_suggestions: bool,
+    #[arg(
+        long,
+        help = "Generate any missing pin snapshots before evaluating, instead of failing with `snapshots missing` (the default)"
+    )]
+    pub auto_generate: bool,
 }
 
 /// Optional source-side pin descriptor. When set, the analyzer diffs
@@ -73,7 +89,7 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
         #[arg(value_name = "PATCH_FILE_PATH")]
         patch_file_path: Option<PathBuf>,
     },
@@ -90,7 +106,7 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
         #[arg(value_name = "COMMIT_SHA")]
         commit: String,
     },
@@ -111,7 +127,7 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
     },
     /// Check a GitHub PR. The diff comes from `gh pr diff`.
     Pr {
@@ -126,7 +142,7 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
         /// PR URL like `https://github.com/owner/repo/pull/123`.
         #[arg(value_name = "PR_URL")]
         pr_url: String,
@@ -143,7 +159,7 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
         #[arg(value_name = "COMMIT_SHA")]
         commit: String,
     },
@@ -163,6 +179,6 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
-        diagnostics: CheckOutputFlags,
+        diagnostics: CheckFlags,
     },
 }

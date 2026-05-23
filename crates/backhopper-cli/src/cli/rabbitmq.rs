@@ -32,12 +32,8 @@ pub enum RabbitmqCmd {
     },
 }
 
-fn default_branches() -> Vec<String> {
-    vec![
-        "main".into(),
-        "v4.3.x".into(),
-        "v4.2.x".into(),
-        "v4.1.x".into(),
-        "v4.0.x".into(),
-    ]
+pub fn default_branches() -> Vec<String> {
+    DEFAULT_BRANCHES.iter().map(|s| (*s).to_owned()).collect()
 }
+
+pub const DEFAULT_BRANCHES: &[&str] = &["main", "v4.3.x", "v4.2.x", "v4.1.x", "v4.0.x"];

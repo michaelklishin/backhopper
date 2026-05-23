@@ -32,8 +32,12 @@ use backhopper_core::model::verdict::{
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
-use crate::cli::{CheckCmd, CheckOutputFlags, Formatter, GlobalArgs, SourcePinArgs};
+use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
+use crate::commands::auto_generate::ensure_pin_snapshots_present;
 use crate::commands::context::{load_config, open_store_read};
+use crate::commands::suggest::{
+    ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
+};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
 use crate::tables::render_evaluation_table;
@@ -44,6 +48,8 @@ struct CompatPayload {
     results: SeriesVerdict,
     #[serde(skip_serializing_if = "Diagnostics::is_empty")]
     diagnostics: Diagnostics,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    project_suggestions: Vec<ProjectSuggestion>,
 }
 
 #[derive(Debug, Serialize)]
@@ -521,7 +527,7 @@ fn run_check_patch(
     repo_dir_path: Option<&Path>,
     source_files: &FileMap,
     source: &SourcePinArgs,
-    diagnostics: CheckOutputFlags,
+    diagnostics: CheckFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let pin_specs: Vec<PinSpec> = match (&project, &tag, &series) {
@@ -539,6 +545,7 @@ fn run_check_patch(
         }
     };
     let pins: Vec<Pin> = resolve_pin_specs(&pin_specs, &store)?;
+    ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
     let source_pins = resolve_source_pins(
         cfg,
         &store,
@@ -572,25 +579,77 @@ fn run_check_patch(
         },
         _ => unreachable!(),
     };
+    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
+    let project_suggestions = if diagnostics.suggest_projects {
+        build_suggestions(&evaluation.diagnostics, &known_projects)
+    } else {
+        Vec::new()
+    };
+    if diagnostics.write_suggestions && !project_suggestions.is_empty() {
+        apply_suggestions_to_config(&cfg.config_path, &project_suggestions)?;
+    }
     let payload = CompatPayload {
         queried_against: queried,
         results: evaluation.verdict.clone(),
         diagnostics: evaluation.diagnostics.clone(),
+        project_suggestions: project_suggestions.clone(),
     };
-    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
     let style = args.table_style;
     render_with_exit(&ctx, &payload, exit, |w| {
-        render_text(w, &evaluation, &known_projects, diagnostics, style)
+        render_text(w, &evaluation, &known_projects, diagnostics, style)?;
+        render_suggestions_text(w, &project_suggestions, diagnostics)?;
+        Ok(())
     })
+}
+
+fn apply_suggestions_to_config(
+    config_path: &Path,
+    suggestions: &[ProjectSuggestion],
+) -> CliResult<()> {
+    let existing = fs::read_to_string(config_path).map_err(CliError::Io)?;
+    let updated =
+        append_suggestions_to_config(&existing, suggestions).map_err(CliError::InvalidInput)?;
+    fs::write(config_path, updated).map_err(CliError::Io)?;
+    // `tracing::info!` honors `--quiet` / `--verbose` levels via the global subscriber.
+    tracing::info!(
+        appended = suggestions.len(),
+        config_path = %config_path.display(),
+        "appended project stubs to config",
+    );
+    Ok(())
+}
+
+fn render_suggestions_text(
+    w: &mut dyn Write,
+    suggestions: &[ProjectSuggestion],
+    flags: CheckFlags,
+) -> CliResult<()> {
+    if !flags.suggest_projects || suggestions.is_empty() || flags.summary_only {
+        return Ok(());
+    }
+    writeln!(w)?;
+    writeln!(
+        w,
+        "Suggested [[project]] stubs (paste into backhopper.toml):"
+    )?;
+    for s in suggestions {
+        writeln!(w)?;
+        render_suggestion(w, s, 5).map_err(CliError::from)?;
+    }
+    if flags.write_suggestions {
+        writeln!(w)?;
+        writeln!(w, "(appended to config; set git_url and rerun)")?;
+    }
+    Ok(())
 }
 
 fn render_text(
     w: &mut dyn Write,
     evaluation: &SeriesEvaluation,
     known_projects: &[ProjectName],
-    flags: CheckOutputFlags,
+    flags: CheckFlags,
     style: TableStyle,
 ) -> CliResult<()> {
     let v = &evaluation.verdict;
@@ -901,7 +960,7 @@ fn run_batch(
     repo: &Path,
     commits_file_path: &Path,
     source: &SourcePinArgs,
-    diagnostics: CheckOutputFlags,
+    diagnostics: CheckFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let commits = read_commits_file(commits_file_path)?;
@@ -916,6 +975,7 @@ fn run_batch(
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
         let pins = resolve_pin_specs(&s.pins, &store)?;
+        ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
         resolved_series.push((name.clone(), pins));
     }
     let queried: Vec<BatchQuery> = resolved_series
@@ -982,7 +1042,7 @@ fn run_multi(
     repo: &Path,
     commit: &str,
     source: &SourcePinArgs,
-    diagnostics: CheckOutputFlags,
+    diagnostics: CheckFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let bytes = commit_patch_bytes(repo, commit)?;
@@ -993,6 +1053,7 @@ fn run_multi(
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
         let pins = resolve_pin_specs(&s.pins, &store)?;
+        ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
         resolved_series.push((name.clone(), pins));
     }
     let queried: Vec<BatchQuery> = resolved_series
@@ -1048,7 +1109,7 @@ fn select_batch_reporter(args: &GlobalArgs) -> Box<dyn ProgressReporter> {
 fn render_batch_text(
     w: &mut dyn Write,
     results: &[BatchResult],
-    flags: CheckOutputFlags,
+    flags: CheckFlags,
 ) -> CliResult<()> {
     if flags.summary_only {
         for r in results {

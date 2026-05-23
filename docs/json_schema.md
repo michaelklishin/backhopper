@@ -61,6 +61,12 @@ A few flags add fields or reasons to `data`:
   `incompatible`
 * `--summary-only` on `check {patch, commit, range, batch}`: affects
   the text formatter only. The JSON payload is unchanged
+* `--suggest-projects` on `check {patch, commit, range, pr}`: adds a
+  `project_suggestions` array to `data`. Each element groups untracked
+  call sites by inferred project prefix
+* `--auto-generate` on every `check` subcommand: missing pin snapshots
+  are written inline; without it, the run fails fast with a
+  `snapshots missing` error and a `--since`-based remediation hint
 
 ## `check` payloads
 
@@ -536,6 +542,66 @@ Array of (or single) series descriptors:
   "version": "0.4.0"
 }
 ```
+
+## `doctor` payload
+
+### `data` for `doctor`
+
+```json
+{
+  "config_path": "/abs/path/to/backhopper.toml",
+  "snapshot_dir": "/abs/path/to/snapshots",
+  "series": [
+    {
+      "name": "rabbitmq-4.1",
+      "pins": [
+        {
+          "project": "ra",
+          "pin": { "kind": "literal", "tag": "v2.16.13" },
+          "resolved_tag": "v2.16.13",
+          "snapshot_present": true,
+          "upstream_tags_ahead": null,
+          "note": null
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "series": 1,
+    "pins": 1,
+    "covered": 1,
+    "missing": 0
+  },
+  "unpinned_projects": []
+}
+```
+
+`pin.kind` is `"literal"` (with `tag`) or `"pattern"` (with `pattern`
+and `select`). `upstream_tags_ahead` is present only when
+`--check-remote` is set. `note` carries the exact remediation command
+when a pin is missing or a pattern matched no snapshot tag.
+
+Exit code: 0 when `totals.missing == 0`, non-zero otherwise.
+
+## `init` payload
+
+### `data` for `init`
+
+```json
+{
+  "wrote": "/abs/path/to/backhopper.toml",
+  "snapshot_dir": "/abs/path/to/snapshots",
+  "projects": ["ra", "khepri"],
+  "series": ["rabbitmq-4.1"],
+  "skipped_branches": [
+    { "branch": "v4.0.x", "reason": "rabbitmq-components.mk absent at v4.0.x" }
+  ]
+}
+```
+
+`projects` and `series` are populated when `--rabbitmq-repo-dir-path`
+is given; otherwise they are empty arrays. `skipped_branches` reports
+every RabbitMQ branch that could not be parsed.
 
 ## Drift-guarded fixtures
 
