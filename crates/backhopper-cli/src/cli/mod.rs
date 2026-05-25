@@ -33,7 +33,7 @@ pub use doctor::DoctorCmd;
 pub use init::InitCmd;
 pub use projects::ProjectsCmd;
 pub use rabbitmq::RabbitmqCmd;
-pub use series::SeriesCmd;
+pub use series::{SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
 pub use snapshots::SnapshotsCmd;
 pub use suites::SuitesCmd;
@@ -88,7 +88,13 @@ pub struct GlobalArgs {
     )]
     pub formatter: Formatter,
 
-    #[arg(long, short = 'q', global = true, conflicts_with = "verbose")]
+    #[arg(
+        long,
+        short = 'q',
+        global = true,
+        conflicts_with = "verbose",
+        help = "Suppress progress output; errors still print to stderr"
+    )]
     pub quiet: bool,
 
     #[arg(

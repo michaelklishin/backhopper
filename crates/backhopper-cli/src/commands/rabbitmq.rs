@@ -15,7 +15,7 @@ use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
 use crate::cli::{GlobalArgs, RabbitmqCmd};
 use crate::commands::context::load_config;
 use crate::commands::rabbitmq_components::{
-    DepPin, DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
+    dep_to_tag, parse_components_mk, series_name_for_branch,
 };
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
@@ -148,7 +148,7 @@ fn infer_one(
         let Ok(project) = cfg.project(&project_name) else {
             continue;
         };
-        let tag_str = canonicalize_pin(&pin, &project.tag_prefix);
+        let tag_str = dep_to_tag(&pin, &project.tag_prefix);
         let Ok(tag) = TagName::new(tag_str.clone()) else {
             skipped.push(SkippedPin {
                 name: pin.name.clone(),
@@ -189,13 +189,6 @@ pub fn resolve_branch(g: &GitRepo, branch: &str) -> Result<CommitSha, String> {
         }
     }
     Err(format!("could not resolve branch or rev {branch:?}"))
-}
-
-fn canonicalize_pin(pin: &DepPin, tag_prefix: &str) -> String {
-    match pin.source {
-        DepSource::Hex => version_to_tag(&pin.version, tag_prefix),
-        DepSource::Git | DepSource::GitRmq => pin.version.clone(),
-    }
 }
 
 fn render_series_toml(w: &mut dyn Write, s: &InferredSeries) -> io::Result<()> {

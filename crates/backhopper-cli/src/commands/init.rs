@@ -17,7 +17,7 @@ use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
 use crate::cli::{GlobalArgs, InitCmd};
 use crate::commands::rabbitmq::resolve_branch;
 use crate::commands::rabbitmq_components::{
-    DepPin, DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
+    DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
 };
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
@@ -147,7 +147,7 @@ fn infer_from_rabbitmq(repo_dir: &Path, branches: &[String]) -> CliResult<Inferr
                         });
                         continue;
                     };
-                    let raw_tag = dep_to_tag_string(&dep, DEFAULT_TAG_PREFIX);
+                    let raw_tag = dep_to_tag(&dep, DEFAULT_TAG_PREFIX);
                     let Ok(tag) = TagName::new(raw_tag.clone()) else {
                         workspace.skipped.push(SkippedBranch {
                             branch: branch.clone(),
@@ -193,13 +193,6 @@ fn read_components_at_branch(repo: &GitRepo, branch: &str) -> Result<Vec<DepPin>
         .ok_or_else(|| format!("{COMPONENTS_MK_PATH} absent at {branch}"))?;
     let text = str::from_utf8(&blob.bytes).map_err(|e| e.to_string())?;
     Ok(parse_components_mk(text))
-}
-
-fn dep_to_tag_string(pin: &DepPin, tag_prefix: &str) -> String {
-    match pin.source {
-        DepSource::Hex => version_to_tag(&pin.version, tag_prefix),
-        DepSource::Git | DepSource::GitRmq => pin.version.clone(),
-    }
 }
 
 pub fn build_toml(snapshot_dir: &Path, w: &InferredWorkspace) -> String {

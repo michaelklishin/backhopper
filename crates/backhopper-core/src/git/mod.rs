@@ -234,13 +234,7 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     let display = path.display();
     let old_text = str::from_utf8(old).unwrap_or("");
     let new_text = str::from_utf8(new).unwrap_or("");
-    let input = imara_diff::InternedInput::new(old_text, new_text);
-    let mut diff = imara_diff::Diff::compute(imara_diff::Algorithm::Histogram, &input);
-    diff.postprocess_lines(&input);
-    let printer = imara_diff::BasicLineDiffPrinter(&input.interner);
-    let body = diff
-        .unified_diff(&printer, imara_diff::UnifiedDiffConfig::default(), &input)
-        .to_string();
+    let body = unified_diff_body(old_text, new_text);
     if body.is_empty() {
         return;
     }
@@ -251,6 +245,17 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     if !body.ends_with('\n') {
         out.push('\n');
     }
+}
+
+/// Unified-diff hunks without any file header lines. Returns an empty
+/// string when `before == after`.
+pub fn unified_diff_body(before: &str, after: &str) -> String {
+    let input = imara_diff::InternedInput::new(before, after);
+    let mut diff = imara_diff::Diff::compute(imara_diff::Algorithm::Histogram, &input);
+    diff.postprocess_lines(&input);
+    let printer = imara_diff::BasicLineDiffPrinter(&input.interner);
+    diff.unified_diff(&printer, imara_diff::UnifiedDiffConfig::default(), &input)
+        .to_string()
 }
 
 pub fn version_cmp(a: &str, b: &str) -> Ordering {

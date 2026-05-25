@@ -6,5 +6,6 @@ mod arg_parsing_proptests;
 mod bel7_cli_proptests;
 mod prerelease_filter_proptests;
 mod rabbitmq_components_proptests;
+mod series_sync_merge_proptests;
 mod snapshots_diff_proptests;
 mod suggest_proptests;

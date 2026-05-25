@@ -126,3 +126,11 @@ pub fn version_to_tag(version: &str, tag_prefix: &str) -> String {
         format!("{tag_prefix}{version}")
     }
 }
+
+/// Hex deps get the project's tag prefix; git deps use the version verbatim.
+pub fn dep_to_tag(pin: &DepPin, tag_prefix: &str) -> String {
+    match pin.source {
+        DepSource::Hex => version_to_tag(&pin.version, tag_prefix),
+        DepSource::Git | DepSource::GitRmq => pin.version.clone(),
+    }
+}

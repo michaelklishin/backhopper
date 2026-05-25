@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use clap::{ArgAction, CommandFactory};
+use clap::{ArgAction, CommandFactory, Parser};
 
 use backhopper_cli::Cli;
 
@@ -189,6 +189,48 @@ fn write_suggestions_requires_suggest_projects() {
     assert!(
         result.is_err(),
         "--write-suggestions without --suggest-projects must error"
+    );
+}
+
+#[test]
+fn series_sync_advertises_preview_diff_merge_replace() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let series = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "series")
+        .expect("series group missing");
+    let sync = series
+        .get_subcommands()
+        .find(|s| s.get_name() == "sync")
+        .expect("series sync subcommand missing");
+    let verbs: Vec<&str> = sync.get_subcommands().map(|s| s.get_name()).collect();
+    for expected in ["preview", "diff", "merge", "replace"] {
+        assert!(
+            verbs.contains(&expected),
+            "missing series sync verb: {expected}; got {verbs:?}"
+        );
+    }
+}
+
+#[test]
+fn series_sync_replace_rejects_overwrite_existing() {
+    let r = Cli::try_parse_from([
+        "backhopper",
+        "series",
+        "sync",
+        "replace",
+        "--from-branch",
+        "main",
+        "--repo-dir-path",
+        "/tmp",
+        "--series-name",
+        "x",
+        "--overwrite-existing",
+    ]);
+    assert!(
+        r.is_err(),
+        "replace must not accept --overwrite-existing (merge-only flag)"
     );
 }
 

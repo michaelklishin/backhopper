@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use backhopper_cli::commands::rabbitmq_components::{
-    DepSource, parse_components_mk, series_name_for_branch, version_to_tag,
+    DepPin, DepSource, dep_to_tag, parse_components_mk, series_name_for_branch, version_to_tag,
 };
 
 const SAMPLE: &str = r#"
@@ -79,4 +79,33 @@ fn version_to_tag_applies_prefix_only_when_missing() {
 fn skips_dep_x_commit_overrides() {
     let pins = parse_components_mk("dep_ra_commit = abcdef1234\n");
     assert!(pins.is_empty());
+}
+
+#[test]
+fn dep_to_tag_uses_prefix_for_hex_and_verbatim_for_git() {
+    let hex = DepPin {
+        name: "ra".into(),
+        source: DepSource::Hex,
+        version: "2.16.7".into(),
+    };
+    assert_eq!(dep_to_tag(&hex, "v"), "v2.16.7");
+    assert_eq!(dep_to_tag(&hex, ""), "2.16.7");
+
+    let git = DepPin {
+        name: "osiris".into(),
+        source: DepSource::Git,
+        version: "v1.10.3".into(),
+    };
+    assert_eq!(
+        dep_to_tag(&git, "v"),
+        "v1.10.3",
+        "git deps use the literal version regardless of prefix"
+    );
+
+    let git_rmq = DepPin {
+        name: "cowboy".into(),
+        source: DepSource::GitRmq,
+        version: "2.13.0".into(),
+    };
+    assert_eq!(dep_to_tag(&git_rmq, "v"), "2.13.0");
 }
