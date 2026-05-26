@@ -8,4 +8,5 @@ mod prerelease_filter_proptests;
 mod rabbitmq_components_proptests;
 mod series_sync_merge_proptests;
 mod snapshots_diff_proptests;
+mod snapshots_introduced_proptests;
 mod suggest_proptests;

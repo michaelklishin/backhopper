@@ -60,20 +60,29 @@ pub enum SnapshotsCmd {
         #[arg(long, help = "Plan only; do not write to disk")]
         dry_run: bool,
     },
-    /// Look up one or more MFAs against a snapshot.
+    /// Look up one or more MFAs against a single snapshot.
     Lookup {
         #[arg(long)]
         project: ProjectName,
-        #[arg(long, conflicts_with = "all_tags")]
-        tag: Option<TagName>,
+        #[arg(long)]
+        tag: TagName,
         #[arg(long, action = clap::ArgAction::Append, required = true)]
         mfa: Vec<Mfa>,
         #[arg(long)]
         include_hidden: bool,
-        /// Walk every stored tag for the project and report the first
-        /// and last tag at which each MFA exists.
+    },
+    /// Report the first and last tag at which each MFA appears, with the
+    /// snapshot-anchored commit SHA at each endpoint.
+    Introduced {
         #[arg(long)]
-        all_tags: bool,
+        project: ProjectName,
+        #[arg(long, action = clap::ArgAction::Append, required = true)]
+        mfa: Vec<Mfa>,
+        #[arg(long)]
+        include_hidden: bool,
+        /// Emit a per-tag presence row for every stored tag, not just the endpoints.
+        #[arg(long)]
+        timeline: bool,
     },
     /// List modules a snapshot covers.
     Modules {

@@ -84,7 +84,7 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
     let build_system = BuildSystem::detect(&args.repo_dir_path);
     let library_apps = resolve_library_apps(&args, &discovery.specs);
     let input = PlanInput {
-        repo_root: args.repo_dir_path.clone(),
+        repo_root: args.repo_dir_path,
         modified_paths,
         apps: discovery.specs,
         library_apps,

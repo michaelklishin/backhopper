@@ -5,6 +5,7 @@
 //! `XrefBuilder`: collects modules and produces an [`Xref`](crate::xref::Xref).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem;
 use std::path::PathBuf;
 
 use backhopper_core::{ApplicationName, Mfa, ModuleName};
@@ -113,7 +114,7 @@ impl XrefBuilder {
             };
             graph.insert_module(name.clone(), summary);
         }
-        for (_, data) in std::mem::take(&mut modules) {
+        for (_, data) in mem::take(&mut modules) {
             let module = data.module;
             for (sig, loc) in data.definitions {
                 let mfa = Mfa::new(module.clone(), sig.name, sig.arity);

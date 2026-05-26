@@ -21,7 +21,7 @@ mod snapshot_dir_escape_unit_tests;
 mod snapshots_diff_cross_series_unit_tests;
 mod snapshots_diff_unit_tests;
 mod snapshots_generate_since_unit_tests;
-mod snapshots_lookup_all_tags_unit_tests;
+mod snapshots_introduced_unit_tests;
 mod snapshots_verify_all_unit_tests;
 mod suggest_unit_tests;
 mod tables_unit_tests;

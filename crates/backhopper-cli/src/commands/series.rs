@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Write as _};
 use std::fs;
 use std::io::{self, Write};
+use std::str;
 
 use serde::Serialize;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value, value};
@@ -203,7 +204,7 @@ fn build_payload(cfg: &Config, common: &SyncCommon) -> CliResult<SyncOutput> {
             common.from_branch,
         )));
     };
-    let text = std::str::from_utf8(&blob.bytes).map_err(|e| {
+    let text = str::from_utf8(&blob.bytes).map_err(|e| {
         CliError::InvalidInput(format!(
             "{COMPONENTS_MK_PATH} at {} is not UTF-8: {e}",
             common.from_branch,

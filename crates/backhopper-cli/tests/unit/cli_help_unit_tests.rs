@@ -158,7 +158,6 @@ fn init_accepts_rabbitmq_and_force() {
 
 #[test]
 fn init_global_snapshot_dir_short_flag_is_available() {
-    use clap::Parser;
     // Regression: a local `--snapshot-dir-path` on `init` would shadow the
     // global one's `-s` short flag, breaking `backhopper init -s /tmp/...`.
     let parsed = Cli::try_parse_from([
@@ -177,7 +176,6 @@ fn init_global_snapshot_dir_short_flag_is_available() {
 
 #[test]
 fn write_suggestions_requires_suggest_projects() {
-    use clap::Parser;
     let result = Cli::try_parse_from([
         "backhopper",
         "check",
@@ -232,6 +230,56 @@ fn series_sync_replace_rejects_overwrite_existing() {
         r.is_err(),
         "replace must not accept --overwrite-existing (merge-only flag)"
     );
+}
+
+#[test]
+fn snapshots_advertises_introduced_verb() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let snapshots = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "snapshots")
+        .expect("snapshots group missing");
+    let verbs: Vec<&str> = snapshots.get_subcommands().map(|s| s.get_name()).collect();
+    assert!(
+        verbs.contains(&"introduced"),
+        "missing snapshots verb: introduced; got {verbs:?}"
+    );
+}
+
+#[test]
+fn snapshots_lookup_no_longer_accepts_all_tags_flag() {
+    let r = Cli::try_parse_from([
+        "backhopper",
+        "snapshots",
+        "lookup",
+        "--project",
+        "ra",
+        "--all-tags",
+        "--mfa",
+        "ra_machine:apply/4",
+    ]);
+    assert!(r.is_err(), "--all-tags must be gone");
+}
+
+#[test]
+fn snapshots_lookup_requires_tag() {
+    let r = Cli::try_parse_from([
+        "backhopper",
+        "snapshots",
+        "lookup",
+        "--project",
+        "ra",
+        "--mfa",
+        "ra_machine:apply/4",
+    ]);
+    assert!(r.is_err(), "--tag is now required");
+}
+
+#[test]
+fn snapshots_introduced_requires_at_least_one_mfa() {
+    let r = Cli::try_parse_from(["backhopper", "snapshots", "introduced", "--project", "ra"]);
+    assert!(r.is_err(), "--mfa is required");
 }
 
 #[test]

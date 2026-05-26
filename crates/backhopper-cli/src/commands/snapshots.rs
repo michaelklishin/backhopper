@@ -17,7 +17,7 @@ use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project, ProjectLayout};
 use backhopper_core::git::{GitRepo, version_cmp};
 use backhopper_core::model::names::{
-    ApplicationName, Mfa, ModuleName, ProjectName, SeriesName, TagName,
+    ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, SeriesName, TagName,
 };
 use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
 use backhopper_core::snapshot::format;
@@ -153,8 +153,13 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             tag,
             mfa,
             include_hidden,
-            all_tags,
-        } => lookup(args, &cfg, project, tag, mfa, include_hidden, all_tags),
+        } => lookup(args, &cfg, project, tag, mfa, include_hidden),
+        SnapshotsCmd::Introduced {
+            project,
+            mfa,
+            include_hidden,
+            timeline,
+        } => introduced(args, &cfg, project, mfa, include_hidden, timeline),
         SnapshotsCmd::Modules {
             project,
             tag,
@@ -710,35 +715,14 @@ fn rebuild(
     Ok(0)
 }
 
-#[derive(Debug, Serialize)]
-pub struct LookupAllTagsRow {
-    pub mfa: String,
-    pub first_tag: Option<String>,
-    pub last_tag: Option<String>,
-    pub tags_present: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct LookupAllTagsPayload {
-    project: String,
-    rows: Vec<LookupAllTagsRow>,
-}
-
 fn lookup(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
-    tag: Option<TagName>,
+    tag: TagName,
     mfas: Vec<Mfa>,
     include_hidden: bool,
-    all_tags: bool,
 ) -> CliResult<i32> {
-    if all_tags {
-        return lookup_all_tags(args, cfg, project, mfas, include_hidden);
-    }
-    let tag = tag.ok_or_else(|| {
-        CliError::InvalidInput("--tag is required unless --all-tags is set".into())
-    })?;
     let store = open_store_read(args, cfg)?;
     let snapshot = store
         .read(&project, &tag)
@@ -786,93 +770,198 @@ fn lookup(
     })
 }
 
-fn lookup_all_tags(
+#[derive(Debug, Clone)]
+pub struct TagSnapshot {
+    pub tag: TagName,
+    pub commit: CommitSha,
+    pub presence: Vec<bool>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct TimelineEntry {
+    pub tag: TagName,
+    pub commit: CommitSha,
+    pub present: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct IntroducedRow {
+    pub mfa: String,
+    pub first_tag: Option<TagName>,
+    pub first_commit: Option<CommitSha>,
+    pub last_tag: Option<TagName>,
+    pub last_commit: Option<CommitSha>,
+    pub tags_present: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeline: Option<Vec<TimelineEntry>>,
+}
+
+#[derive(Debug, Serialize)]
+struct IntroducedPayload {
+    project: String,
+    rows: Vec<IntroducedRow>,
+}
+
+fn introduced(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
     mfas: Vec<Mfa>,
     include_hidden: bool,
+    timeline: bool,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
+    let walk = walk_project_snapshots(&store, &project, &mfas, include_hidden)?;
+    let rows = compute_introduced_rows(&walk, &mfas, timeline);
+    let exit = if rows.iter().all(|r| r.tags_present > 0) {
+        0
+    } else {
+        1
+    };
+    let payload = IntroducedPayload {
+        project: project.to_string(),
+        rows,
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots introduced");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        render_introduced_text(&payload, w)
+    })
+}
+
+pub fn walk_project_snapshots<M>(
+    store: &SnapshotStore<M>,
+    project: &ProjectName,
+    mfas: &[Mfa],
+    include_hidden: bool,
+) -> CliResult<Vec<TagSnapshot>> {
     let mut tags = store
-        .list_tags(&project)
+        .list_tags(project)
         .map_err(|e| CliError::Core(e.into()))?;
     if tags.is_empty() {
         return Err(CliError::InvalidInput(format!(
             "no snapshots on disk for project {project}"
         )));
     }
-    // list_tags is lexicographic: re-sort by version_cmp so iteration is oldest-first.
+    // `version_cmp` ranks newer versions first: swap arguments so iteration is oldest-first.
     tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
-    // parse each snapshot once and check every MFA against it in the same pass.
-    let mut firsts: Vec<Option<String>> = vec![None; mfas.len()];
-    let mut lasts: Vec<Option<String>> = vec![None; mfas.len()];
-    let mut counts: Vec<usize> = vec![0; mfas.len()];
-    for tag in &tags {
+    let mut out = Vec::with_capacity(tags.len());
+    for tag in tags {
         let snapshot = store
-            .read(&project, tag)
+            .read(project, &tag)
             .map_err(|e| CliError::Core(e.into()))?;
-        for (i, mfa) in mfas.iter().enumerate() {
-            let module = snapshot.module_named(&mfa.module);
-            let allowed = match module {
-                Some(m) => include_hidden || matches!(m.visibility, Visibility::Public),
-                None => true,
-            };
-            let target = FunArity {
-                name: mfa.function.clone(),
-                arity: mfa.arity,
-            };
-            let present =
-                allowed && module.is_some_and(|m| m.exports.binary_search(&target).is_ok());
-            if present {
-                if firsts[i].is_none() {
-                    firsts[i] = Some(tag.to_string());
+        let commit = snapshot.header().commit.clone();
+        let presence: Vec<bool> = mfas
+            .iter()
+            .map(|mfa| mfa_present_in(&snapshot, mfa, include_hidden))
+            .collect();
+        out.push(TagSnapshot {
+            tag,
+            commit,
+            presence,
+        });
+    }
+    Ok(out)
+}
+
+fn mfa_present_in(snapshot: &Snapshot<state::Canonical>, mfa: &Mfa, include_hidden: bool) -> bool {
+    let Some(module) = snapshot.module_named(&mfa.module) else {
+        return false;
+    };
+    if !include_hidden && !matches!(module.visibility, Visibility::Public) {
+        return false;
+    }
+    let target = FunArity {
+        name: mfa.function.clone(),
+        arity: mfa.arity,
+    };
+    module.exports.binary_search(&target).is_ok()
+}
+
+pub fn compute_introduced_rows(
+    walk: &[TagSnapshot],
+    mfas: &[Mfa],
+    timeline: bool,
+) -> Vec<IntroducedRow> {
+    mfas.iter()
+        .enumerate()
+        .map(|(i, mfa)| {
+            let mut first_idx: Option<usize> = None;
+            let mut last_idx: Option<usize> = None;
+            let mut count = 0_usize;
+            for (idx, ts) in walk.iter().enumerate() {
+                if ts.presence[i] {
+                    first_idx.get_or_insert(idx);
+                    last_idx = Some(idx);
+                    count += 1;
                 }
-                lasts[i] = Some(tag.to_string());
-                counts[i] += 1;
+            }
+            let endpoint = |idx: usize| (walk[idx].tag.clone(), walk[idx].commit.clone());
+            let (first_tag, first_commit) = first_idx.map(endpoint).unzip();
+            let (last_tag, last_commit) = last_idx.map(endpoint).unzip();
+            let timeline = timeline.then(|| {
+                walk.iter()
+                    .map(|ts| TimelineEntry {
+                        tag: ts.tag.clone(),
+                        commit: ts.commit.clone(),
+                        present: ts.presence[i],
+                    })
+                    .collect()
+            });
+            IntroducedRow {
+                mfa: mfa.to_string(),
+                first_tag,
+                first_commit,
+                last_tag,
+                last_commit,
+                tags_present: count,
+                timeline,
+            }
+        })
+        .collect()
+}
+
+fn render_introduced_text(payload: &IntroducedPayload, w: &mut dyn Write) -> CliResult<()> {
+    for row in &payload.rows {
+        match (&row.first_tag, &row.last_tag) {
+            (Some(f), Some(l)) if f == l => writeln!(
+                w,
+                "{}\tpresent only at {} ({})",
+                row.mfa,
+                f,
+                short_sha(row.first_commit.as_ref())
+            )?,
+            (Some(f), Some(l)) => writeln!(
+                w,
+                "{}\tfirst {} ({})\tlast {} ({})\tpresent in {} tags",
+                row.mfa,
+                f,
+                short_sha(row.first_commit.as_ref()),
+                l,
+                short_sha(row.last_commit.as_ref()),
+                row.tags_present,
+            )?,
+            _ => writeln!(w, "{}\tnot present in any stored snapshot", row.mfa)?,
+        }
+        if let Some(entries) = &row.timeline {
+            for entry in entries {
+                writeln!(
+                    w,
+                    "  {}\t{}\t{}",
+                    entry.tag,
+                    short_sha(Some(&entry.commit)),
+                    if entry.present { "+" } else { "-" },
+                )?;
             }
         }
     }
-    let rows: Vec<LookupAllTagsRow> = mfas
-        .iter()
-        .enumerate()
-        .map(|(i, mfa)| LookupAllTagsRow {
-            mfa: mfa.to_string(),
-            first_tag: firsts[i].clone(),
-            last_tag: lasts[i].clone(),
-            tags_present: counts[i],
-        })
-        .collect();
-    let exit = if rows.iter().all(|r| r.tags_present > 0) {
-        0
-    } else {
-        1
-    };
-    let payload = LookupAllTagsPayload {
-        project: project.to_string(),
-        rows,
-    };
-    let ctx = OutputContext::new(args.formatter, "snapshots lookup");
-    render_with_exit(&ctx, &payload, exit, |w| {
-        for r in &payload.rows {
-            match (&r.first_tag, &r.last_tag) {
-                (Some(f), Some(l)) if f == l => {
-                    writeln!(w, "{}\tpresent at {} only", r.mfa, f)?;
-                }
-                (Some(f), Some(l)) => {
-                    writeln!(
-                        w,
-                        "{}\tpresent {}..{}\t({} tags)",
-                        r.mfa, f, l, r.tags_present
-                    )?;
-                }
-                _ => {
-                    writeln!(w, "{}\tnot present in any stored snapshot", r.mfa)?;
-                }
-            }
-        }
-        Ok(())
-    })
+    Ok(())
+}
+
+fn short_sha(sha: Option<&CommitSha>) -> &str {
+    match sha {
+        Some(s) => &s.as_str()[..7.min(s.as_str().len())],
+        None => "-",
+    }
 }
 
 fn modules(
