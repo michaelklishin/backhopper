@@ -475,7 +475,7 @@ fn read_pins(table: &Table) -> Vec<PinPayload> {
         return Vec::new();
     };
     let mut out = Vec::new();
-    for value in pins.iter() {
+    for value in pins {
         let Some(inline) = value.as_inline_table() else {
             continue;
         };

@@ -119,7 +119,7 @@ pub fn append_suggestions_to_config(
 fn collect_existing_project_names(doc: &DocumentMut) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     if let Some(arr) = doc.get("project").and_then(Item::as_array_of_tables) {
-        for table in arr.iter() {
+        for table in arr {
             if let Some(name) = table.get("name").and_then(|v| v.as_str()) {
                 out.insert(name.to_owned());
             }
