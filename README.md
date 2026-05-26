@@ -249,12 +249,14 @@ backhopper snapshots diff --from-series stable-3.x --to-series stable-4.x
 ### Finding When a Symbol Appeared and Disappeared
 
 ```shell
-backhopper snapshots lookup --project lib_a --all-tags \
-                            --mfa lib_a:some_function/1
+backhopper snapshots introduced --project lib_a \
+                                --mfa lib_a:some_function/1
 ```
 
 Walks every stored tag and reports the first and last tag at which each
-MFA was present.
+MFA was present, with the commit SHA from each endpoint snapshot. Pass
+`--timeline` to print one row per tag (present or absent), which makes
+gaps visible when a symbol was removed and then re-added later.
 
 
 ### Checking a Patch Against a Series

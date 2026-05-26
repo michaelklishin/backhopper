@@ -9,6 +9,7 @@
 //!  * adding a never-present MFA never disturbs another MFA's row
 
 use std::iter;
+use std::slice;
 
 use proptest::prelude::*;
 
@@ -124,7 +125,7 @@ proptest! {
         let mfa_a: Mfa = "a:one/0".parse().unwrap();
         let mfa_b: Mfa = "b:absent/0".parse().unwrap();
 
-        let single = compute_introduced_rows(&walk_single, &[mfa_a.clone()], false);
+        let single = compute_introduced_rows(&walk_single, slice::from_ref(&mfa_a), false);
         let both = compute_introduced_rows(&walk_both, &[mfa_a, mfa_b], false);
 
         prop_assert_eq!(single[0].first_tag.clone(), both[0].first_tag.clone());

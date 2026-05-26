@@ -283,6 +283,36 @@ fn snapshots_introduced_requires_at_least_one_mfa() {
 }
 
 #[test]
+fn bisect_group_has_commit_verb_with_required_args() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let bisect = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "bisect")
+        .expect("bisect group missing");
+    let commit_sub = bisect
+        .get_subcommands()
+        .find(|s| s.get_name() == "commit")
+        .expect("bisect commit subcommand missing");
+    let arg_names: Vec<&str> = commit_sub
+        .get_arguments()
+        .map(|a| a.get_id().as_str())
+        .collect();
+    for required in ["project", "repo_dir_path", "commit"] {
+        assert!(
+            arg_names.contains(&required),
+            "bisect commit missing arg {required}; got {arg_names:?}"
+        );
+    }
+}
+
+#[test]
+fn bisect_commit_rejects_missing_required_flags() {
+    let r = Cli::try_parse_from(["backhopper", "bisect", "commit"]);
+    assert!(r.is_err(), "bisect commit must require its args");
+}
+
+#[test]
 fn verbose_flag_is_counted() {
     let mut cmd = Cli::command();
     cmd.build();

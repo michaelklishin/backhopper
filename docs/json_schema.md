@@ -265,6 +265,28 @@ Array of per-project entries:
 }
 ```
 
+### `data` for `snapshots introduced`
+
+```json
+{
+  "project": "ra",
+  "rows": [
+    {
+      "mfa": "ra_machine:apply/4",
+      "first_tag": "v2.1.0",
+      "first_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "last_tag": "v2.18.4",
+      "last_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tags_present": 14
+    }
+  ]
+}
+```
+
+When `--timeline` is set, each row gains a `timeline` array of `{tag, commit, present}`
+entries, one per stored tag in version order. `exit_code` is `1` when any MFA has
+`tags_present == 0`.
+
 ### `data` for `snapshots show`
 
 The full `Snapshot<Canonical>` value, including `header`, `modules`,
@@ -534,12 +556,97 @@ Array of (or single) series descriptors:
 }
 ```
 
+### `data` for `series sync preview`, `series sync replace`
+
+```json
+{
+  "name": "rabbitmq-4.2",
+  "pins": [
+    { "project": "ra",     "tag": "v2.16.7" },
+    { "project": "seshat", "tag": "v1.0.1"  }
+  ],
+  "dropped_unconfigured": []
+}
+```
+
+`preview` prints the inferred stanza without writing; `replace`
+clobbers the named `[[series]]` block in the loaded config file.
+`dropped_unconfigured` lists deps from `rabbitmq-components.mk`
+that have no matching `[[project]]`.
+
+### `data` for `series sync merge`
+
+```json
+{
+  "series": "rabbitmq-4.2",
+  "outcome": {
+    "added":               [{ "project": "seshat", "tag": "v1.0.1" }],
+    "updated":             [],
+    "skipped_conflicts":   [
+      { "project": "ra", "existing_tag": "v2.16.0", "inferred_tag": "v2.16.7" }
+    ],
+    "skipped_non_literal": [],
+    "unchanged":           [],
+    "preserved":           [{ "project": "khepri", "tag": "v0.15.0" }]
+  },
+  "dropped_unconfigured": [],
+  "config_path": "/abs/path/to/backhopper.toml"
+}
+```
+
+`skipped_conflicts` lists pins whose inferred tag differs from the
+existing one; pass `--overwrite-existing` to move them to `updated`.
+`skipped_non_literal` lists projects that are pattern-pinned in the
+existing config; `merge` leaves those alone. `preserved` lists pins
+that exist in the config but not in the inferred set.
+
+### `data` for `series sync diff`
+
+```json
+{
+  "series": "rabbitmq-4.2",
+  "mode": "merge",
+  "diff": "--- a/backhopper.toml\n+++ b/backhopper.toml\n@@ ... @@\n+    { project = \"seshat\", tag = \"v1.0.1\" },\n",
+  "outcome": { "...": "same shape as `series sync merge`, omitted when mode = replace" },
+  "dropped_unconfigured": []
+}
+```
+
+`mode` is `"merge"` (default) or `"replace"` (when `--replace` is set).
+`diff` is the unified diff between the loaded config and the proposed
+update; an empty string means no change.
+
+## `bisect` payload
+
+### `data` for `bisect commit`
+
+```json
+{
+  "project": "ra",
+  "commit":  "1a2b3c4d",
+  "rows": [
+    { "tag": "v2.16.0", "verdict": "compatible" },
+    { "tag": "v2.16.1", "verdict": "compatible" },
+    { "tag": "v2.17.0", "verdict": "requires_adaptation" },
+    { "tag": "v2.18.0", "verdict": "incompatible" }
+  ],
+  "last_compatible_tag":           "v2.16.1",
+  "first_incompatible_tag":        "v2.18.0",
+  "first_requires_adaptation_tag": "v2.17.0"
+}
+```
+
+Rows are ordered oldest-first by version. `verdict` is one of
+`compatible`, `requires_adaptation`, or `incompatible`. Endpoint
+fields are `null` when no tag of that class exists. Exit code is `1`
+when `first_incompatible_tag` is present, `0` otherwise.
+
 ## `version`
 
 ```json
 {
   "name": "backhopper",
-  "version": "0.4.0"
+  "version": "0.5.0"
 }
 ```
 

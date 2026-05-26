@@ -7,7 +7,7 @@
 //! This is the consumer-facing façade. Build an [`Xref`] with
 //! [`XrefBuilder`], then run [predefined analyses](analysis) (undefined-call
 //! detection, dead-export detection, behaviour conformance, reverse
-//! traversal, cycle detection, and [`XrefDiff`](diff::XrefDiff) across
+//! traversal, cycle detection, and [`XrefDiff`] across
 //! two tags).
 //!
 //! The test-suite-selection adapter [`suites`] consumes the graph to

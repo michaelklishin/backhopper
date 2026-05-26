@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! `XrefBuilder`: collects modules and produces an [`Xref`](crate::xref::Xref).
+//! `XrefBuilder`: collects modules and produces an [`Xref`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem;

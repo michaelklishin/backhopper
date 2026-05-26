@@ -828,7 +828,7 @@ fn introduced(
     })
 }
 
-pub fn walk_project_snapshots<M>(
+fn walk_project_snapshots<M>(
     store: &SnapshotStore<M>,
     project: &ProjectName,
     mfas: &[Mfa],
