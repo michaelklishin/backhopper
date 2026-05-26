@@ -72,8 +72,10 @@ proptest! {
         let cfg = config_with(&existing);
         let payload = SyncOutput {
             name: "rabbitmq-x".into(),
+            branch: None,
             pins: inferred,
             dropped_unconfigured: Vec::new(),
+            skipped: Vec::new(),
         };
         let (once, _) = merge_sync_into_config_text(&cfg, &payload, false).unwrap();
         let (twice, second_outcome) = merge_sync_into_config_text(&once, &payload, false).unwrap();
@@ -92,8 +94,10 @@ proptest! {
         let cfg = config_with(&existing);
         let payload = SyncOutput {
             name: "rabbitmq-x".into(),
+            branch: None,
             pins: inferred,
             dropped_unconfigured: Vec::new(),
+            skipped: Vec::new(),
         };
         let (out, _) = merge_sync_into_config_text(&cfg, &payload, false).unwrap();
         for pin in &existing {

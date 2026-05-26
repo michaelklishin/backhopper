@@ -270,3 +270,204 @@ fn sync_overwrite_existing_requires_merge() {
     let assert = run(&cfg, repo.dir.path(), "replace", &["--overwrite-existing"]);
     assert.failure();
 }
+
+fn run_preview(cfg: &Path, repo_dir: &Path, extra: &[&str]) -> assert_cmd::assert::Assert {
+    let mut args: Vec<&str> = vec![
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "series",
+        "sync",
+        "preview",
+        "--repo-dir-path",
+        repo_dir.to_str().unwrap(),
+        "--formatter",
+        "text",
+    ];
+    args.extend_from_slice(extra);
+    Command::cargo_bin("backhopper")
+        .unwrap()
+        .args(&args)
+        .assert()
+}
+
+#[test]
+fn preview_without_series_name_derives_from_branch() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(&cfg, repo.dir.path(), &["--from-branch", "main"]);
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        stdout.contains("name = \"rabbitmq-main\""),
+        "derived name: {stdout}"
+    );
+    assert!(stdout.contains("# inferred from main"), "{stdout}");
+}
+
+#[test]
+fn preview_with_explicit_series_name_overrides_derivation() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(
+        &cfg,
+        repo.dir.path(),
+        &["--from-branch", "main", "--series-name", "custom-name"],
+    );
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("name = \"custom-name\""), "{stdout}");
+}
+
+#[test]
+fn preview_with_branches_list_emits_one_stanza_per_branch() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(&cfg, repo.dir.path(), &["--branches", "main,main"]);
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let header_count = stdout.matches("[[series]]").count();
+    assert_eq!(header_count, 2, "two stanzas: {stdout}");
+}
+
+#[test]
+fn preview_with_show_skipped_surfaces_invalid_project_names() {
+    let work = TempDir::new().unwrap();
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "rabbitmq-components.mk",
+        "dep_ra = hex 2.16.7\ndep_3bad = hex 1.0.0\n",
+    );
+    repo.commit("v1");
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(
+        &cfg,
+        repo.dir.path(),
+        &["--from-branch", "main", "--show-skipped"],
+    );
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("# skipped 3bad:"), "{stdout}");
+}
+
+#[test]
+fn preview_without_show_skipped_keeps_skipped_lines_hidden() {
+    let work = TempDir::new().unwrap();
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "rabbitmq-components.mk",
+        "dep_ra = hex 2.16.7\ndep_3bad = hex 1.0.0\n",
+    );
+    repo.commit("v1");
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(&cfg, repo.dir.path(), &["--from-branch", "main"]);
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(!stdout.contains("# skipped"), "{stdout}");
+}
+
+#[test]
+fn preview_rejects_series_name_combined_with_multi_branch() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(
+        &cfg,
+        repo.dir.path(),
+        &["--branches", "main", "--series-name", "rabbitmq-x"],
+    );
+    assert.failure();
+}
+
+#[test]
+fn preview_requires_a_branch_source() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "series",
+            "sync",
+            "preview",
+            "--repo-dir-path",
+            repo.dir.path().to_str().unwrap(),
+        ])
+        .assert();
+    assert.failure();
+}
+
+#[test]
+fn preview_multi_branch_skips_branches_that_lack_components_mk() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(
+        &cfg,
+        repo.dir.path(),
+        &["--branches", "main,nope-does-not-exist", "--show-skipped"],
+    );
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(
+        stdout.matches("[[series]]").count(),
+        1,
+        "only the resolvable branch produces a stanza: {stdout}"
+    );
+    assert!(
+        stderr.contains("warning: skipping branch nope-does-not-exist"),
+        "stderr surfaces the skipped branch: {stderr}",
+    );
+}
+
+#[test]
+fn preview_single_branch_failure_is_a_hard_error() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = run_preview(
+        &cfg,
+        repo.dir.path(),
+        &["--from-branch", "nope-does-not-exist"],
+    );
+    assert.failure();
+}
+
+#[test]
+fn preview_json_envelope_wraps_series_list() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), &snap, EXISTING_BLOCK);
+    let assert = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "--formatter",
+            "json",
+            "series",
+            "sync",
+            "preview",
+            "--repo-dir-path",
+            repo.dir.path().to_str().unwrap(),
+            "--branches",
+            "main",
+        ])
+        .assert();
+    let out = assert.success().get_output().clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    assert_eq!(v["command"], "series sync preview");
+    let data = &v["data"];
+    let series = data["series"].as_array().expect("series array");
+    assert_eq!(series.len(), 1);
+    assert_eq!(series[0]["name"], "rabbitmq-main");
+    assert_eq!(series[0]["branch"], "main");
+}

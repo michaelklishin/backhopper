@@ -25,7 +25,7 @@ pub struct InitCmd {
 
     /// Branches to scan in the RabbitMQ checkout. Comma-separated, defaults
     /// to the current supported set.
-    #[arg(long, value_delimiter = ',', default_values_t = crate::cli::rabbitmq::default_branches())]
+    #[arg(long, value_delimiter = ',', default_values_t = crate::cli::series::default_branches())]
     pub rabbitmq_branches: Vec<String>,
 
     /// Overwrite an existing `backhopper.toml`. Without this flag, an

@@ -1,0 +1,16 @@
+%% Sample Cuttlefish schema with two translations and one mapping.
+
+{translation,
+ "rabbitmq_auth_backend_oauth2.https.cacertfile",
+ fun(Conf) ->
+     rabbit_cuttlefish:optionally_tagged_string("rabbitmq_auth_backend_oauth2.https.cacertfile", Conf)
+ end}.
+
+{mapping, "rabbitmq_auth_backend_oauth2.preferred_username_claims",
+  "rabbitmq_auth_backend_oauth2.preferred_username_claims",
+  [{datatype, {list, string}}]}.
+
+{validator, "tagged-binary", "must be {encrypted, Bin} or a binary",
+ fun(V) ->
+     rabbit_cuttlefish:is_tagged_binary(V)
+ end}.

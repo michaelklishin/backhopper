@@ -499,27 +499,6 @@ Entries are sorted by `suite`. Each entry carries one or more
 | `cross_app_caller` | `library_application`, `module` |
 | `configured_rule` | `rule_name`, `triggering_path` |
 
-## `rabbitmq` payloads
-
-### `data` for `rabbitmq infer_series`
-
-```json
-{
-  "series": [
-    {
-      "name": "rabbitmq-4.1",
-      "pins": [
-        { "project": "ra", "tag": "v2.16.13" },
-        { "project": "khepri", "tag": "v0.16.0" }
-      ]
-    }
-  ]
-}
-```
-
-Inferred from a RabbitMQ checkout's `rabbitmq-components.mk` plus the
-project list in the workspace config.
-
 ## `projects` and `series` payloads
 
 ### `data` for `projects list`
@@ -556,22 +535,47 @@ Array of (or single) series descriptors:
 }
 ```
 
-### `data` for `series sync preview`, `series sync replace`
+### `data` for `series sync preview`
+
+```json
+{
+  "series": [
+    {
+      "name": "rabbitmq-4.2",
+      "branch": "v4.2.x",
+      "pins": [
+        { "project": "ra",     "tag": "v2.16.7" },
+        { "project": "seshat", "tag": "v1.0.1"  }
+      ],
+      "dropped_unconfigured": [],
+      "skipped": []
+    }
+  ]
+}
+```
+
+Single-branch and multi-branch invocations share the same envelope.
+`branch` is set when the stanza was inferred from a specific branch.
+`skipped` lists deps whose name or computed tag failed validation; the
+text formatter only prints them when `--show-skipped` is set.
+
+### `data` for `series sync replace`
 
 ```json
 {
   "name": "rabbitmq-4.2",
+  "branch": "v4.2.x",
   "pins": [
     { "project": "ra",     "tag": "v2.16.7" },
     { "project": "seshat", "tag": "v1.0.1"  }
   ],
-  "dropped_unconfigured": []
+  "dropped_unconfigured": [],
+  "skipped": []
 }
 ```
 
-`preview` prints the inferred stanza without writing; `replace`
-clobbers the named `[[series]]` block in the loaded config file.
-`dropped_unconfigured` lists deps from `rabbitmq-components.mk`
+`replace` clobbers the named `[[series]]` block in the loaded config
+file. `dropped_unconfigured` lists deps from `rabbitmq-components.mk`
 that have no matching `[[project]]`.
 
 ### `data` for `series sync merge`

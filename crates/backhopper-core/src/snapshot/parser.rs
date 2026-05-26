@@ -109,6 +109,7 @@ impl<'a> Parser<'a> {
         let mut apps_scanned: Vec<ApplicationName> = Vec::new();
         let mut generated_by: Option<String> = None;
         let mut generated_at: Option<OffsetDateTime> = None;
+        let mut extractor_version: String = String::new();
         let mut format_version_seen = false;
         loop {
             let Some((lineno, line)) = self.peek() else {
@@ -172,6 +173,7 @@ impl<'a> Parser<'a> {
                         .map_err(SnapshotError::Name)?;
                 }
                 "generated-by" => generated_by = Some(value.to_owned()),
+                "extractor-version" => value.clone_into(&mut extractor_version),
                 "generated-at" => {
                     generated_at = Some(OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
                         SnapshotError::MalformedHeader {
@@ -206,6 +208,7 @@ impl<'a> Parser<'a> {
             generated_at: generated_at.ok_or(SnapshotError::MissingHeaderKey {
                 key: "generated-at",
             })?,
+            extractor_version,
         })
     }
 

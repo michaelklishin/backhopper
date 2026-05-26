@@ -19,6 +19,7 @@ use backhopper_xref_reader::AstSuiteMatcher;
 
 use crate::cli::suites::SuitesPlanArgs;
 use crate::cli::{GlobalArgs, SuitesCmd};
+use crate::commands::context::load_config;
 use crate::commands::tree_source::build_xref;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
@@ -83,12 +84,15 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
     }
     let build_system = BuildSystem::detect(&args.repo_dir_path);
     let library_apps = resolve_library_apps(&args, &discovery.specs);
+    let extra_rules = load_config(global)
+        .map(|cfg| cfg.suite_rules)
+        .unwrap_or_default();
     let input = PlanInput {
         repo_root: args.repo_dir_path,
         modified_paths,
         apps: discovery.specs,
         library_apps,
-        extra_rules: vec![],
+        extra_rules,
     };
     let mut matcher = AstSuiteMatcher::new();
     let result = plan_with_matcher(&input, &mut matcher);

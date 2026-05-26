@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ApplicationName, ProjectName};
 
 use backhopper_cli::commands::snapshots::multi_app_match;
@@ -12,7 +12,8 @@ use backhopper_cli::commands::snapshots::multi_app_match;
 fn otp_project() -> Project {
     Project {
         name: ProjectName::new("otp").unwrap(),
-        git_url: PathBuf::from("/tmp/otp.git"),
+        git_url: Some(PathBuf::from("/tmp/otp.git")),
+        kind: ProjectKind::External,
         language: Language::Erlang,
         tag_prefix: "v".into(),
         public_modules: Vec::new(),

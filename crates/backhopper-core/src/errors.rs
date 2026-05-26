@@ -165,8 +165,40 @@ pub enum ConfigError {
     #[error("unknown project layout {0:?}: expected single_app, multi_app, or erlang_otp")]
     UnknownProjectLayout(String),
 
+    #[error("unknown project kind {0:?}: expected external or self")]
+    UnknownProjectKind(String),
+
+    #[error("project {0:?} has kind=\"self\" but also specifies git_url; remove one")]
+    SelfProjectHasGitUrl(String),
+
+    #[error("project {0:?} requires git_url (external kind, the default)")]
+    ExternalProjectMissingGitUrl(String),
+
+    #[error("config defines more than one project with kind=\"self\": {projects:?}")]
+    MultipleSelfProjects { projects: Vec<String> },
+
+    #[error("self-project pin {project} @ {git_ref} requires `--repo-dir-path` for resolution")]
+    SelfPinNeedsRepoDirPath { project: String, git_ref: String },
+
+    #[error(
+        "series pins {project} as a self-pin (branch/sha form) but {project} is configured as kind=\"external\""
+    )]
+    SelfPinReferencesExternalProject { project: String },
+
+    #[error("self-project {0:?} has no git_url; operations needing one must use `--repo-dir-path`")]
+    SelfProjectHasNoGitUrl(String),
+
     #[error("project {project:?} has layout {layout:?} but no `app_roots` defaulted or set")]
     LayoutWithoutAppRoots { project: String, layout: String },
+
+    #[error("suite_rule[{rule_index}]: invalid regex: {detail}")]
+    SuiteRuleRegex { rule_index: usize, detail: String },
+
+    #[error("suite_rule[{rule_index}]: template references unknown capture group {placeholder:?}")]
+    SuiteRuleUnknownPlaceholder {
+        rule_index: usize,
+        placeholder: String,
+    },
 
     #[error("name error: {0}")]
     Name(#[from] NameError),

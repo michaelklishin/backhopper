@@ -61,6 +61,8 @@ fn suggest_projects_emits_a_toml_stub_for_inferred_project() {
         .args([
             "--config-file-path",
             cfg.to_str().unwrap(),
+            "--formatter",
+            "text",
             "check",
             "patch",
             "--project",
@@ -134,6 +136,8 @@ fn summary_only_overrides_suggest_projects() {
         .args([
             "--config-file-path",
             cfg.to_str().unwrap(),
+            "--formatter",
+            "text",
             "check",
             "patch",
             "--project",

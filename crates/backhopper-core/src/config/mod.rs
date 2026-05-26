@@ -4,17 +4,19 @@
 
 //! `backhopper.toml` schema and loader.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::errors::{ConfigError, NameError};
-use crate::model::names::{ApplicationName, ProjectName, SeriesName, TagGlob, TagName};
+use crate::model::names::{ApplicationName, GitRef, ProjectName, SeriesName, TagGlob, TagName};
 use crate::model::pin::{self, Pin, PinSelect, PinSpec};
 use crate::store::SnapshotStore;
+use crate::suites::rules::validate_template_placeholders;
+use crate::suites::{ExtraRule, ExtraRuleTrigger};
 
 pub const CONFIG_VERSION: u32 = 1;
 
@@ -57,6 +59,41 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "series")]
     pub series: Vec<SeriesRaw>,
+
+    #[serde(default, rename = "suite_rule")]
+    pub suite_rules: Vec<SuiteRuleRaw>,
+}
+
+/// TOML form of a path-pattern suite rule. Accepts `include_suite` as a
+/// single string or a list of strings; both end up in
+/// `ExtraRule::include_suite_templates`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SuiteRuleRaw {
+    pub name: Option<String>,
+    pub when_modified_path_matches: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+    pub include_suite: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+    pub also: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StringOrVec {
+    One(String),
+    Many(Vec<String>),
+}
+
+fn deserialize_string_or_vec<'de, D>(d: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<StringOrVec>::deserialize(d).map(|opt| match opt {
+        None => Vec::new(),
+        Some(StringOrVec::One(s)) => vec![s],
+        Some(StringOrVec::Many(v)) => v,
+    })
 }
 
 fn default_config_version() -> u32 {
@@ -75,7 +112,8 @@ pub struct DefaultsRaw {
 #[serde(deny_unknown_fields)]
 pub struct ProjectRaw {
     pub name: String,
-    pub git_url: String,
+    pub git_url: Option<String>,
+    pub kind: Option<String>,
     pub language: Option<String>,
     pub tag_prefix: Option<String>,
     pub public_modules: Option<Vec<String>>,
@@ -90,6 +128,37 @@ pub struct ProjectRaw {
     #[serde(alias = "oldest_tag")]
     pub min_tag: Option<String>,
     pub exclude_tag_markers: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectKind {
+    /// Snapshots come from cloning `git_url` and walking its tags. The default.
+    External,
+    /// Snapshots are produced from the working repo at `--repo-dir-path`, at
+    /// a `git_ref` resolved per pin. There can be at most one self-project.
+    SelfRepo,
+}
+
+impl ProjectKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::External => "external",
+            Self::SelfRepo => "self",
+        }
+    }
+}
+
+impl FromStr for ProjectKind {
+    type Err = ConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "external" => Ok(Self::External),
+            "self" => Ok(Self::SelfRepo),
+            other => Err(ConfigError::UnknownProjectKind(other.to_owned())),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +179,14 @@ pub enum PinRaw {
         project: String,
         tag_pattern: String,
         select: String,
+    },
+    SelfBranch {
+        project: String,
+        branch: String,
+    },
+    SelfSha {
+        project: String,
+        sha: String,
     },
 }
 
@@ -209,7 +286,9 @@ pub struct LayoutDefaults {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub name: ProjectName,
-    pub git_url: PathBuf,
+    /// `None` for self-projects; the repo is the runtime `--repo-dir-path`.
+    pub git_url: Option<PathBuf>,
+    pub kind: ProjectKind,
     pub language: Language,
     pub tag_prefix: String,
     pub public_modules: Vec<String>,
@@ -232,6 +311,18 @@ impl Project {
             .iter()
             .any(|marker| tag.as_str().contains(marker))
     }
+
+    /// `git_url` is only present for external projects. Returns a clear
+    /// error when callers ask for it on a self-project.
+    pub fn require_git_url(&self) -> Result<&Path, ConfigError> {
+        self.git_url
+            .as_deref()
+            .ok_or_else(|| ConfigError::SelfProjectHasNoGitUrl(self.name.to_string()))
+    }
+
+    pub fn is_self(&self) -> bool {
+        matches!(self.kind, ProjectKind::SelfRepo)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -253,6 +344,7 @@ pub struct Config {
     pub defaults: Defaults,
     pub projects: Vec<Project>,
     pub series: Vec<Series>,
+    pub suite_rules: Vec<ExtraRule>,
 }
 
 impl Config {
@@ -288,15 +380,31 @@ impl Config {
         for p in raw.projects {
             projects.push(parse_project(p, &defaults)?);
         }
-        let project_names: BTreeSet<&ProjectName> = projects.iter().map(|p| &p.name).collect();
+        let self_projects: Vec<String> = projects
+            .iter()
+            .filter(|p| p.kind == ProjectKind::SelfRepo)
+            .map(|p| p.name.to_string())
+            .collect();
+        if self_projects.len() > 1 {
+            return Err(ConfigError::MultipleSelfProjects {
+                projects: self_projects,
+            });
+        }
+        let project_kinds: BTreeMap<&ProjectName, ProjectKind> =
+            projects.iter().map(|p| (&p.name, p.kind)).collect();
         let mut series = Vec::with_capacity(raw.series.len());
         for s in raw.series {
             let mut pins = Vec::with_capacity(s.pins.len());
             for pin in s.pins {
                 let spec = parse_pin(pin)?;
-                if !project_names.contains(spec.project()) {
+                let Some(kind) = project_kinds.get(spec.project()).copied() else {
                     return Err(ConfigError::SeriesPinsUnknownProject {
                         series: s.name.clone(),
+                        project: spec.project().to_string(),
+                    });
+                };
+                if spec.is_self() && kind != ProjectKind::SelfRepo {
+                    return Err(ConfigError::SelfPinReferencesExternalProject {
                         project: spec.project().to_string(),
                     });
                 }
@@ -307,11 +415,16 @@ impl Config {
                 pins,
             });
         }
+        let mut suite_rules = Vec::with_capacity(raw.suite_rules.len());
+        for (idx, r) in raw.suite_rules.into_iter().enumerate() {
+            suite_rules.push(parse_suite_rule(idx, r)?);
+        }
         Ok(Self {
             config_path,
             defaults,
             projects,
             series,
+            suite_rules,
         })
     }
 
@@ -376,6 +489,40 @@ impl Config {
     }
 }
 
+fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigError> {
+    let pattern = raw.when_modified_path_matches;
+    let compiled = regex::Regex::new(&pattern).map_err(|e| ConfigError::SuiteRuleRegex {
+        rule_index: idx,
+        detail: e.to_string(),
+    })?;
+    let capture_names: Vec<String> = compiled
+        .capture_names()
+        .flatten()
+        .map(|s| s.to_owned())
+        .collect();
+    let mut templates: Vec<String> = Vec::new();
+    templates.extend(raw.include_suite);
+    templates.extend(raw.also);
+    for t in &templates {
+        if let Err(e) = validate_template_placeholders(t, &capture_names) {
+            return Err(ConfigError::SuiteRuleUnknownPlaceholder {
+                rule_index: idx,
+                placeholder: e.placeholder,
+            });
+        }
+    }
+    let name = raw.name.unwrap_or_else(|| format!("suite_rule_{idx}"));
+    Ok(ExtraRule {
+        name,
+        trigger: ExtraRuleTrigger::PathRegex {
+            pattern,
+            captures: capture_names,
+        },
+        include_suites: Vec::new(),
+        include_suite_templates: templates,
+    })
+}
+
 fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigError> {
     let layout = p
         .layout
@@ -430,9 +577,26 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
             layout: layout.as_str().to_owned(),
         });
     }
+    let kind = p
+        .kind
+        .as_deref()
+        .map(ProjectKind::from_str)
+        .transpose()?
+        .unwrap_or(ProjectKind::External);
+    let git_url = match (kind, p.git_url) {
+        (ProjectKind::External, Some(g)) => Some(PathBuf::from(g)),
+        (ProjectKind::External, None) => {
+            return Err(ConfigError::ExternalProjectMissingGitUrl(name.to_string()));
+        }
+        (ProjectKind::SelfRepo, None) => None,
+        (ProjectKind::SelfRepo, Some(_)) => {
+            return Err(ConfigError::SelfProjectHasGitUrl(name.to_string()));
+        }
+    };
     Ok(Project {
         name,
-        git_url: PathBuf::from(p.git_url),
+        git_url,
+        kind,
         language,
         tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
         public_modules: p.public_modules.unwrap_or_default(),
@@ -457,6 +621,16 @@ fn parse_app_names(raw: Vec<String>) -> Result<Vec<ApplicationName>, ConfigError
 
 fn parse_pin(pin: PinRaw) -> Result<PinSpec, ConfigError> {
     match pin {
+        PinRaw::SelfBranch { project, branch } => {
+            let project = ProjectName::new(project).map_err(ConfigError::Name)?;
+            let git_ref = GitRef::new(branch).map_err(ConfigError::Name)?;
+            Ok(PinSpec::SelfRef { project, git_ref })
+        }
+        PinRaw::SelfSha { project, sha } => {
+            let project = ProjectName::new(project).map_err(ConfigError::Name)?;
+            let git_ref = GitRef::new(sha).map_err(ConfigError::Name)?;
+            Ok(PinSpec::SelfRef { project, git_ref })
+        }
         PinRaw::Literal { project, tag } => {
             let project = ProjectName::new(project).map_err(ConfigError::Name)?;
             let tag = TagName::new(tag).map_err(ConfigError::Name)?;

@@ -15,10 +15,10 @@ use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
 
 use crate::cli::{GlobalArgs, InitCmd};
-use crate::commands::rabbitmq::resolve_branch;
 use crate::commands::rabbitmq_components::{
     DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
 };
+use crate::commands::series::resolve_branch;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
 

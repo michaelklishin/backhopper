@@ -33,6 +33,15 @@ Young project, breaking changes are likely.
 Binary releases are available [on the Releases page](https://github.com/michaelklishin/backhopper/releases).
 
 
+## Build from Source
+
+```shell
+cargo install --path crates/backhopper-cli
+```
+
+The workspace's binary target is named `backhopper` and installs into `~/.cargo/bin`.
+
+
 ## Usage
 
 ### Getting Help
@@ -98,7 +107,7 @@ A handful of flags apply to every subcommand:
 
 * `--config-file-path PATH` (`-c`, env `BACKHOPPER_CONFIG_FILE_PATH`): path to `backhopper.toml`
 * `--snapshot-dir-path PATH` (`-s`, env `BACKHOPPER_SNAPSHOT_DIR_PATH`): override the snapshot directory from the config
-* `--formatter json|text` (env `BACKHOPPER_FORMATTER`): default `text`
+* `--formatter json|text` (env `BACKHOPPER_FORMATTER`): default `json`
 * `--quiet` (`-q`): drop everything except errors on stderr
 * `--verbose` (`-v`): bump log verbosity. `-v` is info, `-vv` is debug, `-vvv` is trace. `RUST_LOG` wins if set
 * `--non-interactive` (env `BACKHOPPER_NON_INTERACTIVE_MODE`): turn off progress spinners and anything that would otherwise prompt; the CI-friendly default
@@ -106,9 +115,12 @@ A handful of flags apply to every subcommand:
 
 ### Configuration
 
-`backhopper` reads a TOML config file. By default it looks for
-`backhopper.toml` in the current directory; override the path with `-c`
-or the `BACKHOPPER_CONFIG_FILE_PATH` environment variable.
+`backhopper` reads a TOML config file. With no `-c`, it walks up from
+the current directory looking for `.backhopper.toml` then
+`backhopper.toml` at each level, stopping at the first `.git` boundary.
+Falls back to `$XDG_CONFIG_HOME/backhopper/backhopper.toml`. Override
+the path with `-c` or the `BACKHOPPER_CONFIG_FILE_PATH` environment
+variable.
 
 Each dependency is a "project". Each release line is a named "series"
 that pins one tag per project. Example:
@@ -351,6 +363,31 @@ count is the trust signal: `backhopper` actually checked that many
 call sites against the pinned tag.
 
 
+### Verdicts and Exit Codes
+
+Every per-pin verdict is one of four values; the process exit code is
+the worst across the series:
+
+| Verdict | Exit | Meaning |
+|---|---:|---|
+| `Compatible` | `0` | The patch's tracked references all resolve at the pinned tag |
+| `RequiresAdaptation` | `3` | Non-blocking findings: deprecated usage, context drift, unsupported file types |
+| `Incompatible` | `2` | Blocking findings: missing symbol, arity change, hidden module, missing prereq |
+| `Inapplicable` | `4` | The diff touched no analyzable Erlang surface at this pin (docs-only, schema-only, test-only) |
+
+`Inapplicable` is distinct from `Compatible (0 tracked symbols referenced)`:
+the latter says "we checked and found nothing of yours referenced", the
+former says "there was nothing to check". Agents and scripts can branch
+on the exit code to route to a different verification step.
+
+`--terse` produces one JSON line for shell consumption:
+
+```shell
+backhopper check commit --series stable-3.x --terse 1a2b3c4d
+# {"summary":"compatible","pins":2,"scope":"source","exit":0}
+```
+
+
 ### Explaining a Non-Zero Count
 
 The verdict table reports metrics suc has `tracked symbols referenced: N` but not
@@ -413,10 +450,11 @@ to include them.
 
 ### JSON Output
 
-Every command accepts `--formatter json`:
+`--formatter json` is the default. Pass `--formatter text` (or set
+`BACKHOPPER_FORMATTER=text`) for the human-readable table renderer:
 
 ```shell
-backhopper --formatter json check commit \
+backhopper --formatter text check commit \
     --series stable-3.x \
     --repo-dir-path /path/to/your_repo.git \
     1a2b3c4d
@@ -427,12 +465,23 @@ Diagnostics live under `data.diagnostics`, kept separate from
 verdicts.
 
 
+## Snapshot Staleness in CI
+
+`backhopper snapshots verify --all` is the canonical CI gate. It re-parses
+every stored snapshot, reports `verified: N, failed: M, stale_extractor: K`,
+and exits non-zero on any parse failure. A non-zero `stale_extractor` count
+signals snapshots written by an older extractor than the running binary; rerun
+`backhopper snapshots rebuild --project <X> --tag <Y>` for each entry.
+
+
 ## Subprojects
 
  * `crates/backhopper-core` is the library: model types, snapshot I/O,
    store, `gix`-based git access, and the compatibility analyzer
  * `crates/backhopper-erlang` is the Erlang source surface extractor
  * `crates/backhopper-elixir` is the Elixir source surface extractor
+ * `crates/backhopper-cuttlefish` parses Cuttlefish `.schema` files and
+   feeds the embedded Erlang fun bodies through the Erlang extractor
  * `crates/backhopper-xref-graph` provides the call-graph primitives
    (vertices, relations, set algebra, transitive closure)
  * `crates/backhopper-xref-reader` turns Erlang source into call-graph

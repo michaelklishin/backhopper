@@ -8,6 +8,12 @@ use clap::{Args, Subcommand};
 
 use backhopper_core::model::names::SeriesName;
 
+pub const DEFAULT_BRANCHES: &[&str] = &["main", "v4.3.x", "v4.2.x", "v4.1.x", "v4.0.x"];
+
+pub fn default_branches() -> Vec<String> {
+    DEFAULT_BRANCHES.iter().map(|s| (*s).to_owned()).collect()
+}
+
 #[derive(Debug, Subcommand)]
 pub enum SeriesCmd {
     /// List configured series.
@@ -29,17 +35,44 @@ pub struct SyncCommon {
     pub from_branch: String,
     #[arg(long)]
     pub repo_dir_path: PathBuf,
+    /// Defaults to a name derived from `--from-branch` (`main` -> `rabbitmq-main`,
+    /// `v4.2.x` -> `rabbitmq-4.2`, etc.).
     #[arg(long)]
-    pub series_name: SeriesName,
+    pub series_name: Option<SeriesName>,
+}
+
+#[derive(Debug, Args)]
+pub struct PreviewArgs {
+    /// Branch name, tag, or any rev `gix` can resolve. Required unless
+    /// `--all-branches` or `--branches` is set.
+    #[arg(
+        long,
+        conflicts_with_all = ["all_branches", "branches"],
+        required_unless_present_any = ["all_branches", "branches"],
+    )]
+    pub from_branch: Option<String>,
+    #[arg(long)]
+    pub repo_dir_path: PathBuf,
+    /// Defaults to a name derived from the single resolved branch. Rejected
+    /// when combined with multi-branch flags.
+    #[arg(long, conflicts_with_all = ["all_branches", "branches"])]
+    pub series_name: Option<SeriesName>,
+    /// Walk the default branch list (`main`, `v4.3.x`, `v4.2.x`, `v4.1.x`, `v4.0.x`).
+    #[arg(long, conflicts_with = "branches")]
+    pub all_branches: bool,
+    /// Walk an explicit comma-separated branch list.
+    #[arg(long, value_delimiter = ',')]
+    pub branches: Vec<String>,
+    /// Emit `# skipped <dep>: <reason>` lines for deps with invalid project
+    /// names or invalid tag names.
+    #[arg(long)]
+    pub show_skipped: bool,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum SyncCmd {
-    /// Print the inferred `[[series]]` stanza. Does not write.
-    Preview {
-        #[command(flatten)]
-        common: SyncCommon,
-    },
+    /// Print the inferred `[[series]]` stanza(s). Does not write.
+    Preview(PreviewArgs),
     /// Print a unified diff of how `merge` or `replace` would change the config. Does not write.
     Diff {
         #[command(flatten)]

@@ -88,27 +88,41 @@ impl SuitePlan {
     }
 }
 
-/// User-configured rule. The library API accepts a `Vec<ExtraRule>`
-/// in `PlanInput`. TOML-loaded `[[suites.extra_rule]]` support is
-/// not yet wired through `Config`: callers must supply rules
-/// programmatically.
+/// User-configured rule. Accepts both the literal `include_suites`
+/// (application + module) and templated module names that resolve named
+/// regex captures from the trigger pattern (e.g. `{plugin}_config_schema_SUITE`).
+/// Templated includes look up the suite by module name across all
+/// discovered applications.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtraRule {
     pub name: String,
     pub trigger: ExtraRuleTrigger,
+    #[serde(default)]
     pub include_suites: Vec<SuiteRefSpec>,
+    #[serde(default)]
+    pub include_suite_templates: Vec<String>,
 }
 
-/// Path-glob trigger expression. Today only suffix and contains
-/// matching are exposed: deliberately constrained so the surface
-/// stays small until users push for more.
+/// Path-glob trigger expression. `PathRegex` supports named captures
+/// (`(?P<name>...)`) that templates referenced in
+/// `ExtraRule::include_suite_templates` may substitute.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
 pub enum ExtraRuleTrigger {
     /// Fires when any modified path's file name matches `suffix`.
     PathSuffix { suffix: String },
     /// Fires when any modified path contains `fragment`.
     PathContains { fragment: String },
+    /// Fires when any modified path matches `pattern`. The `captures`
+    /// list enumerates the named capture groups templates may reference.
+    /// Validated against the pattern at config-load time so unknown
+    /// `{placeholder}`s fail fast instead of silently dropping at runtime.
+    PathRegex {
+        pattern: String,
+        #[serde(default)]
+        captures: Vec<String>,
+    },
 }
 
 /// A suite to include when an `ExtraRule` fires. The caller resolves

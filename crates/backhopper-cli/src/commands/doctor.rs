@@ -60,6 +60,7 @@ struct PinRow {
 enum PinDisplay {
     Literal { tag: String },
     Pattern { pattern: String, select: String },
+    SelfRef { git_ref: String },
 }
 
 pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<i32> {
@@ -175,6 +176,9 @@ fn pin_display(spec: &PinSpec) -> PinDisplay {
                 select: label.to_owned(),
             }
         }
+        PinSpec::SelfRef { git_ref, .. } => PinDisplay::SelfRef {
+            git_ref: git_ref.to_string(),
+        },
     }
 }
 
@@ -190,12 +194,21 @@ fn build_note(spec: &PinSpec, resolved: Option<&Pin>, present: bool) -> Option<S
             "resolved tag {} for {project} has no snapshot file on disk: rerun `backhopper snapshots rebuild --project {project} --tag {}`",
             pin.tag, pin.tag
         )),
+        (PinSpec::SelfRef { project, git_ref }, _, _) => Some(format!(
+            "self-project {project}@{git_ref}: snapshot is materialized on demand by `backhopper check`"
+        )),
         _ => None,
     }
 }
 
 fn upstream_lead(project: &Project, resolved: Option<&TagName>) -> Result<usize, CliError> {
-    let repo = GitRepo::open(project.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(
+        project
+            .require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
     let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
     let filtered = filter_tags_for_project(listing.tags, project, None);
     Ok(count_newer_tags(&filtered, resolved))
@@ -285,6 +298,7 @@ fn doctor_row(series: &SeriesRow, pin: &PinRow) -> DoctorRow {
     let pin_label = match &pin.pin {
         PinDisplay::Literal { tag } => tag.clone(),
         PinDisplay::Pattern { pattern, select } => format!("{pattern} ({select})"),
+        PinDisplay::SelfRef { git_ref } => format!("{git_ref} (self)"),
     };
     let resolved = pin
         .resolved_tag

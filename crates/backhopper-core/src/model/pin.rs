@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::ConfigError;
 use crate::git::version_cmp;
-use crate::model::names::{ProjectName, TagGlob, TagName};
+use crate::model::names::{GitRef, ProjectName, TagGlob, TagName};
 use crate::store::SnapshotStore;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -69,6 +69,13 @@ pub enum PinSpec {
         pattern: TagGlob,
         select: PinSelect,
     },
+    /// Self-project pin. `git_ref` is a branch, tag, or SHA resolved in the
+    /// working repo at evaluation time. Resolution requires `--repo-dir-path`
+    /// because no `git_url` is configured for self-projects.
+    SelfRef {
+        project: ProjectName,
+        git_ref: GitRef,
+    },
 }
 
 impl PinSpec {
@@ -86,11 +93,19 @@ impl PinSpec {
 
     pub fn project(&self) -> &ProjectName {
         match self {
-            Self::Literal { project, .. } => project,
-            Self::Pattern { project, .. } => project,
+            Self::Literal { project, .. }
+            | Self::Pattern { project, .. }
+            | Self::SelfRef { project, .. } => project,
         }
     }
 
+    pub fn is_self(&self) -> bool {
+        matches!(self, Self::SelfRef { .. })
+    }
+
+    /// `SelfRef` pins cannot be resolved here: the working repo lives outside
+    /// the snapshot store. The CLI resolves them via the `--repo-dir-path`
+    /// before calling into the evaluation pipeline.
     pub fn resolve<M>(&self, store: &SnapshotStore<M>) -> Result<Pin, ConfigError> {
         match self {
             Self::Literal { project, tag } => Ok(Pin::new(project.clone(), tag.clone())),
@@ -115,6 +130,10 @@ impl PinSpec {
                     })?;
                 Ok(Pin::new(project.clone(), chosen.clone()))
             }
+            Self::SelfRef { project, git_ref } => Err(ConfigError::SelfPinNeedsRepoDirPath {
+                project: project.to_string(),
+                git_ref: git_ref.to_string(),
+            }),
         }
     }
 }
@@ -143,6 +162,7 @@ impl fmt::Display for PinSpec {
                 };
                 write!(f, "{project}@{pattern} ({select_label})")
             }
+            Self::SelfRef { project, git_ref } => write!(f, "{project}@{git_ref} (self)"),
         }
     }
 }

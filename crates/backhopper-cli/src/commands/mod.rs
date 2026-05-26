@@ -12,8 +12,8 @@ pub mod context;
 pub mod doctor;
 pub mod init;
 pub mod projects;
-pub mod rabbitmq;
 pub mod rabbitmq_components;
+pub mod self_snapshot;
 pub mod series;
 pub mod shell;
 pub mod snapshots;
@@ -39,7 +39,6 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Shell { cmd } => shell::handle(&cli.global, cmd),
         Group::Xref { cmd } => xref::handle(&cli.global, cmd),
         Group::Suites { cmd } => suites::handle(&cli.global, cmd),
-        Group::Rabbitmq { cmd } => rabbitmq::handle(&cli.global, cmd),
         Group::Version => version::handle(&cli.global),
     }
 }

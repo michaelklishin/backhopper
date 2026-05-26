@@ -200,8 +200,19 @@ pub(crate) fn apply_configured_rules(
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     for rule in rules {
+        let compiled_regex = match &rule.trigger {
+            ExtraRuleTrigger::PathRegex { pattern, .. } => regex::Regex::new(pattern).ok(),
+            _ => None,
+        };
         for path in modified_paths {
-            if !trigger_fires(&rule.trigger, path) {
+            let s = path.to_string_lossy();
+            let captures = compiled_regex.as_ref().and_then(|r| r.captures(&s));
+            let fires = match &rule.trigger {
+                ExtraRuleTrigger::PathSuffix { suffix } => s.ends_with(suffix.as_str()),
+                ExtraRuleTrigger::PathContains { fragment } => s.contains(fragment.as_str()),
+                ExtraRuleTrigger::PathRegex { .. } => captures.is_some(),
+            };
+            if !fires {
                 continue;
             }
             for spec in &rule.include_suites {
@@ -218,14 +229,85 @@ pub(crate) fn apply_configured_rules(
                         triggering_path: path.clone(),
                     });
             }
+            for template in &rule.include_suite_templates {
+                let module_name = match captures.as_ref() {
+                    Some(caps) => match expand_template(template, caps) {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    },
+                    None => template.clone(),
+                };
+                for suite in discovered
+                    .iter()
+                    .filter(|s| s.module.as_str() == module_name)
+                {
+                    out.entry(suite.clone()).or_default().push(
+                        SuiteInclusionReason::ConfiguredRule {
+                            rule_name: rule.name.clone(),
+                            triggering_path: path.clone(),
+                        },
+                    );
+                }
+            }
         }
     }
 }
 
-fn trigger_fires(trigger: &ExtraRuleTrigger, path: &Path) -> bool {
-    let s = path.to_string_lossy();
-    match trigger {
-        ExtraRuleTrigger::PathSuffix { suffix } => s.ends_with(suffix.as_str()),
-        ExtraRuleTrigger::PathContains { fragment } => s.contains(fragment.as_str()),
+#[derive(Debug)]
+pub struct TemplateError {
+    pub placeholder: String,
+}
+
+/// Substitute every `{name}` in `template` with the value of regex capture
+/// `name`. Returns `TemplateError` if a referenced capture is absent.
+pub fn expand_template(
+    template: &str,
+    captures: &regex::Captures<'_>,
+) -> Result<String, TemplateError> {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else {
+            out.push('{');
+            rest = after;
+            continue;
+        };
+        let name = &after[..end];
+        let Some(m) = captures.name(name) else {
+            return Err(TemplateError {
+                placeholder: name.to_owned(),
+            });
+        };
+        out.push_str(m.as_str());
+        rest = &after[end + 1..];
     }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// Validate that every `{name}` placeholder in `template` appears in
+/// `allowed_captures`. Used at config-load time so unknown placeholders
+/// fail fast.
+pub fn validate_template_placeholders(
+    template: &str,
+    allowed_captures: &[String],
+) -> Result<(), TemplateError> {
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else {
+            rest = after;
+            continue;
+        };
+        let name = &after[..end];
+        if !allowed_captures.iter().any(|c| c == name) {
+            return Err(TemplateError {
+                placeholder: name.to_owned(),
+            });
+        }
+        rest = &after[end + 1..];
+    }
+    Ok(())
 }

@@ -139,7 +139,7 @@ pins = [{ project = "ra", tag = "v2.16.13" }]
             assert_eq!(project.as_str(), "ra");
             assert_eq!(tag.as_str(), "v2.16.13");
         }
-        PinSpec::Pattern { .. } => panic!("expected literal, got pattern"),
+        other => panic!("expected literal, got {other:?}"),
     }
 }
 
@@ -168,7 +168,7 @@ pins = [{ project = "otp", tag_pattern = "OTP-26.*", select = "latest" }]
             assert_eq!(pattern.as_str(), "OTP-26.*");
             assert!(matches!(select, PinSelect::Latest));
         }
-        PinSpec::Literal { .. } => panic!("expected pattern, got literal"),
+        other => panic!("expected pattern, got {other:?}"),
     }
 }
 
@@ -264,6 +264,7 @@ fn series_resolve_pins_walks_specs_against_store() {
             apps_scanned: Vec::new(),
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
+            extractor_version: String::new(),
         };
         mut_store
             .write(&Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical())

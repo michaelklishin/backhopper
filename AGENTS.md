@@ -46,6 +46,9 @@ The repo is a Cargo workspace with multiple crates:
    tokenizer, attribute parser, spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
    in earlier phases)
+ * `crates/backhopper-cuttlefish/`: Cuttlefish `.schema` parser that
+   locates the embedded `fun(...) -> Body end` bodies and feeds them
+   through the Erlang extractor
  * `crates/backhopper-xref-graph/`: whole-program call-graph primitives
    (vertices, relations, set algebra, transitive closure). No Erlang
    knowledge
@@ -72,7 +75,7 @@ depends only on its own crate.
  * `src/model/snapshot.rs`: `Snapshot<S>` with type-state
    (`Unsorted` and `Canonical`)
  * `src/model/verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
-   Incompatible }` and `Reason` enums
+   Incompatible | Inapplicable }` and `Reason` enums
  * `src/snapshot/format.rs`: canonical writer
  * `src/snapshot/parser.rs`: canonical reader (rejects non-canonical
    input)
@@ -253,11 +256,14 @@ work around them with helper functions that erase the state.
  3. `SnapshotStore<ReadOnly>` has no `write` method. Query commands
     take the read-only handle. Do not introduce a `write_unchecked` or
     similar escape hatch
- 4. `PinSpec` (`Literal` or `Pattern`) lives in the config layer; the
-    compatibility pipeline only sees the resolved `Pin`. The only way
-    to obtain a `Pin` from a `PinSpec::Pattern` is
-    `PinSpec::resolve(&store)`. Do not introduce a method that returns
-    a `Pin` from a pattern spec without consulting the store
+ 4. `PinSpec` (`Literal`, `Pattern`, or `SelfRef`) lives in the config
+    layer; the compatibility pipeline only sees the resolved `Pin`. The
+    only way to obtain a `Pin` from a `PinSpec::Pattern` is
+    `PinSpec::resolve(&store)`; for `PinSpec::SelfRef` the CLI resolves
+    against `--repo-dir-path` (`PinSpec::resolve` returns
+    `ConfigError::SelfPinNeedsRepoDirPath`). Do not introduce a method
+    that returns a `Pin` from a pattern or self-ref spec without
+    consulting the store or working repo
 
 If a future change needs to relax one of these, propose it in a PR
 description, not by adding an `.unwrap_state` method.

@@ -7,10 +7,12 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
+use assert_cmd::Command;
+
 use crate::helpers::cli::{run, stdout};
 
 #[test]
-fn default_formatter_is_text_not_json() {
+fn default_formatter_is_json_not_text() {
     let tmp = TempDir::new().unwrap();
     write_tree(
         tmp.path(),
@@ -19,21 +21,27 @@ fn default_formatter_is_text_not_json() {
             "-module(a).\n-export([go/0]).\ngo() -> missing:f(1).\n",
         )],
     );
-    // No --formatter flag: expect plain text, not JSON.
-    let out = stdout(
-        &run([
+    // No --formatter flag: agent-friendly default is JSON. Humans must opt
+    // into the table view with `--formatter text`. Bypass the shared helper
+    // because it sets BACKHOPPER_FORMATTER=text to keep older tests working.
+    let assert = Command::cargo_bin("backhopper")
+        .unwrap()
+        .env_remove("BACKHOPPER_FORMATTER")
+        .args([
             "xref",
             "list_undefined",
             "--tree-dir-path",
             tmp.path().to_str().unwrap(),
         ])
-        .success(),
-    );
+        .assert()
+        .success();
+    let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
-        !out.trim_start().starts_with('{'),
-        "default output should not be JSON, got: {}",
+        out.trim_start().starts_with('{'),
+        "default output should be JSON, got: {}",
         out
     );
+    assert!(out.contains("\"schema_version\""));
     assert!(out.contains("missing"));
 }
 

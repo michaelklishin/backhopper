@@ -86,6 +86,9 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
         .format(&Rfc3339)
         .unwrap_or_else(|_| String::from("0"));
     writeln!(w, "# generated-at: {}", formatted)?;
+    if !header.extractor_version.is_empty() {
+        writeln!(w, "# extractor-version: {}", header.extractor_version)?;
+    }
     writeln!(w)?;
     Ok(())
 }

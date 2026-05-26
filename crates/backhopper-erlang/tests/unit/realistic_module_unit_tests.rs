@@ -95,6 +95,7 @@ fn snapshot_round_trip_for_realistic_module() {
         apps_scanned: Vec::new(),
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
+        extractor_version: String::new(),
     };
     let snap = Snapshot::from_extracted(header, vec![m], vec![]).into_canonical();
     let text = format::to_string(&snap).unwrap();

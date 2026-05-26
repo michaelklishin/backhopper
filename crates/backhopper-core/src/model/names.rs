@@ -309,6 +309,32 @@ string_newtype!(SeriesName, "series name", MAX_SERIES_NAME_LEN, |v: &str| {
 
 string_newtype!(TagName, "tag", MAX_TAG_NAME_LEN, validate_tag_name);
 
+const MAX_GIT_REF_LEN: usize = 256;
+string_newtype!(GitRef, "git ref", MAX_GIT_REF_LEN, validate_git_ref);
+
+fn validate_git_ref(value: &str) -> Result<(), NameError> {
+    if value.is_empty() {
+        return Err(NameError::Empty { kind: "git ref" });
+    }
+    if value.len() > MAX_GIT_REF_LEN {
+        return Err(NameError::TooLong {
+            kind: "git ref",
+            len: value.len(),
+            max: MAX_GIT_REF_LEN,
+        });
+    }
+    for ch in value.chars() {
+        if ch.is_ascii_control() || ch.is_whitespace() || ch == '\0' || ch == ':' {
+            return Err(NameError::InvalidCharacter {
+                kind: "git ref",
+                ch,
+                value: value.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
 string_newtype!(TagGlob, "tag glob", MAX_TAG_GLOB_LEN, validate_tag_glob);
 
 impl TagGlob {

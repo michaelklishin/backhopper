@@ -19,3 +19,6 @@
 pub mod extractor;
 
 pub use extractor::{ElixirExtractor, ExtractError, ExtractedSource};
+
+/// See `backhopper_erlang::EXTRACTOR_VERSION`.
+pub const EXTRACTOR_VERSION: &str = "1";

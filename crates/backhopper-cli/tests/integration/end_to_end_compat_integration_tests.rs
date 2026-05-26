@@ -142,7 +142,7 @@ fn compat_patch_flags_missing_function_as_incompatible() {
             patch_file.path().to_str().unwrap(),
         ])
         .assert();
-    let output = assert.code(1).get_output().clone();
+    let output = assert.code(2).get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("incompatible: 1"), "got {}", stdout);
 }
@@ -192,7 +192,8 @@ diff --git a/src/demo_mod.erl b/src/demo_mod.erl
             patch_file.path().to_str().unwrap(),
         ])
         .assert()
-        .success();
+        // ContextDrift on hunk #0: RequiresAdaptation, exit 3.
+        .code(3);
 }
 
 const PATCH_REFERENCING_WRONG_ARITY: &str = "\
@@ -214,7 +215,7 @@ fn compat_patch_flags_arity_change_as_incompatible() {
     generate_snapshot(&cfg);
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_WRONG_ARITY);
     let assert = run_check_patch(&cfg, patch_file.path());
-    let output = assert.code(1).get_output().clone();
+    let output = assert.code(2).get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
         stdout.contains("incompatible: 1"),
@@ -263,7 +264,7 @@ fn compat_patch_flags_now_hidden_module() {
     generate_snapshot(&cfg);
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_HIDDEN);
     let assert = run_check_patch(&cfg, patch_file.path());
-    let output = assert.code(1).get_output().clone();
+    let output = assert.code(2).get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
         stdout.contains("incompatible: 1") || stdout.contains("requires_adaptation: 1"),
@@ -382,7 +383,7 @@ fn resolve_untracked_modules_flips_verdict_when_file_absent_in_repo() {
             patch_file.path().to_str().unwrap(),
         ])
         .assert();
-    let output = assert.code(1).get_output().clone();
+    let output = assert.code(2).get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
         stdout.contains("UntrackedModuleMissing"),
@@ -434,5 +435,7 @@ fn resolve_untracked_modules_stays_compatible_when_file_present() {
             patch_file.path().to_str().unwrap(),
         ])
         .assert()
-        .success();
+        // Patch context drift produces RequiresAdaptation (exit 3): the test
+        // asserts the resolver did not escalate to Incompatible.
+        .code(3);
 }

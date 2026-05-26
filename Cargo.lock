@@ -111,7 +111,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "backhopper-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "gix",
  "imara-diff",
@@ -157,8 +157,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "backhopper-cuttlefish"
+version = "0.6.0"
+dependencies = [
+ "backhopper-core",
+ "backhopper-erlang",
+ "proptest",
+]
+
+[[package]]
 name = "backhopper-elixir"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -170,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "backhopper-core",
  "insta",
@@ -184,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -200,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -211,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",

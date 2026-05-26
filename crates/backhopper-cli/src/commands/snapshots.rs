@@ -188,7 +188,12 @@ fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> C
     let store = open_store_read(args, cfg)?;
     let mut payloads: Vec<ListTagsEntry> = Vec::new();
     for p in projects {
-        let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+        let repo = GitRepo::open(
+            p.require_git_url()
+                .map_err(|e| CliError::Core(e.into()))?
+                .to_path_buf(),
+        )
+        .map_err(|e| CliError::Core(e.into()))?;
         let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
         let mut pending: Vec<String> = Vec::new();
         for tag in listing.tags {
@@ -270,7 +275,12 @@ fn generate_one(
     dry_run: bool,
     since: Option<&TagName>,
 ) -> CliResult<DiscoverPayload> {
-    let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(
+        p.require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
     let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
     let tags = filter_tags_for_project(listing.tags, p, since);
     let mut captured = 0usize;
@@ -352,6 +362,16 @@ pub(crate) fn build_snapshot(
     let commit = repo
         .resolve_tag(tag)
         .map_err(|e| CliError::Core(e.into()))?;
+    build_snapshot_at_commit(p, repo, &commit, tag)
+}
+
+pub(crate) fn build_snapshot_at_commit(
+    p: &Project,
+    repo: &GitRepo,
+    commit: &CommitSha,
+    tag: &TagName,
+) -> CliResult<Snapshot<state::Canonical>> {
+    let commit = commit.clone();
     let (files, scanned_paths, apps_scanned) = match p.layout {
         ProjectLayout::SingleApp => {
             let scan_paths = p.scan_paths.clone();
@@ -410,6 +430,10 @@ pub(crate) fn build_snapshot(
         apps_scanned,
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::now_utc(),
+        extractor_version: match p.language {
+            Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION.to_owned(),
+            Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION.to_owned(),
+        },
     };
     let (modules, headers) = extracted;
     let snapshot = Snapshot::from_extracted(header, modules, headers).into_canonical();
@@ -605,7 +629,12 @@ fn verify_one(
     let p = cfg
         .project(&project)
         .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(
+        p.require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
     let regenerated = build_snapshot(p, &repo, &tag)?;
     let store = open_store_read(args, cfg)?;
     let stored = store
@@ -639,9 +668,19 @@ struct VerifyAllFailure {
 }
 
 #[derive(Debug, Serialize)]
+struct VerifyAllStale {
+    project: String,
+    tag: String,
+    stored: String,
+    expected: String,
+}
+
+#[derive(Debug, Serialize)]
 struct VerifyAllPayload {
     verified: usize,
     failed: Vec<VerifyAllFailure>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    stale_extractor: Vec<VerifyAllStale>,
 }
 
 fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
@@ -651,13 +690,33 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
         .map_err(|e| CliError::Core(e.into()))?;
     let mut verified = 0usize;
     let mut failed: Vec<VerifyAllFailure> = Vec::new();
+    let mut stale_extractor: Vec<VerifyAllStale> = Vec::new();
     for project in projects {
         let tags = store
             .list_tags(&project)
             .map_err(|e| CliError::Core(e.into()))?;
+        let expected = cfg
+            .project(&project)
+            .ok()
+            .map(|p| match p.language {
+                Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION,
+                Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION,
+            })
+            .unwrap_or(backhopper_erlang::EXTRACTOR_VERSION);
         for tag in tags {
             match store.read(&project, &tag) {
-                Ok(_) => verified += 1,
+                Ok(snap) => {
+                    verified += 1;
+                    let stored = snap.header().extractor_version.as_str();
+                    if !stored.is_empty() && stored != expected {
+                        stale_extractor.push(VerifyAllStale {
+                            project: project.to_string(),
+                            tag: tag.to_string(),
+                            stored: stored.to_owned(),
+                            expected: expected.to_owned(),
+                        });
+                    }
+                }
                 Err(e) => failed.push(VerifyAllFailure {
                     project: project.to_string(),
                     tag: tag.to_string(),
@@ -666,18 +725,30 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
             }
         }
     }
-    let payload = VerifyAllPayload { verified, failed };
+    let payload = VerifyAllPayload {
+        verified,
+        failed,
+        stale_extractor,
+    };
     let exit = if payload.failed.is_empty() { 0 } else { 1 };
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
             w,
-            "verified: {}, failed: {}",
+            "verified: {}, failed: {}, stale_extractor: {}",
             payload.verified,
-            payload.failed.len()
+            payload.failed.len(),
+            payload.stale_extractor.len(),
         )?;
         for f in &payload.failed {
-            writeln!(w, "  {} {}: {}", f.project, f.tag, f.reason)?;
+            writeln!(w, "  fail  {} {}: {}", f.project, f.tag, f.reason)?;
+        }
+        for s in &payload.stale_extractor {
+            writeln!(
+                w,
+                "  stale {} {} (extractor {} != binary {}): run `snapshots rebuild`",
+                s.project, s.tag, s.stored, s.expected,
+            )?;
         }
         Ok(())
     })
@@ -693,7 +764,12 @@ fn rebuild(
     let p = cfg
         .project(&project)
         .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(p.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(
+        p.require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
     let snapshot = build_snapshot(p, &repo, &tag)?;
     let store = open_store_mut(args, cfg)?;
     if !dry_run {

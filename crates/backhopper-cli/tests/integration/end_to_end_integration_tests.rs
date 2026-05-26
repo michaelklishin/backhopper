@@ -39,15 +39,7 @@ fn help_text_contains_command_groups() {
     let assert = cmd.args(["--help"]).assert();
     let output = assert.success().get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    for grp in [
-        "projects",
-        "series",
-        "snapshots",
-        "check",
-        "shell",
-        "xref",
-        "rabbitmq",
-    ] {
+    for grp in ["projects", "series", "snapshots", "check", "shell", "xref"] {
         assert!(stdout.contains(grp), "help missing {}: {}", grp, stdout);
     }
 }

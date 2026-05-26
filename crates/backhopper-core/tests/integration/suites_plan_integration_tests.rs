@@ -256,6 +256,7 @@ fn configured_rule_path_suffix_includes_listed_suites() {
                 application: ApplicationName::new("rabbit").unwrap(),
                 module: ModuleName::new("unrelated_SUITE").unwrap(),
             }],
+            include_suite_templates: Vec::new(),
         }],
     };
     let result = plan(&input);

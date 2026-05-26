@@ -3,12 +3,14 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
-use crate::model::names::{Arity, FieldName, FunctionName, ModuleName, RecordName, TagName};
+use crate::model::names::{
+    Arity, CommitSha, FieldName, FunctionName, GitRef, ModuleName, RecordName, TagName,
+};
 use crate::model::pin::Pin;
 use crate::model::symbol::SymbolRef;
 
@@ -18,6 +20,28 @@ pub enum Verdict {
     Compatible,
     RequiresAdaptation { reasons: Vec<Reason> },
     Incompatible { reasons: Vec<Reason> },
+    Inapplicable { reason: InapplicableReason },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
+pub enum InapplicableReason {
+    NoErlangSurfaceTouched,
+    OnlyDocsTouched,
+    OnlyTestFixturesTouched,
+    OnlySchemaTouched,
+}
+
+impl InapplicableReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoErlangSurfaceTouched => "no_erlang_surface_touched",
+            Self::OnlyDocsTouched => "only_docs_touched",
+            Self::OnlyTestFixturesTouched => "only_test_fixtures_touched",
+            Self::OnlySchemaTouched => "only_schema_touched",
+        }
+    }
 }
 
 impl Verdict {
@@ -38,7 +62,7 @@ impl Verdict {
 
     pub fn reasons(&self) -> &[Reason] {
         match self {
-            Self::Compatible => &[],
+            Self::Compatible | Self::Inapplicable { .. } => &[],
             Self::RequiresAdaptation { reasons } | Self::Incompatible { reasons } => reasons,
         }
     }
@@ -102,6 +126,14 @@ pub enum Reason {
         call_args: Vec<ArgShape>,
         pin_clauses: Vec<Vec<ArgShape>>,
     },
+    /// Patch references an MFA owned by the self-project but absent from the
+    /// resolved self-snapshot. `suggested_source_for_prereq` is filled only
+    /// with `--suggest-prereqs`.
+    MissingPrereq {
+        symbol: SymbolRef,
+        self_branch: GitRef,
+        suggested_source_for_prereq: Option<CommitSha>,
+    },
 }
 
 impl Reason {
@@ -116,8 +148,128 @@ impl Reason {
                 | Self::RecordFieldsChanged { .. }
                 | Self::UntrackedModuleMissing { .. }
                 | Self::ClauseMismatch { .. }
+                | Self::MissingPrereq { .. }
         )
     }
+}
+
+/// Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable`
+/// tell a real green check from a diff with nothing analyzable to check.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TouchedKinds {
+    #[serde(default)]
+    pub erl: u32,
+    #[serde(default)]
+    pub hrl: u32,
+    #[serde(default)]
+    pub schema: u32,
+    #[serde(default)]
+    pub docs: u32,
+    #[serde(default)]
+    pub tests: u32,
+    #[serde(default)]
+    pub other: u32,
+}
+
+impl TouchedKinds {
+    pub fn is_empty(&self) -> bool {
+        self.erl == 0
+            && self.hrl == 0
+            && self.schema == 0
+            && self.docs == 0
+            && self.tests == 0
+            && self.other == 0
+    }
+
+    pub fn classify(path: &Path) -> FileKind {
+        let p = path.to_string_lossy();
+        let lower = p.to_ascii_lowercase();
+        if lower.ends_with(".md")
+            || lower.ends_with(".adoc")
+            || lower.ends_with(".rst")
+            || lower.ends_with(".txt")
+            || lower.contains("/docs/")
+            || lower.starts_with("docs/")
+        {
+            return FileKind::Docs;
+        }
+        if lower.contains("_suite_data/")
+            || lower.contains("/test/")
+            || lower.contains("/tests/")
+            || lower.starts_with("test/")
+            || lower.starts_with("tests/")
+            || lower.ends_with("_suite.erl")
+        {
+            return FileKind::Tests;
+        }
+        if lower.ends_with(".schema") || lower.ends_with(".snippets") {
+            return FileKind::Schema;
+        }
+        if lower.ends_with(".erl") {
+            return FileKind::Erl;
+        }
+        if lower.ends_with(".hrl") {
+            return FileKind::Hrl;
+        }
+        FileKind::Other
+    }
+
+    pub fn record(&mut self, kind: FileKind) {
+        match kind {
+            FileKind::Erl => self.erl += 1,
+            FileKind::Hrl => self.hrl += 1,
+            FileKind::Schema => self.schema += 1,
+            FileKind::Docs => self.docs += 1,
+            FileKind::Tests => self.tests += 1,
+            FileKind::Other => self.other += 1,
+        }
+    }
+
+    pub fn from_paths<I, P>(paths: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        let mut tk = Self::default();
+        for p in paths {
+            tk.record(Self::classify(p.as_ref()));
+        }
+        tk
+    }
+
+    /// `None` when any `.erl` or `.hrl` was touched: an analyzable diff with
+    /// zero reasons is real `Compatible`, not `Inapplicable`.
+    pub fn inapplicable_reason(&self) -> Option<InapplicableReason> {
+        if self.erl > 0 || self.hrl > 0 {
+            return None;
+        }
+        if self.is_empty() {
+            return Some(InapplicableReason::NoErlangSurfaceTouched);
+        }
+        let only_docs = self.docs > 0 && self.schema == 0 && self.tests == 0 && self.other == 0;
+        if only_docs {
+            return Some(InapplicableReason::OnlyDocsTouched);
+        }
+        let only_tests = self.tests > 0 && self.schema == 0 && self.docs == 0 && self.other == 0;
+        if only_tests {
+            return Some(InapplicableReason::OnlyTestFixturesTouched);
+        }
+        let only_schema = self.schema > 0 && self.docs == 0 && self.tests == 0 && self.other == 0;
+        if only_schema {
+            return Some(InapplicableReason::OnlySchemaTouched);
+        }
+        Some(InapplicableReason::NoErlangSurfaceTouched)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileKind {
+    Erl,
+    Hrl,
+    Schema,
+    Docs,
+    Tests,
+    Other,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +282,8 @@ pub struct PinVerdict {
     pub tracked_ref_details: Vec<SymbolRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_delta_details: Vec<SourceDelta>,
+    #[serde(default, skip_serializing_if = "TouchedKinds::is_empty")]
+    pub touched: TouchedKinds,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,6 +303,7 @@ impl PinVerdict {
             tracked_refs: 0,
             tracked_ref_details: Vec::new(),
             source_delta_details: Vec::new(),
+            touched: TouchedKinds::default(),
         }
     }
 
@@ -170,6 +325,12 @@ impl PinVerdict {
         self.source_delta_details = deltas;
         self
     }
+
+    #[must_use]
+    pub fn with_touched(mut self, touched: TouchedKinds) -> Self {
+        self.touched = touched;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +344,16 @@ pub struct SeriesSummary {
     pub compatible: u32,
     pub requires_adaptation: u32,
     pub incompatible: u32,
+    #[serde(default)]
+    pub inapplicable: u32,
+}
+
+/// Process exit codes returned by `worst_exit_code`.
+pub mod exit {
+    pub const OK: i32 = 0;
+    pub const INCOMPATIBLE: i32 = 2;
+    pub const REQUIRES_ADAPTATION: i32 = 3;
+    pub const INAPPLICABLE: i32 = 4;
 }
 
 impl SeriesVerdict {
@@ -193,13 +364,50 @@ impl SeriesVerdict {
                 Verdict::Compatible => summary.compatible += 1,
                 Verdict::RequiresAdaptation { .. } => summary.requires_adaptation += 1,
                 Verdict::Incompatible { .. } => summary.incompatible += 1,
+                Verdict::Inapplicable { .. } => summary.inapplicable += 1,
             }
         }
         Self { results, summary }
     }
 
+    /// Promote each `Compatible`-with-zero-refs pin to `Inapplicable` when its
+    /// `TouchedKinds` indicates no analyzable Erlang surface. The summary
+    /// is recomputed from the rewritten results.
+    pub fn promote_inapplicable(self) -> Self {
+        let results: Vec<PinVerdict> = self
+            .results
+            .into_iter()
+            .map(|pv| {
+                if matches!(pv.verdict, Verdict::Compatible) && pv.tracked_refs == 0 {
+                    if let Some(reason) = pv.touched.inapplicable_reason() {
+                        return PinVerdict {
+                            verdict: Verdict::Inapplicable { reason },
+                            ..pv
+                        };
+                    }
+                }
+                pv
+            })
+            .collect();
+        Self::from_results(results)
+    }
+
+    /// Severity for the process exit code:
+    /// `Incompatible` > `RequiresAdaptation` > `Compatible` > `Inapplicable`.
+    /// A real `Compatible` beats `Inapplicable` because at least one pin produced
+    /// a definitive green signal.
     pub fn worst_exit_code(&self) -> i32 {
-        if self.summary.incompatible > 0 { 1 } else { 0 }
+        if self.summary.incompatible > 0 {
+            exit::INCOMPATIBLE
+        } else if self.summary.requires_adaptation > 0 {
+            exit::REQUIRES_ADAPTATION
+        } else if self.summary.compatible > 0 {
+            exit::OK
+        } else if self.summary.inapplicable > 0 {
+            exit::INAPPLICABLE
+        } else {
+            exit::OK
+        }
     }
 }
 

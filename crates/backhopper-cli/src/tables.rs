@@ -32,6 +32,15 @@ fn collect_rows(results: &[PinVerdict]) -> Vec<ReasonRow> {
     for r in results {
         let pin = format_pin(&r.pin);
         let verdict_label = verdict_label(&r.verdict);
+        if let Verdict::Inapplicable { reason } = &r.verdict {
+            rows.push(ReasonRow {
+                pin,
+                verdict: verdict_label,
+                reason: "-",
+                detail: format!("inapplicable: {}", reason.as_str()),
+            });
+            continue;
+        }
         if r.verdict.reasons().is_empty() {
             let symbols = r.tracked_refs;
             rows.push(ReasonRow {
@@ -62,6 +71,7 @@ fn verdict_label(v: &Verdict) -> &'static str {
         Verdict::Compatible => "Compatible",
         Verdict::RequiresAdaptation { .. } => "RequiresAdaptation",
         Verdict::Incompatible { .. } => "Incompatible",
+        Verdict::Inapplicable { .. } => "Inapplicable",
     }
 }
 
@@ -82,6 +92,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::UnsupportedFileType { .. } => "UnsupportedFileType",
         Reason::UntrackedModuleMissing { .. } => "UntrackedModuleMissing",
         Reason::ClauseMismatch { .. } => "ClauseMismatch",
+        Reason::MissingPrereq { .. } => "MissingPrereq",
     }
 }
 
@@ -165,6 +176,17 @@ fn reason_detail(r: &Reason) -> String {
                 .collect::<Vec<_>>()
                 .join(" | ");
             format!("{module}:{function}/{arity}: called with ({call}); pin clause heads: ({pins})")
+        }
+        Reason::MissingPrereq {
+            symbol,
+            self_branch,
+            suggested_source_for_prereq,
+        } => {
+            let s = format_symbol(&symbol.kind);
+            match suggested_source_for_prereq {
+                Some(sha) => format!("{s}: absent on {self_branch}; candidate prereq: {sha}"),
+                None => format!("{s}: absent on {self_branch}"),
+            }
         }
     }
 }

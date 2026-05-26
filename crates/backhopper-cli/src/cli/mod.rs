@@ -18,7 +18,6 @@ pub mod config;
 pub mod doctor;
 pub mod init;
 pub mod projects;
-pub mod rabbitmq;
 pub mod series;
 pub mod shell;
 pub mod snapshots;
@@ -32,8 +31,7 @@ pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
 pub use init::InitCmd;
 pub use projects::ProjectsCmd;
-pub use rabbitmq::RabbitmqCmd;
-pub use series::{SeriesCmd, SyncCmd, SyncCommon};
+pub use series::{PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
 pub use snapshots::SnapshotsCmd;
 pub use suites::SuitesCmd;
@@ -82,9 +80,9 @@ pub struct GlobalArgs {
         long,
         env = "BACKHOPPER_FORMATTER",
         global = true,
-        default_value_t = Formatter::Text,
+        default_value_t = Formatter::Json,
         value_enum,
-        help = "Output formatter",
+        help = "Output formatter (default: json; pass `--formatter text` for human-readable tables)",
     )]
     pub formatter: Formatter,
 
@@ -181,11 +179,6 @@ pub enum Group {
     Suites {
         #[command(subcommand)]
         cmd: SuitesCmd,
-    },
-    /// RabbitMQ-specific commands.
-    Rabbitmq {
-        #[command(subcommand)]
-        cmd: RabbitmqCmd,
     },
     /// Print the `backhopper` version.
     Version,

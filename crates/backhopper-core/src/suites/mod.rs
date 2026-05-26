@@ -17,7 +17,7 @@ mod library;
 mod matcher;
 mod model;
 mod plan;
-mod rules;
+pub mod rules;
 mod scan;
 
 pub use hints::BuildSystem;

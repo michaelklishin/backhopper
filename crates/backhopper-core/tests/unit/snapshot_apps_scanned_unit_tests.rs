@@ -21,6 +21,7 @@ fn header_with_apps(apps: &[&str]) -> SnapshotHeader {
             .collect(),
         generated_by: "backhopper".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
+        extractor_version: String::new(),
     }
 }
 

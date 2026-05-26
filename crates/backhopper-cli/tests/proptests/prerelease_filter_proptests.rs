@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, TagName};
 
 use backhopper_cli::commands::snapshots::filter_tags_for_project;
@@ -13,7 +13,8 @@ use proptest::prelude::*;
 fn project_with_markers(markers: Vec<String>) -> Project {
     Project {
         name: ProjectName::new("p").unwrap(),
-        git_url: PathBuf::from("/tmp/p.git"),
+        git_url: Some(PathBuf::from("/tmp/p.git")),
+        kind: ProjectKind::External,
         language: Language::Erlang,
         tag_prefix: "v".into(),
         public_modules: Vec::new(),

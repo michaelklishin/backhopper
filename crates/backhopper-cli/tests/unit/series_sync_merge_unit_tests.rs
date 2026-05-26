@@ -28,6 +28,7 @@ pins = [
 fn payload(name: &str, pins: &[(&str, &str)]) -> SyncOutput {
     SyncOutput {
         name: name.into(),
+        branch: None,
         pins: pins
             .iter()
             .map(|(p, t)| PinPayload {
@@ -36,6 +37,7 @@ fn payload(name: &str, pins: &[(&str, &str)]) -> SyncOutput {
             })
             .collect(),
         dropped_unconfigured: Vec::new(),
+        skipped: Vec::new(),
     }
 }
 

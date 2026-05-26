@@ -19,3 +19,9 @@ pub mod tokenizer;
 pub mod visibility;
 
 pub use extractor::{ErlangExtractor, ExtractError, ExtractedSource};
+
+/// Semantic version of the extractor's output shape. Bump on any change that
+/// could rewrite extraction results for the same input (new attribute support,
+/// fixed parser bug, new clause-head capture, etc.). Snapshots embed this in
+/// their header so `snapshots verify --all` can warn on drift.
+pub const EXTRACTOR_VERSION: &str = "1";

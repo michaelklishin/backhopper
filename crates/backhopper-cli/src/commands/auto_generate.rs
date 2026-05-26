@@ -48,7 +48,13 @@ fn generate_one_pin(cfg: &Config, store: &SnapshotStore<Mutable>, pin: &Pin) -> 
     let project = cfg
         .project(&pin.project)
         .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(project.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(
+        project
+            .require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
     let snapshot = build_snapshot(project, &repo, &pin.tag)?;
     store
         .write(&snapshot)

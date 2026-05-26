@@ -19,11 +19,11 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         return Ok(p.clone());
     }
     let mut tried: Vec<PathBuf> = Vec::new();
-    let cwd = PathBuf::from("./backhopper.toml");
-    if cwd.exists() {
-        return Ok(cwd);
+    if let Ok(cwd) = env::current_dir()
+        && let Some(found) = walk_up_for_config(&cwd, &mut tried)
+    {
+        return Ok(found);
     }
-    tried.push(cwd);
     if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
         let candidate = PathBuf::from(xdg)
             .join("backhopper")
@@ -44,6 +44,26 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
         tried.push(candidate);
     }
     Err(CliError::ConfigNotFound { tried })
+}
+
+// Walk up from `start`, return the first `.backhopper.toml` or `backhopper.toml`
+// found. Stops at a directory containing `.git`. Dotfile wins on a tie.
+fn walk_up_for_config(start: &Path, tried: &mut Vec<PathBuf>) -> Option<PathBuf> {
+    let mut here: Option<&Path> = Some(start);
+    while let Some(dir) = here {
+        for name in [".backhopper.toml", "backhopper.toml"] {
+            let candidate = dir.join(name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            tried.push(candidate);
+        }
+        if dir.join(".git").exists() {
+            break;
+        }
+        here = dir.parent();
+    }
+    None
 }
 
 pub fn load_config(args: &GlobalArgs) -> CliResult<Config> {

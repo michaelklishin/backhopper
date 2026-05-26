@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Write as _};
 use std::fs;
 use std::io::{self, Write};
+use std::path::Path;
 use std::str;
 
 use serde::Serialize;
@@ -13,12 +14,15 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Val
 
 use backhopper_core::config::{Config, Project};
 use backhopper_core::git::{GitRepo, unified_diff_body};
-use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
 
-use crate::cli::{GlobalArgs, SeriesCmd, SyncCmd, SyncCommon};
+use crate::cli::series::default_branches;
+use crate::cli::{GlobalArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 use crate::commands::context::load_config;
-use crate::commands::rabbitmq_components::{DepPin, dep_to_tag, parse_components_mk};
+use crate::commands::rabbitmq_components::{
+    DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
+};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
 
@@ -43,10 +47,25 @@ pub struct PinPayload {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct SkippedPin {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct SyncOutput {
     pub name: String,
+    pub branch: Option<String>,
     pub pins: Vec<PinPayload>,
     pub dropped_unconfigured: Vec<String>,
+    pub skipped: Vec<SkippedPin>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PreviewOutput {
+    pub series: Vec<SyncOutput>,
+    #[serde(skip)]
+    pub show_skipped: bool,
 }
 
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
@@ -87,30 +106,67 @@ pub fn build_sync_output(
     components_mk: &str,
     series_name: &SeriesName,
     projects: &[Project],
-) -> CliResult<SyncOutput> {
+) -> SyncOutput {
+    build_sync_output_for_branch(components_mk, series_name, projects, None)
+}
+
+pub fn build_sync_output_for_branch(
+    components_mk: &str,
+    series_name: &SeriesName,
+    projects: &[Project],
+    branch: Option<&str>,
+) -> SyncOutput {
     let pins = parse_components_mk(components_mk);
     let configured: BTreeMap<&str, &Project> =
         projects.iter().map(|p| (p.name.as_str(), p)).collect();
     let mut kept: Vec<PinPayload> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
+    let mut skipped: Vec<SkippedPin> = Vec::new();
     for pin in &pins {
+        if ProjectName::new(pin.name.as_str()).is_err() {
+            skipped.push(SkippedPin {
+                name: pin.name.clone(),
+                reason: "name not a valid project identifier".into(),
+            });
+            continue;
+        }
         match configured.get(pin.name.as_str()) {
-            Some(project) => kept.push(pin_payload_for(pin, project)?),
+            Some(project) => match pin_payload_for(pin, project) {
+                Ok(payload) => kept.push(payload),
+                Err(reason) => skipped.push(SkippedPin {
+                    name: pin.name.clone(),
+                    reason,
+                }),
+            },
             None => dropped.push(pin.name.clone()),
         }
     }
     kept.sort_by(|a, b| a.project.cmp(&b.project));
     dropped.sort();
-    Ok(SyncOutput {
+    skipped.sort_by(|a, b| a.name.cmp(&b.name));
+    SyncOutput {
         name: series_name.to_string(),
+        branch: branch.map(str::to_owned),
         pins: kept,
         dropped_unconfigured: dropped,
-    })
+        skipped,
+    }
 }
 
 pub fn render_sync_text<W: Write + ?Sized>(payload: &SyncOutput, w: &mut W) -> io::Result<()> {
+    render_sync_text_with_options(payload, w, false)
+}
+
+pub fn render_sync_text_with_options<W: Write + ?Sized>(
+    payload: &SyncOutput,
+    w: &mut W,
+    show_skipped: bool,
+) -> io::Result<()> {
     writeln!(w, "[[series]]")?;
     writeln!(w, "name = \"{}\"", payload.name)?;
+    if let Some(branch) = &payload.branch {
+        writeln!(w, "# inferred from {branch}")?;
+    }
     if payload.pins.is_empty() {
         writeln!(w, "pins = []")?;
     } else {
@@ -141,6 +197,11 @@ pub fn render_sync_text<W: Write + ?Sized>(payload: &SyncOutput, w: &mut W) -> i
         )?;
         for name in &payload.dropped_unconfigured {
             writeln!(w, "#   {name}")?;
+        }
+    }
+    if show_skipped {
+        for s in &payload.skipped {
+            writeln!(w, "# skipped {}: {}", s.name, s.reason)?;
         }
     }
     Ok(())
@@ -176,7 +237,7 @@ fn list(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
 
 fn sync_dispatch(args: &GlobalArgs, cfg: &Config, cmd: SyncCmd) -> CliResult<i32> {
     match cmd {
-        SyncCmd::Preview { common } => sync_preview(args, cfg, common),
+        SyncCmd::Preview(preview) => sync_preview(args, cfg, preview),
         SyncCmd::Diff {
             common,
             replace,
@@ -190,42 +251,153 @@ fn sync_dispatch(args: &GlobalArgs, cfg: &Config, cmd: SyncCmd) -> CliResult<i32
     }
 }
 
+fn resolved_series_name(common: &SyncCommon) -> CliResult<SeriesName> {
+    match &common.series_name {
+        Some(name) => Ok(name.clone()),
+        None => {
+            let derived = series_name_for_branch(&common.from_branch);
+            SeriesName::new(derived.clone()).map_err(|e| {
+                CliError::InvalidInput(format!(
+                    "could not derive series name from branch {:?} (got {derived:?}): {e}",
+                    common.from_branch,
+                ))
+            })
+        }
+    }
+}
+
 fn build_payload(cfg: &Config, common: &SyncCommon) -> CliResult<SyncOutput> {
+    let series_name = resolved_series_name(common)?;
     let repo = GitRepo::open(&common.repo_dir_path).map_err(|e| CliError::Core(e.into()))?;
-    let commit = repo
-        .resolve_rev(&common.from_branch)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let text = read_components_mk_at(&repo, &common.from_branch)?;
+    Ok(build_sync_output_for_branch(
+        &text,
+        &series_name,
+        &cfg.projects,
+        Some(&common.from_branch),
+    ))
+}
+
+fn read_components_mk_at(repo: &GitRepo, branch: &str) -> CliResult<String> {
+    let commit = resolve_branch(repo, branch)
+        .map_err(|e| CliError::InvalidInput(format!("could not resolve {branch:?}: {e}")))?;
     let blobs = repo
         .read_paths_at_commit(&commit, |p| p == COMPONENTS_MK_PATH)
         .map_err(|e| CliError::Core(e.into()))?;
     let Some(blob) = blobs.into_iter().next() else {
         return Err(CliError::InvalidInput(format!(
-            "{COMPONENTS_MK_PATH} not found at {} ({commit})",
-            common.from_branch,
+            "{COMPONENTS_MK_PATH} not found at {branch} ({commit})"
         )));
     };
     let text = str::from_utf8(&blob.bytes).map_err(|e| {
         CliError::InvalidInput(format!(
-            "{COMPONENTS_MK_PATH} at {} is not UTF-8: {e}",
-            common.from_branch,
+            "{COMPONENTS_MK_PATH} at {branch} is not UTF-8: {e}"
         ))
     })?;
-    build_sync_output(text, &common.series_name, &cfg.projects)
+    Ok(text.to_owned())
 }
 
-fn sync_preview(args: &GlobalArgs, cfg: &Config, common: SyncCommon) -> CliResult<i32> {
-    let payload = build_payload(cfg, &common)?;
+pub fn resolve_branch(repo: &GitRepo, branch: &str) -> Result<CommitSha, String> {
+    let candidates = [
+        branch.to_owned(),
+        format!("refs/heads/{branch}"),
+        format!("refs/tags/{branch}"),
+    ];
+    for spec in candidates {
+        if let Ok(tag_name) = TagName::new(spec.clone())
+            && let Ok(sha) = repo.resolve_tag(&tag_name)
+        {
+            return Ok(sha);
+        }
+        if let Ok(sha) = repo.resolve_rev(&spec) {
+            return Ok(sha);
+        }
+    }
+    Err(format!("could not resolve branch or rev {branch:?}"))
+}
+
+fn sync_preview(args: &GlobalArgs, cfg: &Config, preview: PreviewArgs) -> CliResult<i32> {
+    let targets = preview_targets(&preview)?;
+    let multi_branch = targets.len() > 1;
+    let repo = GitRepo::open(&preview.repo_dir_path).map_err(|e| CliError::Core(e.into()))?;
+    let mut series_outputs: Vec<SyncOutput> = Vec::new();
+    for branch in &targets {
+        let series_name = preview_series_name(&preview, branch, targets.len())?;
+        match read_components_mk_at(&repo, branch) {
+            Ok(text) => series_outputs.push(build_sync_output_for_branch(
+                &text,
+                &series_name,
+                &cfg.projects,
+                Some(branch),
+            )),
+            // multi-branch invocations skip unreadable branches: --show-skipped surfaces them
+            Err(e) if multi_branch => {
+                if preview.show_skipped {
+                    eprintln!("warning: skipping branch {branch}: {e}");
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    let output = PreviewOutput {
+        series: series_outputs,
+        show_skipped: preview.show_skipped,
+    };
     let ctx = OutputContext::new(args.formatter, "series sync preview");
-    render(&ctx, &payload, |w| {
-        render_sync_text(&payload, w).map_err(CliError::from)
+    render(&ctx, &output, |w| {
+        render_preview_text(&output, w).map_err(CliError::from)
     })?;
     Ok(0)
+}
+
+fn preview_targets(preview: &PreviewArgs) -> CliResult<Vec<String>> {
+    if preview.all_branches {
+        return Ok(default_branches());
+    }
+    if !preview.branches.is_empty() {
+        return Ok(preview.branches.clone());
+    }
+    let single = preview.from_branch.clone().ok_or_else(|| {
+        CliError::InvalidInput(
+            "one of --from-branch, --all-branches, or --branches is required".into(),
+        )
+    })?;
+    Ok(vec![single])
+}
+
+fn preview_series_name(
+    preview: &PreviewArgs,
+    branch: &str,
+    target_count: usize,
+) -> CliResult<SeriesName> {
+    if target_count == 1
+        && let Some(name) = &preview.series_name
+    {
+        return Ok(name.clone());
+    }
+    let derived = series_name_for_branch(branch);
+    SeriesName::new(derived.clone()).map_err(|e| {
+        CliError::InvalidInput(format!(
+            "could not derive series name from branch {branch:?} (got {derived:?}): {e}"
+        ))
+    })
+}
+
+pub fn render_preview_text<W: Write + ?Sized>(output: &PreviewOutput, w: &mut W) -> io::Result<()> {
+    let last = output.series.len().saturating_sub(1);
+    for (i, payload) in output.series.iter().enumerate() {
+        render_sync_text_with_options(payload, w, output.show_skipped)?;
+        if i != last {
+            writeln!(w)?;
+        }
+    }
+    Ok(())
 }
 
 fn sync_replace(args: &GlobalArgs, cfg: &Config, common: SyncCommon) -> CliResult<i32> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
-    let existing = fs::read_to_string(path).map_err(CliError::Io)?;
+    let existing = read_config_file(path)?;
     let updated = replace_series_block(&existing, &payload)?;
     fs::write(path, updated).map_err(CliError::Io)?;
     let ctx = OutputContext::new(args.formatter, "series sync replace");
@@ -250,7 +422,7 @@ fn sync_merge(
 ) -> CliResult<i32> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
-    let existing = fs::read_to_string(path).map_err(CliError::Io)?;
+    let existing = read_config_file(path)?;
     let (updated, outcome) = merge_sync_into_config_text(&existing, &payload, overwrite_existing)?;
     fs::write(path, updated).map_err(CliError::Io)?;
     let report = MergeReport {
@@ -275,7 +447,7 @@ fn sync_diff(
 ) -> CliResult<i32> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
-    let existing = fs::read_to_string(path).map_err(CliError::Io)?;
+    let existing = read_config_file(path)?;
     let (mode_label, proposed, outcome) = if replace {
         let proposed = replace_series_block(&existing, &payload)?;
         ("replace", proposed, None)
@@ -297,6 +469,10 @@ fn sync_diff(
         render_diff_report_text(&report, w).map_err(CliError::from)
     })?;
     Ok(0)
+}
+
+fn read_config_file(path: &Path) -> CliResult<String> {
+    fs::read_to_string(path).map_err(CliError::Io)
 }
 
 pub fn replace_series_block(existing: &str, payload: &SyncOutput) -> CliResult<String> {
@@ -642,17 +818,17 @@ fn pin_spec_to_payload(spec: &PinSpec) -> PinPayload {
                 tag: format!("{pattern} ({select_label})"),
             }
         }
+        PinSpec::SelfRef { project, git_ref } => PinPayload {
+            project: project.to_string(),
+            tag: format!("{git_ref} (self)"),
+        },
     }
 }
 
-fn pin_payload_for(pin: &DepPin, project: &Project) -> CliResult<PinPayload> {
+fn pin_payload_for(pin: &DepPin, project: &Project) -> Result<PinPayload, String> {
     let raw_tag = dep_to_tag(pin, &project.tag_prefix);
-    let tag = TagName::new(raw_tag.clone()).map_err(|e| {
-        CliError::InvalidInput(format!(
-            "dep {} produced invalid tag {raw_tag:?}: {e}",
-            pin.name
-        ))
-    })?;
+    let tag = TagName::new(raw_tag.clone())
+        .map_err(|e| format!("tag {raw_tag:?} not a valid tag name: {e}"))?;
     Ok(PinPayload {
         project: project.name.to_string(),
         tag: tag.to_string(),

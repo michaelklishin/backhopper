@@ -51,6 +51,16 @@ pub struct CheckFlags {
         help = "Generate any missing pin snapshots before evaluating, instead of failing with `snapshots missing` (the default)"
     )]
     pub auto_generate: bool,
+    /// Write one JSON line {summary, pins, scope, exit} to stdout, suppress
+    /// the standard JSON envelope, then exit. For agent pipelines that only
+    /// need the verdict and the exit code.
+    #[arg(long)]
+    pub terse: bool,
+    /// For each `MissingPrereq` against a self-pin, run `git log -S <name>` to
+    /// suggest a candidate prerequisite commit. Off by default: slow on large
+    /// histories.
+    #[arg(long)]
+    pub suggest_prereqs: bool,
 }
 
 /// Optional source-side pin descriptor. When set, the analyzer diffs
@@ -128,6 +138,25 @@ pub enum CheckCmd {
         source: SourcePinArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
+    },
+    /// Check the diff of a merge commit, equivalent to `SHA^2..SHA^1`.
+    /// Use this when a single-arg `check commit <MERGE-SHA>` would silently
+    /// first-parent and hide the real diff.
+    Merge {
+        #[arg(long, conflicts_with = "series")]
+        project: Option<ProjectName>,
+        #[arg(long, requires = "project")]
+        tag: Option<TagName>,
+        #[arg(long)]
+        series: Option<SeriesName>,
+        #[arg(long, default_value = ".")]
+        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        source: SourcePinArgs,
+        #[command(flatten)]
+        diagnostics: CheckFlags,
+        #[arg(value_name = "MERGE_SHA")]
+        merge_sha: String,
     },
     /// Check a GitHub PR. The diff comes from `gh pr diff`.
     Pr {

@@ -15,3 +15,4 @@ mod snapshot_round_trip_proptests;
 mod sort_idempotent_proptests;
 mod spec_normalizer_proptests;
 mod tag_glob_proptests;
+mod touched_kinds_proptests;

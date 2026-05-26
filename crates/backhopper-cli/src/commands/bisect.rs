@@ -104,6 +104,8 @@ fn run_commit(
                     first_incompatible_tag = Some(tag.to_string());
                 }
             }
+            // Bisect doesn't run inapplicable promotion, so Inapplicable shouldn't appear.
+            Verdict::Inapplicable { .. } => {}
         }
         rows.push(BisectRow {
             tag: tag.to_string(),
@@ -154,5 +156,6 @@ fn verdict_label(v: &Verdict) -> &'static str {
         Verdict::Compatible => "compatible",
         Verdict::RequiresAdaptation { .. } => "requires_adaptation",
         Verdict::Incompatible { .. } => "incompatible",
+        Verdict::Inapplicable { .. } => "inapplicable",
     }
 }

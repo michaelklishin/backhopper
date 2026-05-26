@@ -46,6 +46,11 @@ pub struct SnapshotHeader {
     pub generated_by: String,
     #[serde(with = "time::serde::rfc3339")]
     pub generated_at: OffsetDateTime,
+    /// Version of the extractor that produced this snapshot. Compared against
+    /// the running binary's `EXTRACTOR_VERSION` by `snapshots verify --all`.
+    /// Empty string when reading pre-extractor-versioning snapshots.
+    #[serde(default)]
+    pub extractor_version: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -297,6 +302,7 @@ impl Default for Snapshot<state::Unsorted> {
                 apps_scanned: Vec::new(),
                 generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
+                extractor_version: String::new(),
             },
             modules: Vec::new(),
             headers: Vec::new(),

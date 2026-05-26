@@ -9,7 +9,7 @@ use backhopper_core::model::names::{
     Arity, FunctionName, ModuleName, ProjectName, RecordName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict};
+use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict, exit};
 
 #[test]
 fn no_reasons_means_compatible() {
@@ -112,5 +112,6 @@ fn series_verdict_summarizes_results() {
     assert_eq!(s.summary.compatible, 1);
     assert_eq!(s.summary.incompatible, 1);
     assert_eq!(s.summary.requires_adaptation, 0);
-    assert_eq!(s.worst_exit_code(), 1);
+    assert_eq!(s.summary.inapplicable, 0);
+    assert_eq!(s.worst_exit_code(), exit::INCOMPATIBLE);
 }

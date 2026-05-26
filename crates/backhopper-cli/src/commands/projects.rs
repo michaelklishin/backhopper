@@ -14,14 +14,18 @@ use crate::output::{OutputContext, render};
 #[derive(Debug, Serialize)]
 struct ProjectListEntry {
     name: String,
-    git_url: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_url: Option<PathBuf>,
+    kind: String,
     language: String,
 }
 
 #[derive(Debug, Serialize)]
 struct ProjectShow {
     name: String,
-    git_url: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_url: Option<PathBuf>,
+    kind: String,
     language: String,
     tag_prefix: String,
     public_modules: Vec<String>,
@@ -38,13 +42,19 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
                 .map(|p| ProjectListEntry {
                     name: p.name.to_string(),
                     git_url: p.git_url.clone(),
+                    kind: p.kind.as_str().to_owned(),
                     language: format!("{:?}", p.language).to_lowercase(),
                 })
                 .collect();
             let ctx = OutputContext::new(args.formatter, "projects list");
             render(&ctx, &entries, |w| {
                 for e in &entries {
-                    writeln!(w, "{}\t{}\t{}", e.name, e.language, e.git_url.display())?;
+                    let url = e
+                        .git_url
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| format!("(self: {})", e.kind));
+                    writeln!(w, "{}\t{}\t{}", e.name, e.language, url)?;
                 }
                 Ok(())
             })?;
@@ -61,6 +71,7 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
             let payload = ProjectShow {
                 name: p.name.to_string(),
                 git_url: p.git_url.clone(),
+                kind: p.kind.as_str().to_owned(),
                 language: format!("{:?}", p.language).to_lowercase(),
                 tag_prefix: p.tag_prefix.clone(),
                 public_modules: p.public_modules.clone(),
@@ -69,7 +80,13 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
             let ctx = OutputContext::new(args.formatter, "projects show");
             render(&ctx, &payload, |w| {
                 writeln!(w, "{}", payload.name)?;
-                writeln!(w, "  git_url       {}", payload.git_url.display())?;
+                writeln!(w, "  kind          {}", payload.kind)?;
+                let url = payload
+                    .git_url
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(self-project)".to_owned());
+                writeln!(w, "  git_url       {url}")?;
                 writeln!(w, "  language      {}", payload.language)?;
                 writeln!(w, "  tag_prefix    {:?}", payload.tag_prefix)?;
                 writeln!(w, "  captured_tags {}", payload.captured_tags.len())?;

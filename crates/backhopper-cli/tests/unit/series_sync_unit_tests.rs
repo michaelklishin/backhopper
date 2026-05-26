@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::{
@@ -15,7 +15,8 @@ use backhopper_cli::commands::series::{
 fn project(name: &str, tag_prefix: &str) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: PathBuf::from(format!("/tmp/{name}.git")),
+        git_url: Some(PathBuf::from(format!("/tmp/{name}.git"))),
+        kind: ProjectKind::External,
         language: Language::Erlang,
         tag_prefix: tag_prefix.into(),
         public_modules: Vec::new(),
@@ -46,7 +47,7 @@ fn render(output: &SyncOutput) -> String {
 fn hex_dep_takes_project_tag_prefix() {
     let mk = "dep_ra = hex 2.16.13\n";
     let projects = vec![project("ra", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(
         out.pins,
         vec![PinPayload {
@@ -60,7 +61,7 @@ fn hex_dep_takes_project_tag_prefix() {
 fn git_dep_uses_version_verbatim_as_tag() {
     let mk = "dep_osiris = git https://github.com/rabbitmq/osiris v1.8.8\n";
     let projects = vec![project("osiris", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(
         out.pins,
         vec![PinPayload {
@@ -74,7 +75,7 @@ fn git_dep_uses_version_verbatim_as_tag() {
 fn git_rmq_dep_uses_version_verbatim_as_tag() {
     let mk = "dep_cowboy = git_rmq cowboy 2.13.0\n";
     let projects = vec![project("cowboy", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(
         out.pins,
         vec![PinPayload {
@@ -88,7 +89,7 @@ fn git_rmq_dep_uses_version_verbatim_as_tag() {
 fn deps_with_no_configured_project_go_to_dropped() {
     let mk = "dep_ra = hex 2.16.13\ndep_jose = hex 1.11.12\ndep_unknown = hex 0.0.1\n";
     let projects = vec![project("ra", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(out.pins.len(), 1);
     assert_eq!(out.pins[0].project, "ra");
     assert_eq!(out.dropped_unconfigured, vec!["jose", "unknown"]);
@@ -98,7 +99,7 @@ fn deps_with_no_configured_project_go_to_dropped() {
 fn pins_and_dropped_are_alphabetically_sorted() {
     let mk = "dep_z_dep = hex 1.0.0\ndep_a_dep = hex 2.0.0\ndep_m_unknown = hex 0.0.1\n";
     let projects = vec![project("a_dep", "v"), project("z_dep", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(
         out.pins
             .iter()
@@ -127,7 +128,7 @@ dep_jose = hex 1.11.12
         project("khepri_mnesia_migration", "v"),
         project("seshat", "v"),
     ];
-    let out = build_sync_output(mk, &series("rabbitmq-4.2"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.2"), &projects);
     let by_project: BTreeMap<_, _> = out
         .pins
         .iter()
@@ -143,7 +144,7 @@ dep_jose = hex 1.11.12
 
 #[test]
 fn empty_mk_produces_empty_payload() {
-    let out = build_sync_output("", &series("rabbitmq-4.1"), &[]).unwrap();
+    let out = build_sync_output("", &series("rabbitmq-4.1"), &[]);
     assert!(out.pins.is_empty());
     assert!(out.dropped_unconfigured.is_empty());
     assert_eq!(out.name, "rabbitmq-4.1");
@@ -153,6 +154,7 @@ fn empty_mk_produces_empty_payload() {
 fn text_renders_toml_stanza_with_aligned_tags() {
     let out = SyncOutput {
         name: "rabbitmq-4.1".into(),
+        branch: None,
         pins: vec![
             PinPayload {
                 project: "ra".into(),
@@ -164,6 +166,7 @@ fn text_renders_toml_stanza_with_aligned_tags() {
             },
         ],
         dropped_unconfigured: Vec::new(),
+        skipped: Vec::new(),
     };
     let s = render(&out);
     assert!(
@@ -179,8 +182,10 @@ fn text_renders_toml_stanza_with_aligned_tags() {
 fn text_renders_dropped_as_trailing_comment_block() {
     let out = SyncOutput {
         name: "rabbitmq-4.1".into(),
+        branch: None,
         pins: Vec::new(),
         dropped_unconfigured: vec!["cowboy".into(), "ranch".into()],
+        skipped: Vec::new(),
     };
     let s = render(&out);
     assert!(s.contains("pins = []"));
@@ -193,11 +198,13 @@ fn text_renders_dropped_as_trailing_comment_block() {
 fn text_omits_dropped_block_when_no_drops() {
     let out = SyncOutput {
         name: "x".into(),
+        branch: None,
         pins: vec![PinPayload {
             project: "a".into(),
             tag: "v1.0.0".into(),
         }],
         dropped_unconfigured: Vec::new(),
+        skipped: Vec::new(),
     };
     let s = render(&out);
     assert!(!s.contains("# dropped"));
@@ -207,7 +214,7 @@ fn text_omits_dropped_block_when_no_drops() {
 fn hex_dep_with_already_prefixed_version_is_not_double_prefixed() {
     let mk = "dep_ra = hex v3.0.0\n";
     let projects = vec![project("ra", "v")];
-    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(out.pins[0].tag, "v3.0.0");
 }
 
@@ -215,6 +222,6 @@ fn hex_dep_with_already_prefixed_version_is_not_double_prefixed() {
 fn hex_dep_with_empty_tag_prefix_keeps_bare_version() {
     let mk = "dep_jose = hex 1.11.12\n";
     let projects = vec![project("jose", "")];
-    let out = build_sync_output(mk, &series("s"), &projects).unwrap();
+    let out = build_sync_output(mk, &series("s"), &projects);
     assert_eq!(out.pins[0].tag, "1.11.12");
 }

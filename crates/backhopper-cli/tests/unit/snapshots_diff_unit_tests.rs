@@ -26,6 +26,7 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         apps_scanned: Vec::new(),
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
+        extractor_version: String::new(),
     }
 }
 

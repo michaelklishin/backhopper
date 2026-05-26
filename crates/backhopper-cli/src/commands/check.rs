@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
@@ -26,15 +27,16 @@ use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{self, Pin, PinSpec};
 use backhopper_core::model::snapshot::{Snapshot, state};
-use backhopper_core::model::symbol::SymbolKind;
+use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, Verdict,
+    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
 use crate::commands::auto_generate::ensure_pin_snapshots_present;
 use crate::commands::context::{load_config, open_store_read};
+use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
@@ -129,6 +131,30 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 range_patch_bytes(&repo_dir_path, range.as_deref(), merge_commit.as_deref())?;
             let source_files =
                 range_source_files(&repo_dir_path, range.as_deref(), merge_commit.as_deref())?;
+            run_check_patch(
+                args,
+                &cfg,
+                &bytes,
+                project,
+                tag,
+                series,
+                Some(&repo_dir_path),
+                &source_files,
+                &source,
+                diagnostics,
+            )
+        }
+        CheckCmd::Merge {
+            project,
+            tag,
+            series,
+            repo_dir_path,
+            source,
+            diagnostics,
+            merge_sha,
+        } => {
+            let bytes = range_patch_bytes(&repo_dir_path, None, Some(&merge_sha))?;
+            let source_files = range_source_files(&repo_dir_path, None, Some(&merge_sha))?;
             run_check_patch(
                 args,
                 &cfg,
@@ -271,6 +297,7 @@ fn build_pin_files(
     pin: &Pin,
     scope: &PinScope,
     touched_paths: &[PathBuf],
+    self_repo: Option<&Path>,
 ) -> CliResult<EvaluationFiles> {
     let in_scope: Vec<(PathBuf, PathBuf)> = touched_paths
         .iter()
@@ -279,10 +306,28 @@ fn build_pin_files(
     if in_scope.is_empty() {
         return Ok(EvaluationFiles::new());
     }
-    let repo = GitRepo::open(project.git_url.clone()).map_err(|e| CliError::Core(e.into()))?;
-    let commit = repo
-        .resolve_tag(&pin.tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let (repo, commit) = if project.is_self() {
+        let repo_path = self_repo
+            .ok_or_else(|| {
+                CliError::InvalidInput("self-project evaluation requires `--repo-dir-path`".into())
+            })?
+            .to_path_buf();
+        // pin.tag for self-pins is the resolved commit SHA.
+        let commit = CommitSha::new(pin.tag.as_str())
+            .map_err(|e| CliError::Other(format!("self-pin tag is not a SHA: {e}")))?;
+        let repo = GitRepo::open(repo_path).map_err(|e| CliError::Core(e.into()))?;
+        (repo, commit)
+    } else {
+        let git_url = project
+            .require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf();
+        let repo = GitRepo::open(git_url).map_err(|e| CliError::Core(e.into()))?;
+        let commit = repo
+            .resolve_tag(&pin.tag)
+            .map_err(|e| CliError::Core(e.into()))?;
+        (repo, commit)
+    };
     let needed: BTreeSet<String> = in_scope
         .iter()
         .map(|(_, project_path)| project_path.to_string_lossy().into_owned())
@@ -466,9 +511,17 @@ fn load_files_at(g: &GitRepo, commit: &CommitSha) -> CliResult<FileMap> {
 pub fn commit_patch_bytes(repo: &Path, commit: &str) -> CliResult<Vec<u8>> {
     let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
     let to = resolve_rev_with_hint(&g, repo, commit)?;
-    let from = g
-        .parent_commit(&to)
-        .map_err(|e| CliError::Core(e.into()))?
+    let parents = g.parents(&to).map_err(|e| CliError::Core(e.into()))?;
+    // Don't silently first-parent a merge: hint at the explicit `check merge` verb.
+    if parents.len() >= 2 {
+        return Err(CliError::InvalidInput(format!(
+            "{commit} is a merge commit ({} parents); use 'backhopper check merge {commit}' instead",
+            parents.len()
+        )));
+    }
+    let from = parents
+        .into_iter()
+        .next()
         .ok_or_else(|| CliError::InvalidInput(format!("commit {commit} has no parent")))?;
     let text = g
         .diff_commits_unified(&from, &to, |p| {
@@ -544,7 +597,7 @@ fn run_check_patch(
             ));
         }
     };
-    let pins: Vec<Pin> = resolve_pin_specs(&pin_specs, &store)?;
+    let pins: Vec<Pin> = resolve_all_pin_specs(args, cfg, &store, &pin_specs, repo_dir_path)?;
     ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
     let source_pins = resolve_source_pins(
         cfg,
@@ -555,13 +608,28 @@ fn run_check_patch(
         series.as_ref(),
         source,
     )?;
-    let mut evaluation = evaluate_one(cfg, &store, bytes, &pins, &source_pins, source_files)?;
+    let mut evaluation = evaluate_one(
+        cfg,
+        &store,
+        bytes,
+        &pins,
+        &source_pins,
+        source_files,
+        repo_dir_path,
+    )?;
     if diagnostics.resolve_untracked_modules {
         let repo = repo_dir_path.ok_or_else(|| {
             CliError::InvalidInput("--resolve-untracked-modules requires --repo-dir-path".into())
         })?;
         resolve_untracked_modules_against_tree(&mut evaluation, repo)?;
     }
+    promote_self_missing_to_prereq(
+        &mut evaluation,
+        cfg,
+        &pin_specs,
+        repo_dir_path,
+        diagnostics.suggest_prereqs,
+    );
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),
@@ -596,12 +664,67 @@ fn run_check_patch(
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
+    if diagnostics.terse {
+        return render_terse(&evaluation, exit);
+    }
     let style = args.table_style;
     render_with_exit(&ctx, &payload, exit, |w| {
         render_text(w, &evaluation, &known_projects, diagnostics, style)?;
         render_suggestions_text(w, &project_suggestions, diagnostics)?;
         Ok(())
     })
+}
+
+fn render_terse(evaluation: &SeriesEvaluation, exit: i32) -> CliResult<i32> {
+    let summary_label = if evaluation.verdict.summary.incompatible > 0 {
+        "incompatible"
+    } else if evaluation.verdict.summary.requires_adaptation > 0 {
+        "requires_adaptation"
+    } else if evaluation.verdict.summary.compatible > 0 {
+        "compatible"
+    } else if evaluation.verdict.summary.inapplicable > 0 {
+        "inapplicable"
+    } else {
+        "empty"
+    };
+    let pins = evaluation.verdict.results.len();
+    let scope = dominant_scope(&evaluation.verdict.results);
+    let line = serde_json::json!({
+        "summary": summary_label,
+        "pins": pins,
+        "scope": scope,
+        "exit": exit,
+    });
+    let mut out = io::stdout().lock();
+    writeln!(out, "{line}").map_err(CliError::Io)?;
+    Ok(exit)
+}
+
+fn dominant_scope(results: &[PinVerdict]) -> &'static str {
+    // Every pin shares the same `TouchedKinds` (stamped from the patch once
+    // in `evaluate_one`), so reading the first is enough.
+    let Some(t) = results.first().map(|r| &r.touched) else {
+        return "empty";
+    };
+    if t.erl > 0 || t.hrl > 0 {
+        return "source";
+    }
+    let only_schema = t.schema > 0 && t.docs == 0 && t.tests == 0 && t.other == 0;
+    if only_schema {
+        return "schema_only";
+    }
+    let only_docs = t.docs > 0 && t.schema == 0 && t.tests == 0 && t.other == 0;
+    if only_docs {
+        return "docs_only";
+    }
+    let only_tests = t.tests > 0 && t.schema == 0 && t.docs == 0 && t.other == 0;
+    if only_tests {
+        return "tests_only";
+    }
+    if t.is_empty() {
+        return "empty";
+    }
+    "mixed_non_source"
 }
 
 fn apply_suggestions_to_config(
@@ -656,15 +779,21 @@ fn render_text(
     if flags.summary_only {
         writeln!(
             w,
-            "compatible={} requires_adaptation={} incompatible={}",
-            v.summary.compatible, v.summary.requires_adaptation, v.summary.incompatible,
+            "compatible={} requires_adaptation={} incompatible={} inapplicable={}",
+            v.summary.compatible,
+            v.summary.requires_adaptation,
+            v.summary.incompatible,
+            v.summary.inapplicable,
         )?;
         return Ok(());
     }
     writeln!(
         w,
-        "compatible: {}, requires_adaptation: {}, incompatible: {}",
-        v.summary.compatible, v.summary.requires_adaptation, v.summary.incompatible,
+        "compatible: {}, requires_adaptation: {}, incompatible: {}, inapplicable: {}",
+        v.summary.compatible,
+        v.summary.requires_adaptation,
+        v.summary.incompatible,
+        v.summary.inapplicable,
     )?;
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
@@ -862,6 +991,7 @@ fn evaluate_one(
     pins: &[Pin],
     source_pins: &[Option<Pin>],
     source_files: &FileMap,
+    self_repo: Option<&Path>,
 ) -> CliResult<SeriesEvaluation> {
     let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
     let touched_paths: Vec<PathBuf> = patch
@@ -876,6 +1006,7 @@ fn evaluate_one(
         }
     }
     let analyzed = patch.analyze_with_macros(&macros_by_path);
+    let touched_kinds = TouchedKinds::from_paths(&touched_paths);
     let mut contexts = Vec::with_capacity(pins.len());
     for (idx, pin) in pins.iter().enumerate() {
         let project = cfg
@@ -885,7 +1016,7 @@ fn evaluate_one(
             .read(&pin.project, &pin.tag)
             .map_err(|e| CliError::Core(e.into()))?;
         let scope = build_pin_scope(project, &snap);
-        let files = build_pin_files(project, pin, &scope, &touched_paths)?;
+        let files = build_pin_files(project, pin, &scope, &touched_paths, self_repo)?;
         let mut ctx = EvaluationContext::new(pin.clone(), snap, scope).with_files(files);
         if let Some(Some(source_pin)) = source_pins.get(idx) {
             let source_snap = store
@@ -895,11 +1026,139 @@ fn evaluate_one(
         }
         contexts.push(ctx);
     }
-    Ok(analyzed.evaluate_series(&contexts))
+    let mut eval = analyzed.evaluate_series(&contexts);
+    let stamped: Vec<_> = eval
+        .verdict
+        .results
+        .into_iter()
+        .map(|pv| pv.with_touched(touched_kinds))
+        .collect();
+    eval.verdict = SeriesVerdict::from_results(stamped).promote_inapplicable();
+    Ok(eval)
 }
 
 fn resolve_pin_specs(specs: &[PinSpec], store: &SnapshotStore<ReadOnly>) -> CliResult<Vec<Pin>> {
     pin::resolve_all(specs, store).map_err(|e| CliError::Core(e.into()))
+}
+
+fn promote_self_missing_to_prereq(
+    evaluation: &mut SeriesEvaluation,
+    cfg: &Config,
+    pin_specs: &[PinSpec],
+    self_repo: Option<&Path>,
+    suggest_prereqs: bool,
+) {
+    let self_project_name: Option<&ProjectName> = pin_specs
+        .iter()
+        .find_map(|s| if s.is_self() { Some(s.project()) } else { None });
+    let Some(self_name) = self_project_name else {
+        return;
+    };
+    let Some(self_branch_label) = pin_specs.iter().find_map(|s| match s {
+        PinSpec::SelfRef { git_ref, .. } => Some(git_ref.clone()),
+        _ => None,
+    }) else {
+        return;
+    };
+    let new_results: Vec<PinVerdict> = mem::take(&mut evaluation.verdict.results)
+        .into_iter()
+        .map(|pv| {
+            if &pv.pin.project != self_name {
+                return pv;
+            }
+            let has_missing_symbol = pv
+                .verdict
+                .reasons()
+                .iter()
+                .any(|r| matches!(r, Reason::MissingSymbol { .. }));
+            if !has_missing_symbol {
+                return pv;
+            }
+            let reasons: Vec<Reason> = pv
+                .verdict
+                .reasons()
+                .iter()
+                .map(|r| match r {
+                    Reason::MissingSymbol { symbol, .. } => Reason::MissingPrereq {
+                        symbol: symbol.clone(),
+                        self_branch: self_branch_label.clone(),
+                        suggested_source_for_prereq: if suggest_prereqs {
+                            suggest_prereq_sha(symbol, cfg, self_repo)
+                        } else {
+                            None
+                        },
+                    },
+                    other => other.clone(),
+                })
+                .collect();
+            PinVerdict {
+                verdict: Verdict::from_reasons(reasons),
+                ..pv
+            }
+        })
+        .collect();
+    evaluation.verdict = SeriesVerdict::from_results(new_results);
+}
+
+// Known gix port debt: shells out to `git log -S` because `gix` does not
+// yet expose a pickaxe walker we can drop in. Behind the opt-in
+// `--suggest-prereqs` flag so the default code path stays gix-only.
+fn suggest_prereq_sha(
+    symbol: &SymbolRef,
+    _cfg: &Config,
+    self_repo: Option<&Path>,
+) -> Option<CommitSha> {
+    let repo = self_repo?;
+    let name = match &symbol.kind {
+        SymbolKind::Function { mfa } => mfa.function.as_str().to_owned(),
+        _ => return None,
+    };
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["log", "-S", &name, "--format=%H", "--max-count=1"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8(out.stdout).ok()?.trim().to_owned();
+    if sha.is_empty() {
+        return None;
+    }
+    CommitSha::new(sha).ok()
+}
+
+fn resolve_all_pin_specs(
+    args: &GlobalArgs,
+    cfg: &Config,
+    store: &SnapshotStore<ReadOnly>,
+    specs: &[PinSpec],
+    self_repo: Option<&Path>,
+) -> CliResult<Vec<Pin>> {
+    let has_self = specs.iter().any(PinSpec::is_self);
+    if !has_self {
+        return resolve_pin_specs(specs, store);
+    }
+    let repo = self_repo.ok_or_else(|| {
+        CliError::InvalidInput(
+            "series contains a self-pin; `--repo-dir-path` is required to resolve it".into(),
+        )
+    })?;
+    let mut pins = Vec::with_capacity(specs.len());
+    for spec in specs {
+        if spec.is_self() {
+            let pin = resolve_self_pin(repo, spec)?;
+            let project = cfg
+                .project(spec.project())
+                .map_err(|e| CliError::Core(e.into()))?;
+            ensure_self_snapshot_present(args, cfg, store, project, repo, &pin)?;
+            pins.push(pin);
+        } else {
+            pins.push(spec.resolve(store).map_err(|e| CliError::Core(e.into()))?);
+        }
+    }
+    Ok(pins)
 }
 
 fn resolve_source_pins(
@@ -1004,7 +1263,15 @@ fn run_batch(
             let item_label = format!("{commit} @ {name}");
             let source_pins =
                 resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
-            let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
+            let evaluation = evaluate_one(
+                cfg,
+                &store,
+                &bytes,
+                pins,
+                &source_pins,
+                &source_files,
+                Some(repo),
+            )?;
             current += 1;
             reporter.progress(current, pair_count, &item_label);
             worst_exit = worst_exit.max(evaluation.worst_exit_code());
@@ -1073,7 +1340,15 @@ fn run_multi(
     let mut worst_exit: i32 = 0;
     for (name, pins) in &resolved_series {
         let source_pins = resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
-        let evaluation = evaluate_one(cfg, &store, &bytes, pins, &source_pins, &source_files)?;
+        let evaluation = evaluate_one(
+            cfg,
+            &store,
+            &bytes,
+            pins,
+            &source_pins,
+            &source_files,
+            Some(repo),
+        )?;
         worst_exit = worst_exit.max(evaluation.worst_exit_code());
         results.push(BatchResult {
             commit: commit.to_owned(),
@@ -1115,38 +1390,43 @@ fn render_batch_text(
         for r in results {
             writeln!(
                 w,
-                "{} {} compatible={} requires_adaptation={} incompatible={}",
+                "{} {} compatible={} requires_adaptation={} incompatible={} inapplicable={}",
                 r.commit,
                 r.series,
                 r.verdict.summary.compatible,
                 r.verdict.summary.requires_adaptation,
                 r.verdict.summary.incompatible,
+                r.verdict.summary.inapplicable,
             )?;
         }
         return Ok(());
     }
-    let totals = results.iter().fold((0u32, 0u32, 0u32), |(c, r, i), x| {
-        (
-            c + x.verdict.summary.compatible,
-            r + x.verdict.summary.requires_adaptation,
-            i + x.verdict.summary.incompatible,
-        )
-    });
+    let totals = results
+        .iter()
+        .fold((0u32, 0u32, 0u32, 0u32), |(c, ra, i, v), x| {
+            (
+                c + x.verdict.summary.compatible,
+                ra + x.verdict.summary.requires_adaptation,
+                i + x.verdict.summary.incompatible,
+                v + x.verdict.summary.inapplicable,
+            )
+        });
     writeln!(
         w,
-        "totals: compatible={} requires_adaptation={} incompatible={}",
-        totals.0, totals.1, totals.2,
+        "totals: compatible={} requires_adaptation={} incompatible={} inapplicable={}",
+        totals.0, totals.1, totals.2, totals.3,
     )?;
     writeln!(w)?;
     for r in results {
         writeln!(
             w,
-            "{}  {:<20} compatible={} requires_adaptation={} incompatible={}",
+            "{}  {:<20} compatible={} requires_adaptation={} incompatible={} inapplicable={}",
             r.commit,
             r.series,
             r.verdict.summary.compatible,
             r.verdict.summary.requires_adaptation,
             r.verdict.summary.incompatible,
+            r.verdict.summary.inapplicable,
         )?;
         if flags.explain {
             render_explain_section(w, &r.verdict.results)?;
