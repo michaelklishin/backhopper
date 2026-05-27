@@ -33,7 +33,7 @@ backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.
 anyhow             = "1.0.102"
 bel7-cli           = { version = "0.9", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
 clap               = { version = "4.6.1", features = ["derive", "env", "wrap_help"] }
-gix                = { version = "=0.83.0" }
+gix                = { version = "=0.84.0" }
 imara-diff         = "0.2.0"
 insta              = { version = "1.47.2", features = ["json", "yaml"] }
 proptest           = "1.11.0"
