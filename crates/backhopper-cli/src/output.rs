@@ -63,9 +63,44 @@ where
                 .map_err(|e| CliError::OutputError(e.to_string()))?;
             writeln!(stdout)?;
         }
-        Formatter::Text => {
+        Formatter::Text | Formatter::Markdown => {
+            // commands without a dedicated markdown form fall back to text
             text_render(&mut stdout)?;
         }
+    }
+    Ok(exit_code)
+}
+
+/// Variant that lets a command supply a markdown-specific closure. The
+/// JSON path is unchanged; `Text` uses `text_render`; `Markdown` uses
+/// `markdown_render`.
+pub fn render_with_alts<T, FT, FM>(
+    out: &OutputContext,
+    payload: &T,
+    exit_code: i32,
+    text_render: FT,
+    markdown_render: FM,
+) -> CliResult<i32>
+where
+    T: Serialize,
+    FT: FnOnce(&mut dyn Write) -> CliResult<()>,
+    FM: FnOnce(&mut dyn Write) -> CliResult<()>,
+{
+    let mut stdout = io::stdout().lock();
+    match out.formatter {
+        Formatter::Json => {
+            let body = json!({
+                "schema_version": out.schema_version,
+                "command":        out.command,
+                "data":           payload,
+                "exit_code":      exit_code,
+            });
+            serde_json::to_writer_pretty(&mut stdout, &body)
+                .map_err(|e| CliError::OutputError(e.to_string()))?;
+            writeln!(stdout)?;
+        }
+        Formatter::Text => text_render(&mut stdout)?,
+        Formatter::Markdown => markdown_render(&mut stdout)?,
     }
     Ok(exit_code)
 }

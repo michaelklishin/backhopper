@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use proptest::prelude::*;
 
-use backhopper_core::config::{Language, Project, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::build_sync_output;
@@ -23,6 +23,7 @@ fn project(name: &str) -> Project {
         name: ProjectName::new(name).unwrap(),
         git_url: Some(PathBuf::from("/tmp/x.git")),
         kind: backhopper_core::config::ProjectKind::External,
+        family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: "v".into(),
         public_modules: Vec::new(),

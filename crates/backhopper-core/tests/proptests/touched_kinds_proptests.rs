@@ -23,7 +23,17 @@ proptest! {
         paths in proptest::collection::vec(arb_path(), 0..30)
     ) {
         let tk = TouchedKinds::from_paths(&paths);
-        let total = tk.erl + tk.hrl + tk.schema + tk.docs + tk.tests + tk.other;
+        let total = tk.erl
+            + tk.hrl
+            + tk.schema
+            + tk.docs
+            + tk.tests
+            + tk.makefile
+            + tk.mix_exs
+            + tk.ci_workflow
+            + tk.app_src
+            + tk.rebar_config
+            + tk.other;
         prop_assert_eq!(total as usize, paths.len());
     }
 

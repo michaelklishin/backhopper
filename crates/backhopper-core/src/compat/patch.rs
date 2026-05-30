@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use crate::compat::arg_shape::ArgShape;
 use crate::compat::call_sites::{
-    DynamicCall, extract_call_args_into, extract_definitions_into, extract_dynamic_into,
-    extract_into_with_macros,
+    AttrCtxScanner, DynamicCall, extract_call_args_into, extract_definitions_into,
+    extract_dynamic_into, extract_into_with_macros, extract_type_refs_into,
 };
 use crate::compat::diff;
 use crate::compat::evaluate::evaluate_pin;
@@ -25,7 +25,7 @@ use crate::errors::PatchError;
 use crate::model::names::{Mfa, ModuleName, RecordName};
 use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
-use crate::model::symbol::{SymbolKind, SymbolRef};
+use crate::model::symbol::{RefContext, SymbolKind, SymbolRef};
 use crate::model::verdict::{Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict, Unanalyzed};
 
 pub use crate::compat::diff::PATCH_SIZE_LIMIT;
@@ -47,6 +47,13 @@ pub use patch_state::{Analyzed, Raw, Verdicted};
 pub enum Language {
     Erlang,
     Elixir,
+    /// Cuttlefish `.schema`, `.snippets`, and `.partial` files: Erlang
+    /// fragments embedded in a config-key DSL. We run the call-site
+    /// extractor over every line so MFA references inside
+    /// `{translation, ..., fun(Conf) -> M:F(...) end}` blocks land in
+    /// `Patch.referenced`. The `.partial` extension was introduced in
+    /// cuttlefish 3.8.0.
+    CuttlefishSchema,
     Other,
 }
 
@@ -56,6 +63,11 @@ impl Language {
             Self::Erlang
         } else if path.ends_with(".ex") || path.ends_with(".exs") {
             Self::Elixir
+        } else if path.ends_with(".schema")
+            || path.ends_with(".snippets")
+            || path.ends_with(".partial")
+        {
+            Self::CuttlefishSchema
         } else {
             Self::Other
         }
@@ -168,15 +180,36 @@ impl Patch<Raw> {
             match file.language {
                 Language::Erlang => {
                     for hunk in &file.hunks {
+                        let mut scanner = AttrCtxScanner::new();
                         for line in &hunk.lines {
                             match line {
                                 HunkLine::Added(text) | HunkLine::Context(text) => {
-                                    extract_into_with_macros(text, file_macros, &mut referenced);
-                                    extract_definitions_into(text, &mut defined);
-                                    extract_dynamic_into(text, &mut dynamic_calls);
-                                    extract_call_args_into(text, &mut call_args);
+                                    match scanner.classify(text) {
+                                        RefContext::TypeAttribute => {
+                                            extract_type_refs_into(text, &mut referenced);
+                                        }
+                                        RefContext::Body => {
+                                            extract_into_with_macros(
+                                                text,
+                                                file_macros,
+                                                &mut referenced,
+                                            );
+                                            extract_definitions_into(text, &mut defined);
+                                            extract_dynamic_into(text, &mut dynamic_calls);
+                                            extract_call_args_into(text, &mut call_args);
+                                        }
+                                    }
                                 }
                                 HunkLine::Removed(_) => {}
+                            }
+                        }
+                    }
+                }
+                Language::CuttlefishSchema => {
+                    for hunk in &file.hunks {
+                        for line in &hunk.lines {
+                            if let HunkLine::Added(text) | HunkLine::Context(text) = line {
+                                extract_into_with_macros(text, file_macros, &mut referenced);
                             }
                         }
                     }
@@ -389,6 +422,15 @@ impl Patch<Analyzed> {
         &self.defined
     }
 
+    /// True when every changed `.erl` hunk is a Variant A unwrap of
+    /// test-only `-ifdef(TEST)` machinery (see
+    /// `InapplicableReason::OnlyTestVisibilityChanged`). Callers stamp
+    /// the result onto each `PinVerdict.touched.only_test_visibility`
+    /// so the inapplicable promoter can flip the verdict.
+    pub fn is_only_test_visibility_change(&self) -> bool {
+        crate::compat::patch_facts::is_only_test_visibility_change(&self.files)
+    }
+
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
         let result = evaluate_pin(
             &self.files,
@@ -519,7 +561,9 @@ impl Patch<Analyzed> {
                 untracked_calls: untracked_calls.into_map(),
                 untracked_records,
                 unanalyzed,
+                suggested_suites: crate::compat::patch_facts::suggest_suites(&self.files),
             },
+            patch_facts: crate::compat::patch_facts::classify(&self.files),
         }
     }
 }

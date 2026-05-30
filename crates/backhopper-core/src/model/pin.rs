@@ -10,6 +10,7 @@
 //! the compatibility pipeline treats as the only pin type.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -70,11 +71,15 @@ pub enum PinSpec {
         select: PinSelect,
     },
     /// Self-project pin. `git_ref` is a branch, tag, or SHA resolved in the
-    /// working repo at evaluation time. Resolution requires `--repo-dir-path`
-    /// because no `git_url` is configured for self-projects.
+    /// working repo at evaluation time. `repo_dir_path`, when set, overrides
+    /// the CLI `--repo-dir-path` fallback: needed when one logical project
+    /// lives in several physical git directories (one per maintained
+    /// branch).
     SelfRef {
         project: ProjectName,
         git_ref: GitRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        repo_dir_path: Option<PathBuf>,
     },
 }
 
@@ -130,10 +135,22 @@ impl PinSpec {
                     })?;
                 Ok(Pin::new(project.clone(), chosen.clone()))
             }
-            Self::SelfRef { project, git_ref } => Err(ConfigError::SelfPinNeedsRepoDirPath {
+            Self::SelfRef {
+                project, git_ref, ..
+            } => Err(ConfigError::SelfPinNeedsRepoDirPath {
                 project: project.to_string(),
                 git_ref: git_ref.to_string(),
             }),
+        }
+    }
+
+    /// `Some(path)` when this pin carries a `repo_dir_path` override.
+    /// Returns `None` for non-self pins and for self pins that should
+    /// fall back to the CLI `--repo-dir-path` argument.
+    pub fn self_repo_override(&self) -> Option<&Path> {
+        match self {
+            Self::SelfRef { repo_dir_path, .. } => repo_dir_path.as_deref(),
+            _ => None,
         }
     }
 }
@@ -162,7 +179,9 @@ impl fmt::Display for PinSpec {
                 };
                 write!(f, "{project}@{pattern} ({select_label})")
             }
-            Self::SelfRef { project, git_ref } => write!(f, "{project}@{git_ref} (self)"),
+            Self::SelfRef {
+                project, git_ref, ..
+            } => write!(f, "{project}@{git_ref} (self)"),
         }
     }
 }

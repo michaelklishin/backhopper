@@ -14,8 +14,8 @@ use time::format_description::well_known::Rfc3339;
 use crate::errors::SnapshotError;
 use crate::model::names::ModuleName;
 use crate::model::snapshot::{
-    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, Module, Snapshot, SnapshotHeader, Visibility,
-    state,
+    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, IfdefGuardKind, Module, Snapshot,
+    SnapshotHeader, TestExportVariant, Visibility, state,
 };
 
 pub const HEADER_PREFIX: &str = "# ";
@@ -68,11 +68,11 @@ pub fn write_module_filtered<W: Write>(
 
 fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> {
     writeln!(w, "# backhopper snapshot")?;
-    writeln!(w, "# format-version: {}", FORMAT_VERSION)?;
+    writeln!(w, "# format-version: {FORMAT_VERSION}")?;
     writeln!(w, "# project: {}", header.project)?;
     writeln!(w, "# tag: {}", header.tag)?;
     if let Some(branch) = &header.branch {
-        writeln!(w, "# branch: {}", branch)?;
+        writeln!(w, "# branch: {branch}")?;
     }
     writeln!(w, "# commit: {}", header.commit)?;
     writeln!(w, "# scanned-paths: {}", header.scanned_paths.join(", "))?;
@@ -85,7 +85,7 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
         .generated_at
         .format(&Rfc3339)
         .unwrap_or_else(|_| String::from("0"));
-    writeln!(w, "# generated-at: {}", formatted)?;
+    writeln!(w, "# generated-at: {formatted}")?;
     if !header.extractor_version.is_empty() {
         writeln!(w, "# extractor-version: {}", header.extractor_version)?;
     }
@@ -98,8 +98,14 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
     if m.visibility != Visibility::Public {
         writeln!(w, "  visibility {}", m.visibility.keyword())?;
     }
+    if let Some(path) = &m.path {
+        writeln!(w, "  path {path}")?;
+    }
+    if let Some(app) = &m.app {
+        writeln!(w, "  app {app}")?;
+    }
     for b in &m.behaviours {
-        writeln!(w, "  behaviour {}", b)?;
+        writeln!(w, "  behaviour {b}")?;
     }
     for e in &m.exports {
         writeln!(w, "  export {}/{}", e.name, e.arity)?;
@@ -130,6 +136,60 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
     }
     for d in &m.deprecations {
         write_deprecation(d, w)?;
+    }
+    for r in &m.records {
+        writeln!(w, "  record {}", r.name)?;
+        for f in &r.fields {
+            if let Some(t) = &f.type_repr {
+                writeln!(w, "    field {} :: {}", f.name, t)?;
+            } else {
+                writeln!(w, "    field {}", f.name)?;
+            }
+        }
+    }
+    for t in &m.test_only_exports {
+        let variant = match t.variant {
+            TestExportVariant::A => "a",
+            TestExportVariant::B => "b",
+        };
+        match t.body_line {
+            Some(body) => writeln!(
+                w,
+                "  test_only_export {} {}/{} export_line={} body_line={}",
+                variant, t.function, t.arity, t.export_line, body
+            )?,
+            None => writeln!(
+                w,
+                "  test_only_export {} {}/{} export_line={}",
+                variant, t.function, t.arity, t.export_line
+            )?,
+        }
+    }
+    for im in &m.ifdef_macros {
+        let guard = match im.guard_kind {
+            IfdefGuardKind::Test => "test",
+            IfdefGuardKind::NotTest => "not_test",
+            IfdefGuardKind::Other => "other",
+        };
+        writeln!(
+            w,
+            "  ifdef_macro {} guard={} line={}",
+            im.name, guard, im.line
+        )?;
+    }
+    for vc in &m.variant_c_blocks {
+        match vc.else_line {
+            Some(else_line) => writeln!(
+                w,
+                "  variant_c_block guard={} start_line={} else_line={} end_line={}",
+                vc.guard, vc.start_line, else_line, vc.end_line
+            )?,
+            None => writeln!(
+                w,
+                "  variant_c_block guard={} start_line={} end_line={}",
+                vc.guard, vc.start_line, vc.end_line
+            )?,
+        }
     }
     Ok(())
 }

@@ -21,7 +21,7 @@ proptest! {
         f in arb_lower_atom(),
         a in arb_arity()
     ) {
-        let s = format!("{}:{}/{}", m, f, a);
+        let s = format!("{m}:{f}/{a}");
         let parsed: Mfa = s.parse().unwrap();
         prop_assert_eq!(parsed.to_string(), s);
     }

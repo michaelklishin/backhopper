@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.95"
 authors = ["Michael S. Klishin and Contributors"]
@@ -22,16 +22,16 @@ homepage = "https://github.com/michaelklishin/backhopper"
 readme = "README.md"
 
 [workspace.dependencies]
-backhopper-core        = { path = "crates/backhopper-core",        version = "0.6.0" }
-backhopper-erlang      = { path = "crates/backhopper-erlang",      version = "0.6.0" }
-backhopper-elixir      = { path = "crates/backhopper-elixir",      version = "0.6.0" }
-backhopper-cuttlefish  = { path = "crates/backhopper-cuttlefish",  version = "0.6.0" }
-backhopper-xref-graph  = { path = "crates/backhopper-xref-graph",  version = "0.6.0" }
-backhopper-xref-reader = { path = "crates/backhopper-xref-reader", version = "0.6.0" }
-backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.6.0" }
+backhopper-core        = { path = "crates/backhopper-core",        version = "0.8.0" }
+backhopper-erlang      = { path = "crates/backhopper-erlang",      version = "0.8.0" }
+backhopper-elixir      = { path = "crates/backhopper-elixir",      version = "0.8.0" }
+backhopper-cuttlefish  = { path = "crates/backhopper-cuttlefish",  version = "0.8.0" }
+backhopper-xref-graph  = { path = "crates/backhopper-xref-graph",  version = "0.8.0" }
+backhopper-xref-reader = { path = "crates/backhopper-xref-reader", version = "0.8.0" }
+backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.8.0" }
 
 anyhow             = "1.0.102"
-bel7-cli           = { version = "0.9", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
+bel7-cli           = { version = "0.12", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
 clap               = { version = "4.6.1", features = ["derive", "env", "wrap_help"] }
 gix                = { version = "=0.83.0" }
 imara-diff         = "0.2.0"

@@ -8,6 +8,8 @@ pub(crate) mod diff;
 pub(crate) mod evaluate;
 pub mod otp;
 pub mod patch;
+pub(crate) mod patch_facts;
+pub mod routing;
 pub mod scope;
 pub mod source_macros;
 
@@ -16,4 +18,5 @@ pub use patch::{
     Analyzed, EvaluationContext, EvaluationFiles, EvaluationInput, Language, Patch, Pinned, Raw,
     Scoped, Sourced, Verdicted, evaluation_state, patch_state,
 };
+pub use routing::{PathRouting, classify_paths_for_pin, project_owns_path};
 pub use scope::{PinScope, UntrackedTally};

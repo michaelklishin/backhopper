@@ -113,6 +113,15 @@ fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
             p += 1;
             continue;
         }
+        if !in_string && !in_atom_quote && ch == '$' {
+            let span = skip_char_literal_span(bytes, p);
+            let end = (p + span).min(bytes.len());
+            #[allow(clippy::naive_bytecount)]
+            let nls = bytes[p..end].iter().filter(|&&b| b == b'\n').count();
+            newlines += nls;
+            p += span;
+            continue;
+        }
         match ch {
             '\\' if in_string || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_string = !in_string,
@@ -214,6 +223,10 @@ pub fn split_top_level_commas(s: &str) -> Vec<&str> {
             i += 1;
             continue;
         }
+        if !in_string && !in_atom_quote && ch == '$' {
+            i += skip_char_literal_span(bytes, i);
+            continue;
+        }
         match ch {
             '\\' if in_string || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_string = !in_string,
@@ -241,4 +254,22 @@ pub fn split_top_level_commas(s: &str) -> Vec<&str> {
         out.push(s[start..].trim());
     }
     out.into_iter().filter(|x| !x.is_empty()).collect()
+}
+
+fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
+    debug_assert_eq!(bytes[at], b'$');
+    let next = at + 1;
+    if next >= bytes.len() {
+        return 1;
+    }
+    if bytes[next] == b'\\' {
+        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
+            return 4;
+        }
+        if next + 1 < bytes.len() {
+            return 3;
+        }
+        return 2;
+    }
+    2
 }

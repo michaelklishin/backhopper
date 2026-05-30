@@ -30,7 +30,12 @@ pub mod state {
     pub struct Canonical;
 }
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 3;
+
+/// Older snapshot file versions the parser still accepts. New writers
+/// always emit `FORMAT_VERSION`. `snapshots migrate` regenerates each
+/// stored snapshot at the current version.
+pub const SUPPORTED_FORMAT_VERSIONS: &[u32] = &[1, 2, 3];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotHeader {
@@ -90,6 +95,96 @@ pub struct Module {
     /// argument shape doesn't satisfy any clause head at the pin.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub clause_heads: BTreeMap<FunArity, Vec<Vec<ArgShape>>>,
+    /// Source path relative to the project root. `None` on format
+    /// version 1 snapshots; populated on v2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Application this module belongs to. `None` on v1 and for
+    /// single-app projects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<ApplicationName>,
+    /// Records declared inline in the `.erl` file. Distinct from
+    /// `HrlFile.records`. v2 and later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<RecordDecl>,
+    /// Exports declared inside an `-ifdef(TEST)` block. Test-only
+    /// exports drive cascade planning for the unconditional-exports
+    /// refactor (see `008_unconditional_exports_case_feedback.md`
+    /// §3.3): they are not part of the public API at the tag but the
+    /// planner needs to know they exist on this branch.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub test_only_exports: Vec<TestOnlyExport>,
+    /// `-define(...)` macros that live inside `-ifdef(TEST)` *body*
+    /// blocks (the macro itself is only visible under the guard).
+    /// Needed by the Variant B unwrap planner: when the body block
+    /// becomes unconditional, every macro it depends on must move
+    /// out together with the function bodies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ifdef_macros: Vec<IfdefMacro>,
+    /// `-ifndef(TEST)/-else/-endif` regions: a function with two
+    /// bodies, a production one and a test one. Recorded for
+    /// surfacing (see feedback §7.3); no verdict rule fires on them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variant_c_blocks: Vec<VariantCBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TestOnlyExport {
+    pub function: FunctionName,
+    pub arity: Arity,
+    /// 1-based line where the `-export` directive lives.
+    pub export_line: usize,
+    /// 1-based line where the function body starts. `None` for
+    /// Variant A (body unconditional), `Some` for Variant B (body
+    /// inside its own `-ifdef(TEST)` block, where the function
+    /// itself is absent from a non-TEST beam).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_line: Option<usize>,
+    pub variant: TestExportVariant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestExportVariant {
+    /// Body is compiled unconditionally; only the `-export` is
+    /// guarded. Stale non-TEST `.beam` still has the function code
+    /// but not in its export table.
+    A,
+    /// Body is also inside an `-ifdef(TEST)` block. The function
+    /// does not exist in a non-TEST `.beam` at all.
+    B,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct IfdefMacro {
+    pub name: String,
+    /// 1-based line where the `-define` directive lives.
+    pub line: usize,
+    pub guard_kind: IfdefGuardKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IfdefGuardKind {
+    /// The macro is inside `-ifdef(TEST)`.
+    Test,
+    /// The macro is inside `-ifndef(TEST)`.
+    NotTest,
+    /// The macro is inside some other `-ifdef` or `-if` block.
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct VariantCBlock {
+    /// The `-ifndef(...)` identifier (typically `TEST`).
+    pub guard: String,
+    /// 1-based line where the `-ifndef` directive lives.
+    pub start_line: usize,
+    /// 1-based line where the matching `-endif.` lives.
+    pub end_line: usize,
+    /// 1-based line where the `-else.` lives, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub else_line: Option<usize>,
 }
 
 impl Module {
@@ -107,7 +202,27 @@ impl Module {
             opaques: Vec::new(),
             deprecations: Vec::new(),
             clause_heads: BTreeMap::new(),
+            path: None,
+            app: None,
+            records: Vec::new(),
+            test_only_exports: Vec::new(),
+            ifdef_macros: Vec::new(),
+            variant_c_blocks: Vec::new(),
         }
+    }
+
+    /// Exports that have no matching clause head. An empty
+    /// `clause_heads` (older snapshots without the field populated)
+    /// returns an empty list so this never false-fires on legacy data.
+    pub fn missing_clause_bodies(&self) -> Vec<FunArity> {
+        if self.clause_heads.is_empty() {
+            return Vec::new();
+        }
+        self.exports
+            .iter()
+            .filter(|fa| !self.clause_heads.contains_key(fa))
+            .cloned()
+            .collect()
     }
 }
 
@@ -274,6 +389,17 @@ impl Snapshot<state::Canonical> {
             .binary_search_by(|m| m.name.cmp(name))
             .ok()
             .map(|idx| &self.modules[idx])
+    }
+
+    /// Every module whose `-behaviour(B).` list contains `behaviour`.
+    /// Reverse index over `Module.behaviours`; built per call (one
+    /// linear scan over `self.modules`). Used by behaviour-conformance
+    /// checks and the R7 suite-implementer sweep.
+    pub fn implementers_of(&self, behaviour: &ModuleName) -> Vec<&Module> {
+        self.modules
+            .iter()
+            .filter(|m| m.behaviours.contains(behaviour))
+            .collect()
     }
 
     pub(crate) fn from_canonical_parts(

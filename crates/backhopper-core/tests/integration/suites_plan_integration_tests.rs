@@ -83,6 +83,7 @@ fn r1_test_modified_includes_directly_edited_suite() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     assert_eq!(result.len(), 1);
@@ -103,6 +104,7 @@ fn r4_same_app_caller_includes_grep_positive_suites() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let suite_names: Vec<&str> = result
@@ -112,8 +114,7 @@ fn r4_same_app_caller_includes_grep_positive_suites() {
         .collect();
     assert!(
         suite_names.contains(&"vhost_SUITE"),
-        "vhost_SUITE references rabbit_db, should be included: {:?}",
-        suite_names
+        "vhost_SUITE references rabbit_db, should be included: {suite_names:?}"
     );
     assert!(!suite_names.contains(&"unrelated_SUITE"));
 }
@@ -128,6 +129,7 @@ fn r5_cross_app_caller_only_fires_for_library_modules() {
         apps: f.apps.clone(),
         library_apps,
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let mgmt_suites: Vec<&str> = result
@@ -138,8 +140,7 @@ fn r5_cross_app_caller_only_fires_for_library_modules() {
         .collect();
     assert!(
         mgmt_suites.contains(&"connection_SUITE"),
-        "connection_SUITE in rabbitmq_management references rabbit_amqqueue: {:?}",
-        mgmt_suites
+        "connection_SUITE in rabbitmq_management references rabbit_amqqueue: {mgmt_suites:?}"
     );
     let reasons = result.entries.iter().find_map(|e| {
         if e.suite.module.as_str() == "connection_SUITE" {
@@ -165,6 +166,7 @@ fn r5_does_not_fire_when_module_app_is_not_library() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let mgmt_suites: Vec<&str> = result
@@ -175,8 +177,7 @@ fn r5_does_not_fire_when_module_app_is_not_library() {
         .collect();
     assert!(
         mgmt_suites.is_empty(),
-        "no cross-app suites when library_apps is empty, got {:?}",
-        mgmt_suites
+        "no cross-app suites when library_apps is empty, got {mgmt_suites:?}"
     );
 }
 
@@ -189,6 +190,7 @@ fn r3_unit_or_prop_sweep_includes_matching_suites_with_module_refs() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -201,8 +203,7 @@ fn r3_unit_or_prop_sweep_includes_matching_suites_with_module_refs() {
         reasons
             .iter()
             .any(|r| matches!(r, SuiteInclusionReason::UnitOrPropSweep { .. })),
-        "unit_helpers_SUITE should be picked by R3, reasons={:?}",
-        reasons
+        "unit_helpers_SUITE should be picked by R3, reasons={reasons:?}"
     );
 }
 
@@ -218,6 +219,7 @@ fn multiple_reasons_accumulate_on_the_same_suite() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -258,6 +260,7 @@ fn configured_rule_path_suffix_includes_listed_suites() {
             }],
             include_suite_templates: Vec::new(),
         }],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -271,8 +274,7 @@ fn configured_rule_path_suffix_includes_listed_suites() {
             r,
             SuiteInclusionReason::ConfiguredRule { rule_name, .. } if rule_name == "schema-change"
         )),
-        "configured rule should have included unrelated_SUITE, reasons={:?}",
-        reasons
+        "configured rule should have included unrelated_SUITE, reasons={reasons:?}"
     );
 }
 
@@ -285,6 +287,7 @@ fn empty_diff_yields_empty_plan() {
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![],
+        implementer_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     assert!(result.is_empty());

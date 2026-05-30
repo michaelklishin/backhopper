@@ -53,8 +53,8 @@ fn out_of_tree_deps_are_ignored_for_the_count() {
         spec("stomp", &["rabbit", "stdlib"]),
     ];
     let libs = derive_library_apps(&apps);
-    let names: Vec<&str> = libs.iter().map(|n| n.as_str()).collect();
-    // kernel and stdlib are not in-tree -- they don't get counted.
+    let names: Vec<&str> = libs.iter().map(|a| a.as_str()).collect();
+    // kernel and stdlib are not in-tree: they don't get counted
     assert_eq!(names, vec!["rabbit"]);
 }
 
@@ -74,6 +74,6 @@ fn multiple_libraries_returned_alphabetically() {
         spec("b", &["rabbit", "rabbit_common"]),
     ];
     let libs = derive_library_apps(&apps);
-    let names: Vec<&str> = libs.iter().map(|n| n.as_str()).collect();
+    let names: Vec<&str> = libs.iter().map(|a| a.as_str()).collect();
     assert_eq!(names, vec!["rabbit", "rabbit_common"]);
 }

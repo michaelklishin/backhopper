@@ -32,6 +32,13 @@ pub fn plan_with_matcher(input: &PlanInput, matcher: &mut dyn SuiteMatcher) -> S
         &mut accum,
     );
     rules::apply_unit_or_prop_sweep(&classification, &discovered, matcher, &mut accum);
+    rules::apply_behaviour_implementer_sweep(
+        &classification,
+        &discovered,
+        &input.implementer_index,
+        matcher,
+        &mut accum,
+    );
     rules::apply_configured_rules(
         &input.extra_rules,
         &input.modified_paths,

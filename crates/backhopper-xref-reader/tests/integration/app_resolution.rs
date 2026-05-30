@@ -12,7 +12,7 @@ fn rabbitmq_layout_resolves_deps_path() {
     let p = PathBuf::from("/x/deps/rabbit/src/rabbit_db_vhost.erl");
     match layout.resolve(&p) {
         ApplicationAssignment::Assigned(app) => assert_eq!(app.as_str(), "rabbit"),
-        other => panic!("expected Assigned, got {:?}", other),
+        other => panic!("expected Assigned, got {other:?}"),
     }
 }
 
@@ -22,7 +22,7 @@ fn rabbitmq_layout_resolves_apps_path() {
     let p = PathBuf::from("/x/apps/my_plugin/src/my_plugin_sup.erl");
     match layout.resolve(&p) {
         ApplicationAssignment::Assigned(app) => assert_eq!(app.as_str(), "my_plugin"),
-        other => panic!("expected Assigned, got {:?}", other),
+        other => panic!("expected Assigned, got {other:?}"),
     }
 }
 
@@ -53,7 +53,7 @@ fn custom_prefix_resolves_application() {
     let p = PathBuf::from("/x/plugins/widget/src/widget.erl");
     match layout.resolve(&p) {
         ApplicationAssignment::Assigned(app) => assert_eq!(app.as_str(), "widget"),
-        other => panic!("expected Assigned, got {:?}", other),
+        other => panic!("expected Assigned, got {other:?}"),
     }
 }
 
@@ -87,7 +87,7 @@ fn multi_component_prefix_resolves_application() {
     let p = PathBuf::from("/x/external/deps/widget/src/widget.erl");
     match layout.resolve(&p) {
         ApplicationAssignment::Assigned(app) => assert_eq!(app.as_str(), "widget"),
-        other => panic!("expected Assigned, got {:?}", other),
+        other => panic!("expected Assigned, got {other:?}"),
     }
 }
 
@@ -97,6 +97,6 @@ fn relative_path_resolves_application() {
     let p = PathBuf::from("deps/rabbit_common/src/rabbit_misc.erl");
     match layout.resolve(&p) {
         ApplicationAssignment::Assigned(app) => assert_eq!(app.as_str(), "rabbit_common"),
-        other => panic!("expected Assigned, got {:?}", other),
+        other => panic!("expected Assigned, got {other:?}"),
     }
 }

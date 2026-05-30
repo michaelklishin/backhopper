@@ -14,7 +14,7 @@ proptest! {
 
     #[test]
     fn iterate_picks_up_well_formed_module_attribute(name in "[a-z][a-z0-9_]{0,8}") {
-        let src = format!("-module({}).\n", name);
+        let src = format!("-module({name}).\n");
         let blocks = iterate_attributes(&src);
         prop_assert_eq!(blocks.len(), 1);
         prop_assert_eq!(&blocks[0].name, "module");

@@ -166,9 +166,8 @@ fn map_core(e: &CoreError) -> ExitCode {
             ConfigError::NotFound(_) => codes::NO_INPUT,
             _ => codes::DATA_ERR,
         },
-        CoreError::Git(_) => codes::IO_ERR,
+        CoreError::Git(_) | CoreError::Io(_) => codes::IO_ERR,
         CoreError::Patch(_) => codes::DATA_ERR,
         CoreError::Name(_) => codes::USAGE,
-        CoreError::Io(_) => codes::IO_ERR,
     }
 }

@@ -29,7 +29,7 @@ fn well_known_modules_are_otp() {
         "mnesia",
     ] {
         let m = ModuleName::new(name).unwrap();
-        assert!(is_otp_module(&m), "{} should be OTP", name);
+        assert!(is_otp_module(&m), "{name} should be OTP");
     }
 }
 
@@ -37,6 +37,6 @@ fn well_known_modules_are_otp() {
 fn project_modules_are_not_otp() {
     for name in ["ra", "khepri", "rabbit_misc", "cowboy_req", "ranch"] {
         let m = ModuleName::new(name).unwrap();
-        assert!(!is_otp_module(&m), "{} should not be OTP", name);
+        assert!(!is_otp_module(&m), "{name} should not be OTP");
     }
 }

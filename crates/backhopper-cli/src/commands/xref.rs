@@ -25,7 +25,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.called_by(&mfa, transitive);
             render(&ctx(global, "xref list_callers"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -38,7 +38,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.calls_from(&mfa, transitive);
             render(&ctx(global, "xref list_callees"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -47,7 +47,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.undefined_function_calls();
             render(&ctx(global, "xref list_undefined"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -56,7 +56,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.exports_not_used();
             render(&ctx(global, "xref list_unused_exports"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -65,7 +65,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.locals_not_used();
             render(&ctx(global, "xref list_unused_locals"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -74,7 +74,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.deprecated_function_calls();
             render(&ctx(global, "xref list_deprecated_calls"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -83,7 +83,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             let r = xref.unresolved_calls();
             render(&ctx(global, "xref list_unresolved"), &r, |w| {
-                write!(w, "{}", r)?;
+                write!(w, "{r}")?;
                 Ok(())
             })?;
             Ok(0)
@@ -97,13 +97,13 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             if forward {
                 let r = xref.module_call(&module);
                 render(&ctx(global, "xref list_module_deps"), &r, |w| {
-                    write!(w, "{}", r)?;
+                    write!(w, "{r}")?;
                     Ok(())
                 })?;
             } else {
                 let r = xref.module_called_by(&module);
                 render(&ctx(global, "xref list_module_deps"), &r, |w| {
-                    write!(w, "{}", r)?;
+                    write!(w, "{r}")?;
                     Ok(())
                 })?;
             }
@@ -116,7 +116,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let r = xref.implementers_of(&beh);
             render(&ctx(global, "xref list_behaviour_users"), &r, |w| {
                 for m in &r {
-                    writeln!(w, "{}", m)?;
+                    writeln!(w, "{m}")?;
                 }
                 Ok(())
             })?;
@@ -134,5 +134,13 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             })?;
             Ok(0)
         }
+        XrefCmd::BackportApplicability {
+            reference_file_path,
+            snapshot_file_path,
+        } => crate::commands::xref_backport_applicability::handle(
+            global,
+            &reference_file_path,
+            &snapshot_file_path,
+        ),
     }
 }

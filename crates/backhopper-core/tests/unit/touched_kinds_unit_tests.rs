@@ -74,11 +74,11 @@ fn classify_recognizes_tests() {
 #[test]
 fn classify_falls_through_to_other_for_unknown() {
     assert_eq!(
-        TouchedKinds::classify(Path::new("Makefile")),
+        TouchedKinds::classify(Path::new("Cargo.toml")),
         FileKind::Other
     );
     assert_eq!(
-        TouchedKinds::classify(Path::new("Cargo.toml")),
+        TouchedKinds::classify(Path::new("LICENSE")),
         FileKind::Other
     );
 }
@@ -90,7 +90,7 @@ fn from_paths_tallies_each_kind() {
         "include/x.hrl",
         "include/y.hrl",
         "README.md",
-        "Makefile",
+        "Cargo.toml",
         "priv/schema/foo.schema",
         "test/bar_SUITE.erl",
     ];

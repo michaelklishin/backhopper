@@ -67,7 +67,7 @@ fn api_diff_reports_added_export() {
         ])
         .assert();
     let stdout = String::from_utf8(assert.success().get_output().stdout.clone()).unwrap();
-    assert!(stdout.contains("greet/2"), "got {}", stdout);
+    assert!(stdout.contains("greet/2"), "got {stdout}");
 }
 
 #[test]

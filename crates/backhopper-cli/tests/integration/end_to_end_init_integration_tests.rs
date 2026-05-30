@@ -177,7 +177,7 @@ dep_osiris = hex 1.8.6
     assert!(body.contains("v2.16.13"));
     assert!(body.contains("v0.17.0"));
     assert!(body.contains("git_url"));
-    // The result must still load — project stubs need a non-empty git_url.
+    // The result must still load: project stubs need a non-empty git_url
     let validate = run([
         "--config-file-path",
         workdir.path().join("backhopper.toml").to_str().unwrap(),

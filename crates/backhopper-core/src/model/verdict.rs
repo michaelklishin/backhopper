@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, GitRef, ModuleName, RecordName, TagName,
+    Arity, CommitSha, FieldName, FunctionName, GitRef, ModuleName, ProjectName, RecordName,
+    TagName, TypeName,
 };
 use crate::model::pin::Pin;
 use crate::model::symbol::SymbolRef;
@@ -23,7 +24,7 @@ pub enum Verdict {
     Inapplicable { reason: InapplicableReason },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "reason", rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum InapplicableReason {
@@ -31,15 +32,51 @@ pub enum InapplicableReason {
     OnlyDocsTouched,
     OnlyTestFixturesTouched,
     OnlySchemaTouched,
+    OnlyMakefileTouched,
+    OnlyMixExsTouched,
+    OnlyCiWorkflowTouched,
+    OnlyAppSrcTouched,
+    OnlyRebarConfigTouched,
+    /// Every changed `.erl` hunk is a Variant A unwrap: dropping
+    /// `-ifdef(TEST).` or `-endif.` around an `-export(...)` directive,
+    /// or rewriting `-compile(export_all).` to an explicit
+    /// `-export([...])`. No call sites, no specs, no bodies touched —
+    /// only test-visibility metadata.
+    OnlyTestVisibilityChanged,
+    /// The patch touches Erlang surface but every referenced symbol
+    /// resolves to the self-pin or to a local definition: every
+    /// tracked-dep pin sees zero in-scope references. Without this
+    /// reason the operator would see a wall of vacuous `Compatible`
+    /// rows for a patch that backhopper genuinely has no signal on.
+    OnlySelfSurfaceTouched,
+    /// Every touched path lives in a sibling project's scope, not this
+    /// pin's. The pin has nothing to say about the patch. `project`
+    /// names the first sibling project (alphabetical) that owns the
+    /// out-of-scope paths.
+    OutOfScopeFor {
+        project: ProjectName,
+    },
+    /// Every touched path is unclaimed by any configured project's
+    /// scan_paths or app_roots. Vendored files, docs, build scripts.
+    Untracked,
 }
 
 impl InapplicableReason {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::NoErlangSurfaceTouched => "no_erlang_surface_touched",
             Self::OnlyDocsTouched => "only_docs_touched",
             Self::OnlyTestFixturesTouched => "only_test_fixtures_touched",
             Self::OnlySchemaTouched => "only_schema_touched",
+            Self::OnlyMakefileTouched => "only_makefile_touched",
+            Self::OnlyMixExsTouched => "only_mix_exs_touched",
+            Self::OnlyCiWorkflowTouched => "only_ci_workflow_touched",
+            Self::OnlyAppSrcTouched => "only_app_src_touched",
+            Self::OnlyRebarConfigTouched => "only_rebar_config_touched",
+            Self::OnlyTestVisibilityChanged => "only_test_visibility_changed",
+            Self::OnlySelfSurfaceTouched => "only_self_surface_touched",
+            Self::OutOfScopeFor { .. } => "out_of_scope_for",
+            Self::Untracked => "untracked",
         }
     }
 }
@@ -96,6 +133,25 @@ pub enum Reason {
         path: PathBuf,
         hunk_index: usize,
     },
+    /// The contiguous preimage block (Context and Removed lines from
+    /// the hunk) was found verbatim at a different starting line.
+    /// Cherry-pick adapters handle this with the `-x` trailer; the
+    /// operator just needs the delta to confirm the patch's intent
+    /// still applies.
+    PreimageDrifted {
+        path: PathBuf,
+        hunk_index: usize,
+        line_delta: isize,
+    },
+    /// The preimage block does not appear anywhere in the file. The
+    /// patch was authored against a tree where the lines existed; on
+    /// this pin they don't. Structurally inapplicable: the operator
+    /// needs an excerpt to reason about why.
+    PreimageMissing {
+        path: PathBuf,
+        hunk_index: usize,
+        preimage_excerpt: String,
+    },
     DeprecatedUsage {
         symbol: SymbolRef,
         since: Option<TagName>,
@@ -134,6 +190,144 @@ pub enum Reason {
         self_branch: GitRef,
         suggested_source_for_prereq: Option<CommitSha>,
     },
+    /// Pre-flight syntactic damage in a touched file: an unresolved
+    /// merge-conflict marker, an exported function with no definition, etc.
+    SyntacticArtifact {
+        path: PathBuf,
+        line: usize,
+        artifact: ArtifactKind,
+    },
+    /// Patch changes a `-callback` signature; an implementer still has the old one.
+    BehaviourCallbackSignatureChanged {
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        expected_after_patch: String,
+        implementer: ModuleName,
+        implementer_signature: String,
+    },
+    /// Patch removes a required callback; implementer still exports it.
+    BehaviourCallbackRemoved {
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        implementer: ModuleName,
+    },
+    /// Patch adds a required callback; implementer is missing the export.
+    BehaviourCallbackAdded {
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        implementer: ModuleName,
+    },
+    /// Patch touches a path absent on pin, but a module of the same basename exists elsewhere.
+    ModuleRelocated {
+        module: ModuleName,
+        patch_path: PathBuf,
+    },
+    /// Wire-bearing macro value differs between source and pin.
+    WireConstantChanged {
+        module: ModuleName,
+        macro_name: String,
+        before: String,
+        after: String,
+    },
+    /// `version/0` advanced without the matching historical-implementation module.
+    HistoricalImplementationMissing {
+        module: ModuleName,
+        advertised_version_before: u32,
+        advertised_version_after: u32,
+        expected_historical_module: ModuleName,
+    },
+    /// Function bodies drifted at the same advertised `version/0`. Mixed-version cluster risk.
+    WireContractBodyDrift {
+        module: ModuleName,
+        functions: Vec<FunctionName>,
+        advertised_version: u32,
+    },
+    /// `version/0` decreased pin → patch.
+    WireContractRegression {
+        module: ModuleName,
+        pin_version: u32,
+        patch_version: u32,
+    },
+    /// Spec return shape differs between source and pin for a referenced MFA.
+    ReturnShapeMismatch {
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+        source_signature: String,
+        pin_signature: String,
+    },
+    /// A type-reference inside a `-spec`, `-callback`, `-type`, or
+    /// `-opaque` attribute resolves to a name and arity that the pin
+    /// does not expose via `-export_type`. Non-blocking: a missing
+    /// type alias is a dialyzer-level concern, not a load-time crash.
+    MissingType {
+        module: ModuleName,
+        name: TypeName,
+        arity: Arity,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "artifact_kind", rename_all = "snake_case")]
+pub enum ArtifactKind {
+    /// `<<<<<<<`, `=======`, `>>>>>>>`, or `||||||| ` marker present in a
+    /// touched file. The cherry-pick driver left a conflict unresolved.
+    ConflictMarker { marker: ConflictMarker },
+    /// `-export([f/N])` line without a matching clause defining `f/N`.
+    /// Compiles, then crashes at runtime on the first call.
+    ExportWithoutBody {
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConflictMarker {
+    /// `<<<<<<<` line: start of the local side.
+    Ours,
+    /// `=======` line: divider between sides.
+    Divider,
+    /// `>>>>>>>` line: end of the incoming side.
+    Theirs,
+    /// `||||||| ` line: base ancestor marker from a 3-way diff.
+    Ancestor,
+}
+
+impl ConflictMarker {
+    /// Returns the marker variant when `line` starts with at least seven
+    /// of the same `git` conflict-marker token followed by whitespace or
+    /// end of line. Returns `None` otherwise.
+    ///
+    /// `git`'s default marker length is seven; `merge.conflictStyle.markerSize`
+    /// can grow it, so the check accepts seven or more.
+    pub fn detect(line: &str) -> Option<Self> {
+        Self::detect_with_marker(line, '<', Self::Ours)
+            .or_else(|| Self::detect_with_marker(line, '=', Self::Divider))
+            .or_else(|| Self::detect_with_marker(line, '>', Self::Theirs))
+            .or_else(|| Self::detect_with_marker(line, '|', Self::Ancestor))
+    }
+
+    fn detect_with_marker(line: &str, token: char, marker: Self) -> Option<Self> {
+        const MIN_RUN: usize = 7;
+        let mut count = 0usize;
+        for c in line.chars() {
+            if c == token {
+                count += 1;
+                continue;
+            }
+            return if count >= MIN_RUN && (c == ' ' || c == '\t') {
+                Some(marker)
+            } else {
+                None
+            };
+        }
+        if count >= MIN_RUN { Some(marker) } else { None }
+    }
 }
 
 impl Reason {
@@ -149,6 +343,14 @@ impl Reason {
                 | Self::UntrackedModuleMissing { .. }
                 | Self::ClauseMismatch { .. }
                 | Self::MissingPrereq { .. }
+                | Self::SyntacticArtifact { .. }
+                | Self::BehaviourCallbackSignatureChanged { .. }
+                | Self::BehaviourCallbackRemoved { .. }
+                | Self::BehaviourCallbackAdded { .. }
+                | Self::WireConstantChanged { .. }
+                | Self::HistoricalImplementationMissing { .. }
+                | Self::WireContractRegression { .. }
+                | Self::ReturnShapeMismatch { .. }
         )
     }
 }
@@ -168,7 +370,38 @@ pub struct TouchedKinds {
     #[serde(default)]
     pub tests: u32,
     #[serde(default)]
+    pub makefile: u32,
+    #[serde(default)]
+    pub mix_exs: u32,
+    #[serde(default)]
+    pub ci_workflow: u32,
+    #[serde(default)]
+    pub app_src: u32,
+    #[serde(default)]
+    pub rebar_config: u32,
+    #[serde(default)]
     pub other: u32,
+    /// Every changed `.erl` hunk is a Variant A unwrap of test-only
+    /// `-ifdef(TEST)` machinery around an `-export` directive (see
+    /// `InapplicableReason::OnlyTestVisibilityChanged`). When true,
+    /// the patch touches Erlang surface but adds no semantic
+    /// content, so an empty reason set should promote to
+    /// `Inapplicable` instead of `Compatible`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub only_test_visibility: bool,
+    /// The patch touches Erlang surface but references no tracked-dep
+    /// API (every non-self pin sees zero in-scope references). The CLI
+    /// sets this after `evaluate_series` when a self-pin is present
+    /// and every non-self pin's `tracked_refs` is empty; see
+    /// `InapplicableReason::OnlySelfSurfaceTouched`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub only_self_surface: bool,
+}
+
+// `&bool` is required by serde's `skip_serializing_if` predicate shape.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl TouchedKinds {
@@ -178,7 +411,14 @@ impl TouchedKinds {
             && self.schema == 0
             && self.docs == 0
             && self.tests == 0
+            && self.makefile == 0
+            && self.mix_exs == 0
+            && self.ci_workflow == 0
+            && self.app_src == 0
+            && self.rebar_config == 0
             && self.other == 0
+            && !self.only_test_visibility
+            && !self.only_self_surface
     }
 
     pub fn classify(path: &Path) -> FileKind {
@@ -211,7 +451,47 @@ impl TouchedKinds {
         if lower.ends_with(".hrl") {
             return FileKind::Hrl;
         }
+        if lower.ends_with(".app.src") || lower.ends_with(".app.src.script") {
+            return FileKind::AppSrc;
+        }
+        if lower.ends_with("rebar.config") || lower.ends_with("rebar3.config") {
+            return FileKind::RebarConfig;
+        }
+        if lower.ends_with("/mix.exs")
+            || lower == "mix.exs"
+            || lower.ends_with("/mix.lock")
+            || lower == "mix.lock"
+        {
+            return FileKind::MixExs;
+        }
+        if Self::is_ci_workflow(&lower) {
+            return FileKind::CiWorkflow;
+        }
+        if Self::is_makefile(&lower) {
+            return FileKind::Makefile;
+        }
         FileKind::Other
+    }
+
+    fn is_ci_workflow(lower: &str) -> bool {
+        if lower.contains(".github/workflows/") || lower.starts_with(".github/workflows/") {
+            return lower.ends_with(".yml") || lower.ends_with(".yaml");
+        }
+        if lower.contains(".github/actions/") || lower.starts_with(".github/actions/") {
+            return true;
+        }
+        false
+    }
+
+    fn is_makefile(lower: &str) -> bool {
+        if lower.ends_with(".mk") {
+            return true;
+        }
+        let basename = lower.rsplit('/').next().unwrap_or(lower);
+        matches!(
+            basename,
+            "makefile" | "erlang.mk" | "rabbitmq-components.mk"
+        )
     }
 
     pub fn record(&mut self, kind: FileKind) {
@@ -221,6 +501,11 @@ impl TouchedKinds {
             FileKind::Schema => self.schema += 1,
             FileKind::Docs => self.docs += 1,
             FileKind::Tests => self.tests += 1,
+            FileKind::Makefile => self.makefile += 1,
+            FileKind::MixExs => self.mix_exs += 1,
+            FileKind::CiWorkflow => self.ci_workflow += 1,
+            FileKind::AppSrc => self.app_src += 1,
+            FileKind::RebarConfig => self.rebar_config += 1,
             FileKind::Other => self.other += 1,
         }
     }
@@ -240,25 +525,64 @@ impl TouchedKinds {
     /// `None` when any `.erl` or `.hrl` was touched: an analyzable diff with
     /// zero reasons is real `Compatible`, not `Inapplicable`.
     pub fn inapplicable_reason(&self) -> Option<InapplicableReason> {
+        if self.only_test_visibility {
+            return Some(InapplicableReason::OnlyTestVisibilityChanged);
+        }
+        if self.only_self_surface {
+            return Some(InapplicableReason::OnlySelfSurfaceTouched);
+        }
         if self.erl > 0 || self.hrl > 0 {
             return None;
         }
         if self.is_empty() {
             return Some(InapplicableReason::NoErlangSurfaceTouched);
         }
-        let only_docs = self.docs > 0 && self.schema == 0 && self.tests == 0 && self.other == 0;
-        if only_docs {
+        if self.is_only(|tk| tk.docs > 0) {
             return Some(InapplicableReason::OnlyDocsTouched);
         }
-        let only_tests = self.tests > 0 && self.schema == 0 && self.docs == 0 && self.other == 0;
-        if only_tests {
+        if self.is_only(|tk| tk.tests > 0) {
             return Some(InapplicableReason::OnlyTestFixturesTouched);
         }
-        let only_schema = self.schema > 0 && self.docs == 0 && self.tests == 0 && self.other == 0;
-        if only_schema {
+        if self.is_only(|tk| tk.schema > 0) {
             return Some(InapplicableReason::OnlySchemaTouched);
         }
+        if self.is_only(|tk| tk.makefile > 0) {
+            return Some(InapplicableReason::OnlyMakefileTouched);
+        }
+        if self.is_only(|tk| tk.mix_exs > 0) {
+            return Some(InapplicableReason::OnlyMixExsTouched);
+        }
+        if self.is_only(|tk| tk.ci_workflow > 0) {
+            return Some(InapplicableReason::OnlyCiWorkflowTouched);
+        }
+        if self.is_only(|tk| tk.app_src > 0) {
+            return Some(InapplicableReason::OnlyAppSrcTouched);
+        }
+        if self.is_only(|tk| tk.rebar_config > 0) {
+            return Some(InapplicableReason::OnlyRebarConfigTouched);
+        }
         Some(InapplicableReason::NoErlangSurfaceTouched)
+    }
+
+    /// True when exactly the bucket selected by `selector` is non-zero
+    /// and every other (non-Erlang-surface) bucket is zero.
+    fn is_only<F: Fn(&Self) -> bool>(&self, selector: F) -> bool {
+        if !selector(self) {
+            return false;
+        }
+        let buckets = [
+            self.schema > 0,
+            self.docs > 0,
+            self.tests > 0,
+            self.makefile > 0,
+            self.mix_exs > 0,
+            self.ci_workflow > 0,
+            self.app_src > 0,
+            self.rebar_config > 0,
+            self.other > 0,
+        ];
+        let active = buckets.iter().filter(|b| **b).count();
+        active == 1
     }
 }
 
@@ -269,6 +593,11 @@ pub enum FileKind {
     Schema,
     Docs,
     Tests,
+    Makefile,
+    MixExs,
+    CiWorkflow,
+    AppSrc,
+    RebarConfig,
     Other,
 }
 
@@ -348,12 +677,10 @@ pub struct SeriesSummary {
     pub inapplicable: u32,
 }
 
-/// Process exit codes returned by `worst_exit_code`.
+// 0 every pin clean; 3 partial-success when any pin needs attention
 pub mod exit {
     pub const OK: i32 = 0;
-    pub const INCOMPATIBLE: i32 = 2;
-    pub const REQUIRES_ADAPTATION: i32 = 3;
-    pub const INAPPLICABLE: i32 = 4;
+    pub const NEEDS_ATTENTION: i32 = 3;
 }
 
 impl SeriesVerdict {
@@ -392,19 +719,10 @@ impl SeriesVerdict {
         Self::from_results(results)
     }
 
-    /// Severity for the process exit code:
-    /// `Incompatible` > `RequiresAdaptation` > `Compatible` > `Inapplicable`.
-    /// A real `Compatible` beats `Inapplicable` because at least one pin produced
-    /// a definitive green signal.
+    // 0 when every pin is Compatible or Inapplicable; 3 otherwise
     pub fn worst_exit_code(&self) -> i32 {
-        if self.summary.incompatible > 0 {
-            exit::INCOMPATIBLE
-        } else if self.summary.requires_adaptation > 0 {
-            exit::REQUIRES_ADAPTATION
-        } else if self.summary.compatible > 0 {
-            exit::OK
-        } else if self.summary.inapplicable > 0 {
-            exit::INAPPLICABLE
+        if self.summary.incompatible > 0 || self.summary.requires_adaptation > 0 {
+            exit::NEEDS_ATTENTION
         } else {
             exit::OK
         }
@@ -421,6 +739,11 @@ pub struct Diagnostics {
     pub untracked_records: BTreeMap<RecordName, usize>,
     #[serde(default, skip_serializing_if = "Unanalyzed::is_empty")]
     pub unanalyzed: Unanalyzed,
+    /// SUITE names worth running for the patch, derived from touched paths.
+    /// Populated even when the verdict promotes to `Inapplicable` so that
+    /// schema-only and config-only diffs still surface relevant suites.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_suites: Vec<String>,
 }
 
 impl Diagnostics {
@@ -428,6 +751,7 @@ impl Diagnostics {
         self.untracked_calls.is_empty()
             && self.untracked_records.is_empty()
             && self.unanalyzed.is_empty()
+            && self.suggested_suites.is_empty()
     }
 }
 
@@ -447,15 +771,77 @@ impl Unanalyzed {
     }
 }
 
-/// The output of `Patch::evaluate_series`: verdicts plus diagnostics.
+/// The output of `Patch::evaluate_series`: verdicts plus diagnostics plus
+/// `PatchFacts` (source classifiers that drive downstream policy without
+/// being verdict reasons).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeriesEvaluation {
     pub verdict: SeriesVerdict,
     pub diagnostics: Diagnostics,
+    #[serde(default, skip_serializing_if = "PatchFacts::is_empty")]
+    pub patch_facts: PatchFacts,
 }
 
 impl SeriesEvaluation {
     pub fn worst_exit_code(&self) -> i32 {
         self.verdict.worst_exit_code()
+    }
+}
+
+/// Source classifiers on the patch. Strictly separate from `Verdict` reasons.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PatchFacts {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub logging_style: BTreeMap<PathBuf, FileLoggingStyle>,
+    #[serde(default, skip_serializing_if = "KhepriSignals::is_empty")]
+    pub khepri_signals: KhepriSignals,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub introduces_versioned_record: BTreeSet<RecordName>,
+}
+
+impl PatchFacts {
+    pub fn is_empty(&self) -> bool {
+        self.logging_style.is_empty()
+            && self.khepri_signals.is_empty()
+            && self.introduces_versioned_record.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoggingStyle {
+    LoggerMacros,
+    RabbitLogModule,
+    Mixed,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileLoggingStyle {
+    pub dominant: LoggingStyle,
+    pub logger_macro_sites: usize,
+    pub rabbit_log_sites: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KhepriSignals {
+    #[serde(default)]
+    pub touches_khepri_module: bool,
+    #[serde(default)]
+    pub uses_khepri_macros: bool,
+    #[serde(default)]
+    pub touches_only_khepri_branch: bool,
+    #[serde(default)]
+    pub touches_dual_branch: bool,
+}
+
+impl KhepriSignals {
+    // `&self` is required by serde `skip_serializing_if`.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn is_empty(&self) -> bool {
+        !self.touches_khepri_module
+            && !self.uses_khepri_macros
+            && !self.touches_only_khepri_branch
+            && !self.touches_dual_branch
     }
 }

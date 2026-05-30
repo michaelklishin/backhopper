@@ -145,6 +145,43 @@ pub(crate) fn apply_cross_app_caller(
     }
 }
 
+/// Behaviour-implementer sweep: when a modified module is itself a
+/// behaviour (some other module declares `-behaviour(M)`), every
+/// implementer comes into scope and any suite that references one is
+/// added. `implementer_index` is the behaviour-to-implementers map; an
+/// empty map disables the rule.
+pub(crate) fn apply_behaviour_implementer_sweep(
+    classification: &ModifiedClassification,
+    discovered: &[SuiteRef],
+    implementer_index: &BTreeMap<ModuleName, Vec<ModuleName>>,
+    matcher: &mut dyn SuiteMatcher,
+    out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
+) {
+    if implementer_index.is_empty() {
+        return;
+    }
+    for m in &classification.modified_modules {
+        let Some(implementers) = implementer_index.get(&m.module) else {
+            continue;
+        };
+        for implementer in implementers {
+            for suite in discovered.iter() {
+                let refs =
+                    matcher.modules_referenced_in_suite(&suite.path, slice::from_ref(implementer));
+                if refs.is_empty() {
+                    continue;
+                }
+                out.entry(suite.clone()).or_default().push(
+                    SuiteInclusionReason::BehaviourImplementerSweep {
+                        behaviour: m.module.clone(),
+                        implementer: implementer.clone(),
+                    },
+                );
+            }
+        }
+    }
+}
+
 /// UnitOrPropSweep (R3 ∩ R4 refinement): for each application that
 /// has modified source, sweep suites whose name matches the
 /// unit-or-prop pattern AND that reference at least one modified

@@ -15,7 +15,7 @@ fn rabbitmq_like(modules: &[(&str, &str)]) -> backhopper_xref::Xref<backhopper_x
     let files: Vec<(PathBuf, Vec<u8>)> = modules
         .iter()
         .map(|(name, body)| {
-            let p = PathBuf::from(format!("deps/rabbit/src/{}.erl", name));
+            let p = PathBuf::from(format!("deps/rabbit/src/{name}.erl"));
             (p, body.as_bytes().to_vec())
         })
         .collect();

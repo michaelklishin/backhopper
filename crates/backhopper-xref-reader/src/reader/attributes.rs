@@ -34,6 +34,7 @@ pub(super) fn consume_attribute_body<'a>(sc: &mut Scanner<'a>) -> &'a str {
             }
             b'"' => sc.consume_string(),
             b'\'' => sc.consume_quoted_atom(),
+            b'$' => sc.consume_char_literal(),
             b'%' => sc.skip_line(),
             _ => {
                 sc.advance();
@@ -171,6 +172,10 @@ fn extract_balanced_arg_list(after_open: &str) -> Option<&str> {
     let mut i = 0usize;
     while i < bytes.len() {
         let c = bytes[i];
+        if !in_string && !in_quote && c == b'$' && i + 1 < bytes.len() {
+            i += skip_char_literal_bytes(bytes, i);
+            continue;
+        }
         match c {
             b'(' if !in_string && !in_quote => depth += 1,
             b')' if !in_string && !in_quote => {
@@ -186,6 +191,24 @@ fn extract_balanced_arg_list(after_open: &str) -> Option<&str> {
         i += 1;
     }
     None
+}
+
+fn skip_char_literal_bytes(bytes: &[u8], at: usize) -> usize {
+    debug_assert_eq!(bytes[at], b'$');
+    let next = at + 1;
+    if next >= bytes.len() {
+        return 1;
+    }
+    if bytes[next] == b'\\' {
+        let mut span = 2;
+        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
+            span = 4;
+        } else if next + 1 < bytes.len() {
+            span = 3;
+        }
+        return span;
+    }
+    2
 }
 
 fn parse_import(body: &str) -> Option<(ModuleName, Vec<FunctionSig>)> {
@@ -262,6 +285,10 @@ pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
     let mut i = 0usize;
     while i < bytes.len() {
         let c = bytes[i];
+        if !in_string && !in_quote && c == b'$' && i + 1 < bytes.len() {
+            i += skip_char_literal_bytes(bytes, i);
+            continue;
+        }
         match c {
             b'(' | b'[' | b'{' if !in_string && !in_quote => depth += 1,
             b')' | b']' | b'}' if !in_string && !in_quote => depth -= 1,

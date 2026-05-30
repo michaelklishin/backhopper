@@ -215,9 +215,7 @@ pub fn build_toml(snapshot_dir: &Path, w: &InferredWorkspace) -> String {
             out.push_str("\n[[project]]\n");
             out.push_str(&format!("name       = \"{}\"\n", p.name));
             out.push_str("language   = \"erlang\"\n");
-            // `git_url` is a required field; leave a placeholder so the config
-            // still parses, and let `check`/`snapshots generate` surface the
-            // real error when the URL is needed.
+            // placeholder url so the file parses; the error surfaces at `check` time
             out.push_str("git_url    = \"TODO: set to a clone URL or local path\"\n");
             out.push_str(&format!("tag_prefix = \"{}\"\n", p.tag_prefix));
         }

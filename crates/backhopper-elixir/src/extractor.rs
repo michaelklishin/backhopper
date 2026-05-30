@@ -137,7 +137,7 @@ fn collect_module_recursive(
     let full = if parent.is_empty() {
         local.clone()
     } else {
-        format!("{}.{}", parent, local)
+        format!("{parent}.{local}")
     };
     let Ok(module_name) = ModuleName::from_str(&full) else {
         warn!("invalid Elixir module name: {}", full);

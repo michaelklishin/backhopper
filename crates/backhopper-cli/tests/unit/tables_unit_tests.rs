@@ -88,12 +88,11 @@ diff --git a/x.erl b/x.erl
         .analyze()
         .evaluate_series(&[context]);
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("ra@v1.0.0"), "table: {}", text);
-    assert!(text.contains("Compatible"), "table: {}", text);
+    assert!(text.contains("ra@v1.0.0"), "table: {text}");
+    assert!(text.contains("Compatible"), "table: {text}");
     assert!(
         text.contains("1 tracked symbol referenced"),
-        "table: {}",
-        text
+        "table: {text}"
     );
 }
 
@@ -115,9 +114,9 @@ diff --git a/x.erl b/x.erl
         .analyze()
         .evaluate_series(&[context]);
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("Incompatible"), "table: {}", text);
-    assert!(text.contains("MissingSymbol"), "table: {}", text);
-    assert!(text.contains("ra:gone/3"), "table: {}", text);
+    assert!(text.contains("Incompatible"), "table: {text}");
+    assert!(text.contains("MissingSymbol"), "table: {text}");
+    assert!(text.contains("ra:gone/3"), "table: {text}");
 }
 
 #[test]
@@ -139,11 +138,12 @@ fn table_handles_synthetic_record_fields_changed_reason() {
             },
         )]),
         diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("RecordFields"), "table: {}", text);
-    assert!(text.contains("FileAbsent"), "table: {}", text);
-    assert!(text.contains("src/a.erl"), "table: {}", text);
+    assert!(text.contains("RecordFields"), "table: {text}");
+    assert!(text.contains("FileAbsent"), "table: {text}");
+    assert!(text.contains("src/a.erl"), "table: {text}");
 }
 
 #[test]
@@ -226,13 +226,14 @@ fn clause_mismatch_reason_renders_call_args_and_pin_clauses() {
             },
         )]),
         diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("ClauseMismatch"), "table: {}", text);
-    assert!(text.contains("ra:mode/1"), "table: {}", text);
-    assert!(text.contains("'restart'"), "table: {}", text);
-    assert!(text.contains("'start'"), "table: {}", text);
-    assert!(text.contains("'stop'"), "table: {}", text);
+    assert!(text.contains("ClauseMismatch"), "table: {text}");
+    assert!(text.contains("ra:mode/1"), "table: {text}");
+    assert!(text.contains("'restart'"), "table: {text}");
+    assert!(text.contains("'start'"), "table: {text}");
+    assert!(text.contains("'stop'"), "table: {text}");
 }
 
 #[test]
@@ -247,10 +248,11 @@ fn untracked_module_missing_reason_renders_in_table() {
             },
         )]),
         diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("UntrackedModuleMissing"), "table: {}", text);
-    assert!(text.contains("rabbit_mgmt_wm_user"), "table: {}", text);
+    assert!(text.contains("UntrackedModuleMissing"), "table: {text}");
+    assert!(text.contains("rabbit_mgmt_wm_user"), "table: {text}");
 }
 
 #[test]
@@ -265,10 +267,11 @@ fn unsupported_file_type_reason_renders_in_table() {
             },
         )]),
         diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
-    assert!(text.contains("UnsupportedFileType"), "table: {}", text);
-    assert!(text.contains("lib/foo.ex"), "table: {}", text);
+    assert!(text.contains("UnsupportedFileType"), "table: {text}");
+    assert!(text.contains("lib/foo.ex"), "table: {text}");
 }
 
 #[test]

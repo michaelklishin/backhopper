@@ -5,6 +5,7 @@
 //! `backhopper.toml` schema and loader.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -114,6 +115,7 @@ pub struct ProjectRaw {
     pub name: String,
     pub git_url: Option<String>,
     pub kind: Option<String>,
+    pub family: Option<String>,
     pub language: Option<String>,
     pub tag_prefix: Option<String>,
     pub public_modules: Option<Vec<String>>,
@@ -161,6 +163,155 @@ impl FromStr for ProjectKind {
     }
 }
 
+/// Which family-specific detectors run on top of the generic surface
+/// checks. Declared per-project as `family = "ra"`. Orthogonal to
+/// `ProjectKind` and `ProjectLayout`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectFamily {
+    /// No specialization. The default.
+    #[default]
+    Generic,
+    /// OTP itself.
+    ErlangOtp,
+    /// `rabbitmq/ra`: Raft consensus. Wire-bearing version macros in
+    /// `ra_log_segment`, `ra_log_wal`, `ra_log_snapshot`, `ra_snapshot`.
+    Ra,
+    /// `rabbitmq/osiris`: streaming log. Version constants in the
+    /// segment and index file headers.
+    Osiris,
+    /// `rabbitmq/khepri`: metadata store. Node payload version constants.
+    Khepri,
+    /// `rabbitmq/rabbitmq-server`: implements `ra_machine` via
+    /// `rabbit_fifo` and `rabbit_stream_coordinator`; carries `.schema`
+    /// files; uses `?LOG_*`, `rabbit_log:*`, and `rabbit_khepri`.
+    Rabbitmq,
+}
+
+impl ProjectFamily {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::ErlangOtp => "erlang_otp",
+            Self::Ra => "ra",
+            Self::Osiris => "osiris",
+            Self::Khepri => "khepri",
+            Self::Rabbitmq => "rabbitmq",
+        }
+    }
+}
+
+impl FromStr for ProjectFamily {
+    type Err = ConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "generic" => Ok(Self::Generic),
+            "erlang_otp" => Ok(Self::ErlangOtp),
+            "ra" => Ok(Self::Ra),
+            "osiris" => Ok(Self::Osiris),
+            "khepri" => Ok(Self::Khepri),
+            "rabbitmq" => Ok(Self::Rabbitmq),
+            other => Err(ConfigError::UnknownProjectFamily(other.to_owned())),
+        }
+    }
+}
+
+impl ProjectFamily {
+    /// Wire-bearing macros, versioned-machine behaviours, and versioned-machine
+    /// implementer modules this family declares.
+    pub fn defaults(self) -> FamilyDefaults {
+        match self {
+            Self::Generic => FamilyDefaults::default(),
+            Self::ErlangOtp => FamilyDefaults::default(),
+            Self::Ra => FamilyDefaults {
+                wire_constants: vec![
+                    WireConstantDecl::new("ra_log_segment", &["VERSION", "MAGIC"]),
+                    WireConstantDecl::new("ra_log_wal", &["CURRENT_VERSION", "MAGIC"]),
+                    WireConstantDecl::new("ra_log_snapshot", &["VERSION", "MAGIC"]),
+                    WireConstantDecl::new("ra_snapshot", &["IDX_VERSION", "IDX_MAGIC"]),
+                    WireConstantDecl::new("ra", &["RA_PROTO_VERSION"]),
+                ],
+                versioned_machines: vec![VersionedMachineDecl {
+                    behaviour: "ra_machine".into(),
+                }],
+                versioned_machine_impls: Vec::new(),
+            },
+            Self::Osiris => FamilyDefaults {
+                wire_constants: vec![WireConstantDecl::new(
+                    "osiris",
+                    &[
+                        "MAGIC",
+                        "VERSION",
+                        "IDX_VERSION",
+                        "LOG_VERSION",
+                        "IDX_HEADER",
+                        "LOG_HEADER",
+                    ],
+                )],
+                ..Default::default()
+            },
+            Self::Khepri => FamilyDefaults {
+                wire_constants: vec![WireConstantDecl::new(
+                    "khepri_node",
+                    &["INIT_DATA_VERSION", "INIT_CHILD_LIST_VERSION"],
+                )],
+                ..Default::default()
+            },
+            Self::Rabbitmq => FamilyDefaults {
+                wire_constants: Vec::new(),
+                versioned_machines: Vec::new(),
+                versioned_machine_impls: vec![
+                    VersionedMachineImplDecl {
+                        module: "rabbit_fifo".into(),
+                        version_function: "version".into(),
+                        allow_state_flag_gating: true,
+                    },
+                    VersionedMachineImplDecl {
+                        module: "rabbit_stream_coordinator".into(),
+                        version_function: "version".into(),
+                        allow_state_flag_gating: false,
+                    },
+                ],
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FamilyDefaults {
+    pub wire_constants: Vec<WireConstantDecl>,
+    pub versioned_machines: Vec<VersionedMachineDecl>,
+    pub versioned_machine_impls: Vec<VersionedMachineImplDecl>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WireConstantDecl {
+    pub module: String,
+    pub macros: Vec<String>,
+}
+
+impl WireConstantDecl {
+    pub fn new(module: &str, macros: &[&str]) -> Self {
+        Self {
+            module: module.to_owned(),
+            macros: macros.iter().map(|m| (*m).to_owned()).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionedMachineDecl {
+    pub behaviour: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionedMachineImplDecl {
+    pub module: String,
+    pub version_function: String,
+    pub allow_state_flag_gating: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SeriesRaw {
@@ -183,10 +334,14 @@ pub enum PinRaw {
     SelfBranch {
         project: String,
         branch: String,
+        #[serde(default)]
+        repo_dir_path: Option<PathBuf>,
     },
     SelfSha {
         project: String,
         sha: String,
+        #[serde(default)]
+        repo_dir_path: Option<PathBuf>,
     },
 }
 
@@ -197,10 +352,26 @@ pub struct Defaults {
     pub scan_paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Language {
     Erlang,
     Elixir,
+}
+
+impl Language {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Erlang => "erlang",
+            Self::Elixir => "elixir",
+        }
+    }
+}
+
+impl fmt::Display for Language {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl FromStr for Language {
@@ -289,6 +460,7 @@ pub struct Project {
     /// `None` for self-projects; the repo is the runtime `--repo-dir-path`.
     pub git_url: Option<PathBuf>,
     pub kind: ProjectKind,
+    pub family: ProjectFamily,
     pub language: Language,
     pub tag_prefix: String,
     pub public_modules: Vec<String>,
@@ -322,6 +494,42 @@ impl Project {
 
     pub fn is_self(&self) -> bool {
         matches!(self.kind, ProjectKind::SelfRepo)
+    }
+
+    // Prefix-matches `path` against scan_paths and app_roots, stripping glob suffixes
+    pub fn owns_path(&self, path: &Path) -> bool {
+        let candidate = path.to_string_lossy();
+        self.scan_paths
+            .iter()
+            .chain(self.app_roots.iter())
+            .any(|raw| path_under_glob_prefix(&candidate, raw))
+    }
+}
+
+fn path_under_glob_prefix(candidate: &str, raw: &str) -> bool {
+    let prefix = glob_directory_prefix(raw).trim_end_matches('/');
+    if prefix.is_empty() {
+        return false;
+    }
+    if !candidate.starts_with(prefix) {
+        return false;
+    }
+    let rest = &candidate[prefix.len()..];
+    rest.is_empty() || rest.starts_with('/')
+}
+
+// Return the literal directory prefix before any glob metacharacter
+fn glob_directory_prefix(pattern: &str) -> &str {
+    let metachars = ['*', '?', '[', '{'];
+    match pattern.find(metachars) {
+        Some(i) => {
+            let head = &pattern[..i];
+            match head.rfind('/') {
+                Some(slash) => &head[..=slash],
+                None => "",
+            }
+        }
+        None => pattern,
     }
 }
 
@@ -583,6 +791,12 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         .map(ProjectKind::from_str)
         .transpose()?
         .unwrap_or(ProjectKind::External);
+    let family = p
+        .family
+        .as_deref()
+        .map(ProjectFamily::from_str)
+        .transpose()?
+        .unwrap_or_default();
     let git_url = match (kind, p.git_url) {
         (ProjectKind::External, Some(g)) => Some(PathBuf::from(g)),
         (ProjectKind::External, None) => {
@@ -597,6 +811,7 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         name,
         git_url,
         kind,
+        family,
         language,
         tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
         public_modules: p.public_modules.unwrap_or_default(),
@@ -621,15 +836,31 @@ fn parse_app_names(raw: Vec<String>) -> Result<Vec<ApplicationName>, ConfigError
 
 fn parse_pin(pin: PinRaw) -> Result<PinSpec, ConfigError> {
     match pin {
-        PinRaw::SelfBranch { project, branch } => {
+        PinRaw::SelfBranch {
+            project,
+            branch,
+            repo_dir_path,
+        } => {
             let project = ProjectName::new(project).map_err(ConfigError::Name)?;
             let git_ref = GitRef::new(branch).map_err(ConfigError::Name)?;
-            Ok(PinSpec::SelfRef { project, git_ref })
+            Ok(PinSpec::SelfRef {
+                project,
+                git_ref,
+                repo_dir_path,
+            })
         }
-        PinRaw::SelfSha { project, sha } => {
+        PinRaw::SelfSha {
+            project,
+            sha,
+            repo_dir_path,
+        } => {
             let project = ProjectName::new(project).map_err(ConfigError::Name)?;
             let git_ref = GitRef::new(sha).map_err(ConfigError::Name)?;
-            Ok(PinSpec::SelfRef { project, git_ref })
+            Ok(PinSpec::SelfRef {
+                project,
+                git_ref,
+                repo_dir_path,
+            })
         }
         PinRaw::Literal { project, tag } => {
             let project = ProjectName::new(project).map_err(ConfigError::Name)?;

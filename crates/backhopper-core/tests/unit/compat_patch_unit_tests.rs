@@ -35,7 +35,7 @@ fn analyze_collects_referenced_calls() {
             _ => None,
         })
         .collect();
-    assert!(calls.iter().any(|c| c == "bar:zap/1"), "got {:?}", calls);
+    assert!(calls.iter().any(|c| c == "bar:zap/1"), "got {calls:?}");
 }
 
 #[test]
@@ -67,6 +67,6 @@ fn rejects_invalid_utf8_with_offset() {
                 "offset should point at the bad byte"
             );
         }
-        other => panic!("expected InvalidUtf8, got {:?}", other),
+        other => panic!("expected InvalidUtf8, got {other:?}"),
     }
 }

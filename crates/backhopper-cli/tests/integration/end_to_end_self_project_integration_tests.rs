@@ -143,7 +143,7 @@ fn check_patch_against_self_branch_emits_missing_prereq_when_function_absent() {
         ])
         .assert()
         // Exit 2: Incompatible (MissingPrereq is blocking).
-        .code(2);
+        .code(3);
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
         stdout.contains("MissingPrereq"),
@@ -157,9 +157,7 @@ fn check_patch_against_self_branch_emits_missing_prereq_when_function_absent() {
 
 #[test]
 fn check_patch_fails_clearly_when_self_pin_cwd_is_not_a_git_repo() {
-    // `--repo-dir-path` defaults to `.`; pointing it at a non-repo surfaces a
-    // clear `git error: repository open failed` from gix rather than silently
-    // proceeding.
+    // pointing `--repo-dir-path` at a non-repo must surface a clear `git error: repository open failed`
     let (_repo, _work, cfg) = setup_self_repo();
     let non_repo = TempDir::new().unwrap();
     let mut pf = NamedTempFile::new().unwrap();
@@ -190,12 +188,9 @@ fn check_patch_fails_clearly_when_self_pin_cwd_is_not_a_git_repo() {
 
 #[test]
 fn self_pin_docs_only_patch_stays_inapplicable_not_downgraded_to_compatible() {
-    // Regression: the prereq promoter previously called Verdict::from_reasons
-    // on every self-pin's reason list, which silently rewrote Inapplicable to
-    // Compatible when there were no MissingSymbol reasons to promote.
+    // regression: the prereq promoter once rewrote Inapplicable to Compatible when there were no `MissingSymbol` reasons
     let (repo, _work, cfg) = setup_self_repo();
-    // Seed README.md so FileAbsent does not fire; the patch is then docs-only
-    // with no reasons, which the evaluator + promote_inapplicable flip to Inapplicable.
+    // seed README.md so `FileAbsent` does not fire: the docs-only patch is then flipped to `Inapplicable`
     repo.write_file("README.md", "old\n");
     repo.commit("add readme");
     let docs_only = "\

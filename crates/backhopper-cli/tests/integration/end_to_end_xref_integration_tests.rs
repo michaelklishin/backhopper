@@ -21,9 +21,7 @@ fn default_formatter_is_json_not_text() {
             "-module(a).\n-export([go/0]).\ngo() -> missing:f(1).\n",
         )],
     );
-    // No --formatter flag: agent-friendly default is JSON. Humans must opt
-    // into the table view with `--formatter text`. Bypass the shared helper
-    // because it sets BACKHOPPER_FORMATTER=text to keep older tests working.
+    // `backhopper` defaults to a machine-readable format
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .env_remove("BACKHOPPER_FORMATTER")
@@ -38,8 +36,7 @@ fn default_formatter_is_json_not_text() {
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
         out.trim_start().starts_with('{'),
-        "default output should be JSON, got: {}",
-        out
+        "default output should be JSON, got: {out}"
     );
     assert!(out.contains("\"schema_version\""));
     assert!(out.contains("missing"));

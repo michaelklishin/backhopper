@@ -29,11 +29,10 @@ fn config_not_found_lists_every_tried_path_in_message() {
         ],
     };
     let msg = e.to_string();
-    assert!(msg.contains("./backhopper.toml"), "msg was: {}", msg);
+    assert!(msg.contains("./backhopper.toml"), "msg was: {msg}");
     assert!(
         msg.contains("/home/me/.config/backhopper/backhopper.toml"),
-        "msg was: {}",
-        msg
+        "msg was: {msg}"
     );
 }
 

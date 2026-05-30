@@ -114,23 +114,22 @@ fn worst_exit_code_severity_ordering() {
     });
 
     let only_incompat = SeriesVerdict::from_results(vec![incompat.clone()]);
-    assert_eq!(only_incompat.worst_exit_code(), exit::INCOMPATIBLE);
+    assert_eq!(only_incompat.worst_exit_code(), exit::NEEDS_ATTENTION);
 
     let incompat_plus_requires =
         SeriesVerdict::from_results(vec![incompat.clone(), requires.clone()]);
-    assert_eq!(incompat_plus_requires.worst_exit_code(), exit::INCOMPATIBLE);
+    assert_eq!(
+        incompat_plus_requires.worst_exit_code(),
+        exit::NEEDS_ATTENTION
+    );
 
     let only_requires = SeriesVerdict::from_results(vec![requires.clone()]);
-    assert_eq!(only_requires.worst_exit_code(), exit::REQUIRES_ADAPTATION);
+    assert_eq!(only_requires.worst_exit_code(), exit::NEEDS_ATTENTION);
 
     let compat_plus_inapplicable =
         SeriesVerdict::from_results(vec![compat.clone(), inapplicable.clone()]);
-    assert_eq!(
-        compat_plus_inapplicable.worst_exit_code(),
-        exit::OK,
-        "a real Compatible beats Inapplicable"
-    );
+    assert_eq!(compat_plus_inapplicable.worst_exit_code(), exit::OK);
 
     let only_inapplicable = SeriesVerdict::from_results(vec![inapplicable.clone()]);
-    assert_eq!(only_inapplicable.worst_exit_code(), exit::INAPPLICABLE);
+    assert_eq!(only_inapplicable.worst_exit_code(), exit::OK);
 }

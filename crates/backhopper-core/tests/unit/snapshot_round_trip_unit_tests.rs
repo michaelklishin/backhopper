@@ -88,7 +88,7 @@ fn header_block_starts_canonical_text() {
     let snap = Snapshot::from_extracted(header(), vec![ra_module()], vec![]).into_canonical();
     let text = format::to_string(&snap).unwrap();
     assert!(text.starts_with("# backhopper snapshot\n"));
-    assert!(text.contains(&format!("# format-version: {}\n", FORMAT_VERSION)));
+    assert!(text.contains(&format!("# format-version: {FORMAT_VERSION}\n")));
     assert!(text.contains("# project: ra\n"));
 }
 

@@ -111,7 +111,7 @@ fn parse_module_names_drops_invalid_strings() {
         "9digits".into(),
     ];
     let parsed = parse_module_names(inputs.iter());
-    let strings: Vec<String> = parsed.iter().map(|m| m.to_string()).collect();
+    let strings: Vec<String> = parsed.iter().map(|s| s.to_string()).collect();
     assert_eq!(strings, vec!["ra", "ra_log"]);
 }
 

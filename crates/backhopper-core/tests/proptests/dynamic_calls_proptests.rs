@@ -19,7 +19,7 @@ proptest! {
         module in "[a-z][a-z0-9_]{0,7}",
         function in "[a-z][a-z0-9_]{0,7}"
     ) {
-        let line = format!("    {}:{}(Arg1, Arg2)", module, function);
+        let line = format!("    {module}:{function}(Arg1, Arg2)");
         let mut out: Vec<DynamicCall> = Vec::new();
         extract_dynamic_into(&line, &mut out);
         prop_assert!(
@@ -37,7 +37,7 @@ proptest! {
         module in "[A-Z][a-zA-Z0-9_]{0,7}",
         function in "[a-z][a-z0-9_]{0,7}"
     ) {
-        let line = format!("    {}:{}(X)", module, function);
+        let line = format!("    {module}:{function}(X)");
         let mut out: Vec<DynamicCall> = Vec::new();
         extract_dynamic_into(&line, &mut out);
         prop_assert!(

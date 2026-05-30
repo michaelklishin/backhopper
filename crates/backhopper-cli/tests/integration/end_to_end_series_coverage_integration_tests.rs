@@ -57,7 +57,7 @@ fn build_repo() -> (FixtureRepo, TempDir, String) {
     repo.write_file("src/demo_mod.erl", ERL);
     repo.commit("v1");
     repo.tag("v1.0.0");
-    repo.write_file("src/demo_mod.erl", &format!("{}\n", ERL));
+    repo.write_file("src/demo_mod.erl", &format!("{ERL}\n"));
     repo.commit("v2");
     let head = Std::new("git")
         .args(["rev-parse", "HEAD"])
@@ -95,8 +95,7 @@ fn series_with_uncovered_project_emits_warning() {
     ]));
     assert!(
         err.contains("series stable") && err.contains("missing_one"),
-        "expected coverage warning on stderr, got: {}",
-        err
+        "expected coverage warning on stderr, got: {err}"
     );
 }
 
@@ -145,8 +144,7 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
     ]));
     assert!(
         !err.contains("no pin"),
-        "expected no coverage warning, got: {}",
-        err
+        "expected no coverage warning, got: {err}"
     );
 }
 
@@ -165,7 +163,7 @@ fn series_coverage_warning_fires_for_batch_too() {
     ])
     .success();
     let mut commits = NamedTempFile::new().unwrap();
-    writeln!(commits, "{}", head_sha).unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
     let err = stderr(&run([
         "--config-file-path",
         cfg.to_str().unwrap(),
@@ -180,7 +178,6 @@ fn series_coverage_warning_fires_for_batch_too() {
     ]));
     assert!(
         err.contains("missing_one"),
-        "expected coverage warning during batch, got: {}",
-        err
+        "expected coverage warning during batch, got: {err}"
     );
 }

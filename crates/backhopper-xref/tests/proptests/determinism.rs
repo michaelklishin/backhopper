@@ -16,9 +16,9 @@ proptest! {
         n in 1usize..6
     ) {
         let mut files: Vec<(PathBuf, Vec<u8>)> = (0..n).map(|i| {
-            let name = format!("m{}", i);
-            (PathBuf::from(format!("{}.erl", name)),
-             format!("-module({}).\n-export([f/0]).\nf() -> ok.\n", name).into_bytes())
+            let name = format!("m{i}");
+            (PathBuf::from(format!("{name}.erl")),
+             format!("-module({name}).\n-export([f/0]).\nf() -> ok.\n").into_bytes())
         }).collect();
         let app = ApplicationName::new("t".to_owned()).unwrap();
         let mut b1 = XrefBuilder::new();
@@ -43,9 +43,9 @@ proptest! {
     ) {
         use backhopper_xref::diff_xrefs;
         let files: Vec<(PathBuf, Vec<u8>)> = (0..n).map(|i| {
-            let name = format!("m{}", i);
-            (PathBuf::from(format!("{}.erl", name)),
-             format!("-module({}).\n-export([f/0]).\nf() -> ok.\n", name).into_bytes())
+            let name = format!("m{i}");
+            (PathBuf::from(format!("{name}.erl")),
+             format!("-module({name}).\n-export([f/0]).\nf() -> ok.\n").into_bytes())
         }).collect();
         let app = ApplicationName::new("t".to_owned()).unwrap();
         let mut b = XrefBuilder::new();
@@ -71,9 +71,9 @@ proptest! {
         let app = ApplicationName::new("t".to_owned()).unwrap();
         let make = |n: usize| -> Vec<(PathBuf, Vec<u8>)> {
             (0..n).map(|i| {
-                let name = format!("m{}", i);
-                (PathBuf::from(format!("{}.erl", name)),
-                 format!("-module({}).\n-export([f/0]).\nf() -> ok.\n", name).into_bytes())
+                let name = format!("m{i}");
+                (PathBuf::from(format!("{name}.erl")),
+                 format!("-module({name}).\n-export([f/0]).\nf() -> ok.\n").into_bytes())
             }).collect()
         };
         let mut b_from = XrefBuilder::new();

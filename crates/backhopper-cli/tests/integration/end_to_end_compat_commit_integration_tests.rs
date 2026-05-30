@@ -90,8 +90,7 @@ fn compat_commit_accepts_short_sha() {
     )));
     assert!(
         out.contains("compatible") || out.contains("incompatible"),
-        "expected verdict in output, got {}",
-        out
+        "expected verdict in output, got {out}"
     );
 }
 
@@ -102,21 +101,18 @@ fn compat_commit_rejects_unknown_sha_with_clear_error() {
     let cfg = write_config(work.path(), repo.dir.path(), &snap);
     discover_snapshots(&cfg);
     let err = stderr(&run(commit_args(&cfg, repo.dir.path(), "deadbeef", &[])).failure());
-    assert!(err.contains("deadbeef"), "stderr was: {}", err);
+    assert!(err.contains("deadbeef"), "stderr was: {err}");
     assert!(
         err.contains("not found in repository"),
-        "expected workflow hint in error, got: {}",
-        err
+        "expected workflow hint in error, got: {err}"
     );
     assert!(
         err.contains("git fetch"),
-        "expected `git fetch` hint in error, got: {}",
-        err
+        "expected `git fetch` hint in error, got: {err}"
     );
     assert!(
         err.contains(repo.dir.path().to_str().unwrap()),
-        "expected repo path in error, got: {}",
-        err
+        "expected repo path in error, got: {err}"
     );
 }
 
@@ -134,15 +130,13 @@ fn compat_commit_summary_only_prints_single_kv_line() {
     )));
     assert!(
         out.contains("compatible=") && out.contains("incompatible="),
-        "expected key=value summary, got {}",
-        out
+        "expected key=value summary, got {out}"
     );
     let non_empty: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
     assert_eq!(
         non_empty.len(),
         1,
-        "summary-only must collapse to a single line, got: {:?}",
-        non_empty
+        "summary-only must collapse to a single line, got: {non_empty:?}"
     );
 }
 
@@ -155,7 +149,6 @@ fn compat_commit_runs_against_local_repo() {
     let out = stdout(&run(commit_args(&cfg, repo.dir.path(), &head_sha, &[])));
     assert!(
         out.contains("compatible") || out.contains("incompatible"),
-        "expected verdict in output, got {}",
-        out
+        "expected verdict in output, got {out}"
     );
 }

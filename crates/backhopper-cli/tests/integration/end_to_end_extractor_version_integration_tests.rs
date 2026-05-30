@@ -76,7 +76,7 @@ fn verify_all_flags_stale_extractor_versions() {
             "--all",
         ])
         .assert()
-        .success();
+        .code(3);
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     assert!(
         stdout.contains("stale_extractor: 1"),

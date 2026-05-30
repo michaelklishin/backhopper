@@ -76,12 +76,8 @@ fn store_round_trips_every_snapshot() {
             let snap = store.read(&p, &tag).unwrap();
             let serialized = format::to_string(&snap).unwrap();
             let reparsed = parser::parse(&serialized)
-                .unwrap_or_else(|e| panic!("re-parse failed for {} {}: {:?}", project, tag, e));
-            assert_eq!(
-                snap, reparsed,
-                "round-trip mismatch for {} {}",
-                project, tag
-            );
+                .unwrap_or_else(|e| panic!("re-parse failed for {project} {tag}: {e:?}"));
+            assert_eq!(snap, reparsed, "round-trip mismatch for {project} {tag}");
         }
     }
 }
@@ -102,8 +98,7 @@ fn ra_v3_1_6_exports_well_known_functions() {
         let mfa = Mfa::from_str(m).unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "ra v3.1.6 should export {}",
-            m
+            "ra v3.1.6 should export {m}"
         );
     }
 }
@@ -118,8 +113,7 @@ fn cowboy_2_14_x_exports_well_known_functions() {
         let mfa = Mfa::from_str("cowboy_req:reply/4").unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "cowboy {} should export cowboy_req:reply/4",
-            tag_str
+            "cowboy {tag_str} should export cowboy_req:reply/4"
         );
     }
 }
@@ -134,14 +128,10 @@ fn cowboy_fixtures_cover_pinned_versions() {
         .list_tags(&p)
         .unwrap()
         .iter()
-        .map(|t| t.to_string())
+        .map(|s| s.to_string())
         .collect();
     for expected in ["2.12.0", "2.13.0", "2.14.0", "2.14.1", "2.14.2"] {
-        assert!(
-            tags.iter().any(|n| n == expected),
-            "missing tag {}",
-            expected
-        );
+        assert!(tags.iter().any(|n| n == expected), "missing tag {expected}");
     }
 }
 
@@ -157,8 +147,7 @@ fn cowboy_start_quic_appears_at_2_13_0() {
         let snap = store.read(&p, &TagName::new(tag_str).unwrap()).unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "cowboy {} should export cowboy:start_quic/3",
-            tag_str
+            "cowboy {tag_str} should export cowboy:start_quic/3"
         );
     }
 }
@@ -176,8 +165,7 @@ fn cowboy_webtransport_module_appears_at_2_14_0() {
                 .modules()
                 .iter()
                 .any(|m| m.name.as_str() == "cowboy_webtransport"),
-            "cowboy {} should not have cowboy_webtransport",
-            tag_str
+            "cowboy {tag_str} should not have cowboy_webtransport"
         );
     }
     for tag_str in ["2.14.0", "2.14.1", "2.14.2"] {
@@ -186,7 +174,7 @@ fn cowboy_webtransport_module_appears_at_2_14_0() {
             .modules()
             .iter()
             .find(|m| m.name.as_str() == "cowboy_webtransport")
-            .unwrap_or_else(|| panic!("cowboy {} should have cowboy_webtransport", tag_str));
+            .unwrap_or_else(|| panic!("cowboy {tag_str} should have cowboy_webtransport"));
         for (fun, arity) in [
             ("upgrade", 4u8),
             ("upgrade", 5),
@@ -198,10 +186,7 @@ fn cowboy_webtransport_module_appears_at_2_14_0() {
                     .exports
                     .iter()
                     .any(|fa| fa.name.as_str() == fun && fa.arity.get() == arity),
-                "cowboy {} cowboy_webtransport should export {}/{}",
-                tag_str,
-                fun,
-                arity
+                "cowboy {tag_str} cowboy_webtransport should export {fun}/{arity}"
             );
         }
     }
@@ -218,14 +203,13 @@ fn cowboy_handler_init_callback_is_captured() {
             .modules()
             .iter()
             .find(|m| m.name.as_str() == "cowboy_handler")
-            .unwrap_or_else(|| panic!("cowboy {} should have cowboy_handler", tag_str));
+            .unwrap_or_else(|| panic!("cowboy {tag_str} should have cowboy_handler"));
         assert!(
             handler
                 .callbacks
                 .iter()
                 .any(|c| c.name.as_str() == "init" && c.arity.get() == 2),
-            "cowboy {} cowboy_handler:init/2 callback expected",
-            tag_str
+            "cowboy {tag_str} cowboy_handler:init/2 callback expected"
         );
     }
 }
@@ -332,8 +316,7 @@ fn seshat_v1_0_0_exports_core_counter_api() {
         let mfa = Mfa::from_str(m).unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "seshat v1.0.0 should export {}",
-            m
+            "seshat v1.0.0 should export {m}"
         );
     }
 }
@@ -349,16 +332,14 @@ fn seshat_prom_format_appears_at_v1_0_0() {
         let snap = store.read(&p, &TagName::new(tag_str).unwrap()).unwrap();
         assert!(
             !snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "seshat {} should not yet export prom_format/2",
-            tag_str
+            "seshat {tag_str} should not yet export prom_format/2"
         );
     }
     for tag_str in ["v1.0.0", "v1.0.1"] {
         let snap = store.read(&p, &TagName::new(tag_str).unwrap()).unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "seshat {} should export prom_format/2",
-            tag_str
+            "seshat {tag_str} should export prom_format/2"
         );
     }
 }
@@ -375,26 +356,22 @@ fn seshat_overview_function_removed_at_v1_0_0() {
         let snap = store.read(&p, &TagName::new(tag_str).unwrap()).unwrap();
         assert!(
             snap.lookup_export(&overview_1.module, &overview_1.function, overview_1.arity),
-            "seshat {} should export overview/1",
-            tag_str
+            "seshat {tag_str} should export overview/1"
         );
         assert!(
             snap.lookup_export(&overview_2.module, &overview_2.function, overview_2.arity),
-            "seshat {} should export overview/2",
-            tag_str
+            "seshat {tag_str} should export overview/2"
         );
     }
     for tag_str in ["v1.0.0", "v1.0.1"] {
         let snap = store.read(&p, &TagName::new(tag_str).unwrap()).unwrap();
         assert!(
             !snap.lookup_export(&overview_1.module, &overview_1.function, overview_1.arity),
-            "seshat {} should not export overview/1",
-            tag_str
+            "seshat {tag_str} should not export overview/1"
         );
         assert!(
             !snap.lookup_export(&overview_2.module, &overview_2.function, overview_2.arity),
-            "seshat {} should not export overview/2",
-            tag_str
+            "seshat {tag_str} should not export overview/2"
         );
     }
 }
@@ -428,14 +405,10 @@ fn seshat_fixtures_cover_pinned_and_next_versions() {
         .list_tags(&p)
         .unwrap()
         .iter()
-        .map(|t| t.to_string())
+        .map(|s| s.to_string())
         .collect();
     for expected in ["v0.6.0", "v0.6.1", "v1.0.0", "v1.0.1"] {
-        assert!(
-            tags.iter().any(|n| n == expected),
-            "missing tag {}",
-            expected
-        );
+        assert!(tags.iter().any(|n| n == expected), "missing tag {expected}");
     }
 }
 
@@ -477,14 +450,10 @@ fn ranch_fixtures_cover_pinned_versions() {
         .list_tags(&p)
         .unwrap()
         .iter()
-        .map(|t| t.to_string())
+        .map(|s| s.to_string())
         .collect();
     for expected in ["2.0.0", "2.1.0", "2.2.0"] {
-        assert!(
-            tags.iter().any(|n| n == expected),
-            "missing tag {}",
-            expected
-        );
+        assert!(tags.iter().any(|n| n == expected), "missing tag {expected}");
     }
 }
 
@@ -511,15 +480,12 @@ fn ranch_2_2_0_exports_core_listener_api() {
         let mfa = Mfa::from_str(m).unwrap();
         assert!(
             snap.lookup_export(&mfa.module, &mfa.function, mfa.arity),
-            "ranch 2.2.0 should export {}",
-            m
+            "ranch 2.2.0 should export {m}"
         );
     }
 }
 
-// `format_error/1` exports landed in 2.2.0 on `ranch_tcp` and
-// `ranch_ssl`, plus an optional callback on `ranch_transport`. 2.0.0
-// and 2.1.0 don't have them.
+// `format_error/1` landed in 2.2.0 on `ranch_tcp`, `ranch_ssl`, and as an optional callback on `ranch_transport`
 #[test]
 fn ranch_format_error_added_in_2_2_0() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();

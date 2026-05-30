@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::path::PathBuf;
+
 use clap::Subcommand;
 
 use backhopper_core::model::names::{Mfa, ModuleName};
@@ -76,5 +78,19 @@ pub enum XrefCmd {
     ListModuleCycles {
         #[command(flatten)]
         tree: TreeSource,
+    },
+    /// Join an unconditional-test-exports reference list against a
+    /// target-branch snapshot's `test_only_exports`. Emits per-row
+    /// `applies`, `applies-with-adaptation`, or `n_a` to drive
+    /// cascade planning.
+    BackportApplicability {
+        /// Path to a TOML reference list with `[[entry]]` arrays
+        /// carrying `file`, `variant`, and `functions = ["name/arity", ...]`.
+        #[arg(long = "reference-file-path")]
+        reference_file_path: PathBuf,
+        /// Path to the canonical text snapshot of the target branch.
+        /// Generate via `backhopper snapshots generate --branch ...`.
+        #[arg(long = "snapshot-file-path")]
+        snapshot_file_path: PathBuf,
     },
 }

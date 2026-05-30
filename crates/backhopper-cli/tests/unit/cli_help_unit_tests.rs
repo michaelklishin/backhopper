@@ -11,7 +11,7 @@ fn cli_command_metadata_is_well_formed() {
     let mut cmd = Cli::command();
     cmd.build();
     assert_eq!(cmd.get_name(), "backhopper");
-    let names: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+    let names: Vec<&str> = cmd.get_subcommands().map(|c| c.get_name()).collect();
     for expected in ["projects", "snapshots", "check", "shell"] {
         assert!(names.contains(&expected), "missing subcommand: {expected}");
     }
@@ -75,7 +75,7 @@ fn projects_group_has_list_and_show() {
         .get_subcommands()
         .find(|s| s.get_name() == "projects")
         .unwrap();
-    let names: Vec<_> = projects.get_subcommands().map(|s| s.get_name()).collect();
+    let names: Vec<_> = projects.get_subcommands().map(|c| c.get_name()).collect();
     assert!(names.contains(&"list"));
     assert!(names.contains(&"show"));
 }
@@ -88,7 +88,7 @@ fn check_group_has_patch_commit_range() {
         .get_subcommands()
         .find(|s| s.get_name() == "check")
         .unwrap();
-    let names: Vec<_> = group.get_subcommands().map(|s| s.get_name()).collect();
+    let names: Vec<_> = group.get_subcommands().map(|c| c.get_name()).collect();
     assert!(names.contains(&"patch"));
     assert!(names.contains(&"commit"));
     assert!(names.contains(&"range"));
@@ -118,7 +118,7 @@ fn check_patch_advertises_diagnostic_flags() {
 fn top_level_has_doctor_and_init() {
     let mut cmd = Cli::command();
     cmd.build();
-    let names: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+    let names: Vec<&str> = cmd.get_subcommands().map(|c| c.get_name()).collect();
     assert!(names.contains(&"doctor"), "missing `doctor` subcommand");
     assert!(names.contains(&"init"), "missing `init` subcommand");
 }
@@ -202,7 +202,7 @@ fn series_sync_advertises_preview_diff_merge_replace() {
         .get_subcommands()
         .find(|s| s.get_name() == "sync")
         .expect("series sync subcommand missing");
-    let verbs: Vec<&str> = sync.get_subcommands().map(|s| s.get_name()).collect();
+    let verbs: Vec<&str> = sync.get_subcommands().map(|c| c.get_name()).collect();
     for expected in ["preview", "diff", "merge", "replace"] {
         assert!(
             verbs.contains(&expected),
@@ -240,7 +240,7 @@ fn snapshots_advertises_introduced_verb() {
         .get_subcommands()
         .find(|s| s.get_name() == "snapshots")
         .expect("snapshots group missing");
-    let verbs: Vec<&str> = snapshots.get_subcommands().map(|s| s.get_name()).collect();
+    let verbs: Vec<&str> = snapshots.get_subcommands().map(|c| c.get_name()).collect();
     assert!(
         verbs.contains(&"introduced"),
         "missing snapshots verb: introduced; got {verbs:?}"

@@ -46,8 +46,7 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
     Err(CliError::ConfigNotFound { tried })
 }
 
-// Walk up from `start`, return the first `.backhopper.toml` or `backhopper.toml`
-// found. Stops at a directory containing `.git`. Dotfile wins on a tie.
+// walks up from `start` to the first `.backhopper.toml` or `backhopper.toml`: stops at a `.git` directory; dotfile wins on a tie
 fn walk_up_for_config(start: &Path, tried: &mut Vec<PathBuf>) -> Option<PathBuf> {
     let mut here: Option<&Path> = Some(start);
     while let Some(dir) = here {

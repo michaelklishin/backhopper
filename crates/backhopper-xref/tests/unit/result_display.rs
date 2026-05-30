@@ -20,7 +20,7 @@ fn module_callers_display_lists_each_caller() {
         target: mname("lib"),
         entries: cs,
     };
-    let out = format!("{}", r);
+    let out = format!("{r}");
     assert!(out.contains("callers of lib"));
     assert!(out.contains("  a"));
     assert!(out.contains("  b"));
@@ -33,7 +33,7 @@ fn module_dependencies_display_uses_arrow_phrasing() {
         source: mname("user"),
         entries: cs,
     };
-    let out = format!("{}", r);
+    let out = format!("{r}");
     assert!(out.contains("user uses"));
     assert!(out.contains("  dep"));
 }
@@ -46,7 +46,7 @@ fn app_dependencies_display_uses_reaches_phrasing() {
         source: ApplicationName::new("user".to_owned()).unwrap(),
         entries: cs,
     };
-    let out = format!("{}", r);
+    let out = format!("{r}");
     assert!(out.contains("user reaches"));
     assert!(out.contains("  dep"));
 }
@@ -65,7 +65,7 @@ fn non_conformance_display_names_implementer_and_missing() {
         behaviour: BehaviourName::new("gen_server".to_owned()).unwrap(),
         missing,
     };
-    let out = format!("{}", r);
+    let out = format!("{r}");
     assert!(out.contains("my_server"));
     assert!(out.contains("gen_server"));
     assert!(out.contains("handle_call/3"));
@@ -76,5 +76,5 @@ fn unresolved_calls_display_empty_is_empty_string() {
     let r = UnresolvedCalls {
         entries: Vec::new(),
     };
-    assert!(format!("{}", r).is_empty());
+    assert!(format!("{r}").is_empty());
 }

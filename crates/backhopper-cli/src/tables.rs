@@ -11,7 +11,9 @@ use tabled::{Table, Tabled};
 use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolKind;
-use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesEvaluation, Verdict};
+use backhopper_core::model::verdict::{
+    ArtifactKind, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, Verdict,
+};
 
 #[derive(Tabled)]
 struct ReasonRow {
@@ -37,7 +39,7 @@ fn collect_rows(results: &[PinVerdict]) -> Vec<ReasonRow> {
                 pin,
                 verdict: verdict_label,
                 reason: "-",
-                detail: format!("inapplicable: {}", reason.as_str()),
+                detail: format!("inapplicable: {}", inapplicable_detail(reason)),
             });
             continue;
         }
@@ -64,6 +66,18 @@ fn collect_rows(results: &[PinVerdict]) -> Vec<ReasonRow> {
         }
     }
     rows
+}
+
+fn inapplicable_detail(reason: &InapplicableReason) -> String {
+    match reason {
+        InapplicableReason::OutOfScopeFor { project } => {
+            format!("out_of_scope_for (owned by project '{project}')")
+        }
+        InapplicableReason::Untracked => {
+            "untracked (no configured project owns the touched paths)".to_owned()
+        }
+        other => other.as_str().to_owned(),
+    }
 }
 
 fn verdict_label(v: &Verdict) -> &'static str {
@@ -93,6 +107,19 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::UntrackedModuleMissing { .. } => "UntrackedModuleMissing",
         Reason::ClauseMismatch { .. } => "ClauseMismatch",
         Reason::MissingPrereq { .. } => "MissingPrereq",
+        Reason::SyntacticArtifact { .. } => "SyntacticArtifact",
+        Reason::BehaviourCallbackSignatureChanged { .. } => "BehaviourCallbackSignatureChanged",
+        Reason::BehaviourCallbackRemoved { .. } => "BehaviourCallbackRemoved",
+        Reason::BehaviourCallbackAdded { .. } => "BehaviourCallbackAdded",
+        Reason::ModuleRelocated { .. } => "ModuleRelocated",
+        Reason::WireConstantChanged { .. } => "WireConstantChanged",
+        Reason::HistoricalImplementationMissing { .. } => "HistoricalImplementationMissing",
+        Reason::WireContractBodyDrift { .. } => "WireContractBodyDrift",
+        Reason::WireContractRegression { .. } => "WireContractRegression",
+        Reason::ReturnShapeMismatch { .. } => "ReturnShapeMismatch",
+        Reason::MissingType { .. } => "MissingType",
+        Reason::PreimageDrifted { .. } => "PreimageDrifted",
+        Reason::PreimageMissing { .. } => "PreimageMissing",
     }
 }
 
@@ -107,7 +134,7 @@ fn reason_detail(r: &Reason) -> String {
         } => {
             let found_str = found
                 .iter()
-                .map(|a| a.to_string())
+                .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{module}:{function} expected /{expected}, snapshot has /{found_str}")
@@ -121,7 +148,9 @@ fn reason_detail(r: &Reason) -> String {
         } => format!(
             "{module}:{function}/{arity}: expected {expected_spec}; snapshot has {found_spec}"
         ),
-        Reason::FileAbsent { path } => path.display().to_string(),
+        Reason::FileAbsent { path } | Reason::UnsupportedFileType { path } => {
+            path.display().to_string()
+        }
         Reason::ContextDrift { path, hunk_index } => {
             format!("{} (hunk #{hunk_index})", path.display())
         }
@@ -148,17 +177,16 @@ fn reason_detail(r: &Reason) -> String {
         } => {
             let e = expected
                 .iter()
-                .map(|f| f.to_string())
+                .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
             let g = found
                 .iter()
-                .map(|f| f.to_string())
+                .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("#{record}: expected fields [{e}]; snapshot has [{g}]")
         }
-        Reason::UnsupportedFileType { path } => path.display().to_string(),
         Reason::UntrackedModuleMissing { module } => {
             format!("{module}.erl is absent in the target checkout")
         }
@@ -188,6 +216,113 @@ fn reason_detail(r: &Reason) -> String {
                 None => format!("{s}: absent on {self_branch}"),
             }
         }
+        Reason::SyntacticArtifact {
+            path,
+            line,
+            artifact,
+        } => match artifact {
+            ArtifactKind::ConflictMarker { marker } => {
+                format!("{}:{line}: conflict marker ({:?})", path.display(), marker)
+            }
+            ArtifactKind::ExportWithoutBody {
+                module,
+                function,
+                arity,
+            } => format!(
+                "{}:{line}: {module}:{function}/{arity} exported with no body",
+                path.display()
+            ),
+        },
+        Reason::BehaviourCallbackSignatureChanged {
+            behaviour,
+            callback,
+            arity,
+            expected_after_patch,
+            implementer,
+            implementer_signature,
+        } => format!(
+            "{behaviour}:{callback}/{arity} on {implementer}: patch expects {expected_after_patch:?}, pin has {implementer_signature:?}"
+        ),
+        Reason::BehaviourCallbackRemoved {
+            behaviour,
+            callback,
+            arity,
+            implementer,
+        } => format!(
+            "{behaviour}:{callback}/{arity} removed; {implementer} still exports the removed callback"
+        ),
+        Reason::BehaviourCallbackAdded {
+            behaviour,
+            callback,
+            arity,
+            implementer,
+        } => format!(
+            "{behaviour}:{callback}/{arity} added; {implementer} is missing the new required callback"
+        ),
+        Reason::ModuleRelocated { module, patch_path } => format!(
+            "{module} exists on pin but not at {}: cherry-pick path needs adjustment",
+            patch_path.display()
+        ),
+        Reason::WireConstantChanged {
+            module,
+            macro_name,
+            before,
+            after,
+        } => format!("{module}.?{macro_name}: {before:?} -> {after:?}"),
+        Reason::HistoricalImplementationMissing {
+            module,
+            advertised_version_before,
+            advertised_version_after,
+            expected_historical_module,
+        } => format!(
+            "{module}:version/0 advanced {advertised_version_before} -> {advertised_version_after} without {expected_historical_module}"
+        ),
+        Reason::WireContractBodyDrift {
+            module,
+            functions,
+            advertised_version,
+        } => {
+            let fns: Vec<&str> = functions.iter().map(|f| f.as_str()).collect();
+            format!(
+                "{module} bodies drifted at version {advertised_version}: {}",
+                fns.join(", ")
+            )
+        }
+        Reason::WireContractRegression {
+            module,
+            pin_version,
+            patch_version,
+        } => format!("{module}:version/0 regressed {pin_version} -> {patch_version}"),
+        Reason::ReturnShapeMismatch {
+            module,
+            function,
+            arity,
+            source_signature,
+            pin_signature,
+        } => format!(
+            "{module}:{function}/{arity}: source spec {source_signature:?} vs pin spec {pin_signature:?}"
+        ),
+        Reason::MissingType {
+            module,
+            name,
+            arity,
+        } => format!("{module}:{name}/{arity} is not exported as a type at this pin"),
+        Reason::PreimageDrifted {
+            path,
+            hunk_index,
+            line_delta,
+        } => format!(
+            "{} (hunk #{hunk_index}) preimage found at line delta {line_delta:+}",
+            path.display()
+        ),
+        Reason::PreimageMissing {
+            path,
+            hunk_index,
+            preimage_excerpt,
+        } => format!(
+            "{} (hunk #{hunk_index}): preimage block absent; first lines: {preimage_excerpt:?}",
+            path.display()
+        ),
     }
 }
 

@@ -24,8 +24,8 @@ use regex::Regex;
 
 use crate::compat::arg_shape::ArgShape;
 use crate::erlang_macros::{MacroTable, expand_value_macro_to_atom, expand_value_macro_to_mf};
-use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName};
-use crate::model::symbol::SymbolRef;
+use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
+use crate::model::symbol::{RefContext, SymbolRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DynamicCall {
@@ -83,6 +83,108 @@ fn var_function_call_re() -> &'static Regex {
 
 pub fn extract_into(line: &str, out: &mut Vec<SymbolRef>) {
     extract_into_with_macros(line, empty_macros(), out);
+}
+
+/// Cross-line classifier that decides whether a hunk line is body or
+/// type-attribute context. `-spec`, `-callback`, `-type`, and
+/// `-opaque` open a type-attribute region that runs until the
+/// terminating `.` at the top level; a single line may both open and
+/// close one. Multi-line type attributes flow through `in_attr` so
+/// the second and later lines of a wrapped `-spec` classify
+/// correctly.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AttrCtxScanner {
+    in_attr: bool,
+}
+
+impl AttrCtxScanner {
+    pub fn new() -> Self {
+        Self { in_attr: false }
+    }
+
+    pub fn classify(&mut self, line: &str) -> RefContext {
+        if self.in_attr {
+            if line_closes_attribute(line) {
+                self.in_attr = false;
+            }
+            return RefContext::TypeAttribute;
+        }
+        if line_opens_type_attr(line) {
+            if !line_closes_attribute(line) {
+                self.in_attr = true;
+            }
+            return RefContext::TypeAttribute;
+        }
+        RefContext::Body
+    }
+}
+
+fn line_opens_type_attr(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('-') {
+        return false;
+    }
+    for prefix in ["-spec", "-callback", "-type", "-opaque"] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            match rest.chars().next() {
+                Some(c) if c == '(' || c.is_whitespace() => return true,
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn line_closes_attribute(line: &str) -> bool {
+    let stripped = strip_trailing_comment(line);
+    stripped.trim_end().ends_with('.')
+}
+
+fn strip_trailing_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_str = false;
+    let mut in_atom = false;
+    let mut prev_backslash = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if prev_backslash {
+            prev_backslash = false;
+            continue;
+        }
+        match b {
+            b'\\' if in_str || in_atom => prev_backslash = true,
+            b'"' if !in_atom => in_str = !in_str,
+            b'\'' if !in_str => in_atom = !in_atom,
+            b'%' if !in_str && !in_atom => return &line[..i],
+            _ => {}
+        }
+    }
+    line
+}
+
+/// Type-attribute counterpart to `extract_into_with_macros`.
+///
+/// Inside `-spec`, `-callback`, `-type`, and `-opaque` declarations the
+/// `mod:ident(...)` shape is a type reference (`ra:index()` is the
+/// type `index/0`, not a call). Records and apply-family BIFs are
+/// syntactically impossible there, so this extractor only emits type
+/// refs and macro uses. Macro values are not resolved into MFAs in
+/// this context: a `?MOD:fn` expansion in a spec position would be a
+/// type, but the macro tables today carry value-to-atom bindings
+/// only, with no type-side equivalent.
+pub fn extract_type_refs_into(line: &str, out: &mut Vec<SymbolRef>) {
+    for caps in call_re().captures_iter(line) {
+        let module = &caps[1];
+        let ident = &caps[2];
+        let after = &line[caps.get(0).expect("capture").end()..];
+        let arity = approximate_arity(after);
+        if let (Ok(m), Ok(t)) = (ModuleName::from_str(module), TypeName::from_str(ident)) {
+            out.push(SymbolRef::type_ref(m, t, Arity::new(arity)));
+        }
+    }
+    for caps in macro_re().captures_iter(line) {
+        let name = &caps[1];
+        out.push(SymbolRef::macro_use(name.to_owned()));
+    }
 }
 
 fn empty_macros() -> &'static MacroTable {
@@ -256,7 +358,7 @@ fn looks_like_lowercase_atom(s: &str) -> bool {
 /// Splits the source between an already-consumed opening `(` and its
 /// matching `)` into top-level argument source slices. Tracks nested
 /// parens, brackets, braces, strings, and quoted atoms.
-fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
+pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
     let mut out: Vec<&str> = Vec::new();
     let mut depth = 1i32;
     let mut in_str = false;
@@ -383,7 +485,7 @@ fn extract_arg_shapes(after_open_paren: &str) -> (Vec<ArgShape>, usize) {
     (args, bytes.len())
 }
 
-fn classify_arg(raw: &str) -> ArgShape {
+pub fn classify_arg(raw: &str) -> ArgShape {
     let s = raw.trim();
     if s.is_empty() {
         return ArgShape::Unknown;

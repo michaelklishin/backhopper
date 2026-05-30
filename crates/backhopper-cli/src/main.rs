@@ -4,22 +4,21 @@
 
 use std::process;
 
-use bel7_cli::{ExitCodeExt, print_error};
+use bel7_cli::{Outcome, print_error};
 
 use backhopper_cli::run;
 
 fn main() -> process::ExitCode {
-    match run() {
-        Ok(code) => process::ExitCode::from(code as u8),
-        Err(e) => {
-            print_error(format!("backhopper: {e}"));
-            if let Some(detail) = e.detail() {
-                eprintln!("{detail}");
-            }
-            if let Some(hint) = e.hint() {
-                eprintln!("hint: {hint}");
-            }
-            process::ExitCode::from(e.exit_code().to_i32() as u8)
+    let outcome = run();
+    if let Outcome::Failure(e) = &outcome {
+        print_error(format!("backhopper: {e}"));
+        if let Some(detail) = e.detail() {
+            eprintln!("{detail}");
+        }
+        if let Some(hint) = e.hint() {
+            eprintln!("hint: {hint}");
         }
     }
+    let code = u8::try_from(outcome.exit_code_i32()).unwrap_or(u8::MAX);
+    process::ExitCode::from(code)
 }

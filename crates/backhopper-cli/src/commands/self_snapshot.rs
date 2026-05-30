@@ -21,14 +21,35 @@ use crate::commands::context::open_store_mut;
 use crate::commands::snapshots::build_snapshot_at_commit;
 use crate::errors::{CliError, CliResult};
 
+/// Pick the repo path a self-pin should resolve against. The per-pin
+/// `repo_dir_path` on `PinSpec::SelfRef` wins; the CLI `--repo-dir-path`
+/// is the fallback. Both unset is the operator error this returns.
+pub fn effective_self_repo<'a>(
+    spec: &'a PinSpec,
+    cli_fallback: Option<&'a Path>,
+) -> CliResult<&'a Path> {
+    if let Some(p) = spec.self_repo_override() {
+        return Ok(p);
+    }
+    cli_fallback.ok_or_else(|| {
+        CliError::InvalidInput(format!(
+            "self-pin {} has no `repo_dir_path` in the config and no `--repo-dir-path` was given",
+            spec.project()
+        ))
+    })
+}
+
 /// Resolve a self-pin's `git_ref` to a concrete `Pin` whose tag is the
 /// resolved commit SHA. The caller writes the snapshot to the store under
 /// that tag via `ensure_self_snapshot_present` before evaluation.
-pub fn resolve_self_pin(self_repo: &Path, spec: &PinSpec) -> CliResult<Pin> {
+pub fn resolve_self_pin(cli_fallback: Option<&Path>, spec: &PinSpec) -> CliResult<Pin> {
     let (project, git_ref) = match spec {
-        PinSpec::SelfRef { project, git_ref } => (project, git_ref),
+        PinSpec::SelfRef {
+            project, git_ref, ..
+        } => (project, git_ref),
         _ => unreachable!("resolve_self_pin called on non-self pin"),
     };
+    let self_repo = effective_self_repo(spec, cli_fallback)?;
     let repo = GitRepo::open(self_repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
     let commit = repo
         .resolve_rev(git_ref.as_str())
@@ -49,12 +70,14 @@ pub fn ensure_self_snapshot_present(
     cfg: &Config,
     store: &SnapshotStore<ReadOnly>,
     project: &Project,
-    self_repo: &Path,
+    spec: &PinSpec,
+    cli_fallback: Option<&Path>,
     pin: &Pin,
 ) -> CliResult<()> {
     if store.has(&pin.project, &pin.tag) {
         return Ok(());
     }
+    let self_repo = effective_self_repo(spec, cli_fallback)?;
     let repo = GitRepo::open(self_repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
     let commit = CommitSha::new(pin.tag.as_str()).map_err(|e| CliError::Other(e.to_string()))?;
     let snapshot = build_snapshot_at_commit(project, &repo, &commit, &pin.tag)?;

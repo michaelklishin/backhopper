@@ -116,7 +116,7 @@ fn batch_reads_commits_from_file_and_emits_one_row_per_pair() {
     discover_snapshots(&cfg);
     let mut commits = NamedTempFile::new().unwrap();
     writeln!(commits, "# example commits").unwrap();
-    writeln!(commits, "{}", head_sha).unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
     let out = stdout(&run(batch_args(
         &cfg,
         repo.dir.path(),
@@ -125,13 +125,11 @@ fn batch_reads_commits_from_file_and_emits_one_row_per_pair() {
     )));
     assert!(
         out.contains("compatible="),
-        "expected key=value rows, got {}",
-        out
+        "expected key=value rows, got {out}"
     );
     assert!(
         out.contains(&head_sha),
-        "expected commit sha in output, got {}",
-        out
+        "expected commit sha in output, got {out}"
     );
     assert!(out.contains("stable"), "expected series name in output");
 }
@@ -143,7 +141,7 @@ fn batch_summary_only_emits_one_line_per_commit_series_pair() {
     let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
     discover_snapshots(&cfg);
     let mut commits = NamedTempFile::new().unwrap();
-    writeln!(commits, "{}", head_sha).unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
     let out = stdout(&run(batch_args(
         &cfg,
         repo.dir.path(),
@@ -154,8 +152,7 @@ fn batch_summary_only_emits_one_line_per_commit_series_pair() {
     assert_eq!(
         non_empty.len(),
         1,
-        "summary-only should emit one line per (commit, series) pair, got {:?}",
-        non_empty
+        "summary-only should emit one line per (commit, series) pair, got {non_empty:?}"
     );
     assert!(non_empty[0].starts_with(&head_sha[..7]));
     assert!(non_empty[0].contains("compatible="));
@@ -171,7 +168,7 @@ fn batch_skips_blank_lines_and_comments() {
     writeln!(commits, "# a comment").unwrap();
     writeln!(commits).unwrap();
     writeln!(commits, "   ").unwrap();
-    writeln!(commits, "{}", head_sha).unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
     writeln!(commits, "# trailing comment").unwrap();
     let out = stdout(&run(batch_args(
         &cfg,
@@ -183,8 +180,7 @@ fn batch_skips_blank_lines_and_comments() {
     assert_eq!(
         non_empty.len(),
         1,
-        "expected one commit line, got {:?}",
-        non_empty
+        "expected one commit line, got {non_empty:?}"
     );
 }
 
@@ -209,8 +205,7 @@ fn batch_rejects_missing_commits_file_with_io_error() {
     ]));
     assert!(
         err.to_lowercase().contains("no such file") || err.contains("not found"),
-        "expected io-flavoured error, got: {}",
-        err
+        "expected io-flavoured error, got: {err}"
     );
 }
 
@@ -233,7 +228,7 @@ fn batch_rejects_empty_commits_file_with_clear_error() {
         "--commits-file-path",
         commits.path().to_str().unwrap(),
     ]));
-    assert!(err.contains("no commits"), "stderr was: {}", err);
+    assert!(err.contains("no commits"), "stderr was: {err}");
 }
 
 #[test]
@@ -273,7 +268,7 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
     ])
     .success();
     let mut commits = NamedTempFile::new().unwrap();
-    writeln!(commits, "{}", head_sha).unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
     let out = stdout(&run([
         "--config-file-path",
         cfg.to_str().unwrap(),
@@ -293,8 +288,7 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
     assert_eq!(
         lines.len(),
         2,
-        "expected two rows (one per series), got: {:?}",
-        lines
+        "expected two rows (one per series), got: {lines:?}"
     );
     assert!(lines.iter().any(|l| l.contains("stable")));
     assert!(lines.iter().any(|l| l.contains("lts")));
@@ -309,7 +303,7 @@ fn batch_reads_commits_from_stdin_when_path_is_dash() {
     let dash_path = PathBuf::from("-");
     let assert = run_with_stdin(
         batch_args(&cfg, repo.dir.path(), &dash_path, true),
-        &format!("{}\n", head_sha),
+        &format!("{head_sha}\n"),
     );
     let out = stdout(&assert);
     assert!(out.contains(&head_sha[..7]));

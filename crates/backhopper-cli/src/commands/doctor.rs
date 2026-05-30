@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::io::Write;
 
-use bel7_cli::TableStyle;
+use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
 use serde::Serialize;
 use tabled::{Table, Tabled};
 
@@ -67,10 +67,15 @@ pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<i32> {
     let cfg = load_config(args)?;
     let store = open_store_read(args, &cfg)?;
     let payload = build_payload(args, &cfg, &store, &cmd)?;
-    let exit = if payload.totals.missing == 0 { 0 } else { 1 };
+    let exit = doctor_exit_code(payload.totals.missing);
     let style = args.table_style;
     let ctx = OutputContext::new(args.formatter, "doctor");
     render_with_exit(&ctx, &payload, exit, |w| render_text(w, &payload, style))
+}
+
+// 0 when every pin covered or empty config; 3 when any pin missing
+pub fn doctor_exit_code(missing: usize) -> i32 {
+    if missing == 0 { 0 } else { PARTIAL_SUCCESS_I32 }
 }
 
 fn build_payload(
@@ -194,7 +199,13 @@ fn build_note(spec: &PinSpec, resolved: Option<&Pin>, present: bool) -> Option<S
             "resolved tag {} for {project} has no snapshot file on disk: rerun `backhopper snapshots rebuild --project {project} --tag {}`",
             pin.tag, pin.tag
         )),
-        (PinSpec::SelfRef { project, git_ref }, _, _) => Some(format!(
+        (
+            PinSpec::SelfRef {
+                project, git_ref, ..
+            },
+            _,
+            _,
+        ) => Some(format!(
             "self-project {project}@{git_ref}: snapshot is materialized on demand by `backhopper check`"
         )),
         _ => None,
@@ -274,7 +285,7 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
         let mut table = Table::new(rows);
         style.apply(&mut table);
         writeln!(w)?;
-        writeln!(w, "{}", table)?;
+        writeln!(w, "{table}")?;
     }
     if !payload.unpinned_projects.is_empty() {
         writeln!(w)?;

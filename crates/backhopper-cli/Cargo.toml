@@ -31,6 +31,7 @@ serde_json             = { workspace = true }
 tabled                 = { workspace = true }
 thiserror              = { workspace = true }
 time                   = { workspace = true }
+toml                   = { workspace = true }
 toml_edit              = { workspace = true }
 tracing                = { workspace = true }
 tracing-subscriber     = { workspace = true }
@@ -41,7 +42,6 @@ insta      = { workspace = true }
 predicates = { workspace = true }
 proptest   = { workspace = true }
 tempfile   = { workspace = true }
-toml       = { workspace = true }
 
 [[test]]
 name = "unit"

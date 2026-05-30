@@ -8,6 +8,7 @@
 //! canonical order. Non-canonical input is a hard error so we never
 //! silently accept a hand-edited snapshot that has drifted out of order.
 
+use std::num::ParseIntError;
 use std::str::FromStr;
 
 use time::OffsetDateTime;
@@ -20,8 +21,9 @@ use crate::model::names::{
 };
 use crate::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
-    HrlFile, Module, RecordDecl, RecordField, Snapshot, SnapshotHeader, SpecSig, TypeArity,
-    TypeDecl, Visibility, state,
+    HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl, RecordField,
+    SUPPORTED_FORMAT_VERSIONS, Snapshot, SnapshotHeader, SpecSig, TestExportVariant,
+    TestOnlyExport, TypeArity, TypeDecl, VariantCBlock, Visibility, state,
 };
 use crate::snapshot::SNAPSHOT_SIZE_LIMIT;
 
@@ -71,7 +73,7 @@ impl<'a> Parser<'a> {
                 {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
-                        detail: format!("modules out of order at {}", name),
+                        detail: format!("modules out of order at {name}"),
                     });
                 }
                 let module = self.parse_module_body(name)?;
@@ -85,7 +87,7 @@ impl<'a> Parser<'a> {
                 {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
-                        detail: format!("headers out of order at {}", path),
+                        detail: format!("headers out of order at {path}"),
                     });
                 }
                 let hrl = self.parse_header_body(path)?;
@@ -93,7 +95,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(SnapshotError::UnexpectedToken {
                     line: lineno,
-                    detail: format!("expected 'module' or 'header', got {:?}", line),
+                    detail: format!("expected 'module' or 'header', got {line:?}"),
                 });
             }
         }
@@ -127,16 +129,16 @@ impl<'a> Parser<'a> {
                     .split_once(": ")
                     .ok_or_else(|| SnapshotError::MalformedHeader {
                         line: lineno,
-                        detail: format!("missing ': ' in header line {:?}", line),
+                        detail: format!("missing ': ' in header line {line:?}"),
                     })?;
             match key {
                 "format-version" => {
                     let parsed: u32 =
                         value.parse().map_err(|_| SnapshotError::MalformedHeader {
                             line: lineno,
-                            detail: format!("non-integer format-version {:?}", value),
+                            detail: format!("non-integer format-version {value:?}"),
                         })?;
-                    if parsed != FORMAT_VERSION {
+                    if !SUPPORTED_FORMAT_VERSIONS.contains(&parsed) {
                         return Err(SnapshotError::UnknownFormatVersion {
                             found: value.to_owned(),
                             expected: FORMAT_VERSION,
@@ -178,7 +180,7 @@ impl<'a> Parser<'a> {
                     generated_at = Some(OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
                         SnapshotError::MalformedHeader {
                             line: lineno,
-                            detail: format!("invalid timestamp {:?}", value),
+                            detail: format!("invalid timestamp {value:?}"),
                         }
                     })?);
                 }
@@ -233,10 +235,17 @@ impl<'a> Parser<'a> {
                     other => {
                         return Err(SnapshotError::UnexpectedToken {
                             line: lineno,
-                            detail: format!("unknown visibility {:?}", other),
+                            detail: format!("unknown visibility {other:?}"),
                         });
                     }
                 };
+            } else if let Some(rest) = trimmed.strip_prefix("path ") {
+                state.advance(EntryClass::Path, lineno)?;
+                module.path = Some(rest.trim().to_owned());
+            } else if let Some(rest) = trimmed.strip_prefix("app ") {
+                state.advance(EntryClass::App, lineno)?;
+                let app = ApplicationName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
+                module.app = Some(app);
             } else if let Some(rest) = trimmed.strip_prefix("behaviour ") {
                 state.advance(EntryClass::Behaviour, lineno)?;
                 let m = ModuleName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
@@ -245,7 +254,7 @@ impl<'a> Parser<'a> {
                 {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
-                        detail: format!("behaviour {} out of order", m),
+                        detail: format!("behaviour {m} out of order"),
                     });
                 }
                 module.behaviours.push(m);
@@ -322,10 +331,41 @@ impl<'a> Parser<'a> {
                     detail: e,
                 })?;
                 module.deprecations.push(dep);
+            } else if let Some(rest) = trimmed.strip_prefix("record ") {
+                state.advance(EntryClass::Record, lineno)?;
+                let name = RecordName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
+                let fields = self.parse_record_fields()?;
+                module.records.push(RecordDecl { name, fields });
+            } else if let Some(rest) = trimmed.strip_prefix("test_only_export ") {
+                state.advance(EntryClass::TestOnlyExport, lineno)?;
+                let entry = parse_test_only_export(rest).map_err(|detail| {
+                    SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail,
+                    }
+                })?;
+                module.test_only_exports.push(entry);
+            } else if let Some(rest) = trimmed.strip_prefix("ifdef_macro ") {
+                state.advance(EntryClass::IfdefMacro, lineno)?;
+                let entry =
+                    parse_ifdef_macro(rest).map_err(|detail| SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail,
+                    })?;
+                module.ifdef_macros.push(entry);
+            } else if let Some(rest) = trimmed.strip_prefix("variant_c_block ") {
+                state.advance(EntryClass::VariantCBlock, lineno)?;
+                let entry = parse_variant_c_block(rest).map_err(|detail| {
+                    SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail,
+                    }
+                })?;
+                module.variant_c_blocks.push(entry);
             } else {
                 return Err(SnapshotError::UnexpectedToken {
                     line: lineno,
-                    detail: format!("unknown module entry {:?}", trimmed),
+                    detail: format!("unknown module entry {trimmed:?}"),
                 });
             }
         }
@@ -369,7 +409,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(SnapshotError::UnexpectedToken {
                     line: lineno,
-                    detail: format!("unknown header entry {:?}", trimmed),
+                    detail: format!("unknown header entry {trimmed:?}"),
                 });
             }
         }
@@ -397,15 +437,14 @@ impl<'a> Parser<'a> {
                 let Some(last) = fields.last_mut() else {
                     return Err(SnapshotError::UnexpectedToken {
                         line: flineno,
-                        detail: format!("expected 'field', got {:?}", ftrimmed),
+                        detail: format!("expected 'field', got {ftrimmed:?}"),
                     });
                 };
                 let Some(repr) = last.type_repr.as_mut() else {
                     return Err(SnapshotError::UnexpectedToken {
                         line: flineno,
                         detail: format!(
-                            "type continuation but the previous field has no '::' type: {:?}",
-                            fline,
+                            "type continuation but the previous field has no '::' type: {fline:?}",
                         ),
                     });
                 };
@@ -415,7 +454,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(SnapshotError::UnexpectedToken {
                     line: flineno,
-                    detail: format!("expected 'field', got {:?}", ftrimmed),
+                    detail: format!("expected 'field', got {ftrimmed:?}"),
                 });
             }
         }
@@ -484,15 +523,152 @@ fn parse_type_arity(s: &str) -> Result<TypeArity, NameError> {
 fn parse_fun_arity_and_signature(s: &str) -> Result<(FunArity, String), String> {
     let (head, sig) = s
         .split_once(' ')
-        .ok_or_else(|| format!("expected 'name/arity body' in {:?}", s))?;
+        .ok_or_else(|| format!("expected 'name/arity body' in {s:?}"))?;
     let fa = parse_fun_arity(head).map_err(|e| e.to_string())?;
     Ok((fa, sig.to_owned()))
+}
+
+fn parse_test_only_export(s: &str) -> Result<TestOnlyExport, String> {
+    let mut parts = s.split_whitespace();
+    let variant_token = parts
+        .next()
+        .ok_or_else(|| format!("missing variant in test_only_export {s:?}"))?;
+    let variant = match variant_token {
+        "a" => TestExportVariant::A,
+        "b" => TestExportVariant::B,
+        other => return Err(format!("unknown test_only_export variant {other:?}")),
+    };
+    let fa_token = parts
+        .next()
+        .ok_or_else(|| format!("missing function/arity in test_only_export {s:?}"))?;
+    let fa = parse_fun_arity(fa_token).map_err(|e| e.to_string())?;
+    let mut export_line: Option<usize> = None;
+    let mut body_line: Option<usize> = None;
+    for token in parts {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("expected key=value in test_only_export, got {token:?}"))?;
+        match key {
+            "export_line" => {
+                export_line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid export_line: {e}"))?,
+                );
+            }
+            "body_line" => {
+                body_line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid body_line: {e}"))?,
+                );
+            }
+            other => return Err(format!("unknown test_only_export key {other:?}")),
+        }
+    }
+    let export_line = export_line.ok_or_else(|| "missing export_line".to_owned())?;
+    if matches!(variant, TestExportVariant::B) && body_line.is_none() {
+        return Err("variant=b requires body_line".into());
+    }
+    Ok(TestOnlyExport {
+        function: fa.name,
+        arity: fa.arity,
+        export_line,
+        body_line,
+        variant,
+    })
+}
+
+fn parse_ifdef_macro(s: &str) -> Result<IfdefMacro, String> {
+    let mut parts = s.split_whitespace();
+    let name_token = parts
+        .next()
+        .ok_or_else(|| format!("missing macro name in ifdef_macro {s:?}"))?;
+    let name = name_token.to_owned();
+    let mut guard_kind: Option<IfdefGuardKind> = None;
+    let mut line: Option<usize> = None;
+    for token in parts {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("expected key=value in ifdef_macro, got {token:?}"))?;
+        match key {
+            "guard" => {
+                guard_kind = Some(match value {
+                    "test" => IfdefGuardKind::Test,
+                    "not_test" => IfdefGuardKind::NotTest,
+                    "other" => IfdefGuardKind::Other,
+                    other => return Err(format!("unknown ifdef_macro guard {other:?}")),
+                });
+            }
+            "line" => {
+                line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid line: {e}"))?,
+                );
+            }
+            other => return Err(format!("unknown ifdef_macro key {other:?}")),
+        }
+    }
+    let guard_kind = guard_kind.ok_or_else(|| "missing guard".to_owned())?;
+    let line = line.ok_or_else(|| "missing line".to_owned())?;
+    Ok(IfdefMacro {
+        name,
+        line,
+        guard_kind,
+    })
+}
+
+fn parse_variant_c_block(s: &str) -> Result<VariantCBlock, String> {
+    let mut guard: Option<String> = None;
+    let mut start_line: Option<usize> = None;
+    let mut else_line: Option<usize> = None;
+    let mut end_line: Option<usize> = None;
+    for token in s.split_whitespace() {
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| format!("expected key=value in variant_c_block, got {token:?}"))?;
+        match key {
+            "guard" => guard = Some(value.to_owned()),
+            "start_line" => {
+                start_line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid start_line: {e}"))?,
+                );
+            }
+            "else_line" => {
+                else_line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid else_line: {e}"))?,
+                );
+            }
+            "end_line" => {
+                end_line = Some(
+                    value
+                        .parse()
+                        .map_err(|e: ParseIntError| format!("invalid end_line: {e}"))?,
+                );
+            }
+            other => return Err(format!("unknown variant_c_block key {other:?}")),
+        }
+    }
+    let guard = guard.ok_or_else(|| "missing guard".to_owned())?;
+    let start_line = start_line.ok_or_else(|| "missing start_line".to_owned())?;
+    let end_line = end_line.ok_or_else(|| "missing end_line".to_owned())?;
+    Ok(VariantCBlock {
+        guard,
+        start_line,
+        end_line,
+        else_line,
+    })
 }
 
 fn parse_type_decl_line(s: &str) -> Result<(TypeArity, String), String> {
     let (head, rhs) = s
         .split_once(" :: ")
-        .ok_or_else(|| format!("expected 'name/arity :: rhs' in {:?}", s))?;
+        .ok_or_else(|| format!("expected 'name/arity :: rhs' in {s:?}"))?;
     let ta = parse_type_arity(head).map_err(|e| e.to_string())?;
     Ok((ta, rhs.to_owned()))
 }
@@ -515,7 +691,7 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
     } else {
         let (n, a) = head
             .split_once('/')
-            .ok_or_else(|| format!("expected name/arity got {:?}", head))?;
+            .ok_or_else(|| format!("expected name/arity got {head:?}"))?;
         let arity_match = if a == "*" {
             ArityMatch::Any
         } else {
@@ -539,7 +715,7 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
                 let target = tokens.next().ok_or("missing 'use' target")?;
                 let (n, a) = target
                     .split_once('/')
-                    .ok_or_else(|| format!("expected use name/arity got {:?}", target))?;
+                    .ok_or_else(|| format!("expected use name/arity got {target:?}"))?;
                 replacement = Some(DeprecationReplacement {
                     function: FunctionName::from_str(n).map_err(|e| e.to_string())?,
                     arity: Arity::from_str(a).map_err(|e| e.to_string())?,
@@ -558,7 +734,7 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
                 reason = Some(trimmed.to_owned());
                 break;
             }
-            other => return Err(format!("unexpected deprecation token {:?}", other)),
+            other => return Err(format!("unexpected deprecation token {other:?}")),
         }
     }
     Ok(Deprecation {
@@ -617,6 +793,8 @@ struct ClassOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum EntryClass {
     Visibility,
+    Path,
+    App,
     Behaviour,
     Export,
     ExportType,
@@ -626,6 +804,10 @@ enum EntryClass {
     Type,
     Opaque,
     Deprecated,
+    Record,
+    TestOnlyExport,
+    IfdefMacro,
+    VariantCBlock,
 }
 
 impl ClassOrder {
@@ -635,7 +817,7 @@ impl ClassOrder {
         {
             return Err(SnapshotError::NotCanonical {
                 line,
-                detail: format!("entry-class order: {:?} after {:?}", c, prev),
+                detail: format!("entry-class order: {c:?} after {prev:?}"),
             });
         }
         self.last = Some(c);
@@ -662,7 +844,7 @@ impl HrlClassOrder {
         {
             return Err(SnapshotError::NotCanonical {
                 line,
-                detail: format!("hrl-entry-class order: {:?} after {:?}", c, prev),
+                detail: format!("hrl-entry-class order: {c:?} after {prev:?}"),
             });
         }
         self.last = Some(c);

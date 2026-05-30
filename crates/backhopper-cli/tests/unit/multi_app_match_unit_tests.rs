@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ApplicationName, ProjectName};
 
 use backhopper_cli::commands::snapshots::multi_app_match;
@@ -14,6 +14,7 @@ fn otp_project() -> Project {
         name: ProjectName::new("otp").unwrap(),
         git_url: Some(PathBuf::from("/tmp/otp.git")),
         kind: ProjectKind::External,
+        family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: "v".into(),
         public_modules: Vec::new(),
@@ -120,9 +121,7 @@ fn literal_root_does_not_swallow_sibling_paths() {
 
 #[test]
 fn file_named_like_an_excluded_subdir_is_not_treated_as_one() {
-    // A real source file whose stem happens to collide with an excluded
-    // subdir name (e.g. `test.erl` directly under `src/`) must NOT be
-    // filtered out: the filter targets directory boundaries, not filenames.
+    // a source file whose stem collides with an excluded subdir name (e.g. `src/test.erl`) must not be filtered out
     let p = otp_project();
     assert!(multi_app_match("lib/stdlib/src/test.erl", &p).is_some());
     assert!(multi_app_match("lib/stdlib/src/examples.erl", &p).is_some());

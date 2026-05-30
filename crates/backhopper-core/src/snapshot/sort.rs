@@ -31,6 +31,20 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
             .sort_by(|a, b| a.name.cmp(&b.name).then(a.arity.cmp(&b.arity)));
         m.deprecations
             .sort_by(|a, b| a.function.cmp(&b.function).then(arity_match_cmp(a, b)));
+        m.records.sort_by(|a, b| a.name.cmp(&b.name));
+        m.records.dedup_by(|a, b| a.name == b.name);
+        m.test_only_exports
+            .sort_by(|a, b| a.function.cmp(&b.function).then(a.arity.cmp(&b.arity)));
+        m.test_only_exports
+            .dedup_by(|a, b| a.function == b.function && a.arity == b.arity);
+        m.ifdef_macros
+            .sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
+        m.ifdef_macros
+            .dedup_by(|a, b| a.name == b.name && a.line == b.line);
+        m.variant_c_blocks
+            .sort_by(|a, b| a.start_line.cmp(&b.start_line).then(a.guard.cmp(&b.guard)));
+        m.variant_c_blocks
+            .dedup_by(|a, b| a.start_line == b.start_line && a.guard == b.guard);
         m.behaviours.dedup();
         m.exports
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);

@@ -3,10 +3,12 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod attributes_unit_tests;
+mod clause_heads_unit_tests;
 mod cond_compile_unit_tests;
 mod deprecated_unit_tests;
 mod extractor_unit_tests;
 mod realistic_module_unit_tests;
 mod records_unit_tests;
 mod specs_unit_tests;
+mod test_only_exports_unit_tests;
 mod tokenizer_unit_tests;

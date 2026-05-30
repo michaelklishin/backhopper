@@ -43,7 +43,7 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
                     name: p.name.to_string(),
                     git_url: p.git_url.clone(),
                     kind: p.kind.as_str().to_owned(),
-                    language: format!("{:?}", p.language).to_lowercase(),
+                    language: p.language.to_string(),
                 })
                 .collect();
             let ctx = OutputContext::new(args.formatter, "projects list");
@@ -72,10 +72,10 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
                 name: p.name.to_string(),
                 git_url: p.git_url.clone(),
                 kind: p.kind.as_str().to_owned(),
-                language: format!("{:?}", p.language).to_lowercase(),
+                language: p.language.to_string(),
                 tag_prefix: p.tag_prefix.clone(),
                 public_modules: p.public_modules.clone(),
-                captured_tags: tags.iter().map(|t| t.to_string()).collect(),
+                captured_tags: tags.iter().map(|s| s.to_string()).collect(),
             };
             let ctx = OutputContext::new(args.formatter, "projects show");
             render(&ctx, &payload, |w| {

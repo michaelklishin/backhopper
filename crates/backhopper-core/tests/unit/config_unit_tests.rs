@@ -106,7 +106,7 @@ pins = [{ project = "ra", tag = "v1" }]
         .series_by_name(&SeriesName::new("partial").unwrap())
         .unwrap();
     let missing = cfg.projects_missing_from_series(series);
-    let names: Vec<&str> = missing.iter().map(|n| n.as_str()).collect();
+    let names: Vec<&str> = missing.iter().map(|p| p.as_str()).collect();
     assert_eq!(names, vec!["cowboy", "osiris"]);
 }
 

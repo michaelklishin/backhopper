@@ -64,7 +64,7 @@ fn store_list_tags_returns_captured() {
     let project = ProjectName::new("ra").unwrap();
     let tags = store.list_tags(&project).unwrap();
     assert_eq!(
-        tags.iter().map(|t| t.to_string()).collect::<Vec<_>>(),
+        tags.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
         vec!["v3.1.5", "v3.1.6"]
     );
 }

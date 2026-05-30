@@ -57,7 +57,7 @@ fn snapshot(project: &str, modules: Vec<Module>) -> Snapshot<state::Canonical> {
 }
 
 fn snapshot_with_record(project: &str, record: &str) -> Snapshot<state::Canonical> {
-    let mut hrl = HrlFile::new(format!("include/{}.hrl", project));
+    let mut hrl = HrlFile::new(format!("include/{project}.hrl"));
     hrl.records.push(RecordDecl {
         name: RecordName::new(record).unwrap(),
         fields: vec![RecordField {
@@ -488,8 +488,7 @@ diff --git a/lib/foo.ex b/lib/foo.ex
         .any(|r| matches!(r, Reason::UnsupportedFileType { path } if path == &PathBuf::from("lib/foo.ex")));
     assert!(
         has_unsupported,
-        "expected UnsupportedFileType reason, got {:?}",
-        reasons
+        "expected UnsupportedFileType reason, got {reasons:?}"
     );
 }
 
@@ -521,7 +520,7 @@ fn snapshot_with_record_fields(
     record_name: &str,
     fields: Vec<&str>,
 ) -> Snapshot<state::Canonical> {
-    let mut hrl = HrlFile::new(format!("include/{}.hrl", project));
+    let mut hrl = HrlFile::new(format!("include/{project}.hrl"));
     hrl.records.push(RecordDecl {
         name: RecordName::new(record_name).unwrap(),
         fields: fields
@@ -570,8 +569,7 @@ diff --git a/x.erl b/x.erl
     });
     assert!(
         has_sig_changed,
-        "expected SignatureChanged reason, got {:?}",
-        reasons
+        "expected SignatureChanged reason, got {reasons:?}"
     );
 }
 
@@ -635,8 +633,7 @@ diff --git a/x.erl b/x.erl
     });
     assert!(
         has_record_changed,
-        "expected RecordFieldsChanged reason, got {:?}",
-        reasons
+        "expected RecordFieldsChanged reason, got {reasons:?}"
     );
 }
 
@@ -700,8 +697,7 @@ diff --git a/x.erl b/x.erl
     });
     assert!(
         has_clause_mismatch,
-        "expected ClauseMismatch reason, got {:?}",
-        reasons
+        "expected ClauseMismatch reason, got {reasons:?}"
     );
 }
 
@@ -725,8 +721,7 @@ diff --git a/x.erl b/x.erl
         !reasons
             .iter()
             .any(|r| matches!(r, Reason::ClauseMismatch { .. })),
-        "no ClauseMismatch when clause_heads is empty, got {:?}",
-        reasons
+        "no ClauseMismatch when clause_heads is empty, got {reasons:?}"
     );
 }
 
@@ -766,8 +761,7 @@ diff --git a/x.erl b/x.erl
     });
     assert!(
         has_clause_mismatch,
-        "ClauseMismatch must surface the failing call (restart), got {:?}",
-        reasons
+        "ClauseMismatch must surface the failing call (restart), got {reasons:?}"
     );
 }
 
@@ -801,8 +795,7 @@ diff --git a/x.erl b/x.erl
         !reasons
             .iter()
             .any(|r| matches!(r, Reason::ClauseMismatch { .. })),
-        "variable call args are unknown ground; must not flag, got {:?}",
-        reasons
+        "variable call args are unknown ground; must not flag, got {reasons:?}"
     );
 }
 
@@ -856,13 +849,11 @@ diff --git a/x.erl b/x.erl
         .any(|r| matches!(r, Reason::ClauseMismatch { .. }));
     assert!(
         has_signature_changed,
-        "SignatureChanged must fire first, got {:?}",
-        reasons
+        "SignatureChanged must fire first, got {reasons:?}"
     );
     assert!(
         !has_clause_mismatch,
-        "ClauseMismatch must be suppressed when SignatureChanged is already present, got {:?}",
-        reasons
+        "ClauseMismatch must be suppressed when SignatureChanged is already present, got {reasons:?}"
     );
 }
 

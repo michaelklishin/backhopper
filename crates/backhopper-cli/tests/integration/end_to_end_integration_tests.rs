@@ -40,7 +40,7 @@ fn help_text_contains_command_groups() {
     let output = assert.success().get_output().clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
     for grp in ["projects", "series", "snapshots", "check", "shell", "xref"] {
-        assert!(stdout.contains(grp), "help missing {}: {}", grp, stdout);
+        assert!(stdout.contains(grp), "help missing {grp}: {stdout}");
     }
 }
 
@@ -127,7 +127,7 @@ fn api_lookup_reports_found_and_missing() {
             "text",
         ])
         .assert();
-    let out = assert.code(1).get_output().clone();
+    let out = assert.code(3).get_output().clone();
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.contains("demo_mod:greet/1\tfound"));
     assert!(stdout.contains("demo_mod:does_not_exist/0\tmissing"));

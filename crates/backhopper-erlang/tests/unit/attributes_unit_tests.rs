@@ -15,7 +15,7 @@ fn classifies_module_attribute() {
     let attr = classify_first("-module(ra).\n");
     match attr {
         ParsedAttribute::Module(name) => assert_eq!(name.as_str(), "ra"),
-        other => panic!("got {:?}", other),
+        other => panic!("got {other:?}"),
     }
 }
 
@@ -30,7 +30,7 @@ fn classifies_export_with_multiple_entries() {
             assert_eq!(list[1].name.as_str(), "apply");
             assert_eq!(list[1].arity.get(), 3);
         }
-        other => panic!("got {:?}", other),
+        other => panic!("got {other:?}"),
     }
 }
 
@@ -43,7 +43,7 @@ fn classifies_export_type() {
             assert_eq!(list[0].name, "range");
             assert_eq!(list[0].arity, 0);
         }
-        other => panic!("got {:?}", other),
+        other => panic!("got {other:?}"),
     }
 }
 

@@ -262,6 +262,23 @@ fn multiple_behaviour_attributes_accumulate() {
 }
 
 #[test]
+fn char_literal_paren_inside_define_does_not_swallow_the_next_attribute() {
+    // regression: the inner `)` of the `$)` char literal must not close the `-define` early
+    let m = read(
+        "-module(m).\n\
+         -define(CLOSE_PAREN, $)).\n\
+         -export([a/0]).\n\
+         a() -> ?CLOSE_PAREN.\n",
+    );
+    assert_eq!(m.module.as_str(), "m");
+    assert_eq!(
+        m.exports.len(),
+        1,
+        "export attribute must survive the char-literal `)` inside the prior define"
+    );
+}
+
+#[test]
 fn module_attribute_repeated_with_different_name_emits_conflict() {
     let reader = SourceReader::new();
     let (m, w) = reader

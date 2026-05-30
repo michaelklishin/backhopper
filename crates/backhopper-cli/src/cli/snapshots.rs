@@ -60,6 +60,18 @@ pub enum SnapshotsCmd {
         #[arg(long, help = "Plan only; do not write to disk")]
         dry_run: bool,
     },
+    /// Re-emit every stored snapshot at the current format version.
+    /// Reads each file at its declared `format-version`, writes it back
+    /// at the running binary's `FORMAT_VERSION`. Re-runs the extractor
+    /// only if explicitly asked.
+    Migrate {
+        /// Migrate only this project's snapshots.
+        #[arg(long)]
+        project: Option<ProjectName>,
+        /// Plan only; do not write.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Look up one or more MFAs against a single snapshot.
     Lookup {
         #[arg(long)]

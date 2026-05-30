@@ -29,13 +29,13 @@ fn shallow_clone(url: &str, dest: &Path) {
         ])
         .status()
         .expect("git clone");
-    assert!(status.success(), "git clone {} failed", url);
+    assert!(status.success(), "git clone {url} failed");
     let unshallow = Std::new("git")
         .args(["fetch", "--tags", "--depth=200"])
         .current_dir(dest)
         .status()
         .expect("git fetch tags");
-    assert!(unshallow.success(), "git fetch tags failed for {}", url);
+    assert!(unshallow.success(), "git fetch tags failed for {url}");
 }
 
 fn write_config(workdir: &Path, project: &str, repo: &Path, snapshot_dir: &Path) -> PathBuf {

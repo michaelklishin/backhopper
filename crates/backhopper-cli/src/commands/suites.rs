@@ -4,7 +4,7 @@
 
 //! `backhopper suites ...` handler.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -93,6 +93,7 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
         apps: discovery.specs,
         library_apps,
         extra_rules,
+        implementer_index: BTreeMap::new(),
     };
     let mut matcher = AstSuiteMatcher::new();
     let result = plan_with_matcher(&input, &mut matcher);
@@ -229,5 +230,11 @@ fn reason_label(r: &SuiteInclusionReason) -> String {
             "ConfiguredRule (name={rule_name}, path={})",
             triggering_path.display()
         ),
+        SuiteInclusionReason::BehaviourImplementerSweep {
+            behaviour,
+            implementer,
+        } => {
+            format!("BehaviourImplementerSweep (behaviour={behaviour}, implementer={implementer})")
+        }
     }
 }

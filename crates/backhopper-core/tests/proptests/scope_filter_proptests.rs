@@ -79,7 +79,7 @@ proptest! {
         );
         for m in tracked.iter().chain(untracked.iter()) {
             for _ in 0..repeats {
-                diff.push_str(&format!("+go() -> {}:noop().\n", m));
+                diff.push_str(&format!("+go() -> {m}:noop().\n"));
             }
         }
         let eval = Patch::parse(diff.as_bytes())

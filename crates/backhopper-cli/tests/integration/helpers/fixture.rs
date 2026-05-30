@@ -90,5 +90,5 @@ fn run(cwd: &Path, argv: &[&str]) {
         .current_dir(cwd)
         .status()
         .expect("git");
-    assert!(status.success(), "{:?} failed", argv);
+    assert!(status.success(), "{argv:?} failed");
 }

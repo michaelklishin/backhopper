@@ -9,8 +9,8 @@ use std::str::{self, FromStr};
 
 use backhopper_core::model::names::{Arity, FieldName, FunctionName, RecordName, TypeName};
 use backhopper_core::model::snapshot::{
-    ArityMatch, CallbackSig, Deprecation, HrlFile, Module, RecordDecl, RecordField, SpecSig,
-    TypeArity, TypeDecl,
+    ArityMatch, CallbackSig, Deprecation, HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl,
+    RecordField, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl, VariantCBlock,
 };
 use backhopper_core::snapshot::spec_normalize::normalize_signature;
 use thiserror::Error;
@@ -81,10 +81,24 @@ impl ErlangExtractor {
         let hints = detect_visibility_hints(source);
         let mut module: Option<Module> = None;
         let mut cond = CondStack::new();
+        let mut region_stack: Vec<Option<PendingVariantC>> = Vec::new();
         let mut hidden_via_attr = false;
         let mut has_non_test_export = false;
         let mut has_only_test_exports = false;
+        let mut test_only_exports: Vec<TestOnlyExport> = Vec::new();
+        let mut ifdef_macros: Vec<IfdefMacro> = Vec::new();
+        let mut variant_c_blocks: Vec<VariantCBlock> = Vec::new();
         for block in &blocks {
+            if block.name == "define"
+                && cond.is_test_only()
+                && let Some(name) = parse_define_name(&block.body)
+            {
+                ifdef_macros.push(IfdefMacro {
+                    name,
+                    line: block.line,
+                    guard_kind: IfdefGuardKind::Test,
+                });
+            }
             let Some(parsed) = classify(block) else {
                 continue;
             };
@@ -92,20 +106,60 @@ impl ErlangExtractor {
                 ParsedAttribute::Module(name) => {
                     module = Some(Module::new(name));
                 }
-                ParsedAttribute::IfDef(ident) => cond.push_ifdef(&ident),
-                ParsedAttribute::IfnDef(ident) => cond.push_ifndef(&ident),
-                ParsedAttribute::If(expr) => cond.push_if(&expr),
-                ParsedAttribute::Else => cond.flip_else(),
-                ParsedAttribute::EndIf => cond.pop_endif(),
+                ParsedAttribute::IfDef(ident) => {
+                    cond.push_ifdef(&ident);
+                    region_stack.push(None);
+                }
+                ParsedAttribute::IfnDef(ident) => {
+                    cond.push_ifndef(&ident);
+                    region_stack.push(if ident == "TEST" {
+                        Some(PendingVariantC {
+                            start_line: block.line,
+                            else_line: None,
+                        })
+                    } else {
+                        None
+                    });
+                }
+                ParsedAttribute::If(expr) => {
+                    cond.push_if(&expr);
+                    region_stack.push(None);
+                }
+                ParsedAttribute::Else => {
+                    cond.flip_else();
+                    if let Some(Some(pending)) = region_stack.last_mut() {
+                        pending.else_line = Some(block.line);
+                    }
+                }
+                ParsedAttribute::EndIf => {
+                    cond.pop_endif();
+                    if let Some(Some(pending)) = region_stack.pop() {
+                        variant_c_blocks.push(VariantCBlock {
+                            guard: "TEST".to_owned(),
+                            start_line: pending.start_line,
+                            else_line: pending.else_line,
+                            end_line: block.line,
+                        });
+                    }
+                }
                 ParsedAttribute::DocHidden => {
                     hidden_via_attr = true;
                 }
                 _ => {
                     let Some(m) = module.as_mut() else { continue };
                     let is_test = cond.is_test_only();
-                    if matches!(parsed, ParsedAttribute::Export(_)) {
+                    if let ParsedAttribute::Export(list) = &parsed {
                         if is_test {
                             has_only_test_exports = true;
+                            for fa in list {
+                                test_only_exports.push(TestOnlyExport {
+                                    function: fa.name.clone(),
+                                    arity: fa.arity,
+                                    export_line: block.line,
+                                    body_line: None,
+                                    variant: TestExportVariant::A,
+                                });
+                            }
                         } else {
                             has_non_test_export = true;
                         }
@@ -125,6 +179,10 @@ impl ErlangExtractor {
             &self.public_modules,
             &self.internal_modules,
         );
+        m.clause_heads = crate::clause_heads::extract(source);
+        m.test_only_exports = test_only_exports;
+        m.ifdef_macros = ifdef_macros;
+        m.variant_c_blocks = variant_c_blocks;
         Some(m)
     }
 
@@ -179,6 +237,21 @@ impl ErlangExtractor {
         }
         hrl
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingVariantC {
+    start_line: usize,
+    else_line: Option<usize>,
+}
+
+fn parse_define_name(body: &str) -> Option<String> {
+    let inner = body.trim_start().strip_prefix('(')?.trim_start();
+    let end = inner.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))?;
+    if end == 0 {
+        return None;
+    }
+    Some(inner[..end].to_owned())
 }
 
 fn apply_attribute(m: &mut Module, attr: ParsedAttribute) {

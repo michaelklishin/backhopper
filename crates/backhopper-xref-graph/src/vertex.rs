@@ -60,10 +60,10 @@ impl Vertex {
 impl fmt::Display for Vertex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Vertex::Function(mfa) => write!(f, "{}", mfa),
-            Vertex::Module(m) => write!(f, "{}", m),
-            Vertex::Application(a) => write!(f, "app:{}", a),
-            Vertex::Behaviour(b) => write!(f, "behaviour:{}", b),
+            Vertex::Function(mfa) => write!(f, "{mfa}"),
+            Vertex::Module(m) => write!(f, "{m}"),
+            Vertex::Application(a) => write!(f, "app:{a}"),
+            Vertex::Behaviour(b) => write!(f, "behaviour:{b}"),
         }
     }
 }

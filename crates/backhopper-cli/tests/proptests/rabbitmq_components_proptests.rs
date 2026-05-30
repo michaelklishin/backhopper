@@ -26,7 +26,7 @@ proptest! {
         name in "[a-z][a-z0-9_]{0,12}",
         version in "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",
     ) {
-        let line = format!("dep_{} = hex {}\n", name, version);
+        let line = format!("dep_{name} = hex {version}\n");
         let pins = parse_components_mk(&line);
         // `_commit`, `_branch`, `_repo` suffixes are intentionally
         // ignored, so synthesizing one of those would not produce a pin.
@@ -44,8 +44,7 @@ proptest! {
         tag in "v[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",
     ) {
         let line = format!(
-            "dep_{} = git https://example.com/repo.git {}\n",
-            name, tag
+            "dep_{name} = git https://example.com/repo.git {tag}\n"
         );
         let pins = parse_components_mk(&line);
         if !(name.ends_with("_commit") || name.ends_with("_branch") || name.ends_with("_repo")) {
@@ -73,7 +72,7 @@ proptest! {
 
     #[test]
     fn comment_lines_are_always_skipped(name in "[a-z][a-z0-9_]{0,8}", v in "[0-9]{1,3}") {
-        let body = format!("# dep_{} = hex {}\n", name, v);
+        let body = format!("# dep_{name} = hex {v}\n");
         let pins = parse_components_mk(&body);
         prop_assert!(pins.is_empty(), "comment leaked into output: {pins:?}");
     }

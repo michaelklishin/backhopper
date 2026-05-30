@@ -5,10 +5,12 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use bel7_cli::PARTIAL_SUCCESS_I32;
 use serde::Serialize;
 use time::OffsetDateTime;
 
@@ -148,6 +150,7 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             tag,
             dry_run,
         } => rebuild(args, &cfg, project, tag, dry_run),
+        SnapshotsCmd::Migrate { project, dry_run } => migrate(args, &cfg, project, dry_run),
         SnapshotsCmd::Lookup {
             project,
             tag,
@@ -216,7 +219,7 @@ fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> C
                 p.tags_without_snapshots.len()
             )?;
             for tag in &p.tags_without_snapshots {
-                writeln!(w, "  {}", tag)?;
+                writeln!(w, "  {tag}")?;
             }
         }
         Ok(())
@@ -541,12 +544,12 @@ fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<i32>
         .map_err(|e| CliError::Core(e.into()))?;
     let payload = ListPayload {
         project: project.to_string(),
-        tags: tags.iter().map(|t| t.to_string()).collect(),
+        tags: tags.iter().map(|s| s.to_string()).collect(),
     };
     let ctx = OutputContext::new(args.formatter, "snapshots list");
     render(&ctx, &payload, |w| {
         for t in &payload.tags {
-            writeln!(w, "{}", t)?;
+            writeln!(w, "{t}")?;
         }
         Ok(())
     })?;
@@ -580,7 +583,7 @@ fn show(
             module: module_ref,
             found,
         };
-        let exit = if found { 0 } else { 1 };
+        let exit = if found { 0 } else { PARTIAL_SUCCESS_I32 };
         render_with_exit(&ctx, &payload, exit, |w| {
             let mut buf: Vec<u8> = Vec::new();
             format::write_module_filtered(&snapshot, name, &mut buf)
@@ -596,7 +599,7 @@ fn show(
     render(&ctx, &snapshot, |w| {
         let text =
             format::to_string(&snapshot).map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
-        write!(w, "{}", text)?;
+        write!(w, "{text}")?;
         Ok(())
     })?;
     Ok(0)
@@ -640,7 +643,29 @@ fn verify_one(
     let stored = store
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let matches = regenerated.modules() == stored.modules()
+    // The text writer does not yet round-trip Module.clause_heads.
+    // Until it does, the verify comparison ignores them: a regenerated
+    // snapshot populates the field while the stored one does not, and
+    // we don't want that to drive a false "drift" verdict.
+    let regenerated_modules: Vec<Module> = regenerated
+        .modules()
+        .iter()
+        .map(|m| {
+            let mut m = m.clone();
+            m.clause_heads.clear();
+            m
+        })
+        .collect();
+    let stored_modules: Vec<Module> = stored
+        .modules()
+        .iter()
+        .map(|m| {
+            let mut m = m.clone();
+            m.clause_heads.clear();
+            m
+        })
+        .collect();
+    let matches = regenerated_modules == stored_modules
         && regenerated.headers() == stored.headers()
         && regenerated.header().commit == stored.header().commit;
     let payload = serde_json::json!({
@@ -649,12 +674,12 @@ fn verify_one(
         "matches": matches,
     });
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
-    let exit = if matches { 0 } else { 1 };
+    let exit = if matches { 0 } else { PARTIAL_SUCCESS_I32 };
     render_with_exit(&ctx, &payload, exit, |w| {
         if matches {
-            writeln!(w, "ok: {} {}", project, tag)?;
+            writeln!(w, "ok: {project} {tag}")?;
         } else {
-            writeln!(w, "drift: {} {}", project, tag)?;
+            writeln!(w, "drift: {project} {tag}")?;
         }
         Ok(())
     })
@@ -730,7 +755,11 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
         failed,
         stale_extractor,
     };
-    let exit = if payload.failed.is_empty() { 0 } else { 1 };
+    let exit = verify_all_exit_code(
+        payload.verified,
+        payload.failed.len(),
+        payload.stale_extractor.len(),
+    )?;
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
@@ -749,6 +778,110 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
                 "  stale {} {} (extractor {} != binary {}): run `snapshots rebuild`",
                 s.project, s.tag, s.stored, s.expected,
             )?;
+        }
+        Ok(())
+    })
+}
+
+// 0 all loaded and current; 3 partial or stale; Err when zero loaded
+pub fn verify_all_exit_code(verified: usize, failed: usize, stale: usize) -> CliResult<i32> {
+    if failed > 0 && verified == 0 {
+        return Err(CliError::Other(format!(
+            "snapshots verify --all: every snapshot failed to load ({failed} failure(s))"
+        )));
+    }
+    if failed > 0 || stale > 0 {
+        return Ok(PARTIAL_SUCCESS_I32);
+    }
+    Ok(0)
+}
+
+#[derive(Debug, Serialize)]
+struct MigratePayload {
+    migrated: usize,
+    already_current: usize,
+    failed: Vec<MigrateFailure>,
+}
+
+#[derive(Debug, Serialize)]
+struct MigrateFailure {
+    project: String,
+    tag: String,
+    reason: String,
+}
+
+fn migrate(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project_filter: Option<ProjectName>,
+    dry_run: bool,
+) -> CliResult<i32> {
+    let store_read = open_store_read(args, cfg)?;
+    let store_mut = if dry_run {
+        None
+    } else {
+        Some(open_store_mut(args, cfg)?)
+    };
+    let projects = match project_filter {
+        Some(p) => vec![p],
+        None => store_read
+            .list_projects()
+            .map_err(|e| CliError::Core(e.into()))?,
+    };
+    let mut migrated = 0usize;
+    let mut already_current = 0usize;
+    let mut failed: Vec<MigrateFailure> = Vec::new();
+    for project in projects {
+        let tags = store_read
+            .list_tags(&project)
+            .map_err(|e| CliError::Core(e.into()))?;
+        for tag in tags {
+            match store_read.read(&project, &tag) {
+                Ok(snap) => {
+                    let stored_path = store_read
+                        .snapshot_path(&project, &tag)
+                        .map_err(|e| CliError::Core(e.into()))?;
+                    let current_text = fs::read_to_string(&stored_path).unwrap_or_default();
+                    let re_emitted = backhopper_core::snapshot::format::to_string(&snap)
+                        .map_err(|e| CliError::Core(e.into()))?;
+                    if current_text == re_emitted {
+                        already_current += 1;
+                        continue;
+                    }
+                    if let Some(mw) = &store_mut {
+                        mw.write(&snap).map_err(|e| CliError::Core(e.into()))?;
+                    }
+                    migrated += 1;
+                }
+                Err(e) => failed.push(MigrateFailure {
+                    project: project.to_string(),
+                    tag: tag.to_string(),
+                    reason: e.to_string(),
+                }),
+            }
+        }
+    }
+    let payload = MigratePayload {
+        migrated,
+        already_current,
+        failed,
+    };
+    let exit = if payload.failed.is_empty() {
+        0
+    } else {
+        PARTIAL_SUCCESS_I32
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots migrate");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        writeln!(
+            w,
+            "migrated: {}, already_current: {}, failed: {}",
+            payload.migrated,
+            payload.already_current,
+            payload.failed.len()
+        )?;
+        for f in &payload.failed {
+            writeln!(w, "  fail  {} {}: {}", f.project, f.tag, f.reason)?;
         }
         Ok(())
     })
@@ -785,7 +918,7 @@ fn rebuild(
     });
     let ctx = OutputContext::new(args.formatter, "snapshots rebuild");
     render(&ctx, &payload, |w| {
-        writeln!(w, "rebuilt {} {}", project, tag)?;
+        writeln!(w, "rebuilt {project} {tag}")?;
         Ok(())
     })?;
     Ok(0)
@@ -831,7 +964,7 @@ fn lookup(
         results,
     };
     let ctx = OutputContext::new(args.formatter, "snapshots lookup");
-    let exit = if all_found { 0 } else { 1 };
+    let exit = if all_found { 0 } else { PARTIAL_SUCCESS_I32 };
     render_with_exit(&ctx, &payload, exit, |w| {
         for r in &payload.results {
             writeln!(
@@ -892,7 +1025,7 @@ fn introduced(
     let exit = if rows.iter().all(|r| r.tags_present > 0) {
         0
     } else {
-        1
+        PARTIAL_SUCCESS_I32
     };
     let payload = IntroducedPayload {
         project: project.to_string(),
@@ -1078,7 +1211,7 @@ fn modules(
             )?;
         }
         for h in &payload.headers {
-            writeln!(w, "{}\theader", h)?;
+            writeln!(w, "{h}\theader")?;
         }
         Ok(())
     })?;
@@ -1115,7 +1248,7 @@ fn exports(
     let ctx = OutputContext::new(args.formatter, "snapshots exports");
     render(&ctx, &payload, |w| {
         for e in &exports {
-            writeln!(w, "{}", e)?;
+            writeln!(w, "{e}")?;
         }
         Ok(())
     })?;
@@ -1203,7 +1336,7 @@ fn diff_cross_series(
     for pin in &from_resolved {
         let Some(to_tag) = to_by_project
             .get_mut(&pin.project)
-            .and_then(|q| q.pop_front())
+            .and_then(|v| v.pop_front())
         else {
             continue;
         };
@@ -1281,11 +1414,11 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
     let b_names: BTreeSet<&ModuleName> = b.modules().iter().map(|m| &m.name).collect();
     let modules_added: Vec<String> = b_names
         .difference(&a_names)
-        .map(|n| n.to_string())
+        .map(|s| s.to_string())
         .collect();
     let modules_removed: Vec<String> = a_names
         .difference(&b_names)
-        .map(|n| n.to_string())
+        .map(|s| s.to_string())
         .collect();
     let mut exports_added = Vec::new();
     let mut exports_removed = Vec::new();

@@ -33,7 +33,6 @@ fn normalizer_wraps_long_top_level_alternatives() {
     let n = normalize_signature(s);
     assert!(
         n.contains('\n'),
-        "expected wrapping for long alternatives, got {:?}",
-        n
+        "expected wrapping for long alternatives, got {n:?}"
     );
 }

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::{
@@ -17,6 +17,7 @@ fn project(name: &str, tag_prefix: &str) -> Project {
         name: ProjectName::new(name).unwrap(),
         git_url: Some(PathBuf::from(format!("/tmp/{name}.git"))),
         kind: ProjectKind::External,
+        family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: tag_prefix.into(),
         public_modules: Vec::new(),

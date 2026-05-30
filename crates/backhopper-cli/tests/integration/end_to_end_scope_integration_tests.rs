@@ -74,19 +74,13 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
         .clone();
     let default_stdout = String::from_utf8(default_output.stdout).unwrap();
     assert!(
-        default_stdout.contains("compatible: 1"),
-        "got {}",
-        default_stdout
+        default_stdout.contains("inapplicable: 1"),
+        "got {default_stdout}"
     );
-    assert!(
-        default_stdout.contains("0 tracked symbols referenced"),
-        "got {}",
-        default_stdout
-    );
+    assert!(default_stdout.contains("untracked"), "got {default_stdout}");
     assert!(
         !default_stdout.contains("Untracked module calls"),
-        "diagnostic section should be hidden by default: {}",
-        default_stdout
+        "diagnostic section should be hidden by default: {default_stdout}"
     );
 
     let opt_in_output = Command::cargo_bin("backhopper")
@@ -113,16 +107,11 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     let opt_in_stdout = String::from_utf8(opt_in_output.stdout).unwrap();
     assert!(
         opt_in_stdout.contains("Untracked module calls"),
-        "got {}",
-        opt_in_stdout
+        "got {opt_in_stdout}"
     );
-    assert!(opt_in_stdout.contains("lists"), "got {}", opt_in_stdout);
-    assert!(opt_in_stdout.contains("maps"), "got {}", opt_in_stdout);
-    assert!(
-        opt_in_stdout.contains("OTP stdlib"),
-        "got {}",
-        opt_in_stdout
-    );
+    assert!(opt_in_stdout.contains("lists"), "got {opt_in_stdout}");
+    assert!(opt_in_stdout.contains("maps"), "got {opt_in_stdout}");
+    assert!(opt_in_stdout.contains("OTP stdlib"), "got {opt_in_stdout}");
 }
 
 #[test]
@@ -174,13 +163,12 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
         .get_output()
         .clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Untracked module calls"), "got {}", stdout);
-    assert!(stdout.contains("ranch"), "got {}", stdout);
-    assert!(stdout.contains("untracked project"), "got {}", stdout);
+    assert!(stdout.contains("Untracked module calls"), "got {stdout}");
+    assert!(stdout.contains("ranch"), "got {stdout}");
+    assert!(stdout.contains("untracked project"), "got {stdout}");
     assert!(
         !stdout.contains("OTP stdlib"),
-        "OTP entries should be hidden without --show-otp-calls: {}",
-        stdout
+        "OTP entries should be hidden without --show-otp-calls: {stdout}"
     );
 }
 
@@ -235,8 +223,8 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
             .clone(),
     )
     .unwrap();
-    assert!(stdout.contains("Untracked module calls"), "got {}", stdout);
-    assert!(stdout.contains("OTP stdlib"), "got {}", stdout);
+    assert!(stdout.contains("Untracked module calls"), "got {stdout}");
+    assert!(stdout.contains("OTP stdlib"), "got {stdout}");
 }
 
 #[test]
@@ -287,15 +275,68 @@ diff --git a/deps/rabbit/src/rabbit_amqp_reader.erl b/deps/rabbit/src/rabbit_amq
         .get_output()
         .clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("compatible: 1"), "got {}", stdout);
+    assert!(stdout.contains("inapplicable: 1"), "got {stdout}");
     assert!(
         !stdout.contains("MissingSymbol"),
-        "rabbit-internal record should not flag MissingSymbol: {}",
-        stdout
+        "rabbit-internal record should not flag MissingSymbol: {stdout}"
     );
-    assert!(stdout.contains("Untracked records"), "got {}", stdout);
-    assert!(stdout.contains("#user"), "got {}", stdout);
-    assert!(stdout.contains("#v1"), "got {}", stdout);
+    assert!(stdout.contains("Untracked records"), "got {stdout}");
+    assert!(stdout.contains("#user"), "got {stdout}");
+    assert!(stdout.contains("#v1"), "got {stdout}");
+}
+
+#[test]
+fn docs_only_patch_yields_only_docs_touched_not_untracked() {
+    let (repo, work) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "generate",
+            "--project",
+            "demo",
+        ])
+        .assert()
+        .success();
+    let patch_body = "\
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,1 +1,2 @@
+ -title-
++new line
+";
+    let mut pf = NamedTempFile::new().unwrap();
+    pf.write_all(patch_body.as_bytes()).unwrap();
+    let output = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "--formatter",
+            "text",
+            "check",
+            "patch",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            pf.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("inapplicable: 1"), "got {stdout}");
+    assert!(
+        stdout.contains("only_docs_touched"),
+        "docs-only patch must keep the OnlyDocsTouched signal, not the §3 Untracked reroute: {stdout}"
+    );
 }
 
 #[test]
@@ -345,11 +386,11 @@ diff --git a/deps/rabbit/src/rabbit_misc.erl b/deps/rabbit/src/rabbit_misc.erl
         .get_output()
         .clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("compatible: 1"), "got {}", stdout);
+    assert!(stdout.contains("inapplicable: 1"), "got {stdout}");
+    assert!(stdout.contains("untracked"), "got {stdout}");
     assert!(
         !stdout.contains("FileAbsent"),
-        "FileAbsent leaked into verdict: {}",
-        stdout
+        "FileAbsent leaked into verdict: {stdout}"
     );
 }
 
@@ -403,7 +444,8 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     assert_eq!(parsed["exit_code"], 0);
     let pin = &parsed["data"]["results"]["results"][0];
     assert_eq!(pin["tracked_refs"], 0);
-    assert_eq!(pin["verdict"]["verdict"], "compatible");
+    assert_eq!(pin["verdict"]["verdict"], "inapplicable");
+    assert_eq!(pin["verdict"]["reason"]["reason"], "untracked");
     assert_eq!(parsed["data"]["diagnostics"]["untracked_calls"]["lists"], 1);
 }
 
@@ -460,14 +502,10 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
             .clone(),
     )
     .unwrap();
-    assert!(stdout.contains("compatible: 1"), "got {}", stdout);
-    assert!(
-        stdout.contains("Unanalyzed dynamic calls"),
-        "got {}",
-        stdout
-    );
-    assert!(stdout.contains("apply-family BIFs"), "got {}", stdout);
-    assert!(stdout.contains("variable-dispatch calls"), "got {}", stdout);
+    assert!(stdout.contains("inapplicable: 1"), "got {stdout}");
+    assert!(stdout.contains("Unanalyzed dynamic calls"), "got {stdout}");
+    assert!(stdout.contains("apply-family BIFs"), "got {stdout}");
+    assert!(stdout.contains("variable-dispatch calls"), "got {stdout}");
 }
 
 #[test]
@@ -523,8 +561,7 @@ diff --git a/deps/other/src/other.erl b/deps/other/src/other.erl
     .unwrap();
     assert!(
         !stdout.contains("Unanalyzed dynamic calls"),
-        "default text mode must not show the unanalyzed block: {}",
-        stdout
+        "default text mode must not show the unanalyzed block: {stdout}"
     );
 }
 

@@ -33,14 +33,13 @@ proptest! {
         body in "[a-z ]{0,40}"
     ) {
         let mut diff = String::new();
-        diff.push_str(&format!("diff --git a/{} b/{}\n", old_path, new_path));
-        diff.push_str(&format!("--- a/{}\n", old_path));
-        diff.push_str(&format!("+++ b/{}\n", new_path));
+        diff.push_str(&format!("diff --git a/{old_path} b/{new_path}\n"));
+        diff.push_str(&format!("--- a/{old_path}\n"));
+        diff.push_str(&format!("+++ b/{new_path}\n"));
         diff.push_str(&format!(
-            "@@ -{},{} +{},{} @@\n",
-            old_start, old_count, new_start, new_count,
+            "@@ -{old_start},{old_count} +{new_start},{new_count} @@\n",
         ));
-        diff.push_str(&format!(" {}\n", body));
+        diff.push_str(&format!(" {body}\n"));
         let patch = Patch::parse(diff.as_bytes()).expect("well-formed diff should parse");
         prop_assert_eq!(patch.files.len(), 1);
         let f = &patch.files[0];
@@ -58,9 +57,9 @@ proptest! {
     #[test]
     fn binary_marker_is_recorded(path in "[a-z]{1,12}\\.bin") {
         let mut diff = String::new();
-        diff.push_str(&format!("diff --git a/{} b/{}\n", path, path));
-        diff.push_str(&format!("--- a/{}\n", path));
-        diff.push_str(&format!("+++ b/{}\n", path));
+        diff.push_str(&format!("diff --git a/{path} b/{path}\n"));
+        diff.push_str(&format!("--- a/{path}\n"));
+        diff.push_str(&format!("+++ b/{path}\n"));
         diff.push_str("Binary files differ\n");
         let patch = Patch::parse(diff.as_bytes()).unwrap();
         prop_assert_eq!(patch.files.len(), 1);

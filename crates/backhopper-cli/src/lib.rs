@@ -13,17 +13,24 @@ pub mod tables;
 use std::env;
 use std::io;
 
-use bel7_cli::should_colorize_stderr;
+use bel7_cli::{Outcome, PARTIAL_SUCCESS_I32, should_colorize_stderr};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 pub use cli::{Cli, CompletionsCmd, GlobalArgs, Group, ShellCmd};
 pub use errors::{CliError, CliResult};
 
-pub fn run() -> CliResult<i32> {
+pub fn run() -> Outcome<CliError> {
     let cli = Cli::parse();
     init_logging(&cli.global);
-    commands::dispatch(cli)
+    match commands::dispatch(cli) {
+        Ok(0) => Outcome::Success,
+        Ok(PARTIAL_SUCCESS_I32) => Outcome::PartialSuccess,
+        Ok(code) => Outcome::Failure(CliError::Other(format!(
+            "internal: dispatch returned unexpected exit code {code}; only 0 and {PARTIAL_SUCCESS_I32} are valid"
+        ))),
+        Err(e) => Outcome::Failure(e),
+    }
 }
 
 fn init_logging(args: &GlobalArgs) {

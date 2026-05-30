@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use bel7_cli::PARTIAL_SUCCESS_I32;
 use serde::Serialize;
 
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
@@ -121,7 +122,7 @@ fn run_commit(
         first_incompatible_tag,
         first_requires_adaptation_tag,
     };
-    let exit = if any_blocking { 1 } else { 0 };
+    let exit = if any_blocking { PARTIAL_SUCCESS_I32 } else { 0 };
     let ctx = OutputContext::new(args.formatter, "bisect commit");
     render_with_exit(&ctx, &payload, exit, |w| {
         for r in &payload.rows {

@@ -5,5 +5,7 @@
 pub mod names;
 pub mod pin;
 pub mod snapshot;
+pub mod spec_ast;
+pub mod spec_parser;
 pub mod symbol;
 pub mod verdict;

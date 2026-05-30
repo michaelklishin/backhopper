@@ -122,7 +122,9 @@ pins = [{ project = "host", branch = "v4.2.x" }]
 "#;
     let cfg = parse(body).unwrap();
     match &cfg.series[0].pins[0] {
-        PinSpec::SelfRef { project, git_ref } => {
+        PinSpec::SelfRef {
+            project, git_ref, ..
+        } => {
             assert_eq!(project.as_str(), "host");
             assert_eq!(git_ref.as_str(), "v4.2.x");
         }

@@ -130,8 +130,7 @@ fn parameterized_macro_expansion_runs_per_use_site() {
         .count();
     assert_eq!(
         occurrences, 2,
-        "expected one logger:log/2 entry per use site, got {}",
-        occurrences
+        "expected one logger:log/2 entry per use site, got {occurrences}"
     );
 }
 

@@ -818,7 +818,9 @@ fn pin_spec_to_payload(spec: &PinSpec) -> PinPayload {
                 tag: format!("{pattern} ({select_label})"),
             }
         }
-        PinSpec::SelfRef { project, git_ref } => PinPayload {
+        PinSpec::SelfRef {
+            project, git_ref, ..
+        } => PinPayload {
             project: project.to_string(),
             tag: format!("{git_ref} (self)"),
         },

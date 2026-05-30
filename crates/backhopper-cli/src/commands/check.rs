@@ -18,6 +18,7 @@ use serde::Serialize;
 use backhopper_core::Error as CoreError;
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
+use backhopper_core::compat::routing::{PathRouting, classify_paths_for_pin};
 use backhopper_core::compat::scope::{PinScope, parse_module_names};
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
@@ -29,19 +30,23 @@ use backhopper_core::model::pin::{self, Pin, PinSpec};
 use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict,
+    Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict,
+    TouchedKinds, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
-use crate::commands::auto_generate::ensure_pin_snapshots_present;
+use crate::commands::auto_generate::{
+    coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
+};
 use crate::commands::context::{load_config, open_store_read};
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
+use crate::commands::snapshot_cache::SnapshotCache;
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render_with_exit};
+use crate::output::{OutputContext, render_with_alts, render_with_exit};
 use crate::tables::render_evaluation_table;
 
 #[derive(Debug, Serialize)]
@@ -298,6 +303,7 @@ fn build_pin_files(
     scope: &PinScope,
     touched_paths: &[PathBuf],
     self_repo: Option<&Path>,
+    pin_self_override: Option<&Path>,
 ) -> CliResult<EvaluationFiles> {
     let in_scope: Vec<(PathBuf, PathBuf)> = touched_paths
         .iter()
@@ -307,9 +313,12 @@ fn build_pin_files(
         return Ok(EvaluationFiles::new());
     }
     let (repo, commit) = if project.is_self() {
-        let repo_path = self_repo
+        let repo_path = pin_self_override
+            .or(self_repo)
             .ok_or_else(|| {
-                CliError::InvalidInput("self-project evaluation requires `--repo-dir-path`".into())
+                CliError::InvalidInput(
+                    "self-project evaluation requires `repo_dir_path` on the pin or `--repo-dir-path` on the CLI".into(),
+                )
             })?
             .to_path_buf();
         // pin.tag for self-pins is the resolved commit SHA.
@@ -598,6 +607,7 @@ fn run_check_patch(
         }
     };
     let pins: Vec<Pin> = resolve_all_pin_specs(args, cfg, &store, &pin_specs, repo_dir_path)?;
+    warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
     ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
     let source_pins = resolve_source_pins(
         cfg,
@@ -608,11 +618,13 @@ fn run_check_patch(
         series.as_ref(),
         source,
     )?;
+    let cache = SnapshotCache::new(&store);
     let mut evaluation = evaluate_one(
         cfg,
-        &store,
+        &cache,
         bytes,
         &pins,
+        &pin_specs,
         &source_pins,
         source_files,
         repo_dir_path,
@@ -645,7 +657,7 @@ fn run_check_patch(
                 })
                 .collect(),
         },
-        _ => unreachable!(),
+        _ => unreachable!("clap enforces either (--project + --tag) or --series"),
     };
     let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     let project_suggestions = if diagnostics.suggest_projects {
@@ -668,11 +680,175 @@ fn run_check_patch(
         return render_terse(&evaluation, exit);
     }
     let style = args.table_style;
-    render_with_exit(&ctx, &payload, exit, |w| {
-        render_text(w, &evaluation, &known_projects, diagnostics, style)?;
-        render_suggestions_text(w, &project_suggestions, diagnostics)?;
-        Ok(())
-    })
+    render_with_alts(
+        &ctx,
+        &payload,
+        exit,
+        |w| {
+            render_text(w, &evaluation, &known_projects, diagnostics, style)?;
+            render_suggestions_text(w, &project_suggestions, diagnostics)?;
+            Ok(())
+        },
+        |w| {
+            render_markdown_triage(w, &evaluation)?;
+            Ok(())
+        },
+    )
+}
+
+pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
+    writeln!(w, "| Pin | Verdict | Tracked refs | Notes |")?;
+    writeln!(w, "| --- | --- | --- | --- |")?;
+    for pv in &evaluation.verdict.results {
+        let verdict_label = match &pv.verdict {
+            backhopper_core::model::verdict::Verdict::Compatible => "Compatible".to_owned(),
+            backhopper_core::model::verdict::Verdict::Inapplicable { reason } => {
+                format!("Inapplicable ({})", reason.as_str())
+            }
+            backhopper_core::model::verdict::Verdict::RequiresAdaptation { .. } => {
+                "RequiresAdaptation".to_owned()
+            }
+            backhopper_core::model::verdict::Verdict::Incompatible { .. } => {
+                "Incompatible".to_owned()
+            }
+        };
+        let notes = pv
+            .verdict
+            .reasons()
+            .iter()
+            .map(reason_md_label)
+            .collect::<Vec<_>>()
+            .join("; ");
+        let notes = if notes.is_empty() {
+            "—".to_owned()
+        } else {
+            notes
+        };
+        writeln!(
+            w,
+            "| {}@{} | {} | {} | {} |",
+            pv.pin.project, pv.pin.tag, verdict_label, pv.tracked_refs, notes
+        )?;
+    }
+    Ok(())
+}
+
+fn reason_md_label(r: &Reason) -> String {
+    let sym = |k: &SymbolKind| -> String {
+        match k {
+            SymbolKind::Function { mfa } => mfa.to_string(),
+            SymbolKind::Type {
+                module,
+                name,
+                arity,
+            } => format!("{module}:{name}/{arity}"),
+            SymbolKind::Record { name } => format!("#{name}"),
+            SymbolKind::Macro { name } => format!("?{name}"),
+            SymbolKind::Behaviour { module } => format!("behaviour {module}"),
+            SymbolKind::Callback {
+                module,
+                function,
+                arity,
+            } => {
+                format!("callback {module}:{function}/{arity}")
+            }
+        }
+    };
+    match r {
+        Reason::MissingSymbol { symbol, .. } => format!("MissingSymbol {}", sym(&symbol.kind)),
+        Reason::ArityChanged {
+            module, function, ..
+        } => {
+            format!("ArityChanged {module}:{function}")
+        }
+        Reason::SignatureChanged {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("SignatureChanged {module}:{function}/{arity}"),
+        Reason::FileAbsent { path } => format!("FileAbsent {}", path.display()),
+        Reason::ContextDrift { path, hunk_index } => {
+            format!("ContextDrift {} hunk {}", path.display(), hunk_index)
+        }
+        Reason::DeprecatedUsage { symbol, .. } => format!("Deprecated {}", sym(&symbol.kind)),
+        Reason::NowHidden { module } => format!("NowHidden {module}"),
+        Reason::RecordFieldsChanged { record, .. } => format!("RecordFieldsChanged #{record}"),
+        Reason::UnsupportedFileType { path } => format!("Unsupported {}", path.display()),
+        Reason::UntrackedModuleMissing { module } => format!("UntrackedModuleMissing {module}"),
+        Reason::ClauseMismatch {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("ClauseMismatch {module}:{function}/{arity}"),
+        Reason::MissingPrereq { symbol, .. } => format!("MissingPrereq {}", sym(&symbol.kind)),
+        Reason::SyntacticArtifact { path, line, .. } => {
+            format!("SyntacticArtifact {}:{line}", path.display())
+        }
+        Reason::BehaviourCallbackSignatureChanged {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackSignatureChanged {behaviour}:{callback}/{arity}"),
+        Reason::BehaviourCallbackRemoved {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackRemoved {behaviour}:{callback}/{arity}"),
+        Reason::BehaviourCallbackAdded {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackAdded {behaviour}:{callback}/{arity}"),
+        Reason::ModuleRelocated { module, .. } => format!("ModuleRelocated {module}"),
+        Reason::WireConstantChanged {
+            module, macro_name, ..
+        } => format!("WireConstantChanged {module}.?{macro_name}"),
+        Reason::HistoricalImplementationMissing {
+            module,
+            advertised_version_before,
+            advertised_version_after,
+            ..
+        } => format!(
+            "HistoricalImplementationMissing {module} {advertised_version_before}->{advertised_version_after}"
+        ),
+        Reason::WireContractBodyDrift {
+            module,
+            advertised_version,
+            ..
+        } => format!("WireContractBodyDrift {module} @ v{advertised_version}"),
+        Reason::WireContractRegression {
+            module,
+            pin_version,
+            patch_version,
+        } => format!("WireContractRegression {module} {pin_version}->{patch_version}"),
+        Reason::ReturnShapeMismatch {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("ReturnShapeMismatch {module}:{function}/{arity}"),
+        Reason::MissingType {
+            module,
+            name,
+            arity,
+        } => format!("MissingType {module}:{name}/{arity}"),
+        Reason::PreimageDrifted {
+            path,
+            hunk_index,
+            line_delta,
+        } => format!(
+            "PreimageDrifted {} hunk #{hunk_index} Δ={line_delta:+}",
+            path.display()
+        ),
+        Reason::PreimageMissing {
+            path, hunk_index, ..
+        } => format!("PreimageMissing {} hunk #{hunk_index}", path.display()),
+    }
 }
 
 fn render_terse(evaluation: &SeriesEvaluation, exit: i32) -> CliResult<i32> {
@@ -893,7 +1069,7 @@ fn render_untracked_section(
         writeln!(w, "Untracked records (informational, not a verdict input):")?;
         for (record, count) in &diagnostics.untracked_records {
             let plural = if *count == 1 { "" } else { "s" };
-            writeln!(w, "  #{:<39} {} reference{}", record, count, plural)?;
+            writeln!(w, "  #{record:<39} {count} reference{plural}")?;
         }
     }
     if !diagnostics.unanalyzed.is_empty() {
@@ -984,11 +1160,13 @@ fn read_commits_file(path: &Path) -> CliResult<Vec<String>> {
         .collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_one(
     cfg: &Config,
-    store: &SnapshotStore<ReadOnly>,
+    cache: &SnapshotCache<'_>,
     bytes: &[u8],
     pins: &[Pin],
+    pin_specs: &[PinSpec],
     source_pins: &[Option<Pin>],
     source_files: &FileMap,
     self_repo: Option<&Path>,
@@ -1006,35 +1184,97 @@ fn evaluate_one(
         }
     }
     let analyzed = patch.analyze_with_macros(&macros_by_path);
-    let touched_kinds = TouchedKinds::from_paths(&touched_paths);
+    let mut touched_kinds = TouchedKinds::from_paths(&touched_paths);
+    touched_kinds.only_test_visibility = analyzed.is_only_test_visibility_change();
+    let sibling_projects: Vec<&Project> = cfg.projects.iter().collect();
     let mut contexts = Vec::with_capacity(pins.len());
+    let mut routings: Vec<PathRouting> = Vec::with_capacity(pins.len());
     for (idx, pin) in pins.iter().enumerate() {
         let project = cfg
             .project(&pin.project)
             .map_err(|e| CliError::Core(e.into()))?;
-        let snap = store
-            .read(&pin.project, &pin.tag)
+        routings.push(classify_paths_for_pin(
+            &touched_paths,
+            project,
+            &sibling_projects,
+        ));
+        let snap_arc = cache
+            .get(&pin.project, &pin.tag)
             .map_err(|e| CliError::Core(e.into()))?;
-        let scope = build_pin_scope(project, &snap);
-        let files = build_pin_files(project, pin, &scope, &touched_paths, self_repo)?;
+        let scope = build_pin_scope(project, &snap_arc);
+        let pin_self_override = pin_specs.get(idx).and_then(PinSpec::self_repo_override);
+        let files = build_pin_files(
+            project,
+            pin,
+            &scope,
+            &touched_paths,
+            self_repo,
+            pin_self_override,
+        )?;
+        let snap = (*snap_arc).clone();
         let mut ctx = EvaluationContext::new(pin.clone(), snap, scope).with_files(files);
         if let Some(Some(source_pin)) = source_pins.get(idx) {
-            let source_snap = store
-                .read(&source_pin.project, &source_pin.tag)
+            let source_snap_arc = cache
+                .get(&source_pin.project, &source_pin.tag)
                 .map_err(|e| CliError::Core(e.into()))?;
-            ctx = ctx.with_source_snapshot(source_snap);
+            ctx = ctx.with_source_snapshot((*source_snap_arc).clone());
         }
         contexts.push(ctx);
     }
     let mut eval = analyzed.evaluate_series(&contexts);
-    let stamped: Vec<_> = eval
+    if touched_kinds.erl > 0 || touched_kinds.hrl > 0 {
+        touched_kinds.only_self_surface = is_self_only_evaluation(cfg, &eval.verdict.results);
+    }
+    let rewritten: Vec<PinVerdict> = eval
         .verdict
         .results
         .into_iter()
-        .map(|pv| pv.with_touched(touched_kinds))
+        .zip(routings)
+        .map(|(pv, routing)| {
+            let pv = pv.with_touched(touched_kinds);
+            apply_path_routing(pv, &routing)
+        })
         .collect();
-    eval.verdict = SeriesVerdict::from_results(stamped).promote_inapplicable();
+    eval.verdict = SeriesVerdict::from_results(rewritten).promote_inapplicable();
     Ok(eval)
+}
+
+// Rewrites the verdict to Inapplicable when no touched path is in this pin's scope
+pub fn apply_path_routing(pv: PinVerdict, routing: &PathRouting) -> PinVerdict {
+    if routing.any_in_scope || !routing.has_any_attribution() {
+        return pv;
+    }
+    let reason = pv.touched.inapplicable_reason().unwrap_or_else(|| {
+        match routing.first_out_of_scope_owner() {
+            Some(name) => InapplicableReason::OutOfScopeFor {
+                project: name.clone(),
+            },
+            None => InapplicableReason::Untracked,
+        }
+    });
+    PinVerdict {
+        verdict: Verdict::Inapplicable { reason },
+        ..pv
+    }
+}
+
+/// True when there's at least one self-pin in the series and every
+/// non-self pin saw zero in-scope references. The caller already
+/// gated on "Erlang surface was touched" via `TouchedKinds::erl` or
+/// `TouchedKinds::hrl`.
+fn is_self_only_evaluation(cfg: &Config, results: &[PinVerdict]) -> bool {
+    let mut saw_self = false;
+    for pv in results {
+        let Ok(project) = cfg.project(&pv.pin.project) else {
+            return false;
+        };
+        if project.is_self() {
+            saw_self = true;
+        } else if pv.tracked_refs > 0 {
+            return false;
+        }
+    }
+    saw_self
 }
 
 fn resolve_pin_specs(specs: &[PinSpec], store: &SnapshotStore<ReadOnly>) -> CliResult<Vec<Pin>> {
@@ -1100,9 +1340,7 @@ fn promote_self_missing_to_prereq(
     evaluation.verdict = SeriesVerdict::from_results(new_results);
 }
 
-// Known gix port debt: shells out to `git log -S` because `gix` does not
-// yet expose a pickaxe walker we can drop in. Behind the opt-in
-// `--suggest-prereqs` flag so the default code path stays gix-only.
+// shells out to `git log -S`: `gix` lacks a pickaxe walker today
 fn suggest_prereq_sha(
     symbol: &SymbolRef,
     _cfg: &Config,
@@ -1136,23 +1374,14 @@ fn resolve_all_pin_specs(
     specs: &[PinSpec],
     self_repo: Option<&Path>,
 ) -> CliResult<Vec<Pin>> {
-    let has_self = specs.iter().any(PinSpec::is_self);
-    if !has_self {
-        return resolve_pin_specs(specs, store);
-    }
-    let repo = self_repo.ok_or_else(|| {
-        CliError::InvalidInput(
-            "series contains a self-pin; `--repo-dir-path` is required to resolve it".into(),
-        )
-    })?;
     let mut pins = Vec::with_capacity(specs.len());
     for spec in specs {
         if spec.is_self() {
-            let pin = resolve_self_pin(repo, spec)?;
+            let pin = resolve_self_pin(self_repo, spec)?;
             let project = cfg
                 .project(spec.project())
                 .map_err(|e| CliError::Core(e.into()))?;
-            ensure_self_snapshot_present(args, cfg, store, project, repo, &pin)?;
+            ensure_self_snapshot_present(args, cfg, store, project, spec, self_repo, &pin)?;
             pins.push(pin);
         } else {
             pins.push(spec.resolve(store).map_err(|e| CliError::Core(e.into()))?);
@@ -1201,7 +1430,7 @@ fn resolve_source_pins(
             for target_pin in target_pins {
                 let mapped = queues
                     .get_mut(&target_pin.project)
-                    .and_then(|q| q.pop_front());
+                    .and_then(|v| v.pop_front());
                 out.push(mapped);
             }
             Ok(out)
@@ -1228,18 +1457,20 @@ fn run_batch(
             "no commits supplied (empty file or stdin)".into(),
         ));
     }
-    let mut resolved_series: Vec<(SeriesName, Vec<Pin>)> = Vec::with_capacity(series_names.len());
+    let mut resolved_series: Vec<(SeriesName, Vec<Pin>, Vec<PinSpec>)> =
+        Vec::with_capacity(series_names.len());
     for name in series_names {
         let s = cfg
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
-        let pins = resolve_pin_specs(&s.pins, &store)?;
+        let pins = resolve_all_pin_specs(args, cfg, &store, &s.pins, Some(repo))?;
+        warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
         ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
-        resolved_series.push((name.clone(), pins));
+        resolved_series.push((name.clone(), pins, s.pins.clone()));
     }
     let queried: Vec<BatchQuery> = resolved_series
         .iter()
-        .map(|(name, pins)| BatchQuery {
+        .map(|(name, pins, _)| BatchQuery {
             series: name.to_string(),
             pins: pins
                 .iter()
@@ -1256,18 +1487,20 @@ fn run_batch(
     let mut results: Vec<BatchResult> = Vec::with_capacity(pair_count);
     let mut worst_exit: i32 = 0;
     let mut current: usize = 0;
+    let cache = SnapshotCache::new(&store);
     for commit in &commits {
         let bytes = commit_patch_bytes(repo, commit)?;
         let source_files = load_source_files_at_parent(repo, commit)?;
-        for (name, pins) in &resolved_series {
+        for (name, pins, pin_specs) in &resolved_series {
             let item_label = format!("{commit} @ {name}");
             let source_pins =
                 resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
             let evaluation = evaluate_one(
                 cfg,
-                &store,
+                &cache,
                 &bytes,
                 pins,
+                pin_specs,
                 &source_pins,
                 &source_files,
                 Some(repo),
@@ -1314,18 +1547,20 @@ fn run_multi(
     let store = open_store_read(args, cfg)?;
     let bytes = commit_patch_bytes(repo, commit)?;
     let source_files = load_source_files_at_parent(repo, commit)?;
-    let mut resolved_series: Vec<(SeriesName, Vec<Pin>)> = Vec::with_capacity(series_names.len());
+    let mut resolved_series: Vec<(SeriesName, Vec<Pin>, Vec<PinSpec>)> =
+        Vec::with_capacity(series_names.len());
     for name in series_names {
         let s = cfg
             .series_by_name_with_coverage_check(name)
             .map_err(|e| CliError::Core(e.into()))?;
-        let pins = resolve_pin_specs(&s.pins, &store)?;
+        let pins = resolve_all_pin_specs(args, cfg, &store, &s.pins, Some(repo))?;
+        warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
         ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
-        resolved_series.push((name.clone(), pins));
+        resolved_series.push((name.clone(), pins, s.pins.clone()));
     }
     let queried: Vec<BatchQuery> = resolved_series
         .iter()
-        .map(|(name, pins)| BatchQuery {
+        .map(|(name, pins, _)| BatchQuery {
             series: name.to_string(),
             pins: pins
                 .iter()
@@ -1338,13 +1573,15 @@ fn run_multi(
         .collect();
     let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
     let mut worst_exit: i32 = 0;
-    for (name, pins) in &resolved_series {
+    let cache = SnapshotCache::new(&store);
+    for (name, pins, pin_specs) in &resolved_series {
         let source_pins = resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
         let evaluation = evaluate_one(
             cfg,
-            &store,
+            &cache,
             &bytes,
             pins,
+            pin_specs,
             &source_pins,
             &source_files,
             Some(repo),

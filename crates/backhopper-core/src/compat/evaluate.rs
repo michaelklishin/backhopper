@@ -6,16 +6,18 @@
 //! snapshot plus optional file bytes and scope, return reasons.
 
 use std::collections::{BTreeMap, HashSet};
-use std::path::PathBuf;
-use std::str;
+use std::path::{Path, PathBuf};
+use std::str::{self, FromStr};
 
 use crate::compat::arg_shape::{ArgShape, satisfies_any};
 use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile};
 use crate::compat::scope::PinScope;
-use crate::model::names::{Arity, FieldName, FunctionName, Mfa, ModuleName, RecordName};
+use crate::model::names::{Arity, FieldName, FunctionName, Mfa, ModuleName, RecordName, TypeName};
 use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
+use crate::model::spec_ast::SpecType;
+use crate::model::spec_parser::parse_signature_return;
 use crate::model::symbol::{SymbolKind, SymbolRef};
-use crate::model::verdict::{Reason, SourceDelta, Verdict};
+use crate::model::verdict::{ArtifactKind, ConflictMarker, Reason, SourceDelta, Verdict};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn evaluate_pin(
@@ -30,8 +32,9 @@ pub(crate) fn evaluate_pin(
     scope: Option<&PinScope>,
 ) -> EvaluationResult {
     let mut reasons: Vec<Reason> = Vec::new();
+    check_syntactic_artifacts(files, &mut reasons);
     if let Some(pf) = pin_files {
-        check_files_against_pin(files, pf, &mut reasons);
+        check_files_against_pin(files, pf, snapshot, &mut reasons);
     }
     let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
     let mut tracked_refs: Vec<SymbolRef> = Vec::new();
@@ -69,10 +72,32 @@ pub(crate) fn evaluate_pin(
                 }
                 check_record_against_source(name, snapshot, source_snapshot, &mut reasons);
             }
+            SymbolKind::Type {
+                module,
+                name,
+                arity,
+            } => {
+                if let Some(s) = scope
+                    && !s.contains_module(module)
+                {
+                    continue;
+                }
+                if !type_exported(snapshot, module, name, *arity) {
+                    reasons.push(Reason::MissingType {
+                        module: module.clone(),
+                        name: name.clone(),
+                        arity: *arity,
+                    });
+                }
+            }
             _ => {}
         }
     }
     check_clause_mismatches(call_args, snapshot, scope, &mut reasons);
+    if let Some(src) = source_snapshot {
+        check_behaviour_conformance(snapshot, src, scope, &mut reasons);
+        check_return_shapes(referenced, snapshot, src, scope, &mut reasons);
+    }
     for path in unsupported_files {
         reasons.push(Reason::UnsupportedFileType { path: path.clone() });
     }
@@ -180,9 +205,50 @@ fn check_clause_mismatches(
     }
 }
 
+/// Map a touched-file path to the module name implied by its basename.
+/// Returns `None` for paths whose basename does not match Erlang module
+/// naming conventions (e.g. non-`.erl`/`.hrl` files, or names with chars
+/// `ModuleName::new` rejects).
+fn file_to_module_name(path: &Path) -> Option<ModuleName> {
+    let basename = path.file_name()?.to_str()?;
+    let stem = basename.strip_suffix(".erl")?;
+    ModuleName::from_str(stem).ok()
+}
+
+fn check_syntactic_artifacts(files: &[PatchedFile], reasons: &mut Vec<Reason>) {
+    for file in files {
+        let path = match (&file.new_path, &file.old_path) {
+            (Some(p), _) | (None, Some(p)) => p,
+            (None, None) => continue,
+        };
+        for hunk in &file.hunks {
+            let mut new_line = hunk.new_start;
+            for line in &hunk.lines {
+                match line {
+                    HunkLine::Context(_) => {
+                        new_line += 1;
+                    }
+                    HunkLine::Added(text) => {
+                        if let Some(marker) = ConflictMarker::detect(text) {
+                            reasons.push(Reason::SyntacticArtifact {
+                                path: path.clone(),
+                                line: new_line,
+                                artifact: ArtifactKind::ConflictMarker { marker },
+                            });
+                        }
+                        new_line += 1;
+                    }
+                    HunkLine::Removed(_) => {}
+                }
+            }
+        }
+    }
+}
+
 fn check_files_against_pin(
     files: &[PatchedFile],
     pin_files: &EvaluationFiles,
+    snapshot: &Snapshot<state::Canonical>,
     reasons: &mut Vec<Reason>,
 ) {
     for file in files {
@@ -194,7 +260,16 @@ fn check_files_against_pin(
             continue;
         };
         let Some(bytes) = slot else {
-            reasons.push(Reason::FileAbsent { path: path.clone() });
+            if let Some(module) = file_to_module_name(path)
+                && snapshot.module_named(&module).is_some()
+            {
+                reasons.push(Reason::ModuleRelocated {
+                    module,
+                    patch_path: path.clone(),
+                });
+            } else {
+                reasons.push(Reason::FileAbsent { path: path.clone() });
+            }
             continue;
         };
         let target_lines = match str::from_utf8(bytes) {
@@ -202,33 +277,83 @@ fn check_files_against_pin(
             Err(_) => continue,
         };
         for (idx, hunk) in file.hunks.iter().enumerate() {
-            if !hunk_context_matches(hunk, &target_lines) {
-                reasons.push(Reason::ContextDrift {
-                    path: path.clone(),
-                    hunk_index: idx,
-                });
+            match classify_preimage(hunk, &target_lines) {
+                PreimageMatch::Exact => {}
+                PreimageMatch::Drifted { line_delta } => {
+                    reasons.push(Reason::PreimageDrifted {
+                        path: path.clone(),
+                        hunk_index: idx,
+                        line_delta,
+                    });
+                }
+                PreimageMatch::Missing { excerpt } => {
+                    reasons.push(Reason::PreimageMissing {
+                        path: path.clone(),
+                        hunk_index: idx,
+                        preimage_excerpt: excerpt,
+                    });
+                }
             }
         }
     }
 }
 
-fn hunk_context_matches(hunk: &Hunk, target_lines: &[&str]) -> bool {
-    let mut row = hunk.old_start.saturating_sub(1);
-    for line in &hunk.lines {
-        match line {
-            HunkLine::Added(_) => {}
-            HunkLine::Context(text) | HunkLine::Removed(text) => {
-                let Some(actual) = target_lines.get(row) else {
-                    return false;
-                };
-                if *actual != text.as_str() {
-                    return false;
-                }
-                row += 1;
-            }
-        }
+#[derive(Debug, PartialEq, Eq)]
+enum PreimageMatch {
+    Exact,
+    Drifted { line_delta: isize },
+    Missing { excerpt: String },
+}
+
+/// Classify how the hunk's preimage block (Context and Removed lines)
+/// matches against `target_lines`. `Exact` is the happy path (preimage
+/// at `hunk.old_start - 1`); `Drifted` recovers an offset; `Missing`
+/// returns up to the first three preimage lines as an excerpt.
+fn classify_preimage(hunk: &Hunk, target_lines: &[&str]) -> PreimageMatch {
+    let preimage: Vec<&str> = hunk
+        .lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Context(t) | HunkLine::Removed(t) => Some(t.as_str()),
+            HunkLine::Added(_) => None,
+        })
+        .collect();
+    if preimage.is_empty() {
+        return PreimageMatch::Exact;
     }
-    true
+    let expected = hunk.old_start.saturating_sub(1);
+    if matches_at(&preimage, target_lines, expected) {
+        return PreimageMatch::Exact;
+    }
+    if let Some(found) = find_subsequence(&preimage, target_lines) {
+        let delta = found as isize - expected as isize;
+        return PreimageMatch::Drifted { line_delta: delta };
+    }
+    let excerpt = preimage
+        .iter()
+        .take(3)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    PreimageMatch::Missing { excerpt }
+}
+
+fn matches_at(preimage: &[&str], target: &[&str], start: usize) -> bool {
+    if start + preimage.len() > target.len() {
+        return false;
+    }
+    preimage
+        .iter()
+        .enumerate()
+        .all(|(i, line)| target[start + i] == *line)
+}
+
+fn find_subsequence(preimage: &[&str], target: &[&str]) -> Option<usize> {
+    if preimage.is_empty() || preimage.len() > target.len() {
+        return None;
+    }
+    let last = target.len() - preimage.len();
+    (0..=last).find(|&i| matches_at(preimage, target, i))
 }
 
 fn analyze_function_reference(
@@ -295,6 +420,177 @@ fn analyze_function_reference(
                 found_spec: t.to_string(),
             });
         }
+    }
+}
+
+fn check_behaviour_conformance(
+    snapshot: &Snapshot<state::Canonical>,
+    source_snapshot: &Snapshot<state::Canonical>,
+    scope: Option<&PinScope>,
+    reasons: &mut Vec<Reason>,
+) {
+    for source_module in source_snapshot.modules() {
+        if source_module.callbacks.is_empty() && source_module.optional_callbacks.is_empty() {
+            continue;
+        }
+        let Some(pin_module) = snapshot.module_named(&source_module.name) else {
+            continue;
+        };
+        let optional_at_source: HashSet<FunArity> =
+            source_module.optional_callbacks.iter().cloned().collect();
+        let optional_at_pin: HashSet<FunArity> =
+            pin_module.optional_callbacks.iter().cloned().collect();
+        let source_by_arity: BTreeMap<FunArity, &str> = source_module
+            .callbacks
+            .iter()
+            .map(|c| {
+                (
+                    FunArity {
+                        name: c.name.clone(),
+                        arity: c.arity,
+                    },
+                    c.signature.as_str(),
+                )
+            })
+            .collect();
+        let pin_by_arity: BTreeMap<FunArity, &str> = pin_module
+            .callbacks
+            .iter()
+            .map(|c| {
+                (
+                    FunArity {
+                        name: c.name.clone(),
+                        arity: c.arity,
+                    },
+                    c.signature.as_str(),
+                )
+            })
+            .collect();
+        let implementers = snapshot.implementers_of(&source_module.name);
+        if implementers.is_empty() {
+            continue;
+        }
+        for (key, source_sig) in &source_by_arity {
+            if let Some(pin_sig) = pin_by_arity.get(key) {
+                if signatures_differ(source_sig, pin_sig) {
+                    for impl_module in &implementers {
+                        if !implementer_in_scope(impl_module, scope) {
+                            continue;
+                        }
+                        reasons.push(Reason::BehaviourCallbackSignatureChanged {
+                            behaviour: source_module.name.clone(),
+                            callback: key.name.clone(),
+                            arity: key.arity,
+                            expected_after_patch: (*source_sig).to_owned(),
+                            implementer: impl_module.name.clone(),
+                            implementer_signature: (*pin_sig).to_owned(),
+                        });
+                    }
+                }
+            } else if !optional_at_source.contains(key) {
+                for impl_module in &implementers {
+                    if !implementer_in_scope(impl_module, scope) {
+                        continue;
+                    }
+                    if impl_module.exports.binary_search(key).is_err() {
+                        reasons.push(Reason::BehaviourCallbackAdded {
+                            behaviour: source_module.name.clone(),
+                            callback: key.name.clone(),
+                            arity: key.arity,
+                            implementer: impl_module.name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        for key in pin_by_arity.keys() {
+            if !source_by_arity.contains_key(key) && !optional_at_pin.contains(key) {
+                for impl_module in &implementers {
+                    if !implementer_in_scope(impl_module, scope) {
+                        continue;
+                    }
+                    if impl_module.exports.binary_search(key).is_ok() {
+                        reasons.push(Reason::BehaviourCallbackRemoved {
+                            behaviour: source_module.name.clone(),
+                            callback: key.name.clone(),
+                            arity: key.arity,
+                            implementer: impl_module.name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Compare two signature strings, treating equivalent return-type ASTs
+/// as equal even when whitespace, atom-quote variation, or union ordering
+/// differs in the raw text.
+fn signatures_differ(a: &str, b: &str) -> bool {
+    if a == b {
+        return false;
+    }
+    let ast_a = parse_signature_return(a);
+    let ast_b = parse_signature_return(b);
+    ast_a != ast_b
+}
+
+fn implementer_in_scope(module: &Module, scope: Option<&PinScope>) -> bool {
+    match scope {
+        Some(s) => s.contains_module(&module.name),
+        None => true,
+    }
+}
+
+/// For each referenced MFA whose pin-side and source-side specs both
+/// parse into structurally-precise return types, fire
+/// `ReturnShapeMismatch` when the shapes disagree. `Unknown` on either
+/// side suppresses the reason: this rule never fires speculatively.
+fn check_return_shapes(
+    referenced: &[SymbolRef],
+    snapshot: &Snapshot<state::Canonical>,
+    source: &Snapshot<state::Canonical>,
+    scope: Option<&PinScope>,
+    reasons: &mut Vec<Reason>,
+) {
+    let mut seen: HashSet<(ModuleName, FunctionName, Arity)> = HashSet::new();
+    for r in referenced {
+        let SymbolKind::Function { mfa } = &r.kind else {
+            continue;
+        };
+        if let Some(s) = scope
+            && !s.contains_module(&mfa.module)
+        {
+            continue;
+        }
+        let key = (mfa.module.clone(), mfa.function.clone(), mfa.arity);
+        if !seen.insert(key) {
+            continue;
+        }
+        let Some(pin_sig) = find_spec(snapshot, &mfa.module, &mfa.function, mfa.arity) else {
+            continue;
+        };
+        let Some(src_sig) = find_spec(source, &mfa.module, &mfa.function, mfa.arity) else {
+            continue;
+        };
+        if pin_sig == src_sig {
+            continue;
+        }
+        let pin_ast = parse_signature_return(pin_sig);
+        let src_ast = parse_signature_return(src_sig);
+        if matches!(pin_ast, SpecType::Unknown) || matches!(src_ast, SpecType::Unknown) {
+            continue;
+        }
+        if pin_ast.matches(&src_ast) {
+            continue;
+        }
+        reasons.push(Reason::ReturnShapeMismatch {
+            module: mfa.module.clone(),
+            function: mfa.function.clone(),
+            arity: mfa.arity,
+            source_signature: src_sig.to_owned(),
+            pin_signature: pin_sig.to_owned(),
+        });
     }
 }
 
@@ -367,6 +663,20 @@ fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> b
         .headers()
         .iter()
         .any(|h| h.records.iter().any(|r| &r.name == name))
+}
+
+fn type_exported(
+    snapshot: &Snapshot<state::Canonical>,
+    module: &ModuleName,
+    name: &TypeName,
+    arity: Arity,
+) -> bool {
+    let Some(m) = snapshot.module_named(module) else {
+        return false;
+    };
+    m.export_types
+        .binary_search_by(|t| t.name.cmp(name).then(t.arity.cmp(&arity)))
+        .is_ok()
 }
 
 fn collect_alt_arities_in(module: &Module, function: &FunctionName) -> Vec<Arity> {

@@ -26,7 +26,7 @@ fn interner_handles_many_paths_without_collision() {
     let mut p = PathInterner::new();
     let mut ids = Vec::new();
     for i in 0..1000 {
-        let path_str = format!("/tmp/file_{}.erl", i);
+        let path_str = format!("/tmp/file_{i}.erl");
         ids.push(p.intern(Path::new(&path_str)));
     }
     assert_eq!(p.len(), 1000);

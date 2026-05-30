@@ -150,9 +150,7 @@ fn parses_nested_tuple_in_mod_prop() {
 
 #[test]
 fn vsn_with_embedded_quotes_is_skipped_gracefully() {
-    // We don't try to interpret escapes; an unterminated value
-    // beyond the prop must still allow the rest of the file to
-    // parse via skip_value.
+    // escapes are not interpreted: an unterminated value must still let the rest of the file parse via `skip_value`
     let text = "{application, demo, [{vsn, \"1.0\\\"-pre\"}, {modules, [a]}]}.";
     let spec = parse_ok(text);
     assert_eq!(spec.vsn.as_deref(), Some("1.0\\\"-pre"));

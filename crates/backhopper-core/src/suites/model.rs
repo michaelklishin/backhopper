@@ -4,6 +4,7 @@
 
 //! Types for suite selection.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -51,17 +52,28 @@ pub enum SuiteInclusionReason {
         rule_name: String,
         triggering_path: PathBuf,
     },
+    /// A modified `.erl` is itself a behaviour module; this suite
+    /// references one of its implementers.
+    BehaviourImplementerSweep {
+        behaviour: ModuleName,
+        implementer: ModuleName,
+    },
 }
 
 /// Plan input. The caller assembles diff, discovered apps, and any
 /// extra rules from config.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PlanInput {
     pub repo_root: PathBuf,
     pub modified_paths: Vec<PathBuf>,
     pub apps: Vec<AppSrcSpec>,
     pub library_apps: Vec<ApplicationName>,
     pub extra_rules: Vec<ExtraRule>,
+    /// Behaviour-to-implementers reverse map. When a modified `.erl`
+    /// names a behaviour module, every implementer is pulled into scope
+    /// and suites that reference them are added to the plan. Empty by
+    /// default; populated from a snapshot when richer triage is wanted.
+    pub implementer_index: BTreeMap<ModuleName, Vec<ModuleName>>,
 }
 
 /// One entry in the plan: the suite plus every rule that included it.

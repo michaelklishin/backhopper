@@ -50,13 +50,13 @@ pins = [
 "#;
 
 #[test]
-fn doctor_reports_missing_pin_with_non_zero_exit() {
+fn doctor_reports_missing_pin_with_partial_success_exit() {
     let tmp = TempDir::new().unwrap();
     let cfg = write_config(tmp.path(), MIN_CONFIG);
     std::fs::create_dir_all(tmp.path().join("snapshots")).unwrap();
     let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
     let text = stdout(&a);
-    a.code(1);
+    a.code(3);
     assert!(text.contains("MISSING"), "stdout: {text}");
     assert!(text.contains("0/1 pin(s) covered"));
     assert!(text.contains("backhopper snapshots generate"));

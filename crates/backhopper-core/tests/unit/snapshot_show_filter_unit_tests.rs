@@ -110,5 +110,8 @@ fn write_module_filtered_preserves_header() {
     let text = String::from_utf8(buf).unwrap();
     assert!(text.contains("# project: p"));
     assert!(text.contains("# tag: v1.0.0"));
-    assert!(text.contains("# format-version: 1"));
+    assert!(text.contains(&format!(
+        "# format-version: {}",
+        backhopper_core::model::snapshot::FORMAT_VERSION
+    )));
 }

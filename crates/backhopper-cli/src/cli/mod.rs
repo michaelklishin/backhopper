@@ -127,6 +127,7 @@ pub struct GlobalArgs {
 pub enum Formatter {
     Json,
     Text,
+    Markdown,
 }
 
 #[derive(Debug, Subcommand)]

@@ -49,8 +49,7 @@ pub fn parse_schema(
                 i = skip_atom_quoted(bytes, i + 1);
             }
             b'$' if i + 1 < bytes.len() => {
-                // Character literal: skip the next char (and a following
-                // `\X` escape if any).
+                // character literal: skip the char and any `\X` escape
                 i += 2;
                 if bytes[i - 1] == b'\\' && i < bytes.len() {
                     i += 1;
@@ -196,7 +195,29 @@ fn locate_fun_body(span: &str) -> Option<(String, usize)> {
 fn find_outer_fun_keyword(span: &str) -> Option<usize> {
     let bytes = span.as_bytes();
     let mut i = 0usize;
-    while i + 3 <= bytes.len() {
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'"' {
+            i = skip_string(bytes, i + 1);
+            continue;
+        }
+        if c == b'\'' {
+            i = skip_atom_quoted(bytes, i + 1);
+            continue;
+        }
+        if c == b'%' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'$' && i + 1 < bytes.len() {
+            i += 2;
+            if bytes[i - 1] == b'\\' && i < bytes.len() {
+                i += 1;
+            }
+            continue;
+        }
         if is_keyword_at(bytes, i, b"fun") && next_non_ws_is(bytes, i + 3, b'(') {
             return Some(i);
         }
@@ -226,6 +247,13 @@ fn balanced_end_offset(span: &str, start: usize) -> Option<usize> {
         }
         if c == b'%' {
             while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'$' && i + 1 < bytes.len() {
+            i += 2;
+            if bytes[i - 1] == b'\\' && i < bytes.len() {
                 i += 1;
             }
             continue;

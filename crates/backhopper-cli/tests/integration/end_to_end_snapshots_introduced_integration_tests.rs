@@ -169,10 +169,10 @@ fn introduced_exits_nonzero_when_no_stored_tag_has_the_symbol() {
             "json",
         ])
         .assert()
-        .failure();
+        .code(3);
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(v["exit_code"], 1);
+    assert_eq!(v["exit_code"], 3);
     assert_eq!(v["data"]["rows"][0]["tags_present"], 0);
     assert!(v["data"]["rows"][0]["first_tag"].is_null());
 }

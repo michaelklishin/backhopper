@@ -113,5 +113,5 @@ fn series_verdict_summarizes_results() {
     assert_eq!(s.summary.incompatible, 1);
     assert_eq!(s.summary.requires_adaptation, 0);
     assert_eq!(s.summary.inapplicable, 0);
-    assert_eq!(s.worst_exit_code(), exit::INCOMPATIBLE);
+    assert_eq!(s.worst_exit_code(), exit::NEEDS_ATTENTION);
 }

@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectKind, ProjectLayout};
 use backhopper_core::model::names::{ProjectName, TagGlob, TagName};
 
 use backhopper_cli::commands::snapshots::filter_tags_for_project;
@@ -14,6 +14,7 @@ fn project_with(tag_pattern: Option<&str>, min_tag: Option<&str>) -> Project {
         name: ProjectName::new("otp").unwrap(),
         git_url: Some(PathBuf::from("/tmp/otp.git")),
         kind: ProjectKind::External,
+        family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: "v".into(),
         public_modules: Vec::new(),
@@ -49,9 +50,7 @@ fn min_tag_drops_older_versions() {
     let input = tags(&["OTP-25.0", "OTP-26.0", "OTP-26.2.5", "OTP-27.0", "R16B03"]);
     let out = filter_tags_for_project(input, &p, None);
     let names: Vec<&str> = out.iter().map(|t| t.as_str()).collect();
-    // R16B03 has no numeric version pieces matching OTP semantics; version_cmp
-    // parses what it can. The key invariant is that older OTP versions are
-    // dropped.
+    // R16B03 has no numeric OTP version pieces: the invariant we check is that older OTP versions are dropped
     assert!(!names.contains(&"OTP-25.0"));
     assert!(names.contains(&"OTP-26.0"));
     assert!(names.contains(&"OTP-26.2.5"));

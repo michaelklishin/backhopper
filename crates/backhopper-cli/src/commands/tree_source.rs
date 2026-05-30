@@ -19,8 +19,7 @@ pub fn build_xref(tree: &TreeSource) -> CliResult<Xref<Functions>> {
     let dir = tree.tree_dir_path.as_path();
     if !dir.is_dir() {
         return Err(CliError::Other(format!(
-            "--tree-dir-path {:?} is not a directory",
-            dir
+            "--tree-dir-path {dir:?} is not a directory"
         )));
     }
     let layout = ProjectLayout::rabbitmq_main();

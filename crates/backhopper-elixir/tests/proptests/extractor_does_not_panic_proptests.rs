@@ -15,7 +15,7 @@ proptest! {
 
     #[test]
     fn well_formed_module_yields_at_least_one(name in "[A-Z][A-Za-z0-9]{0,8}") {
-        let src = format!("defmodule {} do\nend\n", name);
+        let src = format!("defmodule {name} do\nend\n");
         let ex = ElixirExtractor::default();
         let modules = ex.extract_modules(&src);
         prop_assert!(!modules.is_empty());

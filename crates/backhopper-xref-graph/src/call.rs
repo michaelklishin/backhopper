@@ -80,7 +80,7 @@ impl FunctionRef {
 impl fmt::Display for FunctionRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FunctionRef::Concrete(mfa) => write!(f, "{}", mfa),
+            FunctionRef::Concrete(mfa) => write!(f, "{mfa}"),
             FunctionRef::UnresolvedModule { function, arity } => {
                 write!(f, "'$M_EXPR':{}/{}", function, fmt_arity(*arity))
             }

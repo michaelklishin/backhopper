@@ -54,7 +54,7 @@ pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {
             Ok(0)
         }
         ConfigCmd::Validate => {
-            let _ = load_config(args)?;
+            load_config(args)?;
             let ctx = OutputContext::new(args.formatter, "config validate");
             render(&ctx, &serde_json::json!({"ok": true}), |w| {
                 writeln!(w, "ok")?;

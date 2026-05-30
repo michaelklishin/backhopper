@@ -46,3 +46,32 @@ fn ignores_dash_minus_in_function_bodies() {
     let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(names, vec!["module", "export"]);
 }
+
+#[test]
+fn char_literal_paren_does_not_close_attribute_body() {
+    let src = "-define(SEP, $)).\n-export([foo/1]).\n";
+    let blocks = iterate_attributes(src);
+    let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["define", "export"],
+        "$) is a char literal; the inner ) must not close the -define"
+    );
+    assert!(
+        blocks[0].body.contains("$)"),
+        "define body must keep the char literal intact, got: {:?}",
+        blocks[0].body
+    );
+}
+
+#[test]
+fn char_literal_dot_does_not_terminate_form() {
+    let src = "-define(DOT, $.).\n-export([foo/1]).\n";
+    let blocks = iterate_attributes(src);
+    let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["define", "export"],
+        "$. is a char literal; it must not terminate the form"
+    );
+}

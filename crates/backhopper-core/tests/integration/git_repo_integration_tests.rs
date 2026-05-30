@@ -19,7 +19,7 @@ fn list_tags_returns_known_tags() {
 
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let tags = g.list_tags().unwrap();
-    let strings: Vec<_> = tags.iter().map(|t| t.to_string()).collect();
+    let strings: Vec<_> = tags.iter().map(|s| s.to_string()).collect();
     assert!(strings.iter().any(|s| s == "v1.0.0"));
     assert!(strings.iter().any(|s| s == "v1.1.0"));
 }

@@ -82,7 +82,7 @@ impl fmt::Display for ModuleCallers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "callers of {}:", self.target)?;
         for m in &self.entries {
-            writeln!(f, "  {}", m)?;
+            writeln!(f, "  {m}")?;
         }
         Ok(())
     }
@@ -92,7 +92,7 @@ impl fmt::Display for ModuleDependencies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} uses:", self.source)?;
         for m in &self.entries {
-            writeln!(f, "  {}", m)?;
+            writeln!(f, "  {m}")?;
         }
         Ok(())
     }
@@ -102,7 +102,7 @@ impl fmt::Display for AppDependencies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} reaches:", self.source)?;
         for a in &self.entries {
-            writeln!(f, "  {}", a)?;
+            writeln!(f, "  {a}")?;
         }
         Ok(())
     }
@@ -116,7 +116,7 @@ impl fmt::Display for NonConformance {
             self.implementer, self.behaviour
         )?;
         for sig in &self.missing {
-            writeln!(f, "  {}", sig)?;
+            writeln!(f, "  {sig}")?;
         }
         Ok(())
     }

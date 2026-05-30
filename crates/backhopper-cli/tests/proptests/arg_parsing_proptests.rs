@@ -26,7 +26,7 @@ proptest! {
         f in "[a-z][a-z0-9_]{0,5}",
         a in 0u8..=5
     ) {
-        let mfa = format!("{}:{}/{}", m, f, a);
+        let mfa = format!("{m}:{f}/{a}");
         let argv = vec![
             "backhopper", "snapshots", "lookup",
             "--project", "p",

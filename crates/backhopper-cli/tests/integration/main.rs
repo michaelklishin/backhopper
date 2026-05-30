@@ -25,6 +25,7 @@ mod end_to_end_snapshots_introduced_integration_tests;
 mod end_to_end_suggest_projects_integration_tests;
 mod end_to_end_suites_plan_integration_tests;
 mod end_to_end_terse_integration_tests;
+mod end_to_end_xref_backport_applicability_integration_tests;
 mod end_to_end_xref_integration_tests;
 mod helpers;
 mod real_world_fixtures_integration_tests;

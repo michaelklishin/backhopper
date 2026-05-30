@@ -16,12 +16,14 @@ pub mod rabbitmq_components;
 pub mod self_snapshot;
 pub mod series;
 pub mod shell;
+pub mod snapshot_cache;
 pub mod snapshots;
 pub mod suggest;
 pub mod suites;
 pub mod tree_source;
 pub mod version;
 pub mod xref;
+pub mod xref_backport_applicability;
 
 use crate::cli::{Cli, Group};
 use crate::errors::CliResult;

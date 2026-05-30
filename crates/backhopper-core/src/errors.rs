@@ -149,6 +149,13 @@ pub enum ConfigError {
     #[error("pin pattern {pattern:?} for project {project:?} matched no snapshot tag")]
     PinPatternNoMatch { project: String, pattern: String },
 
+    #[error("snapshot for pin {project} @ {tag} is not on disk at {expected_path}")]
+    PinSnapshotMissing {
+        project: String,
+        tag: String,
+        expected_path: String,
+    },
+
     #[error(
         "pin pattern {pattern:?} for project {project:?} could not be resolved: \
          snapshot store error: {detail}"
@@ -167,6 +174,11 @@ pub enum ConfigError {
 
     #[error("unknown project kind {0:?}: expected external or self")]
     UnknownProjectKind(String),
+
+    #[error(
+        "unknown project family {0:?}: expected generic, erlang_otp, ra, osiris, khepri, or rabbitmq"
+    )]
+    UnknownProjectFamily(String),
 
     #[error("project {0:?} has kind=\"self\" but also specifies git_url; remove one")]
     SelfProjectHasGitUrl(String),

@@ -73,8 +73,7 @@ fn detects_apply_3_dispatch() {
     extract_dynamic_into("    Result = apply(Mod, init, [Args])", &mut out);
     assert!(
         out.contains(&DynamicCall::Apply),
-        "apply/3 should be flagged: {:?}",
-        out
+        "apply/3 should be flagged: {out:?}"
     );
 }
 
@@ -91,8 +90,7 @@ fn detects_variable_module_dispatch() {
     extract_dynamic_into("    Reply = Mod:handle_command(Cmd, State)", &mut out);
     assert!(
         out.contains(&DynamicCall::VariableDispatch),
-        "Mod:fun should be flagged: {:?}",
-        out
+        "Mod:fun should be flagged: {out:?}"
     );
 }
 
@@ -112,8 +110,7 @@ fn literal_call_is_not_flagged_as_dynamic() {
     );
     assert!(
         out.is_empty(),
-        "literal calls must not be classified as dynamic: {:?}",
-        out
+        "literal calls must not be classified as dynamic: {out:?}"
     );
 }
 
@@ -123,8 +120,7 @@ fn locally_defined_apply_lookalike_is_not_flagged() {
     extract_dynamic_into("    Result = local_apply(Mod, Args)", &mut out);
     assert!(
         out.is_empty(),
-        "local helper that ends in 'apply' must not trigger the BIF detector: {:?}",
-        out
+        "local helper that ends in 'apply' must not trigger the BIF detector: {out:?}"
     );
 }
 
@@ -253,8 +249,7 @@ fn extract_call_args_classifies_quoted_atom_actuals() {
     let (_, args) = entry.expect("ra:emit/1 captured");
     assert!(
         matches!(&args[0], ArgShape::Atom { name } if name == "special atom"),
-        "args={:?}",
-        args
+        "args={args:?}"
     );
 }
 
