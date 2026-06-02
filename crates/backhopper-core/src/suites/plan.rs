@@ -43,6 +43,9 @@ pub fn plan_with_matcher(input: &PlanInput, matcher: &mut dyn SuiteMatcher) -> S
         &input.extra_rules,
         &input.modified_paths,
         &discovered,
+        &input.repo_root,
+        &input.dep_module_index,
+        matcher,
         &mut accum,
     );
     let entries = accum

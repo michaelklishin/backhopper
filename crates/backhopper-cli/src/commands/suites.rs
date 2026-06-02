@@ -10,16 +10,19 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use backhopper_core::app_src::{AppSrcSpec, DiscoveryWarning, discover};
-use backhopper_core::model::names::ApplicationName;
+use backhopper_core::config::Config;
+use backhopper_core::model::names::{ApplicationName, ModuleName, ProjectName, TagName};
+use backhopper_core::model::pin::PinSpec;
 use backhopper_core::suites::{
-    BuildSystem, PlanInput, SuiteInclusionReason, SuitePlan, derive_library_apps, plan_with_matcher,
+    BuildSystem, ExtraRule, PlanInput, SuiteInclusionReason, SuitePlan, derive_library_apps,
+    plan_with_matcher,
 };
 use backhopper_xref::{is_suite_module, suites_referencing, suites_referencing_mfas};
 use backhopper_xref_reader::AstSuiteMatcher;
 
 use crate::cli::suites::SuitesPlanArgs;
 use crate::cli::{GlobalArgs, SuitesCmd};
-use crate::commands::context::load_config;
+use crate::commands::context::{load_config, open_store_read};
 use crate::commands::tree_source::build_xref;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
@@ -84,8 +87,14 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
     }
     let build_system = BuildSystem::detect(&args.repo_dir_path);
     let library_apps = resolve_library_apps(&args, &discovery.specs);
-    let extra_rules = load_config(global)
-        .map(|cfg| cfg.suite_rules)
+    let cfg = load_config(global).ok();
+    let extra_rules = cfg
+        .as_ref()
+        .map(|c| c.suite_rules.clone())
+        .unwrap_or_default();
+    let dep_module_index = cfg
+        .as_ref()
+        .map(|c| build_dep_module_index(global, c, &extra_rules))
         .unwrap_or_default();
     let input = PlanInput {
         repo_root: args.repo_dir_path,
@@ -94,11 +103,47 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
         library_apps,
         extra_rules,
         implementer_index: BTreeMap::new(),
+        dep_module_index,
     };
     let mut matcher = AstSuiteMatcher::new();
     let result = plan_with_matcher(&input, &mut matcher);
     render_plan(global, &result, build_system)?;
     Ok(0)
+}
+
+fn build_dep_module_index(
+    global: &GlobalArgs,
+    cfg: &Config,
+    extra_rules: &[ExtraRule],
+) -> BTreeMap<String, Vec<ModuleName>> {
+    if !extra_rules.iter().any(|r| r.include_suite_for_dep_modules) {
+        return BTreeMap::new();
+    }
+    let Ok(store) = open_store_read(global, cfg) else {
+        return BTreeMap::new();
+    };
+    let mut out: BTreeMap<String, Vec<ModuleName>> = BTreeMap::new();
+    for series in &cfg.series {
+        for spec in &series.pins {
+            let (project, tag): (ProjectName, TagName) = match spec {
+                PinSpec::Literal { project, tag } => (project.clone(), tag.clone()),
+                PinSpec::Pattern { .. } => match spec.resolve(&store) {
+                    Ok(pin) => (pin.project, pin.tag),
+                    Err(_) => continue,
+                },
+                PinSpec::SelfRef { .. } => continue,
+            };
+            if out.contains_key(project.as_str()) {
+                continue;
+            }
+            let Ok(snap) = store.read(&project, &tag) else {
+                continue;
+            };
+            let modules: Vec<ModuleName> = snap.modules().iter().map(|m| m.name.clone()).collect();
+            out.insert(project.to_string(), modules);
+        }
+    }
+    out
 }
 
 fn log_discovery_warning(w: &DiscoveryWarning) {

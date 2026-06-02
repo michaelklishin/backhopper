@@ -12,6 +12,7 @@ pub(crate) mod patch_facts;
 pub mod routing;
 pub mod scope;
 pub mod source_macros;
+pub mod target_tree;
 
 pub use otp::is_otp_module;
 pub use patch::{
@@ -20,3 +21,4 @@ pub use patch::{
 };
 pub use routing::{PathRouting, classify_paths_for_pin, project_owns_path};
 pub use scope::{PinScope, UntrackedTally};
+pub use target_tree::{TargetPathClassification, TouchedPathQuery, classify_path, normalise};

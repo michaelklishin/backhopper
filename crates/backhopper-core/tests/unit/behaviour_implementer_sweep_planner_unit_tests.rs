@@ -57,6 +57,7 @@ fn empty_index_does_not_emit_sweep_reasons() {
         library_apps: Vec::new(),
         extra_rules: Vec::new(),
         implementer_index: BTreeMap::new(),
+        dep_module_index: BTreeMap::new(),
     };
     let p = plan(&input);
     let has_sweep = p.entries.iter().any(|e| {
@@ -98,6 +99,7 @@ fn modified_behaviour_module_pulls_in_suites_referencing_implementer() {
         library_apps: Vec::new(),
         extra_rules: Vec::new(),
         implementer_index: index,
+        dep_module_index: BTreeMap::new(),
     };
     let p = plan(&input);
     let sweep = p.entries.iter().find_map(|e| {
@@ -149,6 +151,7 @@ fn suite_without_implementer_reference_is_skipped() {
         library_apps: Vec::new(),
         extra_rules: Vec::new(),
         implementer_index: index,
+        dep_module_index: BTreeMap::new(),
     };
     let p = plan(&input);
     let has_sweep = p.entries.iter().any(|e| {

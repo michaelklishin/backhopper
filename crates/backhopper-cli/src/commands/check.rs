@@ -31,7 +31,7 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict,
-    TouchedKinds, Verdict,
+    TouchedKinds, TranslationSource, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
@@ -45,6 +45,7 @@ use crate::commands::snapshot_cache::SnapshotCache;
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
+use crate::commands::target_repo;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
 use crate::tables::render_evaluation_table;
@@ -81,6 +82,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             series,
             repo_dir_path,
             source,
+            target,
             diagnostics,
             patch_file_path,
         } => {
@@ -95,6 +97,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 Some(&repo_dir_path),
                 &FileMap::new(),
                 &source,
+                &target,
                 diagnostics,
             )
         }
@@ -104,6 +107,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             series,
             repo_dir_path,
             source,
+            target,
             diagnostics,
             commit,
         } => {
@@ -119,6 +123,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 Some(&repo_dir_path),
                 &source_files,
                 &source,
+                &target,
                 diagnostics,
             )
         }
@@ -130,6 +135,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             range,
             merge_commit,
             source,
+            target,
             diagnostics,
         } => {
             let bytes =
@@ -146,6 +152,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 Some(&repo_dir_path),
                 &source_files,
                 &source,
+                &target,
                 diagnostics,
             )
         }
@@ -155,6 +162,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             series,
             repo_dir_path,
             source,
+            target,
             diagnostics,
             merge_sha,
         } => {
@@ -170,6 +178,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 Some(&repo_dir_path),
                 &source_files,
                 &source,
+                &target,
                 diagnostics,
             )
         }
@@ -179,6 +188,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             series,
             repo_dir_path,
             source,
+            target,
             diagnostics,
             pr_url,
         } => {
@@ -193,6 +203,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 Some(&repo_dir_path),
                 &FileMap::new(),
                 &source,
+                &target,
                 diagnostics,
             )
         }
@@ -200,6 +211,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             series,
             repo_dir_path,
             source,
+            target: _,
             diagnostics,
             commit,
         } => run_multi(
@@ -216,6 +228,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             repo_dir_path,
             commits_file_path,
             source,
+            target: _,
             diagnostics,
         } => run_batch(
             args,
@@ -589,6 +602,7 @@ fn run_check_patch(
     repo_dir_path: Option<&Path>,
     source_files: &FileMap,
     source: &SourcePinArgs,
+    target: &crate::cli::check::TargetRepoArgs,
     diagnostics: CheckFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
@@ -642,6 +656,23 @@ fn run_check_patch(
         repo_dir_path,
         diagnostics.suggest_prereqs,
     );
+    if let Some(target_ctx) =
+        target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?
+    {
+        let parsed = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
+        let touched: Vec<target_repo::TouchedPath<'_>> = parsed
+            .files
+            .iter()
+            .filter_map(|f| {
+                let path = f.new_path.as_deref().or(f.old_path.as_deref())?;
+                let is_deletion =
+                    f.new_path.is_none() || f.new_path.as_deref() == Some(Path::new("/dev/null"));
+                Some(target_repo::TouchedPath { path, is_deletion })
+            })
+            .collect();
+        let summary = target_repo::classify_touched_paths(&touched, &target_ctx);
+        target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
+    }
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),
@@ -848,6 +879,24 @@ fn reason_md_label(r: &Reason) -> String {
         Reason::PreimageMissing {
             path, hunk_index, ..
         } => format!("PreimageMissing {} hunk #{hunk_index}", path.display()),
+        Reason::PathRename {
+            source_path,
+            target_path,
+            translation,
+        } => format!(
+            "PathRename {} → {} (translation: {})",
+            source_path.display(),
+            target_path.display(),
+            translation_name(translation),
+        ),
+    }
+}
+
+fn translation_name(t: &TranslationSource) -> &str {
+    match t {
+        TranslationSource::ConfigStanza { name } | TranslationSource::ExternalFile { name, .. } => {
+            name.as_str()
+        }
     }
 }
 

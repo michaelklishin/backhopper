@@ -60,6 +60,15 @@ impl FixtureRepo {
     pub(crate) fn tag(&self, name: &str) {
         run(self.dir.path(), &["git", "tag", name]);
     }
+
+    pub(crate) fn head_sha(&self) -> String {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(self.dir.path())
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout).unwrap().trim().to_owned()
+    }
 }
 
 pub(crate) fn write_config(dir: &Path, repo_path: &Path, snapshot_dir: &Path) -> PathBuf {

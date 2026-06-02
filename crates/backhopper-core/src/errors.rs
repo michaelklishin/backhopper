@@ -212,6 +212,41 @@ pub enum ConfigError {
         placeholder: String,
     },
 
+    #[error(
+        "suite_rule[{rule_index}]: include_suite_for_dep_modules requires a named capture `dep` from the path or line regex"
+    )]
+    SuiteRuleMissingDepCapture { rule_index: usize },
+
+    #[error("path_translation file not found: {0:?}")]
+    PathTranslationFileMissing(PathBuf),
+
+    #[error("path_translation: name must be non-empty")]
+    PathTranslationEmptyName,
+
+    #[error("path_translation[{name:?}]: {field} must be non-empty")]
+    PathTranslationEmptyPrefix { name: String, field: &'static str },
+
+    #[error("path_translation[{name:?}]: {field} {value:?} must end in '/'")]
+    PathTranslationPrefixNoTrailingSlash {
+        name: String,
+        field: &'static str,
+        value: String,
+    },
+
+    #[error("path_translation[{name:?}]: unknown direction {direction:?}")]
+    PathTranslationUnknownDirection { name: String, direction: String },
+
+    #[error("path_translation: duplicate name {0:?}")]
+    PathTranslationDuplicateName(String),
+
+    #[error("path_translation: duplicate source_prefix {0:?}")]
+    PathTranslationDuplicateSource(String),
+
+    #[error(
+        "path_translation: source_prefix overlap: {a:?} and {b:?} (one is a strict prefix of the other)"
+    )]
+    PathTranslationPrefixOverlap { a: String, b: String },
+
     #[error("name error: {0}")]
     Name(#[from] NameError),
 

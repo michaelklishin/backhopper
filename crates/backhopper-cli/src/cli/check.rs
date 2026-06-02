@@ -63,6 +63,26 @@ pub struct CheckFlags {
     pub suggest_prereqs: bool,
 }
 
+/// Cross-branch target-repo flags. When `target_repo_dir_path` is set,
+/// the verdict pipeline classifies every touched path against the
+/// target tree and emits `PathRename` or `PathsMissingOnTarget` rows
+/// per doc 014.
+#[derive(Debug, Args, Clone, Default)]
+pub struct TargetRepoArgs {
+    /// Working clone of the branch the commit is being backported to.
+    /// Triggers the cross-branch analyser. Absent: legacy behaviour.
+    #[arg(long)]
+    pub target_repo_dir_path: Option<PathBuf>,
+    /// Ref to resolve inside the target repo. Defaults to `HEAD`.
+    #[arg(long, default_value = "HEAD", requires = "target_repo_dir_path")]
+    pub target_ref: String,
+    /// External `[[path_translation]]` TOML file unioned with the
+    /// stanzas in `backhopper.toml`. The flag accepts a path; missing
+    /// file is a hard error.
+    #[arg(long)]
+    pub path_translations_file_path: Option<PathBuf>,
+}
+
 /// Optional source-side pin descriptor. When set, the analyzer diffs
 /// specs and record field lists per touched MFA or record between the
 /// source pin and the target pin, surfacing `SignatureChanged` and
@@ -99,6 +119,8 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
+        target: TargetRepoArgs,
+        #[command(flatten)]
         diagnostics: CheckFlags,
         #[arg(value_name = "PATCH_FILE_PATH")]
         patch_file_path: Option<PathBuf>,
@@ -115,6 +137,8 @@ pub enum CheckCmd {
         repo_dir_path: PathBuf,
         #[command(flatten)]
         source: SourcePinArgs,
+        #[command(flatten)]
+        target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
         #[arg(value_name = "COMMIT_SHA")]
@@ -137,6 +161,8 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
+        target: TargetRepoArgs,
+        #[command(flatten)]
         diagnostics: CheckFlags,
     },
     /// Check the diff of a merge commit, equivalent to `SHA^2..SHA^1`.
@@ -153,6 +179,8 @@ pub enum CheckCmd {
         repo_dir_path: PathBuf,
         #[command(flatten)]
         source: SourcePinArgs,
+        #[command(flatten)]
+        target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
         #[arg(value_name = "MERGE_SHA")]
@@ -171,6 +199,8 @@ pub enum CheckCmd {
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
+        target: TargetRepoArgs,
+        #[command(flatten)]
         diagnostics: CheckFlags,
         /// PR URL like `https://github.com/owner/repo/pull/123`.
         #[arg(value_name = "PR_URL")]
@@ -187,6 +217,8 @@ pub enum CheckCmd {
         repo_dir_path: PathBuf,
         #[command(flatten)]
         source: SourcePinArgs,
+        #[command(flatten)]
+        target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
         #[arg(value_name = "COMMIT_SHA")]
@@ -207,6 +239,8 @@ pub enum CheckCmd {
         commits_file_path: PathBuf,
         #[command(flatten)]
         source: SourcePinArgs,
+        #[command(flatten)]
+        target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
     },

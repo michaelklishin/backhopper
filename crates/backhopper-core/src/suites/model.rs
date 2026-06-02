@@ -74,6 +74,7 @@ pub struct PlanInput {
     /// and suites that reference them are added to the plan. Empty by
     /// default; populated from a snapshot when richer triage is wanted.
     pub implementer_index: BTreeMap<ModuleName, Vec<ModuleName>>,
+    pub dep_module_index: BTreeMap<String, Vec<ModuleName>>,
 }
 
 /// One entry in the plan: the suite plus every rule that included it.
@@ -113,6 +114,22 @@ pub struct ExtraRule {
     pub include_suites: Vec<SuiteRefSpec>,
     #[serde(default)]
     pub include_suite_templates: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_match: Option<LineMatch>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_suite_for_dep_modules: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineMatch {
+    pub pattern: String,
+    #[serde(default)]
+    pub captures: Vec<String>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Path-glob trigger expression. `PathRegex` supports named captures

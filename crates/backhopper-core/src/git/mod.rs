@@ -4,6 +4,10 @@
 
 //! Git access through `gix`. The whole crate's git seam lives here.
 
+mod target_tree_index;
+
+pub use target_tree_index::TargetTreeIndex;
+
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write;

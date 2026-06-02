@@ -59,6 +59,13 @@ pub enum InapplicableReason {
     /// Every touched path is unclaimed by any configured project's
     /// scan_paths or app_roots. Vendored files, docs, build scripts.
     Untracked,
+    /// `--target-repo-dir-path` was supplied and every touched path
+    /// is missing from the target tree, with no configured
+    /// translation mapping any of them. The patch as written does
+    /// not apply to the target.
+    PathsMissingOnTarget {
+        paths: Vec<PathBuf>,
+    },
 }
 
 impl InapplicableReason {
@@ -77,6 +84,7 @@ impl InapplicableReason {
             Self::OnlySelfSurfaceTouched => "only_self_surface_touched",
             Self::OutOfScopeFor { .. } => "out_of_scope_for",
             Self::Untracked => "untracked",
+            Self::PathsMissingOnTarget { .. } => "paths_missing_on_target",
         }
     }
 }
@@ -268,6 +276,22 @@ pub enum Reason {
         name: TypeName,
         arity: Arity,
     },
+    /// A touched path is absent from the target tree, but a
+    /// configured `[[path_translation]]` rewrites it to a path that
+    /// does exist on the target. Non-blocking: the operator (or the
+    /// cherry-pick driver) rewrites the path before applying.
+    PathRename {
+        source_path: PathBuf,
+        target_path: PathBuf,
+        translation: TranslationSource,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TranslationSource {
+    ConfigStanza { name: String },
+    ExternalFile { path: PathBuf, name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

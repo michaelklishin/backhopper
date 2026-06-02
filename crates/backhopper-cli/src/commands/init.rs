@@ -211,11 +211,16 @@ pub fn build_toml(snapshot_dir: &Path, w: &InferredWorkspace) -> String {
         out.push_str("# name    = \"lib_a\"\n");
         out.push_str("# git_url = \"/abs/path/to/lib_a.git\"\n");
     } else {
+        out.push_str("\n[[project]]\n");
+        out.push_str("name      = \"rabbitmq-server\"\n");
+        out.push_str("kind      = \"self\"\n");
+        out.push_str("layout    = \"multi_app\"\n");
+        out.push_str("family    = \"rabbitmq\"\n");
+        out.push_str("app_roots = [\"deps\"]\n");
         for p in w.projects.values() {
             out.push_str("\n[[project]]\n");
             out.push_str(&format!("name       = \"{}\"\n", p.name));
             out.push_str("language   = \"erlang\"\n");
-            // placeholder url so the file parses; the error surfaces at `check` time
             out.push_str("git_url    = \"TODO: set to a clone URL or local path\"\n");
             out.push_str(&format!("tag_prefix = \"{}\"\n", p.tag_prefix));
         }
@@ -234,6 +239,13 @@ pub fn build_toml(snapshot_dir: &Path, w: &InferredWorkspace) -> String {
             .map(|p| p.project.as_str().len())
             .max()
             .unwrap_or(0);
+        let rabbitmq_pin = format!(
+            "    {{ project = \"rabbitmq-server\",{:gap$} branch = \"{}\" }},\n",
+            "",
+            s.branch,
+            gap = widest.saturating_sub("rabbitmq-server".len()),
+        );
+        out.push_str(&rabbitmq_pin);
         for pin in &s.pins {
             let project_str = pin.project.as_str();
             out.push_str(&format!(

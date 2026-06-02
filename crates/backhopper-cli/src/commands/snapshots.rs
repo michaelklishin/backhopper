@@ -21,6 +21,7 @@ use backhopper_core::git::{GitRepo, version_cmp};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, SeriesName, TagName,
 };
+use backhopper_core::model::pin::PinSpec;
 use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
@@ -137,14 +138,20 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             no_remote_check: _,
             dry_run,
             since,
-        } => generate(args, &cfg, project, dry_run, since),
+            series,
+        } => generate(args, &cfg, project, dry_run, since, series),
         SnapshotsCmd::List { project } => list(args, &cfg, project),
         SnapshotsCmd::Show {
             project,
             tag,
             module,
         } => show(args, &cfg, project, tag, module),
-        SnapshotsCmd::Verify { project, tag, all } => verify(args, &cfg, project, tag, all),
+        SnapshotsCmd::Verify {
+            project,
+            tag,
+            all,
+            coverage,
+        } => verify(args, &cfg, project, tag, all, coverage),
         SnapshotsCmd::Rebuild {
             project,
             tag,
@@ -233,7 +240,11 @@ fn generate(
     project: Option<ProjectName>,
     dry_run: bool,
     since: Option<TagName>,
+    series: Option<SeriesName>,
 ) -> CliResult<i32> {
+    if let Some(name) = series {
+        return generate_series(args, cfg, &name, dry_run);
+    }
     let store = open_store_mut(args, cfg)?;
     let projects: Vec<&Project> = match project {
         Some(p) => vec![cfg.project(&p).map_err(|e| CliError::Core(e.into()))?],
@@ -325,6 +336,175 @@ fn generate_one(
         tags: captured_tags,
         ignored_non_tag_refs: listing.skipped,
     })
+}
+
+#[derive(Debug, Serialize)]
+struct GenerateSeriesPayload {
+    series: String,
+    projects: Vec<DiscoverPayload>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    self_pins_skipped: Vec<SelfPinSkip>,
+    summary: GenerateSeriesSummary,
+}
+
+#[derive(Debug, Serialize)]
+struct SelfPinSkip {
+    project: String,
+    git_ref: String,
+    reason: &'static str,
+}
+
+#[derive(Debug, Serialize, Default)]
+struct GenerateSeriesSummary {
+    discovered: usize,
+    skipped: usize,
+    failed: usize,
+}
+
+fn generate_series(
+    args: &GlobalArgs,
+    cfg: &Config,
+    name: &SeriesName,
+    dry_run: bool,
+) -> CliResult<i32> {
+    let series = cfg
+        .series_by_name(name)
+        .map_err(|e| CliError::Core(e.into()))?;
+    let store = open_store_mut(args, cfg)?;
+    let mut payloads: Vec<DiscoverPayload> = Vec::with_capacity(series.pins.len());
+    let mut self_pins_skipped: Vec<SelfPinSkip> = Vec::new();
+    let mut summary = GenerateSeriesSummary::default();
+    for spec in &series.pins {
+        match spec {
+            PinSpec::SelfRef {
+                project, git_ref, ..
+            } => {
+                self_pins_skipped.push(SelfPinSkip {
+                    project: project.to_string(),
+                    git_ref: git_ref.to_string(),
+                    reason: "self snapshots are sourced from the working repo, not the store",
+                });
+            }
+            PinSpec::Literal { project, tag } => {
+                let p = cfg.project(project).map_err(|e| CliError::Core(e.into()))?;
+                let payload = generate_pinned_tag(p, tag, &store, dry_run)?;
+                accumulate_summary(&mut summary, &payload);
+                payloads.push(payload);
+            }
+            PinSpec::Pattern { project, .. } => {
+                let p = cfg.project(project).map_err(|e| CliError::Core(e.into()))?;
+                let resolved = spec.resolve(&store).map_err(|e| CliError::Core(e.into()))?;
+                let payload = generate_pinned_tag(p, &resolved.tag, &store, dry_run)?;
+                accumulate_summary(&mut summary, &payload);
+                payloads.push(payload);
+            }
+        }
+    }
+    let payload = GenerateSeriesPayload {
+        series: name.to_string(),
+        projects: payloads,
+        self_pins_skipped,
+        summary,
+    };
+    let exit = if payload.summary.failed > 0 {
+        PARTIAL_SUCCESS_I32
+    } else {
+        0
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots generate");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        writeln!(
+            w,
+            "series {}: discovered {}, skipped {}, failed {}",
+            payload.series,
+            payload.summary.discovered,
+            payload.summary.skipped,
+            payload.summary.failed
+        )?;
+        for p in &payload.projects {
+            writeln!(
+                w,
+                "  {}: captured {}, skipped {}, failed {}",
+                p.project,
+                p.captured,
+                p.skipped,
+                p.failed.len()
+            )?;
+        }
+        for s in &payload.self_pins_skipped {
+            writeln!(w, "  {} ({}): skipped — {}", s.project, s.git_ref, s.reason)?;
+        }
+        Ok(())
+    })?;
+    Ok(exit)
+}
+
+fn accumulate_summary(summary: &mut GenerateSeriesSummary, payload: &DiscoverPayload) {
+    summary.discovered += payload.captured;
+    summary.skipped += payload.skipped;
+    summary.failed += payload.failed.len();
+}
+
+fn generate_pinned_tag(
+    p: &Project,
+    tag: &TagName,
+    store: &SnapshotStore<Mutable>,
+    dry_run: bool,
+) -> CliResult<DiscoverPayload> {
+    if store.has(&p.name, tag) {
+        return Ok(DiscoverPayload {
+            project: p.name.to_string(),
+            captured: 0,
+            skipped: 1,
+            failed: Vec::new(),
+            tags: Vec::new(),
+            ignored_non_tag_refs: Vec::new(),
+        });
+    }
+    let repo = GitRepo::open(
+        p.require_git_url()
+            .map_err(|e| CliError::Core(e.into()))?
+            .to_path_buf(),
+    )
+    .map_err(|e| CliError::Core(e.into()))?;
+    match build_snapshot(p, &repo, tag) {
+        Ok(snapshot) => {
+            if !dry_run {
+                if let Err(e) = store.write(&snapshot) {
+                    return Ok(DiscoverPayload {
+                        project: p.name.to_string(),
+                        captured: 0,
+                        skipped: 0,
+                        failed: vec![DiscoverFailure {
+                            tag: tag.to_string(),
+                            reason: e.to_string(),
+                        }],
+                        tags: Vec::new(),
+                        ignored_non_tag_refs: Vec::new(),
+                    });
+                }
+            }
+            Ok(DiscoverPayload {
+                project: p.name.to_string(),
+                captured: 1,
+                skipped: 0,
+                failed: Vec::new(),
+                tags: vec![tag.to_string()],
+                ignored_non_tag_refs: Vec::new(),
+            })
+        }
+        Err(e) => Ok(DiscoverPayload {
+            project: p.name.to_string(),
+            captured: 0,
+            skipped: 0,
+            failed: vec![DiscoverFailure {
+                tag: tag.to_string(),
+                reason: e.to_string(),
+            }],
+            tags: Vec::new(),
+            ignored_non_tag_refs: Vec::new(),
+        }),
+    }
 }
 
 pub fn filter_tags_since(tags: Vec<TagName>, since: Option<&TagName>) -> Vec<TagName> {
@@ -611,15 +791,20 @@ fn verify(
     project: Option<ProjectName>,
     tag: Option<TagName>,
     all: bool,
+    coverage: bool,
 ) -> CliResult<i32> {
+    if coverage {
+        return verify_coverage(args, cfg);
+    }
     if all {
         return verify_all(args, cfg);
     }
     let project = project.ok_or_else(|| {
-        CliError::InvalidInput("--project is required unless --all is set".into())
+        CliError::InvalidInput("--project is required unless --all or --coverage is set".into())
     })?;
-    let tag =
-        tag.ok_or_else(|| CliError::InvalidInput("--tag is required unless --all is set".into()))?;
+    let tag = tag.ok_or_else(|| {
+        CliError::InvalidInput("--tag is required unless --all or --coverage is set".into())
+    })?;
     verify_one(args, cfg, project, tag)
 }
 
@@ -778,6 +963,91 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
                 "  stale {} {} (extractor {} != binary {}): run `snapshots rebuild`",
                 s.project, s.tag, s.stored, s.expected,
             )?;
+        }
+        Ok(())
+    })
+}
+
+#[derive(Debug, Serialize)]
+struct MissingPin {
+    series: String,
+    project: String,
+    tag: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CoveragePayload {
+    series_checked: usize,
+    pins_checked: usize,
+    covered: usize,
+    self_pins_skipped: usize,
+    missing_pins: Vec<MissingPin>,
+}
+
+fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
+    let store = open_store_read(args, cfg)?;
+    let mut missing_pins: Vec<MissingPin> = Vec::new();
+    let mut pins_checked = 0usize;
+    let mut covered = 0usize;
+    let mut self_pins_skipped = 0usize;
+    for series in &cfg.series {
+        for spec in &series.pins {
+            pins_checked += 1;
+            let resolved = match spec {
+                PinSpec::SelfRef { .. } => {
+                    self_pins_skipped += 1;
+                    continue;
+                }
+                PinSpec::Literal { project, tag } => (project.clone(), tag.clone()),
+                PinSpec::Pattern { .. } => match spec.resolve(&store) {
+                    Ok(pin) => (pin.project, pin.tag),
+                    Err(_) => {
+                        missing_pins.push(MissingPin {
+                            series: series.name.to_string(),
+                            project: spec.project().to_string(),
+                            tag: "<pattern unresolved>".to_string(),
+                        });
+                        continue;
+                    }
+                },
+            };
+            let (project, tag) = resolved;
+            if store.has(&project, &tag) {
+                covered += 1;
+            } else {
+                missing_pins.push(MissingPin {
+                    series: series.name.to_string(),
+                    project: project.to_string(),
+                    tag: tag.to_string(),
+                });
+            }
+        }
+    }
+    let payload = CoveragePayload {
+        series_checked: cfg.series.len(),
+        pins_checked,
+        covered,
+        self_pins_skipped,
+        missing_pins,
+    };
+    let exit = if payload.missing_pins.is_empty() {
+        0
+    } else {
+        PARTIAL_SUCCESS_I32
+    };
+    let ctx = OutputContext::new(args.formatter, "snapshots verify");
+    render_with_exit(&ctx, &payload, exit, |w| {
+        writeln!(
+            w,
+            "series: {}, pins: {}, covered: {}, missing: {}, self_pins_skipped: {}",
+            payload.series_checked,
+            payload.pins_checked,
+            payload.covered,
+            payload.missing_pins.len(),
+            payload.self_pins_skipped,
+        )?;
+        for m in &payload.missing_pins {
+            writeln!(w, "  missing {} {} ({})", m.project, m.tag, m.series)?;
         }
         Ok(())
     })

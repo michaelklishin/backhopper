@@ -5,4 +5,5 @@
 mod app_src_discovery_integration_tests;
 mod git_repo_integration_tests;
 mod helpers;
+mod suite_rule_dep_module_sweep_integration_tests;
 mod suites_plan_integration_tests;

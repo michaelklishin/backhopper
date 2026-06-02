@@ -10,6 +10,7 @@ mod dynamic_calls_proptests;
 mod evaluation_typestate_proptests;
 mod mfa_round_trip_proptests;
 mod path_routing_proptests;
+mod path_translation_proptests;
 mod pin_resolution_proptests;
 mod preimage_check_proptests;
 mod scope_filter_proptests;

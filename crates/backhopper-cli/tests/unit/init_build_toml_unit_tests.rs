@@ -98,10 +98,21 @@ fn workspace_with_projects_and_series_round_trips() {
     let path = tmp.path().join("backhopper.toml");
     std::fs::write(&path, &body).unwrap();
     let cfg = Config::load(&path).expect("config must round-trip");
-    assert_eq!(cfg.projects.len(), 2);
+    assert_eq!(cfg.projects.len(), 3);
+    assert!(
+        cfg.projects
+            .iter()
+            .any(|p| p.name.as_str() == "rabbitmq-server")
+    );
     assert_eq!(cfg.series.len(), 1);
     assert_eq!(cfg.series[0].name.as_str(), "rabbitmq-4.1");
-    assert_eq!(cfg.series[0].pins.len(), 2);
+    assert_eq!(cfg.series[0].pins.len(), 3);
+    assert!(
+        cfg.series[0]
+            .pins
+            .iter()
+            .any(|p| p.project().as_str() == "rabbitmq-server")
+    );
 }
 
 #[test]

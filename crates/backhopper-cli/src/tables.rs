@@ -76,6 +76,21 @@ fn inapplicable_detail(reason: &InapplicableReason) -> String {
         InapplicableReason::Untracked => {
             "untracked (no configured project owns the touched paths)".to_owned()
         }
+        InapplicableReason::PathsMissingOnTarget { paths } => {
+            let mut sample: Vec<String> = paths
+                .iter()
+                .take(3)
+                .map(|p| p.display().to_string())
+                .collect();
+            if paths.len() > 3 {
+                sample.push(format!("… +{} more", paths.len() - 3));
+            }
+            format!(
+                "paths_missing_on_target ({} path(s): {})",
+                paths.len(),
+                sample.join(", ")
+            )
+        }
         other => other.as_str().to_owned(),
     }
 }
@@ -120,6 +135,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::MissingType { .. } => "MissingType",
         Reason::PreimageDrifted { .. } => "PreimageDrifted",
         Reason::PreimageMissing { .. } => "PreimageMissing",
+        Reason::PathRename { .. } => "PathRename",
     }
 }
 
@@ -323,6 +339,11 @@ fn reason_detail(r: &Reason) -> String {
             "{} (hunk #{hunk_index}): preimage block absent; first lines: {preimage_excerpt:?}",
             path.display()
         ),
+        Reason::PathRename {
+            source_path,
+            target_path,
+            ..
+        } => format!("{} → {}", source_path.display(), target_path.display()),
     }
 }
 

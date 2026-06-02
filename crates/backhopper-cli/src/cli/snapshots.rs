@@ -16,15 +16,19 @@ pub enum SnapshotsCmd {
     },
     /// Generate snapshots for tags that don't have one yet.
     Generate {
-        #[arg(long)]
+        #[arg(long, conflicts_with = "series")]
         project: Option<ProjectName>,
         #[arg(long, help = "Skip ls-remote freshness check")]
         no_remote_check: bool,
         #[arg(long, help = "Plan only; do not write to disk")]
         dry_run: bool,
         /// Only consider tags at or after this one (version-sorted).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "series")]
         since: Option<TagName>,
+        /// Fan out across every dep pinned by the named series. Skips
+        /// self-pins.
+        #[arg(long, conflicts_with_all = ["project", "since"])]
+        series: Option<SeriesName>,
     },
     /// List existing snapshots for a project.
     List {
@@ -43,13 +47,16 @@ pub enum SnapshotsCmd {
     },
     /// Verify a snapshot's canonical-form invariants.
     Verify {
-        #[arg(long, conflicts_with = "all")]
+        #[arg(long, conflicts_with_all = ["all", "coverage"])]
         project: Option<ProjectName>,
-        #[arg(long, requires = "project", conflicts_with = "all")]
+        #[arg(long, requires = "project", conflicts_with_all = ["all", "coverage"])]
         tag: Option<TagName>,
         /// Walk every stored snapshot and parse-verify each one.
-        #[arg(long, conflicts_with_all = ["project", "tag"])]
+        #[arg(long, conflicts_with_all = ["project", "tag", "coverage"])]
         all: bool,
+        /// Report every `[[series]]` pin missing from the snapshot store.
+        #[arg(long, conflicts_with_all = ["project", "tag", "all"])]
+        coverage: bool,
     },
     /// Rebuild a snapshot from source (replace the on-disk copy).
     Rebuild {

@@ -186,3 +186,37 @@ dep_osiris = hex 1.8.6
     ]);
     validate.success();
 }
+
+#[test]
+fn init_with_rabbitmq_repo_emits_self_project_block() {
+    use crate::helpers::fixture::FixtureRepo;
+
+    let components_mk = "dep_ra = hex 2.16.13\n";
+    let repo = FixtureRepo::new();
+    repo.write_file("rabbitmq-components.mk", components_mk);
+    repo.commit("seed");
+
+    let workdir = TempDir::new().unwrap();
+    let a = run([
+        "init",
+        "--config-dir-path",
+        workdir.path().to_str().unwrap(),
+        "--rabbitmq-repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--rabbitmq-branches",
+        "main",
+    ]);
+    a.success();
+    let body = std::fs::read_to_string(workdir.path().join("backhopper.toml")).unwrap();
+    assert!(
+        body.contains("name      = \"rabbitmq-server\""),
+        "body: {body}"
+    );
+    assert!(body.contains("kind      = \"self\""), "body: {body}");
+    assert!(body.contains("family    = \"rabbitmq\""), "body: {body}");
+    assert!(body.contains("app_roots = [\"deps\"]"), "body: {body}");
+    assert!(
+        body.contains("project = \"rabbitmq-server\""),
+        "self-project must also be pinned in [[series]] blocks; body: {body}"
+    );
+}

@@ -10,6 +10,8 @@ use std::slice;
 
 use crate::app_src::AppSrcSpec;
 use crate::model::names::{ApplicationName, ModuleName};
+use std::fs;
+
 use crate::suites::matcher::SuiteMatcher;
 use crate::suites::model::{ExtraRule, ExtraRuleTrigger, SuiteInclusionReason, SuiteRef};
 use crate::suites::scan;
@@ -228,66 +230,192 @@ fn is_unit_or_prop_suite(module: &ModuleName) -> bool {
     n.starts_with("unit_") || n.starts_with("prop_") || n.contains("_unit_") || n.contains("_prop_")
 }
 
-/// ConfiguredRule: apply each user-supplied rule. When its trigger
-/// fires, include every suite listed in `include_suites`.
+/// ConfiguredRule: apply each user-supplied rule.
 pub(crate) fn apply_configured_rules(
     rules: &[ExtraRule],
     modified_paths: &[PathBuf],
     discovered: &[SuiteRef],
+    repo_root: &Path,
+    dep_module_index: &BTreeMap<String, Vec<ModuleName>>,
+    matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     for rule in rules {
-        let compiled_regex = match &rule.trigger {
+        let path_regex = match &rule.trigger {
             ExtraRuleTrigger::PathRegex { pattern, .. } => regex::Regex::new(pattern).ok(),
             _ => None,
         };
+        let line_regex = rule
+            .line_match
+            .as_ref()
+            .and_then(|m| regex::Regex::new(&m.pattern).ok());
         for path in modified_paths {
             let s = path.to_string_lossy();
-            let captures = compiled_regex.as_ref().and_then(|r| r.captures(&s));
+            let path_captures = path_regex.as_ref().and_then(|r| r.captures(&s));
             let fires = match &rule.trigger {
                 ExtraRuleTrigger::PathSuffix { suffix } => s.ends_with(suffix.as_str()),
                 ExtraRuleTrigger::PathContains { fragment } => s.contains(fragment.as_str()),
-                ExtraRuleTrigger::PathRegex { .. } => captures.is_some(),
+                ExtraRuleTrigger::PathRegex { .. } => path_captures.is_some(),
             };
             if !fires {
                 continue;
             }
-            for spec in &rule.include_suites {
-                let Some(suite) = discovered
-                    .iter()
-                    .find(|s| s.application == spec.application && s.module == spec.module)
-                else {
-                    continue;
-                };
-                out.entry(suite.clone())
-                    .or_default()
-                    .push(SuiteInclusionReason::ConfiguredRule {
-                        rule_name: rule.name.clone(),
-                        triggering_path: path.clone(),
-                    });
-            }
-            for template in &rule.include_suite_templates {
-                let module_name = match captures.as_ref() {
-                    Some(caps) => match expand_template(template, caps) {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    },
-                    None => template.clone(),
-                };
-                for suite in discovered
-                    .iter()
-                    .filter(|s| s.module.as_str() == module_name)
-                {
-                    out.entry(suite.clone()).or_default().push(
-                        SuiteInclusionReason::ConfiguredRule {
-                            rule_name: rule.name.clone(),
-                            triggering_path: path.clone(),
-                        },
-                    );
-                }
+            let path_caps_owned = match (&path_regex, &path_captures) {
+                (Some(rx), Some(caps)) => captures_to_owned(rx, caps),
+                _ => BTreeMap::new(),
+            };
+
+            let line_caps_iter: Vec<BTreeMap<String, String>> = if let Some(rx) = &line_regex {
+                read_matched_lines(repo_root, path, rx)
+            } else {
+                vec![BTreeMap::new()]
+            };
+
+            for line_caps in &line_caps_iter {
+                let merged = merge_captures(&path_caps_owned, line_caps);
+                fire_rule_once(
+                    rule,
+                    path,
+                    &merged,
+                    discovered,
+                    dep_module_index,
+                    matcher,
+                    out,
+                );
             }
         }
     }
+}
+
+fn fire_rule_once(
+    rule: &ExtraRule,
+    path: &Path,
+    captures: &BTreeMap<String, String>,
+    discovered: &[SuiteRef],
+    dep_module_index: &BTreeMap<String, Vec<ModuleName>>,
+    matcher: &mut dyn SuiteMatcher,
+    out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
+) {
+    for spec in &rule.include_suites {
+        let Some(suite) = discovered
+            .iter()
+            .find(|s| s.application == spec.application && s.module == spec.module)
+        else {
+            continue;
+        };
+        out.entry(suite.clone())
+            .or_default()
+            .push(SuiteInclusionReason::ConfiguredRule {
+                rule_name: rule.name.clone(),
+                triggering_path: path.to_path_buf(),
+            });
+    }
+    for template in &rule.include_suite_templates {
+        let module_name = match expand_template_named(template, captures) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        for suite in discovered
+            .iter()
+            .filter(|s| s.module.as_str() == module_name)
+        {
+            out.entry(suite.clone())
+                .or_default()
+                .push(SuiteInclusionReason::ConfiguredRule {
+                    rule_name: rule.name.clone(),
+                    triggering_path: path.to_path_buf(),
+                });
+        }
+    }
+    if rule.include_suite_for_dep_modules {
+        let Some(dep_name) = captures.get("dep") else {
+            return;
+        };
+        let Some(modules) = dep_module_index.get(dep_name) else {
+            return;
+        };
+        if modules.is_empty() {
+            return;
+        }
+        for suite in discovered {
+            let refs = matcher.modules_referenced_in_suite(&suite.path, modules);
+            if refs.is_empty() {
+                continue;
+            }
+            out.entry(suite.clone())
+                .or_default()
+                .push(SuiteInclusionReason::ConfiguredRule {
+                    rule_name: rule.name.clone(),
+                    triggering_path: path.to_path_buf(),
+                });
+        }
+    }
+}
+
+fn captures_to_owned(rx: &regex::Regex, caps: &regex::Captures<'_>) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for name in rx.capture_names().flatten() {
+        if let Some(m) = caps.name(name) {
+            out.insert(name.to_owned(), m.as_str().to_owned());
+        }
+    }
+    out
+}
+
+fn merge_captures(
+    base: &BTreeMap<String, String>,
+    extra: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut out = base.clone();
+    for (k, v) in extra {
+        out.insert(k.clone(), v.clone());
+    }
+    out
+}
+
+fn read_matched_lines(
+    repo_root: &Path,
+    path: &Path,
+    line_regex: &regex::Regex,
+) -> Vec<BTreeMap<String, String>> {
+    let full = repo_root.join(path);
+    let Ok(content) = fs::read_to_string(&full) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in content.lines() {
+        if let Some(caps) = line_regex.captures(line) {
+            out.push(captures_to_owned(line_regex, &caps));
+        }
+    }
+    out
+}
+
+fn expand_template_named(
+    template: &str,
+    captures: &BTreeMap<String, String>,
+) -> Result<String, TemplateError> {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else {
+            out.push('{');
+            rest = after;
+            continue;
+        };
+        let name = &after[..end];
+        let Some(v) = captures.get(name) else {
+            return Err(TemplateError {
+                placeholder: name.to_owned(),
+            });
+        };
+        out.push_str(v);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
 }
 
 #[derive(Debug)]

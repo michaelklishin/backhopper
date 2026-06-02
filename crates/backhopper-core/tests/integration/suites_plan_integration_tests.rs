@@ -84,6 +84,7 @@ fn r1_test_modified_includes_directly_edited_suite() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     assert_eq!(result.len(), 1);
@@ -105,6 +106,7 @@ fn r4_same_app_caller_includes_grep_positive_suites() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let suite_names: Vec<&str> = result
@@ -130,6 +132,7 @@ fn r5_cross_app_caller_only_fires_for_library_modules() {
         library_apps,
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let mgmt_suites: Vec<&str> = result
@@ -167,6 +170,7 @@ fn r5_does_not_fire_when_module_app_is_not_library() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let mgmt_suites: Vec<&str> = result
@@ -191,6 +195,7 @@ fn r3_unit_or_prop_sweep_includes_matching_suites_with_module_refs() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -220,6 +225,7 @@ fn multiple_reasons_accumulate_on_the_same_suite() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -259,8 +265,11 @@ fn configured_rule_path_suffix_includes_listed_suites() {
                 module: ModuleName::new("unrelated_SUITE").unwrap(),
             }],
             include_suite_templates: Vec::new(),
+            line_match: None,
+            include_suite_for_dep_modules: false,
         }],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     let reasons: Vec<&SuiteInclusionReason> = result
@@ -288,6 +297,7 @@ fn empty_diff_yields_empty_plan() {
         library_apps: vec![],
         extra_rules: vec![],
         implementer_index: std::collections::BTreeMap::new(),
+        dep_module_index: std::collections::BTreeMap::new(),
     };
     let result = plan(&input);
     assert!(result.is_empty());

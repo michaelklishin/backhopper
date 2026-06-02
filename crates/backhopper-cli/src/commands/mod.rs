@@ -20,6 +20,7 @@ pub mod snapshot_cache;
 pub mod snapshots;
 pub mod suggest;
 pub mod suites;
+pub mod target_repo;
 pub mod tree_source;
 pub mod version;
 pub mod xref;

@@ -4,6 +4,12 @@
 
 //! `backhopper.toml` schema and loader.
 
+mod path_translation;
+
+pub use path_translation::{
+    PathTranslation, PathTranslations, TranslationDirection, TranslationOrigin,
+};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
@@ -17,7 +23,7 @@ use crate::model::names::{ApplicationName, GitRef, ProjectName, SeriesName, TagG
 use crate::model::pin::{self, Pin, PinSelect, PinSpec};
 use crate::store::SnapshotStore;
 use crate::suites::rules::validate_template_placeholders;
-use crate::suites::{ExtraRule, ExtraRuleTrigger};
+use crate::suites::{ExtraRule, ExtraRuleTrigger, LineMatch};
 
 pub const CONFIG_VERSION: u32 = 1;
 
@@ -63,6 +69,23 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "suite_rule")]
     pub suite_rules: Vec<SuiteRuleRaw>,
+
+    #[serde(default, rename = "path_translation")]
+    pub path_translations: Vec<PathTranslationRaw>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PathTranslationRaw {
+    pub name: String,
+    #[serde(default = "default_translation_direction")]
+    pub direction: String,
+    pub source_prefix: String,
+    pub target_prefix: String,
+}
+
+fn default_translation_direction() -> String {
+    "source_to_target".to_owned()
 }
 
 /// TOML form of a path-pattern suite rule. Accepts `include_suite` as a
@@ -73,10 +96,14 @@ pub struct ConfigFile {
 pub struct SuiteRuleRaw {
     pub name: Option<String>,
     pub when_modified_path_matches: String,
+    #[serde(default)]
+    pub when_modified_line_matches: Option<String>,
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub include_suite: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub also: Vec<String>,
+    #[serde(default)]
+    pub include_suite_for_dep_modules: bool,
 }
 
 #[derive(Deserialize)]
@@ -553,6 +580,7 @@ pub struct Config {
     pub projects: Vec<Project>,
     pub series: Vec<Series>,
     pub suite_rules: Vec<ExtraRule>,
+    pub path_translations: PathTranslations,
 }
 
 impl Config {
@@ -627,12 +655,14 @@ impl Config {
         for (idx, r) in raw.suite_rules.into_iter().enumerate() {
             suite_rules.push(parse_suite_rule(idx, r)?);
         }
+        let path_translations = PathTranslations::from_config_stanzas(raw.path_translations)?;
         Ok(Self {
             config_path,
             defaults,
             projects,
             series,
             suite_rules,
+            path_translations,
         })
     }
 
@@ -703,31 +733,59 @@ fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigEr
         rule_index: idx,
         detail: e.to_string(),
     })?;
-    let capture_names: Vec<String> = compiled
+    let path_capture_names: Vec<String> = compiled
         .capture_names()
         .flatten()
         .map(|s| s.to_owned())
         .collect();
+    let line_match = match raw.when_modified_line_matches {
+        Some(line_pattern) => {
+            let line_compiled =
+                regex::Regex::new(&line_pattern).map_err(|e| ConfigError::SuiteRuleRegex {
+                    rule_index: idx,
+                    detail: e.to_string(),
+                })?;
+            let line_captures: Vec<String> = line_compiled
+                .capture_names()
+                .flatten()
+                .map(|s| s.to_owned())
+                .collect();
+            Some(LineMatch {
+                pattern: line_pattern,
+                captures: line_captures,
+            })
+        }
+        None => None,
+    };
+    let mut allowed_captures: Vec<String> = path_capture_names.clone();
+    if let Some(lm) = &line_match {
+        allowed_captures.extend(lm.captures.iter().cloned());
+    }
     let mut templates: Vec<String> = Vec::new();
     templates.extend(raw.include_suite);
     templates.extend(raw.also);
     for t in &templates {
-        if let Err(e) = validate_template_placeholders(t, &capture_names) {
+        if let Err(e) = validate_template_placeholders(t, &allowed_captures) {
             return Err(ConfigError::SuiteRuleUnknownPlaceholder {
                 rule_index: idx,
                 placeholder: e.placeholder,
             });
         }
     }
+    if raw.include_suite_for_dep_modules && !allowed_captures.iter().any(|c| c == "dep") {
+        return Err(ConfigError::SuiteRuleMissingDepCapture { rule_index: idx });
+    }
     let name = raw.name.unwrap_or_else(|| format!("suite_rule_{idx}"));
     Ok(ExtraRule {
         name,
         trigger: ExtraRuleTrigger::PathRegex {
             pattern,
-            captures: capture_names,
+            captures: path_capture_names,
         },
         include_suites: Vec::new(),
         include_suite_templates: templates,
+        line_match,
+        include_suite_for_dep_modules: raw.include_suite_for_dep_modules,
     })
 }
 
