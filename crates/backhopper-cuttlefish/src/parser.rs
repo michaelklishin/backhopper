@@ -22,9 +22,9 @@ impl fmt::Display for ParseError {
 impl Error for ParseError {}
 
 /// Parse a Cuttlefish `.schema` source into the list of top-level
-/// translation/validator/mapping tuples it contains. Comments (`%`),
-/// strings, and chars are balanced past correctly; nested `{`/`}` inside
-/// strings or chars do not affect the brace stack.
+/// translation, validator, and mapping tuples it contains. Comments
+/// (`%`), strings, and chars are balanced past correctly; nested `{`
+/// and `}` inside strings or chars do not affect the brace stack.
 pub fn parse_schema(
     source: &str,
     source_path: &Path,

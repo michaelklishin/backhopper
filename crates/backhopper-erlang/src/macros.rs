@@ -29,7 +29,6 @@ pub fn try_expand_in_export_list(s: &str, module_name: Option<&str>) -> Option<S
                         return None;
                     }
                 }
-                "LINE" => out.push('0'),
                 _ => return None,
             }
         } else {

@@ -4,9 +4,7 @@
 
 //! Test-suite-selection adapter.
 //!
-//! The R3, R4, and R5 rules in
-//! `~/Development/md/backports/test_suite_selection.md` all reduce to:
-//! given a set of modified modules `S`, find suites that reference them.
+//! Given a set of modified modules `S`, find suites that reference them.
 //! With the xref module call graph this is one reverse-traversal query.
 
 use std::collections::BTreeSet;

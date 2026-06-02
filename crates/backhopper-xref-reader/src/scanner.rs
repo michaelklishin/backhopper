@@ -8,17 +8,8 @@
 //! and exposes helpers the reader uses to find function clauses and call
 //! sites. Not a full Erlang tokenizer: just what the v1 xref reader needs.
 //!
-//! Note: a sibling lexer lives at `backhopper_erlang::tokenizer`. Both must
-//! handle the same Erlang lexical rules (string/quoted-atom/char-literal
-//! escapes, comments, bracket balancing). They serve different purposes:
-//!
-//!  * this scanner is *cursor-based* and Position-tracking, used by the
-//!    xref reader to record precise `Loc` spans for each call site
-//!  * the erlang tokenizer is *block-oriented*: one pass produces a
-//!    `Vec<AttributeBlock>` and never tracks position
-//!
-//! Consolidation is plausible but deferred; see the note in
-//! `backhopper_erlang::tokenizer` for the trade-off.
+//! A sibling block-oriented tokenizer lives in `backhopper_erlang::tokenizer`.
+//! Consolidation is plausible but deferred.
 
 #[derive(Debug, Clone, Copy)]
 pub struct Pos {
@@ -244,6 +235,7 @@ impl<'a> Scanner<'a> {
                             }
                             b'"' => self.consume_string(),
                             b'\'' => self.consume_quoted_atom(),
+                            b'$' => self.consume_char_literal(),
                             b'%' => self.skip_line(),
                             _ => {
                                 self.advance();
@@ -257,6 +249,7 @@ impl<'a> Scanner<'a> {
                 }
                 b'"' => self.consume_string(),
                 b'\'' => self.consume_quoted_atom(),
+                b'$' => self.consume_char_literal(),
                 b'%' => self.skip_line(),
                 _ => {
                     self.advance();

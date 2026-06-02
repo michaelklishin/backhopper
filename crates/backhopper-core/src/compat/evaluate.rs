@@ -390,18 +390,18 @@ fn analyze_function_reference(
     };
     if module.exports.binary_search(&target).is_err() {
         let alt_arities = collect_alt_arities_in(module, &mfa.function);
-        if !alt_arities.is_empty() && !alt_arities.contains(&mfa.arity) {
+        if alt_arities.is_empty() {
+            reasons.push(Reason::MissingSymbol {
+                symbol: r.clone(),
+                first_seen_at_tag: None,
+                suggested_replacement: None,
+            });
+        } else {
             reasons.push(Reason::ArityChanged {
                 module: mfa.module.clone(),
                 function: mfa.function.clone(),
                 expected: mfa.arity,
                 found: alt_arities,
-            });
-        } else {
-            reasons.push(Reason::MissingSymbol {
-                symbol: r.clone(),
-                first_seen_at_tag: None,
-                suggested_replacement: None,
             });
         }
         return;
@@ -436,6 +436,10 @@ fn check_behaviour_conformance(
         let Some(pin_module) = snapshot.module_named(&source_module.name) else {
             continue;
         };
+        let implementers = snapshot.implementers_of(&source_module.name);
+        if implementers.is_empty() {
+            continue;
+        }
         let optional_at_source: HashSet<FunArity> =
             source_module.optional_callbacks.iter().cloned().collect();
         let optional_at_pin: HashSet<FunArity> =
@@ -466,10 +470,6 @@ fn check_behaviour_conformance(
                 )
             })
             .collect();
-        let implementers = snapshot.implementers_of(&source_module.name);
-        if implementers.is_empty() {
-            continue;
-        }
         for (key, source_sig) in &source_by_arity {
             if let Some(pin_sig) = pin_by_arity.get(key) {
                 if signatures_differ(source_sig, pin_sig) {

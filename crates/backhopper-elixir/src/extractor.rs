@@ -151,17 +151,17 @@ fn collect_module_recursive(
     let mut specs: Vec<SpecSig> = Vec::new();
     let mut types: Vec<TypeDecl> = Vec::new();
     while *cursor < lines.len() {
-        let line = lines[*cursor].clone();
-        if defmodule_re().is_match(&line) {
+        let line: &str = &lines[*cursor];
+        if defmodule_re().is_match(line) {
             collect_module_recursive(lines, cursor, &full, ex, out);
             continue;
         }
         *cursor += 1;
-        if moduledoc_false_re().is_match(&line) {
+        if moduledoc_false_re().is_match(line) {
             hidden = true;
             continue;
         }
-        if let Some(caps) = def_head_re().captures(&line) {
+        if let Some(caps) = def_head_re().captures(line) {
             let kind = caps[1].to_owned();
             let fname = caps[2].to_owned();
             let after_name = &line[caps.get(0).expect("match").end() - 1..];
@@ -169,15 +169,15 @@ fn collect_module_recursive(
             if matches!(kind.as_str(), "def" | "defmacro") {
                 exports.insert((fname, arity));
             }
-            depth += depth_delta_for_def(&line);
-            depth += extra_block_openers(&line);
-            depth -= count_inline_ends(&line);
+            depth += depth_delta_for_def(line);
+            depth += extra_block_openers(line);
+            depth -= count_inline_ends(line);
             if depth <= 0 {
                 break;
             }
             continue;
         }
-        if let Some(caps) = attr_callable_re().captures(&line) {
+        if let Some(caps) = attr_callable_re().captures(line) {
             let kind = caps[1].to_owned();
             let fname = caps[2].to_owned();
             let after = line[caps.get(0).expect("match").end()..].to_owned();
@@ -204,7 +204,7 @@ fn collect_module_recursive(
             }
             continue;
         }
-        if let Some(caps) = attr_type_re().captures(&line) {
+        if let Some(caps) = attr_type_re().captures(line) {
             let _kind = caps[1].to_owned();
             let tname = caps[2].to_owned();
             let after = line[caps.get(0).expect("match").end()..].to_owned();
@@ -224,8 +224,8 @@ fn collect_module_recursive(
             }
             continue;
         }
-        depth += extra_block_openers(&line);
-        depth -= count_inline_ends(&line);
+        depth += extra_block_openers(line);
+        depth -= count_inline_ends(line);
         if depth <= 0 {
             break;
         }

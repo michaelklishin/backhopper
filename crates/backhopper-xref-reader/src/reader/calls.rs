@@ -38,20 +38,20 @@ pub(super) fn try_function_clause(
     clause_pos: Pos,
     b: &mut ModuleBuilder,
 ) -> Option<FunctionSig> {
-    let save_byte_offset = sc.pos().byte_offset;
+    let save_pos = sc.pos();
     let name_str = sc.consume_identifier();
     if name_str.is_empty() {
         return None;
     }
     sc.skip_trivia();
     if sc.peek() != Some(b'(') {
-        rewind_to(sc, save_byte_offset);
+        sc.set_pos(save_pos);
         return None;
     }
     let name = match FunctionName::new(name_str.to_owned()) {
         Ok(n) => n,
         Err(_) => {
-            rewind_to(sc, save_byte_offset);
+            sc.set_pos(save_pos);
             return None;
         }
     };
@@ -200,27 +200,6 @@ fn scan_args_for_calls(sc: &mut Scanner<'_>, caller: &FunctionSig, b: &mut Modul
 fn arity_from(commas: u32, had_content: bool) -> u8 {
     let raw = if had_content { commas + 1 } else { 0 };
     u8::try_from(raw).unwrap_or(u8::MAX)
-}
-
-fn rewind_to(sc: &mut Scanner<'_>, byte_offset: u32) {
-    let mut line: u32 = 1;
-    let mut column: u32 = 1;
-    for (i, ch) in sc.src().char_indices() {
-        if i as u32 >= byte_offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
-    sc.set_pos(Pos {
-        line,
-        column,
-        byte_offset,
-    });
 }
 
 pub(super) fn try_call_site(

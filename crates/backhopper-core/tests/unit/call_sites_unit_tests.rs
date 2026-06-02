@@ -5,7 +5,8 @@
 use backhopper_core::SymbolKind;
 use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::compat::call_sites::{
-    DynamicCall, extract_call_args_into, extract_dynamic_into, extract_into,
+    DynamicCall, classify_arg, extract_call_args_into, extract_definitions_into,
+    extract_dynamic_into, extract_into, split_top_level_args,
 };
 
 #[test]
@@ -260,4 +261,82 @@ fn extract_call_args_classifies_fun_reference_actuals() {
     let entry = out.iter().find(|(mfa, _)| mfa.to_string() == "ra:start/1");
     let (_, args) = entry.expect("ra:start/1 captured");
     assert_eq!(args, &vec![ArgShape::Fun]);
+}
+
+#[test]
+fn split_top_level_args_handles_empty_arglist() {
+    let out = split_top_level_args(")trail");
+    assert!(out.is_empty());
+}
+
+#[test]
+fn split_top_level_args_returns_one_arg_with_no_commas() {
+    let out = split_top_level_args("X)rest");
+    assert_eq!(out, vec!["X"]);
+}
+
+#[test]
+fn split_top_level_args_splits_on_top_level_commas_only() {
+    let out = split_top_level_args("A, {B, C}, [D, E])rest");
+    assert_eq!(out, vec!["A", " {B, C}", " [D, E]"]);
+}
+
+#[test]
+fn split_top_level_args_ignores_comma_inside_string() {
+    let out = split_top_level_args(r#"A, "x,y,z", B)rest"#);
+    assert_eq!(out, vec!["A", r#" "x,y,z""#, " B"]);
+}
+
+#[test]
+fn split_top_level_args_ignores_comma_inside_quoted_atom() {
+    let out = split_top_level_args("A, 'x,y', B)rest");
+    assert_eq!(out, vec!["A", " 'x,y'", " B"]);
+}
+
+#[test]
+fn split_top_level_args_stops_at_matching_close_paren() {
+    // Anything past the matching `)` is ignored.
+    let out = split_top_level_args("A, B)C, D");
+    assert_eq!(out, vec!["A", " B"]);
+}
+
+#[test]
+fn classify_arg_recognises_atoms_and_variables() {
+    assert!(matches!(classify_arg("ok"), ArgShape::Atom { .. }));
+    assert!(matches!(classify_arg("X"), ArgShape::Variable));
+    assert!(matches!(classify_arg("_Discard"), ArgShape::Variable));
+}
+
+#[test]
+fn classify_arg_recognises_literals() {
+    assert!(matches!(classify_arg("42"), ArgShape::Integer));
+    assert!(matches!(classify_arg("-7"), ArgShape::Integer));
+    assert!(matches!(classify_arg("3.14"), ArgShape::Float));
+    assert!(matches!(classify_arg("\"hi\""), ArgShape::String));
+    assert!(matches!(classify_arg("[1, 2]"), ArgShape::List));
+    assert!(matches!(classify_arg("{1, 2}"), ArgShape::Tuple { .. }));
+}
+
+#[test]
+fn extract_definitions_into_picks_up_local_fun_def() {
+    let mut out = Vec::new();
+    extract_definitions_into("handle(Req, State) ->", &mut out);
+    let names: Vec<String> = out
+        .iter()
+        .filter_map(|s| match &s.kind {
+            SymbolKind::Function { mfa } => Some(mfa.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        names.iter().any(|m| m == "_local:handle/2"),
+        "expected _local:handle/2 in {names:?}"
+    );
+}
+
+#[test]
+fn extract_definitions_into_ignores_non_definition_lines() {
+    let mut out = Vec::new();
+    extract_definitions_into("    cowboy_req:set_resp_header(...)", &mut out);
+    assert!(out.is_empty());
 }

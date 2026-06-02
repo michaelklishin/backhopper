@@ -50,10 +50,18 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
         m.export_types
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
+        m.callbacks
+            .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
         m.optional_callbacks
+            .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
+        m.specs
+            .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
+        m.types
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
         m.opaques
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
+        m.deprecations
+            .dedup_by(|a, b| a.function == b.function && arity_match_cmp(a, b).is_eq());
     }
     for h in headers.iter_mut() {
         h.types
@@ -61,8 +69,11 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
         h.opaques
             .sort_by(|a, b| a.name.cmp(&b.name).then(a.arity.cmp(&b.arity)));
         h.records.sort_by(|a, b| a.name.cmp(&b.name));
+        h.types
+            .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
         h.opaques
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
+        h.records.dedup_by(|a, b| a.name == b.name);
     }
 }
 

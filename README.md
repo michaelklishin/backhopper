@@ -1,7 +1,7 @@
 # backhopper
 
 `backhopper` is a tool that simplifies dependency compatibility analysis
-of git commits (patches) for Erlang- and Elixir-based tools. 
+of git commits (patches) for Erlang- and Elixir-based tools.
 
 Given a set of public API snapshots of dependencies, it can detect whether a patch uses any API
 elements that are not available in a specific dependency version.

@@ -21,9 +21,9 @@ use crate::cancellation::CancellationToken;
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct GlobalOptions {
-    /// `-c` path to `backhopper.toml`.
+    /// `--config-file-path` path to `backhopper.toml`.
     pub config_path: Option<PathBuf>,
-    /// `--snapshot-dir` override.
+    /// `--snapshot-dir-path` override.
     pub snapshot_dir: Option<PathBuf>,
     /// `--repo-dir-path` for self-pin resolution.
     pub repo_dir_path: Option<PathBuf>,

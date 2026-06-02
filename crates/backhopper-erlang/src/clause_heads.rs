@@ -33,11 +33,10 @@ pub fn extract(source: &str) -> BTreeMap<FunArity, Vec<Vec<ArgShape>>> {
             continue;
         }
         if !at_line_start {
-            cursor = advance_past_token(bytes, cursor);
+            cursor += 1;
             continue;
         }
-        // Lines beginning with whitespace, `-`, `'`, `"`, `<<`, `#`, etc.
-        // are never function-clause heads at column 0.
+        // Non-identifier starts at column 0 are never function-clause heads.
         if ch.is_whitespace() || ch == '-' || ch == '%' {
             cursor += 1;
             if !ch.is_whitespace() {
@@ -132,8 +131,6 @@ fn take_balanced(bytes: &[u8], open_at: usize) -> Option<((usize, usize), usize)
     debug_assert_eq!(bytes[open_at], b'(');
     let inner_start = open_at + 1;
     let mut depth_paren = 1i32;
-    let mut depth_brace = 0i32;
-    let mut depth_brack = 0i32;
     let mut in_string = false;
     let mut in_atom_quote = false;
     let mut prev_back = false;
@@ -160,13 +157,8 @@ fn take_balanced(bytes: &[u8], open_at: usize) -> Option<((usize, usize), usize)
                     return Some(((inner_start, cursor), cursor + 1));
                 }
             }
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
             _ => {}
         }
-        let _ = (depth_brace, depth_brack);
         cursor += 1;
     }
     None
@@ -312,8 +304,4 @@ fn skip_body(bytes: &[u8], from: usize) -> usize {
         cursor += 1;
     }
     cursor
-}
-
-fn advance_past_token(_bytes: &[u8], cursor: usize) -> usize {
-    cursor + 1
 }

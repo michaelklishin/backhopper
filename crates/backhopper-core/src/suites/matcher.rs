@@ -45,14 +45,19 @@ impl SubstringMatcher {
     }
 
     fn cached_text(&mut self, suite_path: &Path) -> &str {
-        if !self.cache.contains_key(suite_path) {
-            let text = fs::read_to_string(suite_path).unwrap_or_default();
-            self.cache.insert(suite_path.to_path_buf(), text);
-        }
         self.cache
-            .get(suite_path)
-            .map(String::as_str)
-            .unwrap_or_default()
+            .entry(suite_path.to_path_buf())
+            .or_insert_with(|| {
+                fs::read_to_string(suite_path).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        path = %suite_path.display(),
+                        error = %e,
+                        "suite text read failed; treating as no-match"
+                    );
+                    String::new()
+                })
+            })
+            .as_str()
     }
 }
 

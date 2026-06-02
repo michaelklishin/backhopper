@@ -94,8 +94,8 @@ pub(crate) fn classify(files: &[PatchedFile]) -> PatchFacts {
         }
         let dominant = match (logger_macro_sites, rabbit_log_sites) {
             (0, 0) => LoggingStyle::None,
-            (n, 0) if n > 0 => LoggingStyle::LoggerMacros,
-            (0, n) if n > 0 => LoggingStyle::RabbitLogModule,
+            (_, 0) => LoggingStyle::LoggerMacros,
+            (0, _) => LoggingStyle::RabbitLogModule,
             _ => LoggingStyle::Mixed,
         };
         if dominant != LoggingStyle::None {

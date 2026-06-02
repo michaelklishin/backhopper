@@ -12,8 +12,6 @@
 //!
 //! The test-suite-selection adapter [`suites`] consumes the graph to
 //! answer "which `_SUITE` modules should I run for this diff?".
-//!
-//! See `~/Development/md/backhopper/xref_rs_design.md` for the design.
 
 pub mod analysis;
 pub mod builder;

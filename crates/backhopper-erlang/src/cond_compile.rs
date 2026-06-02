@@ -16,6 +16,9 @@ pub struct CondStack {
 #[derive(Debug, Clone)]
 struct Frame {
     is_test_only: bool,
+    // Only `-ifdef(TEST)` and `-ifndef(TEST)` make `-else` toggle the test-only tag.
+    // For other idents, the else branch is neither more nor less test-only than the if branch.
+    else_flips_test_only: bool,
 }
 
 impl CondStack {
@@ -28,25 +31,32 @@ impl CondStack {
     }
 
     pub fn push_ifdef(&mut self, ident: &str) {
+        let is_test = ident == "TEST";
         self.frames.push(Frame {
-            is_test_only: ident == "TEST",
+            is_test_only: is_test,
+            else_flips_test_only: is_test,
         });
     }
 
-    pub fn push_ifndef(&mut self, _ident: &str) {
+    pub fn push_ifndef(&mut self, ident: &str) {
+        let is_test = ident == "TEST";
         self.frames.push(Frame {
             is_test_only: false,
+            else_flips_test_only: is_test,
         });
     }
 
     pub fn push_if(&mut self, _expr: &str) {
         self.frames.push(Frame {
             is_test_only: false,
+            else_flips_test_only: false,
         });
     }
 
     pub fn flip_else(&mut self) {
-        if let Some(f) = self.frames.last_mut() {
+        if let Some(f) = self.frames.last_mut()
+            && f.else_flips_test_only
+        {
             f.is_test_only = !f.is_test_only;
         }
     }

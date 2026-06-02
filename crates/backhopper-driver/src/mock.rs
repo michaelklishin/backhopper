@@ -350,6 +350,12 @@ impl fmt::Debug for MockBackendBuilder {
 
 impl MockBackendBuilder {
     /// Add a handler that returns the same response every time.
+    ///
+    /// Caveat for `MockResponse::Error`: `DriverError` is not `Clone`
+    /// (some variants wrap `io::Error`), so each replay re-wraps the
+    /// stored error as `DriverError::Transport { source: <text> }`.
+    /// Tests that assert on the original `ErrorKind` should use
+    /// `respond_with` with a fresh `DriverError` per invocation instead.
     pub fn respond_to(mut self, matcher: MockMatcher, response: MockResponse) -> Self {
         let response = Arc::new(Mutex::new(Some(response)));
         let response_cell = Arc::clone(&response);

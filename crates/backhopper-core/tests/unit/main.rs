@@ -64,4 +64,5 @@ mod test_only_exports_round_trip_unit_tests;
 mod touched_kinds_unit_tests;
 mod verdict_reasons_unit_tests;
 mod verdict_unit_tests;
+mod version_cmp_unit_tests;
 mod wire_contract_family_defaults_unit_tests;

@@ -21,12 +21,21 @@ fn prepare_repo_with_config(dir: &std::path::Path, body: &str) {
     fs::create_dir_all(dir.join("snapshots")).unwrap();
 }
 
+// Discovery walks up from `cwd` and falls back to `XDG_CONFIG_HOME` or `HOME`:
+// clear both so the developer's own `~/.config/backhopper/backhopper.toml` cannot leak in.
+fn cargo_bin() -> Command {
+    let mut cmd = Command::cargo_bin("backhopper").unwrap();
+    cmd.env_remove("BACKHOPPER_CONFIG_FILE_PATH")
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("HOME");
+    cmd
+}
+
 #[test]
 fn config_auto_discovery_finds_backhopper_toml_in_cwd() {
     let dir = TempDir::new().unwrap();
     prepare_repo_with_config(dir.path(), minimal_config_body());
-    Command::cargo_bin("backhopper")
-        .unwrap()
+    cargo_bin()
         .current_dir(dir.path())
         .args(["doctor"])
         .assert()
@@ -39,8 +48,7 @@ fn config_auto_discovery_walks_up_from_subdirectory() {
     prepare_repo_with_config(root.path(), minimal_config_body());
     let nested = root.path().join("a/b/c");
     fs::create_dir_all(&nested).unwrap();
-    Command::cargo_bin("backhopper")
-        .unwrap()
+    cargo_bin()
         .current_dir(&nested)
         .args(["doctor"])
         .assert()
@@ -58,8 +66,7 @@ fn config_auto_discovery_prefers_dotfile_over_plain() {
     )
     .unwrap();
     fs::create_dir_all(root.path().join("snapshots")).unwrap();
-    Command::cargo_bin("backhopper")
-        .unwrap()
+    cargo_bin()
         .current_dir(root.path())
         .args(["doctor"])
         .assert()
@@ -75,8 +82,7 @@ fn config_auto_discovery_stops_at_git_boundary() {
     fs::create_dir_all(inner.join(".git")).unwrap();
     let subdir = inner.join("subdir");
     fs::create_dir_all(&subdir).unwrap();
-    let assert = Command::cargo_bin("backhopper")
-        .unwrap()
+    let assert = cargo_bin()
         .current_dir(&subdir)
         .args(["doctor"])
         .assert()

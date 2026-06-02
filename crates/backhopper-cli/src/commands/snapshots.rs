@@ -828,10 +828,7 @@ fn verify_one(
     let stored = store
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    // The text writer does not yet round-trip Module.clause_heads.
-    // Until it does, the verify comparison ignores them: a regenerated
-    // snapshot populates the field while the stored one does not, and
-    // we don't want that to drive a false "drift" verdict.
+    // The text writer can't round-trip Module.clause_heads yet, so verify ignores them.
     let regenerated_modules: Vec<Module> = regenerated
         .modules()
         .iter()

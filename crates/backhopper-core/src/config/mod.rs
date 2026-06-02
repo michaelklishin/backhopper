@@ -16,6 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::errors::{ConfigError, NameError};
@@ -523,7 +524,8 @@ impl Project {
         matches!(self.kind, ProjectKind::SelfRepo)
     }
 
-    // Prefix-matches `path` against scan_paths and app_roots, stripping glob suffixes
+    /// Prefix-matches `path` against `scan_paths` and `app_roots`,
+    /// stripping glob suffixes.
     pub fn owns_path(&self, path: &Path) -> bool {
         let candidate = path.to_string_lossy();
         self.scan_paths
@@ -729,7 +731,7 @@ impl Config {
 
 fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigError> {
     let pattern = raw.when_modified_path_matches;
-    let compiled = regex::Regex::new(&pattern).map_err(|e| ConfigError::SuiteRuleRegex {
+    let compiled = Regex::new(&pattern).map_err(|e| ConfigError::SuiteRuleRegex {
         rule_index: idx,
         detail: e.to_string(),
     })?;
@@ -741,7 +743,7 @@ fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigEr
     let line_match = match raw.when_modified_line_matches {
         Some(line_pattern) => {
             let line_compiled =
-                regex::Regex::new(&line_pattern).map_err(|e| ConfigError::SuiteRuleRegex {
+                Regex::new(&line_pattern).map_err(|e| ConfigError::SuiteRuleRegex {
                     rule_index: idx,
                     detail: e.to_string(),
                 })?;

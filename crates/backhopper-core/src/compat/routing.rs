@@ -30,8 +30,8 @@ impl PathRouting {
     }
 }
 
-// True when path lives under scan_paths, app_roots, or `deps/{name}/`;
-// projects with no scope configured fall back to "owns everything"
+/// True when path lives under scan_paths, app_roots, or `deps/{name}/`;
+/// projects with no scope configured fall back to "owns everything".
 pub fn project_owns_path(project: &Project, path: &Path) -> bool {
     project_owns_candidate(project, &path.to_string_lossy())
 }
@@ -40,16 +40,12 @@ fn project_owns_candidate(project: &Project, candidate: &str) -> bool {
     if project.owns_path(Path::new(candidate)) {
         return true;
     }
-    if !project.is_self() {
-        let prefix_start = "deps/";
-        let name = project.name.as_str();
-        if candidate.len() > prefix_start.len() + name.len()
-            && candidate.starts_with(prefix_start)
-            && candidate[prefix_start.len()..].starts_with(name)
-            && candidate.as_bytes()[prefix_start.len() + name.len()] == b'/'
-        {
-            return true;
-        }
+    if !project.is_self()
+        && let Some(rest) = candidate.strip_prefix("deps/")
+        && let Some(rest) = rest.strip_prefix(project.name.as_str())
+        && rest.starts_with('/')
+    {
+        return true;
     }
     project.scan_paths.is_empty() && project.app_roots.is_empty()
 }

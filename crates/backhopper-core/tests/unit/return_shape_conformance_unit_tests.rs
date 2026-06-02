@@ -169,8 +169,8 @@ fn unknown_return_silences_the_check() {
         .iter()
         .filter(|r| matches!(r, Reason::ReturnShapeMismatch { .. }))
         .count();
-    // term() resolves to Builtin{name="term"}, which Doesn't match TaggedTuple
-    // — but the detector's `matches` is conservative; depending on the parse,
+    // term() resolves to Builtin{name="term"}, which doesn't match TaggedTuple,
+    // but the detector's `matches` is conservative: depending on the parse,
     // it may or may not fire. We just check the test doesn't panic.
     let _ = mismatches;
 }

@@ -43,7 +43,7 @@ pub use xref::XrefCmd;
 #[command(
     name = "backhopper",
     version = env!("CARGO_PKG_VERSION"),
-    about = "Record Erlang/Elixir public APIs per git tag and answer compatibility questions",
+    about = "Record Erlang and Elixir public APIs per git tag and answer compatibility questions",
     propagate_version = true,
     arg_required_else_help = true,
     infer_subcommands = true,
@@ -63,7 +63,7 @@ pub struct GlobalArgs {
         short = 'c',
         env = "BACKHOPPER_CONFIG_FILE_PATH",
         global = true,
-        help = "Path to backhopper.toml"
+        help = "Path to the backhopper.toml file"
     )]
     pub config_file_path: Option<PathBuf>,
 

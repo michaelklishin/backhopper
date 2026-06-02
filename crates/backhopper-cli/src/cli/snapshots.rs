@@ -18,9 +18,11 @@ pub enum SnapshotsCmd {
     Generate {
         #[arg(long, conflicts_with = "series")]
         project: Option<ProjectName>,
-        #[arg(long, help = "Skip ls-remote freshness check")]
+        /// Skip ls-remote freshness check.
+        #[arg(long)]
         no_remote_check: bool,
-        #[arg(long, help = "Plan only; do not write to disk")]
+        /// Plan only; do not write to disk.
+        #[arg(long)]
         dry_run: bool,
         /// Only consider tags at or after this one (version-sorted).
         #[arg(long, conflicts_with = "series")]
@@ -64,7 +66,8 @@ pub enum SnapshotsCmd {
         project: ProjectName,
         #[arg(long)]
         tag: TagName,
-        #[arg(long, help = "Plan only; do not write to disk")]
+        /// Plan only; do not write to disk.
+        #[arg(long)]
         dry_run: bool,
     },
     /// Re-emit every stored snapshot at the current format version.

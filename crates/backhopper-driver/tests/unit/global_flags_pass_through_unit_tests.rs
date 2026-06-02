@@ -56,14 +56,30 @@ fn config_path_and_snapshot_dir_are_forwarded_with_value() {
     let args = captured.lock().unwrap().clone();
     let pairs: Vec<(&String, &String)> = args.windows(2).map(|w| (&w[0], &w[1])).collect();
     assert!(
-        pairs
-            .iter()
-            .any(|(k, v)| k.as_str() == "--config" && v.as_str() == "/etc/backhopper.toml")
+        pairs.iter().any(
+            |(k, v)| k.as_str() == "--config-file-path" && v.as_str() == "/etc/backhopper.toml"
+        )
     );
     assert!(
         pairs
             .iter()
-            .any(|(k, v)| k.as_str() == "--snapshot-dir" && v.as_str() == "/var/lib/snap")
+            .any(|(k, v)| k.as_str() == "--snapshot-dir-path" && v.as_str() == "/var/lib/snap")
+    );
+}
+
+#[test]
+fn repo_dir_path_is_forwarded_with_value() {
+    let (backend, captured) = capture_argv();
+    let mut driver = Backhopper::with_backend(backend);
+    driver.options_mut().repo_dir_path = Some("/home/user/proj.git".into());
+    let _ = driver.version().unwrap();
+    let args = captured.lock().unwrap().clone();
+    let pairs: Vec<(&String, &String)> = args.windows(2).map(|w| (&w[0], &w[1])).collect();
+    assert!(
+        pairs
+            .iter()
+            .any(|(k, v)| k.as_str() == "--repo-dir-path" && v.as_str() == "/home/user/proj.git"),
+        "expected --repo-dir-path in args: {args:?}",
     );
 }
 

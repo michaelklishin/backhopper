@@ -33,7 +33,7 @@ pub fn build_xref(tree: &TreeSource) -> CliResult<Xref<Functions>> {
     Ok(xref)
 }
 
-const SKIP_DIRS: &[&str] = &[
+pub const SKIP_DIRS: &[&str] = &[
     ".git",
     "_build",
     "_rel",
@@ -43,7 +43,7 @@ const SKIP_DIRS: &[&str] = &[
     "target",
 ];
 
-fn collect_erlang_files(root: &Path) -> io::Result<Vec<(PathBuf, Vec<u8>)>> {
+pub fn collect_erlang_files(root: &Path) -> io::Result<Vec<(PathBuf, Vec<u8>)>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {

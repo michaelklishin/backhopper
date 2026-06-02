@@ -45,11 +45,13 @@ pub enum PinSelect {
 }
 
 impl PinSelect {
+    /// Pick the tag matching the selection from an iterator of candidates.
     pub fn pick<'a, I>(self, tags: I) -> Option<&'a TagName>
     where
         I: IntoIterator<Item = &'a TagName>,
     {
         let iter = tags.into_iter();
+        // `version_cmp` orders descending: newer is `Less`, older is `Greater`.
         match self {
             Self::Latest => iter.min_by(|a, b| version_cmp(a.as_str(), b.as_str())),
             Self::Oldest => iter.max_by(|a, b| version_cmp(a.as_str(), b.as_str())),

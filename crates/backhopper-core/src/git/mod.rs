@@ -14,6 +14,8 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
+
 use crate::errors::GitError;
 use crate::model::names::{CommitSha, TagName};
 
@@ -254,14 +256,17 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
 /// Unified-diff hunks without any file header lines. Returns an empty
 /// string when `before == after`.
 pub fn unified_diff_body(before: &str, after: &str) -> String {
-    let input = imara_diff::InternedInput::new(before, after);
-    let mut diff = imara_diff::Diff::compute(imara_diff::Algorithm::Histogram, &input);
+    let input = InternedInput::new(before, after);
+    let mut diff = Diff::compute(Algorithm::Histogram, &input);
     diff.postprocess_lines(&input);
-    let printer = imara_diff::BasicLineDiffPrinter(&input.interner);
-    diff.unified_diff(&printer, imara_diff::UnifiedDiffConfig::default(), &input)
+    let printer = BasicLineDiffPrinter(&input.interner);
+    diff.unified_diff(&printer, UnifiedDiffConfig::default(), &input)
         .to_string()
 }
 
+/// Compares two version-like tag strings in *descending* order: numerically
+/// newer comes first. Pairs with `min_by`/`max_by` callers that want the
+/// "latest" or "oldest" tag.
 pub fn version_cmp(a: &str, b: &str) -> Ordering {
     let a_parts = parse_version(a);
     let b_parts = parse_version(b);

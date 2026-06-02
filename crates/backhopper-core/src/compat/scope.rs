@@ -76,11 +76,18 @@ impl PinScope {
     }
 }
 
-/// Parses `extra_modules` from raw config strings, silently dropping any
-/// entry that is not a valid module name.
+/// Parses `extra_modules` from raw config strings. Invalid entries are
+/// dropped with a `tracing::warn`: the caller treats `parse_module_names`
+/// as best-effort but operators get a diagnostic for the bad string.
 pub fn parse_module_names<'a>(raw: impl IntoIterator<Item = &'a String>) -> Vec<ModuleName> {
     raw.into_iter()
-        .filter_map(|s| ModuleName::from_str(s).ok())
+        .filter_map(|s| match ModuleName::from_str(s) {
+            Ok(name) => Some(name),
+            Err(e) => {
+                tracing::warn!(value = %s, error = %e, "ignoring invalid module name in config");
+                None
+            }
+        })
         .collect()
 }
 

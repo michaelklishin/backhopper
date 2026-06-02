@@ -22,13 +22,13 @@ pub enum ExitClass {
     VerdictOutcome,
     /// Grep-style negative: code 1, parsed payload is meaningful.
     SuccessShapedQuery,
-    /// 64 — invalid CLI args; the driver should never produce this.
+    /// 64: invalid CLI args; the driver should never produce this.
     UsageError,
-    /// 65 — malformed snapshot, malformed patch, or schema mismatch.
+    /// 65: malformed snapshot, malformed patch, or schema mismatch.
     DataError,
-    /// 66 — config or snapshot file not found.
+    /// 66: config or snapshot file not found.
     NoInput,
-    /// 74 — git or filesystem error.
+    /// 74: git or filesystem error.
     IoError,
     /// Anything outside the documented set.
     Unknown(i32),

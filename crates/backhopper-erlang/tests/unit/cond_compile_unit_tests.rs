@@ -37,3 +37,51 @@ fn endif_pops_state() {
     s.pop_endif();
     assert!(!s.is_test_only());
 }
+
+#[test]
+fn else_inside_ifndef_test_flips_on_test_only() {
+    let mut s = CondStack::new();
+    s.push_ifndef("TEST");
+    assert!(!s.is_test_only());
+    s.flip_else();
+    assert!(s.is_test_only());
+}
+
+#[test]
+fn else_inside_ifndef_non_test_does_not_flip_to_test_only() {
+    let mut s = CondStack::new();
+    s.push_ifndef("HIPE");
+    assert!(!s.is_test_only());
+    s.flip_else();
+    assert!(!s.is_test_only());
+}
+
+#[test]
+fn else_inside_ifdef_non_test_does_not_flip_to_test_only() {
+    let mut s = CondStack::new();
+    s.push_ifdef("HIPE");
+    assert!(!s.is_test_only());
+    s.flip_else();
+    assert!(!s.is_test_only());
+}
+
+#[test]
+fn else_inside_if_does_not_flip_to_test_only() {
+    let mut s = CondStack::new();
+    s.push_if("defined(SOMETHING)");
+    assert!(!s.is_test_only());
+    s.flip_else();
+    assert!(!s.is_test_only());
+}
+
+#[test]
+fn nested_ifdef_test_inside_other_propagates_test_only() {
+    let mut s = CondStack::new();
+    s.push_ifdef("HIPE");
+    assert!(!s.is_test_only());
+    s.push_ifdef("TEST");
+    assert!(s.is_test_only());
+    s.pop_endif();
+    assert!(!s.is_test_only());
+    s.pop_endif();
+}

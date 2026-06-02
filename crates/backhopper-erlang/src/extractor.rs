@@ -62,15 +62,20 @@ impl ErlangExtractor {
                 path: path.clone(),
                 offset: e.valid_up_to(),
             })?;
-            let path_string = path.to_string_lossy().to_string();
-            if path_string.ends_with(".hrl") {
-                headers.push(self.extract_header_file(&path_string, text));
-            } else if path_string.ends_with(".erl") {
-                if let Some(m) = self.extract_module(text) {
-                    modules.push(m);
-                } else {
-                    warn!("no -module attribute in {}", path_string);
+            let ext = path.extension().and_then(|e| e.to_str());
+            match ext {
+                Some("hrl") => {
+                    let path_str = path.to_string_lossy();
+                    headers.push(self.extract_header_file(&path_str, text));
                 }
+                Some("erl") => {
+                    if let Some(m) = self.extract_module(text) {
+                        modules.push(m);
+                    } else {
+                        warn!("no -module attribute in {}", path.display());
+                    }
+                }
+                _ => {}
             }
         }
         Ok(ExtractedSource { modules, headers })

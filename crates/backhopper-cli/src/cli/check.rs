@@ -22,7 +22,7 @@ pub struct CheckFlags {
     pub show_otp_calls: bool,
     #[arg(
         long,
-        help = "Print only the counts: 'compatible=N requires_adaptation=N incompatible=N'"
+        help = "Print only the counts: `compatible=N requires_adaptation=N incompatible=N`"
     )]
     pub summary_only: bool,
     #[arg(
@@ -113,7 +113,7 @@ pub enum CheckCmd {
         #[arg(
             long,
             default_value = ".",
-            help = "Target checkout for resolving untracked modules. Used when --resolve-untracked-modules is set"
+            help = "Target checkout for resolving untracked modules. Used when `--resolve-untracked-modules` is set"
         )]
         repo_dir_path: PathBuf,
         #[command(flatten)]

@@ -26,49 +26,58 @@ pub struct VertexSet {
 }
 
 impl VertexSet {
+    /// An empty set.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Insert `v`. Returns `true` if it was not already present.
     pub fn insert(&mut self, v: Vertex) -> bool {
         self.inner.insert(v)
     }
 
+    /// True when `v` is in the set.
     pub fn contains(&self, v: &Vertex) -> bool {
         self.inner.contains(v)
     }
 
+    /// Number of elements.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// True when there are no elements.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    /// Iterate in canonical (ascending) order.
     pub fn iter(&self) -> impl Iterator<Item = &Vertex> {
         self.inner.iter()
     }
 
+    /// Set union: `{ v | v in self or v in other }`.
     pub fn union(&self, other: &VertexSet) -> VertexSet {
         VertexSet {
             inner: self.inner.union(&other.inner).cloned().collect(),
         }
     }
 
+    /// Set intersection: `{ v | v in self and v in other }`.
     pub fn intersection(&self, other: &VertexSet) -> VertexSet {
         VertexSet {
             inner: self.inner.intersection(&other.inner).cloned().collect(),
         }
     }
 
+    /// Set difference: `{ v | v in self and v not in other }`.
     pub fn difference(&self, other: &VertexSet) -> VertexSet {
         VertexSet {
             inner: self.inner.difference(&other.inner).cloned().collect(),
         }
     }
 
-    /// Complement against an explicit universe.
+    /// Complement against an explicit universe: `universe - self`.
     pub fn complement(&self, universe: &VertexSet) -> VertexSet {
         universe.difference(self)
     }
@@ -98,56 +107,68 @@ pub struct Relation {
 }
 
 impl Relation {
+    /// An empty relation.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Insert the edge `(src, tgt)`. Returns `true` if it was not already present.
     pub fn insert(&mut self, src: Vertex, tgt: Vertex) -> bool {
         self.inner.insert((src, tgt))
     }
 
+    /// True when `(src, tgt)` is in the relation.
     pub fn contains(&self, src: &Vertex, tgt: &Vertex) -> bool {
         self.inner.contains(&(src.clone(), tgt.clone()))
     }
 
+    /// Number of edges.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// True when there are no edges.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    /// Iterate edges in canonical (lexicographic) order.
     pub fn iter(&self) -> impl Iterator<Item = (&Vertex, &Vertex)> {
         self.inner.iter().map(|(a, b)| (a, b))
     }
 
+    /// Edge set union.
     pub fn union(&self, other: &Relation) -> Relation {
         Relation {
             inner: self.inner.union(&other.inner).cloned().collect(),
         }
     }
 
+    /// Edge set intersection.
     pub fn intersection(&self, other: &Relation) -> Relation {
         Relation {
             inner: self.inner.intersection(&other.inner).cloned().collect(),
         }
     }
 
+    /// Edge set difference.
     pub fn difference(&self, other: &Relation) -> Relation {
         Relation {
             inner: self.inner.difference(&other.inner).cloned().collect(),
         }
     }
 
+    /// The set of vertices that appear as a source on some edge.
     pub fn sources(&self) -> VertexSet {
         self.inner.iter().map(|(s, _)| s.clone()).collect()
     }
 
+    /// The set of vertices that appear as a target on some edge.
     pub fn targets(&self) -> VertexSet {
         self.inner.iter().map(|(_, t)| t.clone()).collect()
     }
 
+    /// Keep only edges whose source is in `sources`.
     pub fn filter_sources_in(&self, sources: &VertexSet) -> Relation {
         Relation {
             inner: self
@@ -159,6 +180,7 @@ impl Relation {
         }
     }
 
+    /// Keep only edges whose target is in `targets`.
     pub fn filter_targets_in(&self, targets: &VertexSet) -> Relation {
         Relation {
             inner: self
@@ -170,6 +192,7 @@ impl Relation {
         }
     }
 
+    /// Keep only edges whose source and target are both in `vs`.
     pub fn filter_both_in(&self, vs: &VertexSet) -> Relation {
         Relation {
             inner: self
@@ -216,6 +239,7 @@ impl Relation {
         Relation { inner: out }
     }
 
+    /// Reverse every edge: maps `(s, t)` to `(t, s)`.
     pub fn reversed(&self) -> Relation {
         Relation {
             inner: self

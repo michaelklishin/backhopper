@@ -38,22 +38,28 @@ impl<'a> SnapshotCache<'a> {
     ) -> Result<Arc<Snapshot<state::Canonical>>, StoreError> {
         let key = (project.clone(), tag.clone());
         {
-            let guard = self.entries.lock().unwrap();
+            let guard = self.entries.lock().expect("snapshot cache mutex poisoned");
             if let Some(arc) = guard.get(&key) {
                 return Ok(Arc::clone(arc));
             }
         }
         let snap = self.store.read(project, tag)?;
         let arc = Arc::new(snap);
-        let mut guard = self.entries.lock().unwrap();
+        let mut guard = self.entries.lock().expect("snapshot cache mutex poisoned");
         Ok(guard.entry(key).or_insert_with(|| Arc::clone(&arc)).clone())
     }
 
     pub fn len(&self) -> usize {
-        self.entries.lock().unwrap().len()
+        self.entries
+            .lock()
+            .expect("snapshot cache mutex poisoned")
+            .len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.lock().unwrap().is_empty()
+        self.entries
+            .lock()
+            .expect("snapshot cache mutex poisoned")
+            .is_empty()
     }
 }

@@ -7,6 +7,8 @@
 //! constructs collapse to `SpecType::Unknown` so the comparator stays
 //! conservative.
 
+use std::str;
+
 use crate::model::spec_ast::SpecType;
 
 pub fn parse_signature_return(signature: &str) -> SpecType {
@@ -313,7 +315,7 @@ impl<'a> Parser<'a> {
             }
         }
         let raw = &self.bytes[start..self.cursor];
-        let s = std::str::from_utf8(raw).unwrap_or("");
+        let s = str::from_utf8(raw).unwrap_or("");
         match s.parse::<i64>() {
             Ok(v) => SpecType::Integer { value: v },
             Err(_) => SpecType::Unknown,
@@ -402,7 +404,7 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        std::str::from_utf8(&self.bytes[start..self.cursor])
+        str::from_utf8(&self.bytes[start..self.cursor])
             .unwrap_or("")
             .to_owned()
     }
@@ -434,7 +436,7 @@ impl<'a> Parser<'a> {
             if b == b'\'' {
                 let raw = &self.bytes[start..self.cursor];
                 self.cursor += 1;
-                return std::str::from_utf8(raw).unwrap_or("").to_owned();
+                return str::from_utf8(raw).unwrap_or("").to_owned();
             }
             self.cursor += 1;
         }

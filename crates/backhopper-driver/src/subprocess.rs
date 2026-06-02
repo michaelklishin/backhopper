@@ -15,7 +15,7 @@
 //! * Timeout: same termination path
 //! * The argv returned in [`crate::backend::RawOutcome::argv`]
 //!   includes the program path at index 0, then the verb path, then
-//!   the user's arguments — matching `Command::get_program` plus
+//!   the user's arguments, matching `Command::get_program` plus
 //!   `get_args`
 //!
 //! The backend ignores `SIGPIPE` propagation concerns: stdin is

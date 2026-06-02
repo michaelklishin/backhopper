@@ -13,8 +13,6 @@
 //! * [`CallGraph`]: the aggregate, parameterised on a mode marker
 //!   ([`Functions`] vs [`Modules`]) and a phase marker ([`Building`]
 //!   vs [`Built`]) so misuses become compile errors
-//!
-//! See `~/Development/md/backhopper/xref_rs_design.md` for the full design.
 
 pub mod call;
 pub mod errors;

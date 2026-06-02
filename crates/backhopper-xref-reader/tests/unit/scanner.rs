@@ -111,3 +111,46 @@ fn is_eof_true_after_all_bytes_consumed() {
     assert!(sc.is_eof());
     assert_eq!(sc.peek(), None);
 }
+
+#[test]
+fn skip_balanced_parens_handles_close_paren_inside_string() {
+    // The `)` inside the string must not close the outer paren.
+    let mut sc = Scanner::new(r#"("a)b", x)trail"#);
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_close_paren_inside_quoted_atom() {
+    let mut sc = Scanner::new("('a)b', x)trail");
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_close_paren_inside_char_literal() {
+    // `$)` is the char literal for `)`; it must not close the outer paren.
+    let mut sc = Scanner::new("($), x)trail");
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_double_quote_char_literal() {
+    // `$"` is the char literal for `"`. Without `$` handling, the next `"` opens a string.
+    let mut sc = Scanner::new(r#"($", x)trail"#);
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_close_paren_inside_string_in_nested_brackets() {
+    let mut sc = Scanner::new(r#"([{"a)b"}], x)trail"#);
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}

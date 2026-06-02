@@ -19,6 +19,9 @@ use crate::compat::call_sites::{
 };
 use crate::compat::diff;
 use crate::compat::evaluate::evaluate_pin;
+use crate::compat::patch_facts::{
+    classify as classify_patch_facts, is_only_test_visibility_change, suggest_suites,
+};
 use crate::compat::scope::{PinScope, UntrackedTally};
 use crate::erlang_macros::MacroTable;
 use crate::errors::PatchError;
@@ -428,7 +431,7 @@ impl Patch<Analyzed> {
     /// the result onto each `PinVerdict.touched.only_test_visibility`
     /// so the inapplicable promoter can flip the verdict.
     pub fn is_only_test_visibility_change(&self) -> bool {
-        crate::compat::patch_facts::is_only_test_visibility_change(&self.files)
+        is_only_test_visibility_change(&self.files)
     }
 
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
@@ -561,9 +564,9 @@ impl Patch<Analyzed> {
                 untracked_calls: untracked_calls.into_map(),
                 untracked_records,
                 unanalyzed,
-                suggested_suites: crate::compat::patch_facts::suggest_suites(&self.files),
+                suggested_suites: suggest_suites(&self.files),
             },
-            patch_facts: crate::compat::patch_facts::classify(&self.files),
+            patch_facts: classify_patch_facts(&self.files),
         }
     }
 }

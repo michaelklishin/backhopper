@@ -47,8 +47,9 @@ impl PathTranslations {
             .into_iter()
             .map(|r| parse_one(r, TranslationOrigin::ConfigStanza))
             .collect::<Result<Vec<_>, _>>()?;
-        let out = Self { entries };
+        let mut out = Self { entries };
         out.validate_uniqueness_and_overlap()?;
+        out.sort_by_specificity();
         Ok(out)
     }
 
@@ -69,7 +70,14 @@ impl PathTranslations {
 
     pub fn merge_external(&mut self, external: Vec<PathTranslation>) -> Result<(), ConfigError> {
         self.entries.extend(external);
-        self.validate_uniqueness_and_overlap()
+        self.validate_uniqueness_and_overlap()?;
+        self.sort_by_specificity();
+        Ok(())
+    }
+
+    // Most specific (longest source prefix) first so `translate` can return on the first match.
+    fn sort_by_specificity(&mut self) {
+        self.entries.sort_by_key(|e| Reverse(e.source_prefix.len()));
     }
 
     fn validate_uniqueness_and_overlap(&self) -> Result<(), ConfigError> {
@@ -105,13 +113,10 @@ impl PathTranslations {
         Ok(())
     }
 
-    /// Apply the first matching translation to `path`. Entries are
-    /// scanned in descending `source_prefix` length so a more
-    /// specific prefix wins.
+    /// Apply the first matching translation to `path`. `entries` is kept
+    /// sorted by descending `source_prefix` length so a more specific prefix wins.
     pub fn translate(&self, path: &str) -> Option<(PathBuf, &PathTranslation)> {
-        let mut sorted: Vec<&PathTranslation> = self.entries.iter().collect();
-        sorted.sort_by_key(|e| Reverse(e.source_prefix.len()));
-        for entry in sorted {
+        for entry in &self.entries {
             if let Some(suffix) = path.strip_prefix(&entry.source_prefix) {
                 let rewritten = format!("{}{}", entry.target_prefix, suffix);
                 return Some((PathBuf::from(rewritten), entry));

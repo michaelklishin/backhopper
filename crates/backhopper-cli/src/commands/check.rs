@@ -1130,7 +1130,7 @@ fn render_untracked_section(
         if diagnostics.unanalyzed.apply > 0 {
             writeln!(
                 w,
-                "  {:<40} {} (apply/spawn/spawn_link/spawn_monitor/spawn_opt/hibernate)",
+                "  {:<40} {} (apply, spawn, spawn_link, spawn_monitor, spawn_opt, hibernate)",
                 "apply-family BIFs", diagnostics.unanalyzed.apply,
             )?;
         }

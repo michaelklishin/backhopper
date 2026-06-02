@@ -64,13 +64,9 @@ impl XrefBuilder {
         } = reader.read_tree(files)?;
         self.warnings.extend(warnings);
         for m in modules {
-            if let Some(prev) = self.modules.insert(m.module.clone(), m) {
-                let name = prev.module.clone();
-                let new_app = self
-                    .modules
-                    .get(&name)
-                    .and_then(|d| d.application.assigned())
-                    .map(|a| a.as_str().to_owned());
+            let name = m.module.clone();
+            let new_app = m.application.assigned().map(|a| a.as_str().to_owned());
+            if let Some(prev) = self.modules.insert(name.clone(), m) {
                 let prev_app = prev.application.assigned().map(|a| a.as_str().to_owned());
                 self.warnings.push(
                     backhopper_xref_reader::ReadWarning::DuplicateModuleAcrossApplications {

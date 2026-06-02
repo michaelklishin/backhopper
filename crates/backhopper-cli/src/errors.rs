@@ -39,7 +39,7 @@ pub enum CliError {
         remediation: String,
     },
 
-    #[error("snapshot directory {} resolves to {} which escapes {}", configured.display(), resolved.display(), root.display())]
+    #[error("snapshot directory {} resolves to {}, which escapes the workspace root {}", configured.display(), resolved.display(), root.display())]
     SnapshotDirEscape {
         configured: PathBuf,
         resolved: PathBuf,

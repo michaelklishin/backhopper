@@ -430,19 +430,35 @@ fn is_false(b: &bool) -> bool {
 
 impl TouchedKinds {
     pub fn is_empty(&self) -> bool {
-        self.erl == 0
-            && self.hrl == 0
-            && self.schema == 0
-            && self.docs == 0
-            && self.tests == 0
-            && self.makefile == 0
-            && self.mix_exs == 0
-            && self.ci_workflow == 0
-            && self.app_src == 0
-            && self.rebar_config == 0
-            && self.other == 0
-            && !self.only_test_visibility
-            && !self.only_self_surface
+        // Destructure so adding a new field forces this method to be updated.
+        let Self {
+            erl,
+            hrl,
+            schema,
+            docs,
+            tests,
+            makefile,
+            mix_exs,
+            ci_workflow,
+            app_src,
+            rebar_config,
+            other,
+            only_test_visibility,
+            only_self_surface,
+        } = self;
+        *erl == 0
+            && *hrl == 0
+            && *schema == 0
+            && *docs == 0
+            && *tests == 0
+            && *makefile == 0
+            && *mix_exs == 0
+            && *ci_workflow == 0
+            && *app_src == 0
+            && *rebar_config == 0
+            && *other == 0
+            && !*only_test_visibility
+            && !*only_self_surface
     }
 
     pub fn classify(path: &Path) -> FileKind {
@@ -498,13 +514,10 @@ impl TouchedKinds {
     }
 
     fn is_ci_workflow(lower: &str) -> bool {
-        if lower.contains(".github/workflows/") || lower.starts_with(".github/workflows/") {
+        if lower.contains(".github/workflows/") {
             return lower.ends_with(".yml") || lower.ends_with(".yaml");
         }
-        if lower.contains(".github/actions/") || lower.starts_with(".github/actions/") {
-            return true;
-        }
-        false
+        lower.contains(".github/actions/")
     }
 
     fn is_makefile(lower: &str) -> bool {

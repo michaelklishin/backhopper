@@ -203,7 +203,7 @@ fn empty_patch_is_not_only_test_visibility() {
 #[test]
 fn erl_visibility_with_non_erl_change_alongside_still_visibility() {
     // A docs touch coexists with a Variant A unwrap. Non-Erlang
-    // hunks don't disqualify the classification — the contract is
+    // hunks don't disqualify the classification: the contract is
     // that every Erlang hunk is visibility-only.
     let mixed = "\
 diff --git a/README.md b/README.md

@@ -240,11 +240,15 @@ impl<B: Backend> Backhopper<B> {
 
 fn push_global_flags<'a>(options: &'a GlobalOptions, args: &mut Vec<Cow<'a, OsStr>>) {
     if let Some(p) = &options.config_path {
-        args.push(Cow::Borrowed(OsStr::new("--config")));
+        args.push(Cow::Borrowed(OsStr::new("--config-file-path")));
         args.push(Cow::Borrowed(p.as_os_str()));
     }
     if let Some(p) = &options.snapshot_dir {
-        args.push(Cow::Borrowed(OsStr::new("--snapshot-dir")));
+        args.push(Cow::Borrowed(OsStr::new("--snapshot-dir-path")));
+        args.push(Cow::Borrowed(p.as_os_str()));
+    }
+    if let Some(p) = &options.repo_dir_path {
+        args.push(Cow::Borrowed(OsStr::new("--repo-dir-path")));
         args.push(Cow::Borrowed(p.as_os_str()));
     }
     if options.non_interactive {
