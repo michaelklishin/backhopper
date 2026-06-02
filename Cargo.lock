@@ -166,6 +166,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "backhopper-driver"
+version = "0.8.0"
+dependencies = [
+ "backhopper-core",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "backhopper-elixir"
 version = "0.8.0"
 dependencies = [

@@ -9,6 +9,7 @@ members = [
     "crates/backhopper-xref-reader",
     "crates/backhopper-xref",
     "crates/backhopper-cli",
+    "crates/backhopper-driver",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ backhopper-cuttlefish  = { path = "crates/backhopper-cuttlefish",  version = "0.
 backhopper-xref-graph  = { path = "crates/backhopper-xref-graph",  version = "0.8.0" }
 backhopper-xref-reader = { path = "crates/backhopper-xref-reader", version = "0.8.0" }
 backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.8.0" }
+backhopper-driver      = { path = "crates/backhopper-driver",      version = "0.8.0" }
 
 anyhow             = "1.0.102"
 bel7-cli           = { version = "0.12", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }

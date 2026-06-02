@@ -1,0 +1,40 @@
+[package]
+name        = "backhopper-driver"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "Statically typed Rust driver for the backhopper CLI that simplifies embedding or driving backhopper from an agent"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tracing"]
+tracing = ["dep:tracing"]
+mock    = []
+
+[dependencies]
+backhopper-core = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+thiserror       = { workspace = true }
+tracing         = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest        = { workspace = true }
+tempfile        = { workspace = true }
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "proptests"
+path = "tests/proptests/main.rs"
