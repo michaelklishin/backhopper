@@ -34,26 +34,26 @@ backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.
 backhopper-driver      = { path = "crates/backhopper-driver",      version = "0.10.0" }
 
 anyhow             = "1.0.102"
-bel7-cli           = { version = "0.12", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
+bel7-cli           = { version = "0.13.0", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
 clap               = { version = "4.6.1", features = ["cargo", "derive", "env", "wrap_help"] }
-gix                = { version = "=0.83.0" }
+gix                = { version = "=0.84.0" }
 imara-diff         = "0.2.0"
 insta              = { version = "1.47.2", features = ["json", "yaml"] }
 proptest           = "1.11.0"
 regex              = "1.12.3"
-schemars           = { version = "0.8", default-features = false }
+schemars           = { version = "1.2", default-features = false, features = ["std"] }
 serde              = { version = "1.0.228", features = ["derive"] }
-serde_json         = "1.0.149"
-tabled             = "0.20.0"
+serde_json         = "1.0.150"
+tabled             = "0.21.0"
 tempfile           = "3.27.0"
 thiserror          = "2.0.18"
 time               = { version = "0.3.47", features = ["formatting", "parsing", "macros", "serde"] }
 toml               = "1.1.2"
-toml_edit          = "0.23.10"
+toml_edit          = "0.25.12"
 tracing            = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 
-assert_cmd         = "2.2.1"
+assert_cmd         = "2.2.2"
 predicates         = "3.1.4"
 
 [workspace.lints.rust]

@@ -61,6 +61,9 @@ impl FixtureRepo {
         run(self.dir.path(), &["git", "tag", name]);
     }
 
+    // Only consumed by `end_to_end_target_repo_integration_tests`, which is
+    // `#![cfg(unix)]`. Gate to match so Windows CI doesn't flag dead code.
+    #[cfg(unix)]
     pub(crate) fn head_sha(&self) -> String {
         let out = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])
