@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use bel7_cli::TableStyle;
-use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum, crate_version};
 
 pub mod bisect;
 pub mod check;
@@ -18,6 +18,7 @@ pub mod config;
 pub mod doctor;
 pub mod init;
 pub mod projects;
+pub mod schema;
 pub mod series;
 pub mod shell;
 pub mod snapshots;
@@ -31,6 +32,7 @@ pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
 pub use init::InitCmd;
 pub use projects::ProjectsCmd;
+pub use schema::{SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
 pub use series::{PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
 pub use snapshots::SnapshotsCmd;
@@ -42,7 +44,7 @@ pub use xref::XrefCmd;
 #[derive(Debug, Parser)]
 #[command(
     name = "backhopper",
-    version = env!("CARGO_PKG_VERSION"),
+    version = crate_version!(),
     about = "Record Erlang and Elixir public APIs per git tag and answer compatibility questions",
     propagate_version = true,
     arg_required_else_help = true,
@@ -128,6 +130,10 @@ pub enum Formatter {
     Json,
     Text,
     Markdown,
+    /// JSONL projection: one `SummaryRow` per line, no array wrap.
+    Summary,
+    /// Tab-separated projection: one row per result.
+    TextSummary,
 }
 
 #[derive(Debug, Subcommand)]
@@ -180,6 +186,11 @@ pub enum Group {
     Suites {
         #[command(subcommand)]
         cmd: SuitesCmd,
+    },
+    /// Inspect the wire-format JSON schema this binary embeds.
+    Schema {
+        #[command(subcommand)]
+        cmd: SchemaCmd,
     },
     /// Print the `backhopper` version.
     Version,

@@ -24,6 +24,7 @@ pub enum RefContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SymbolKind {
     Behaviour {
@@ -51,6 +52,7 @@ pub enum SymbolKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SymbolRef {
     #[serde(flatten)]
     pub kind: SymbolKind,
@@ -87,6 +89,7 @@ impl SymbolRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Reference {
     pub symbol: SymbolRef,
     pub from_path: PathBuf,

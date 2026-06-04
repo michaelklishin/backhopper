@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use bel7_cli::PARTIAL_SUCCESS_I32;
+use clap::crate_version;
 use serde::Serialize;
 use time::OffsetDateTime;
 
@@ -611,7 +612,7 @@ pub(crate) fn build_snapshot_at_commit(
         commit,
         scanned_paths,
         apps_scanned,
-        generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
+        generated_by: format!("backhopper {}", crate_version!()),
         generated_at: OffsetDateTime::now_utc(),
         extractor_version: match p.language {
             Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION.to_owned(),

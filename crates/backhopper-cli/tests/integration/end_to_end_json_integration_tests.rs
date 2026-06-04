@@ -7,6 +7,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 
 #[test]
 fn version_json_payload_has_expected_shape() {
@@ -16,7 +17,7 @@ fn version_json_payload_has_expected_shape() {
         .assert();
     let stdout = String::from_utf8(assert.success().get_output().stdout.clone()).unwrap();
     let parsed: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(parsed["schema_version"], 1);
+    assert_eq!(parsed["schema_version"], CURRENT_SCHEMA_VERSION);
     assert_eq!(parsed["command"], "version");
     assert_eq!(parsed["data"]["name"], "backhopper");
     assert!(parsed["data"]["version"].is_string());

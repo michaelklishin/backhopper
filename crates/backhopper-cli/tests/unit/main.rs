@@ -31,5 +31,6 @@ mod snapshots_generate_since_unit_tests;
 mod snapshots_introduced_unit_tests;
 mod snapshots_verify_all_unit_tests;
 mod suggest_unit_tests;
+mod summary_emit_unit_tests;
 mod tables_unit_tests;
 mod tree_source_unit_tests;

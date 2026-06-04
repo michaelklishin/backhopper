@@ -139,6 +139,8 @@ fn table_handles_synthetic_record_fields_changed_reason() {
         )]),
         diagnostics: Diagnostics::default(),
         patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("RecordFields"), "table: {text}");
@@ -227,6 +229,8 @@ fn clause_mismatch_reason_renders_call_args_and_pin_clauses() {
         )]),
         diagnostics: Diagnostics::default(),
         patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("ClauseMismatch"), "table: {text}");
@@ -249,6 +253,8 @@ fn untracked_module_missing_reason_renders_in_table() {
         )]),
         diagnostics: Diagnostics::default(),
         patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UntrackedModuleMissing"), "table: {text}");
@@ -268,6 +274,8 @@ fn unsupported_file_type_reason_renders_in_table() {
         )]),
         diagnostics: Diagnostics::default(),
         patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UnsupportedFileType"), "table: {text}");

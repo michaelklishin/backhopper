@@ -11,10 +11,14 @@ description = "Core types, snapshot I/O, store, and compatibility analysis for b
 [lints]
 workspace = true
 
+[features]
+schemars = ["dep:schemars"]
+
 [dependencies]
 gix         = { workspace = true }
 imara-diff  = { workspace = true }
 regex       = { workspace = true }
+schemars    = { workspace = true, optional = true, features = ["derive"] }
 serde       = { workspace = true }
 serde_json  = { workspace = true }
 thiserror   = { workspace = true }

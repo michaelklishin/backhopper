@@ -20,6 +20,7 @@ use crate::model::names::{GitRef, ProjectName, TagGlob, TagName};
 use crate::store::SnapshotStore;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Pin {
     pub project: ProjectName,
     pub tag: TagName,
@@ -38,6 +39,7 @@ impl fmt::Display for Pin {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum PinSelect {
     Latest,
@@ -60,6 +62,7 @@ impl PinSelect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum PinSpec {
     Literal {

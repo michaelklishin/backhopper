@@ -13,6 +13,8 @@ mod path_routing_proptests;
 mod path_translation_proptests;
 mod pin_resolution_proptests;
 mod preimage_check_proptests;
+mod relative_path_proptests;
+mod schema_diff_proptests;
 mod scope_filter_proptests;
 mod snapshot_round_trip_proptests;
 mod sort_idempotent_proptests;

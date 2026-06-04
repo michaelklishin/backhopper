@@ -47,7 +47,7 @@ pub use verb::{UnknownVerb, Verb, VerbId};
 /// Range of envelope schema versions this driver release understands.
 pub const SUPPORTED_SCHEMA: SchemaVersionRange = SchemaVersionRange {
     min: SchemaVersion::new(1),
-    max: SchemaVersion::new(1),
+    max: SchemaVersion::new(4),
 };
 
 /// Inclusive range of envelope schema versions.

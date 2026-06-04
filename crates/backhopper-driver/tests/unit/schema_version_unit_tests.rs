@@ -50,6 +50,21 @@ fn supported_schema_covers_version_one() {
 }
 
 #[test]
+fn supported_schema_covers_current_release_versions() {
+    for v in 1..=4 {
+        assert!(
+            SUPPORTED_SCHEMA.contains(SchemaVersion::new(v)),
+            "v{v} must be inside SUPPORTED_SCHEMA: {SUPPORTED_SCHEMA}",
+        );
+    }
+}
+
+#[test]
+fn supported_schema_rejects_a_future_version() {
+    assert!(!SUPPORTED_SCHEMA.contains(SchemaVersion::new(999)));
+}
+
+#[test]
 fn range_display_uses_inclusive_form() {
     let r = SchemaVersionRange::singleton(SchemaVersion::new(2));
     assert_eq!(format!("{r}"), "2..=2");

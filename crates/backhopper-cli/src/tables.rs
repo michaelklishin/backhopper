@@ -77,11 +77,7 @@ fn inapplicable_detail(reason: &InapplicableReason) -> String {
             "untracked (no configured project owns the touched paths)".to_owned()
         }
         InapplicableReason::PathsMissingOnTarget { paths } => {
-            let mut sample: Vec<String> = paths
-                .iter()
-                .take(3)
-                .map(|p| p.display().to_string())
-                .collect();
+            let mut sample: Vec<String> = paths.iter().take(3).map(|p| p.to_string()).collect();
             if paths.len() > 3 {
                 sample.push(format!("… +{} more", paths.len() - 3));
             }
@@ -136,6 +132,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::PreimageDrifted { .. } => "PreimageDrifted",
         Reason::PreimageMissing { .. } => "PreimageMissing",
         Reason::PathRename { .. } => "PathRename",
+        _ => "UnknownReason",
     }
 }
 
@@ -344,6 +341,7 @@ fn reason_detail(r: &Reason) -> String {
             target_path,
             ..
         } => format!("{} → {}", source_path.display(), target_path.display()),
+        _ => format!("{r:?}"),
     }
 }
 

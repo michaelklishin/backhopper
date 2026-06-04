@@ -9,6 +9,7 @@
 
 use std::io::{self, Write};
 
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 use serde::Serialize;
 use serde_json::json;
 
@@ -27,7 +28,7 @@ impl OutputContext {
         Self {
             formatter,
             command,
-            schema_version: 1,
+            schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
 }
@@ -63,8 +64,10 @@ where
                 .map_err(|e| CliError::OutputError(e.to_string()))?;
             writeln!(stdout)?;
         }
-        Formatter::Text | Formatter::Markdown => {
-            // commands without a dedicated markdown form fall back to text
+        Formatter::Text | Formatter::Markdown | Formatter::Summary | Formatter::TextSummary => {
+            // commands without a dedicated markdown form fall back to text;
+            // summary modes that need bespoke projection emit BEFORE
+            // calling into this dispatcher.
             text_render(&mut stdout)?;
         }
     }
@@ -99,7 +102,9 @@ where
                 .map_err(|e| CliError::OutputError(e.to_string()))?;
             writeln!(stdout)?;
         }
-        Formatter::Text => text_render(&mut stdout)?,
+        Formatter::Text | Formatter::Summary | Formatter::TextSummary => {
+            text_render(&mut stdout)?;
+        }
         Formatter::Markdown => markdown_render(&mut stdout)?,
     }
     Ok(exit_code)

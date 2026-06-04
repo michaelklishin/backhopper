@@ -1,0 +1,1954 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "command_family": "check",
+  "description": "v1 captures the envelope wrapper plus SeriesEvaluation, the payload emitted by check commit, check range, check merge, and check patch. Series-wide verdicts, per-pin verdict rows, diagnostics, and patch_facts are all in scope.",
+  "envelope": {
+    "properties": {
+      "command": {
+        "description": "Verb identifier in kebab-case, e.g. \"check merge\".",
+        "type": "string"
+      },
+      "data": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "ArgShape": {
+            "oneOf": [
+              {
+                "description": "Variable identifier (starts with `_` or capital letter).",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "variable"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Atom literal: `foo`, `'quoted atom'`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "atom"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Integer literal.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "integer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Float literal.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "float"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Binary literal: `<<...>>`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "binary"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "List literal: `[...]`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "list"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Tuple literal: `{...}` (size is the number of elements).",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "tuple"
+                    ],
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "size"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Record reference: `#name{...}`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "record"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "String literal: `\"...\"`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "string"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Anonymous fun: `fun ... end` or `fun mod:f/A`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "fun"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Anything the extractor cannot classify. Always matches.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactKind": {
+            "oneOf": [
+              {
+                "description": "`<<<<<<<`, `=======`, `>>>>>>>`, or `||||||| ` marker present in a touched file. The cherry-pick driver left a conflict unresolved.",
+                "properties": {
+                  "artifact_kind": {
+                    "enum": [
+                      "conflict_marker"
+                    ],
+                    "type": "string"
+                  },
+                  "marker": {
+                    "$ref": "#/definitions/ConflictMarker"
+                  }
+                },
+                "required": [
+                  "artifact_kind",
+                  "marker"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`-export([f/N])` line without a matching clause defining `f/N`. Compiles, then crashes at runtime on the first call.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "artifact_kind": {
+                    "enum": [
+                      "export_without_body"
+                    ],
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "artifact_kind",
+                  "function",
+                  "module"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ConflictMarker": {
+            "oneOf": [
+              {
+                "description": "`<<<<<<<` line: start of the local side.",
+                "enum": [
+                  "ours"
+                ],
+                "type": "string"
+              },
+              {
+                "description": "`=======` line: divider between sides.",
+                "enum": [
+                  "divider"
+                ],
+                "type": "string"
+              },
+              {
+                "description": "`>>>>>>>` line: end of the incoming side.",
+                "enum": [
+                  "theirs"
+                ],
+                "type": "string"
+              },
+              {
+                "description": "`||||||| ` line: base ancestor marker from a 3-way diff.",
+                "enum": [
+                  "ancestor"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "Diagnostics": {
+            "description": "Series-wide diagnostic envelope. Strictly separate from `Verdict` so untracked-call signals never leak into machine-readable verdicts.",
+            "properties": {
+              "suggested_suites": {
+                "description": "SUITE names worth running for the patch, derived from touched paths. Populated even when the verdict promotes to `Inapplicable` so that schema-only and config-only diffs still surface relevant suites.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unanalyzed": {
+                "$ref": "#/definitions/Unanalyzed"
+              },
+              "untracked_calls": {
+                "additionalProperties": {
+                  "format": "uint",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "untracked_records": {
+                "additionalProperties": {
+                  "format": "uint",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "FileLoggingStyle": {
+            "properties": {
+              "dominant": {
+                "$ref": "#/definitions/LoggingStyle"
+              },
+              "logger_macro_sites": {
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "rabbit_log_sites": {
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dominant",
+              "logger_macro_sites",
+              "rabbit_log_sites"
+            ],
+            "type": "object"
+          },
+          "InapplicableReason": {
+            "oneOf": [
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "no_erlang_surface_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_docs_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_test_fixtures_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_schema_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_makefile_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_mix_exs_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_ci_workflow_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_app_src_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_rebar_config_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every changed `.erl` hunk is a Variant A unwrap: dropping `-ifdef(TEST).` or `-endif.` around an `-export(...)` directive, or rewriting `-compile(export_all).` to an explicit `-export([...])`. No call sites, no specs, no bodies touched — only test-visibility metadata.",
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_test_visibility_changed"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The patch touches Erlang surface but every referenced symbol resolves to the self-pin or to a local definition: every tracked-dep pin sees zero in-scope references. Without this reason the operator would see a wall of vacuous `Compatible` rows for a patch that backhopper genuinely has no signal on.",
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "only_self_surface_touched"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every touched path lives in a sibling project's scope, not this pin's. The pin has nothing to say about the patch. `project` names the first sibling project (alphabetical) that owns the out-of-scope paths.",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "enum": [
+                      "out_of_scope_for"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every touched path is unclaimed by any configured project's scan_paths or app_roots. Vendored files, docs, build scripts.",
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "untracked"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`--target-repo-dir-path` was supplied and every touched path is missing from the target tree, with no configured translation mapping any of them. The patch as written does not apply to the target.",
+                "properties": {
+                  "paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "reason": {
+                    "enum": [
+                      "paths_missing_on_target"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "paths",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "KhepriSignals": {
+            "properties": {
+              "touches_dual_branch": {
+                "default": false,
+                "type": "boolean"
+              },
+              "touches_khepri_module": {
+                "default": false,
+                "type": "boolean"
+              },
+              "touches_only_khepri_branch": {
+                "default": false,
+                "type": "boolean"
+              },
+              "uses_khepri_macros": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "LoggingStyle": {
+            "enum": [
+              "logger_macros",
+              "rabbit_log_module",
+              "mixed",
+              "none"
+            ],
+            "type": "string"
+          },
+          "Mfa": {
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "arity",
+              "function",
+              "module"
+            ],
+            "type": "object"
+          },
+          "PatchFacts": {
+            "description": "Source classifiers on the patch. Strictly separate from `Verdict` reasons.",
+            "properties": {
+              "introduces_versioned_record": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "khepri_signals": {
+                "$ref": "#/definitions/KhepriSignals"
+              },
+              "logging_style": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/FileLoggingStyle"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "Pin": {
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "tag"
+            ],
+            "type": "object"
+          },
+          "PinVerdict": {
+            "properties": {
+              "pin": {
+                "$ref": "#/definitions/Pin"
+              },
+              "source_delta_details": {
+                "items": {
+                  "$ref": "#/definitions/SourceDelta"
+                },
+                "type": "array"
+              },
+              "touched": {
+                "$ref": "#/definitions/TouchedKinds"
+              },
+              "tracked_ref_details": {
+                "items": {
+                  "$ref": "#/definitions/SymbolRef"
+                },
+                "type": "array"
+              },
+              "tracked_refs": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "verdict": {
+                "$ref": "#/definitions/Verdict"
+              }
+            },
+            "required": [
+              "pin",
+              "verdict"
+            ],
+            "type": "object"
+          },
+          "Reason": {
+            "oneOf": [
+              {
+                "properties": {
+                  "first_seen_at_tag": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "missing_symbol"
+                    ],
+                    "type": "string"
+                  },
+                  "suggested_replacement": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/SymbolRef"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/definitions/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "expected": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "found": {
+                    "items": {
+                      "format": "uint8",
+                      "minimum": 0.0,
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "arity_changed"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected",
+                  "found",
+                  "function",
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "expected_spec": {
+                    "type": "string"
+                  },
+                  "found_spec": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "signature_changed"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "expected_spec",
+                  "found_spec",
+                  "function",
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "file_absent"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "context_drift"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hunk_index",
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The contiguous preimage block (Context and Removed lines from the hunk) was found verbatim at a different starting line. Cherry-pick adapters handle this with the `-x` trailer; the operator just needs the delta to confirm the patch's intent still applies.",
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "preimage_drifted"
+                    ],
+                    "type": "string"
+                  },
+                  "line_delta": {
+                    "format": "int",
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hunk_index",
+                  "kind",
+                  "line_delta",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The preimage block does not appear anywhere in the file. The patch was authored against a tree where the lines existed; on this pin they don't. Structurally inapplicable: the operator needs an excerpt to reason about why.",
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "preimage_missing"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "preimage_excerpt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hunk_index",
+                  "kind",
+                  "path",
+                  "preimage_excerpt"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "deprecated_usage"
+                    ],
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/SymbolRef"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "since": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/definitions/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "now_hidden"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "expected": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "found": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "enum": [
+                      "record_fields_changed"
+                    ],
+                    "type": "string"
+                  },
+                  "record": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected",
+                  "found",
+                  "kind",
+                  "record"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "unsupported_file_type"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "untracked_module_missing"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Call-site argument shapes don't satisfy any clause head at the pin. Emitted when both the call and the pin's clause patterns are concrete enough to compare; `Unknown` on either side is the escape hatch that suppresses the reason.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "call_args": {
+                    "items": {
+                      "$ref": "#/definitions/ArgShape"
+                    },
+                    "type": "array"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "clause_mismatch"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "pin_clauses": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/definitions/ArgShape"
+                      },
+                      "type": "array"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "call_args",
+                  "function",
+                  "kind",
+                  "module",
+                  "pin_clauses"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch references an MFA owned by the self-project but absent from the resolved self-snapshot. `suggested_source_for_prereq` is filled only with `--suggest-prereqs`.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "missing_prereq"
+                    ],
+                    "type": "string"
+                  },
+                  "self_branch": {
+                    "type": "string"
+                  },
+                  "suggested_source_for_prereq": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/definitions/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "self_branch",
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Pre-flight syntactic damage in a touched file: an unresolved merge-conflict marker, an exported function with no definition, etc.",
+                "properties": {
+                  "artifact": {
+                    "$ref": "#/definitions/ArtifactKind"
+                  },
+                  "kind": {
+                    "enum": [
+                      "syntactic_artifact"
+                    ],
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "artifact",
+                  "kind",
+                  "line",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch changes a `-callback` signature; an implementer still has the old one.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "expected_after_patch": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "implementer_signature": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "behaviour_callback_signature_changed"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "behaviour",
+                  "callback",
+                  "expected_after_patch",
+                  "implementer",
+                  "implementer_signature",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch removes a required callback; implementer still exports it.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "behaviour_callback_removed"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "behaviour",
+                  "callback",
+                  "implementer",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch adds a required callback; implementer is missing the export.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "behaviour_callback_added"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "behaviour",
+                  "callback",
+                  "implementer",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch touches a path absent on pin, but a module of the same basename exists elsewhere.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "module_relocated"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "patch_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "patch_path"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Wire-bearing macro value differs between source and pin.",
+                "properties": {
+                  "after": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "wire_constant_changed"
+                    ],
+                    "type": "string"
+                  },
+                  "macro_name": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "after",
+                  "before",
+                  "kind",
+                  "macro_name",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`version/0` advanced without the matching historical-implementation module.",
+                "properties": {
+                  "advertised_version_after": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "advertised_version_before": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "expected_historical_module": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "historical_implementation_missing"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "advertised_version_after",
+                  "advertised_version_before",
+                  "expected_historical_module",
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Function bodies drifted at the same advertised `version/0`. Mixed-version cluster risk.",
+                "properties": {
+                  "advertised_version": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "functions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "enum": [
+                      "wire_contract_body_drift"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "advertised_version",
+                  "functions",
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`version/0` decreased pin → patch.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "wire_contract_regression"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "patch_version": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "pin_version": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "patch_version",
+                  "pin_version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Spec return shape differs between source and pin for a referenced MFA.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "return_shape_mismatch"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "pin_signature": {
+                    "type": "string"
+                  },
+                  "source_signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "function",
+                  "kind",
+                  "module",
+                  "pin_signature",
+                  "source_signature"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A type-reference inside a `-spec`, `-callback`, `-type`, or `-opaque` attribute resolves to a name and arity that the pin does not expose via `-export_type`. Non-blocking: a missing type alias is a dialyzer-level concern, not a load-time crash.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "missing_type"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "kind",
+                  "module",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched path is absent from the target tree, but a configured `[[path_translation]]` rewrites it to a path that does exist on the target. Non-blocking: the operator (or the cherry-pick driver) rewrites the path before applying.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "path_rename"
+                    ],
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "target_path": {
+                    "type": "string"
+                  },
+                  "translation": {
+                    "$ref": "#/definitions/TranslationSource"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "target_path",
+                  "translation"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SeriesSummary": {
+            "properties": {
+              "compatible": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "inapplicable": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "incompatible": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "requires_adaptation": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "compatible",
+              "incompatible",
+              "requires_adaptation"
+            ],
+            "type": "object"
+          },
+          "SeriesVerdict": {
+            "properties": {
+              "results": {
+                "items": {
+                  "$ref": "#/definitions/PinVerdict"
+                },
+                "type": "array"
+              },
+              "summary": {
+                "$ref": "#/definitions/SeriesSummary"
+              }
+            },
+            "required": [
+              "results",
+              "summary"
+            ],
+            "type": "object"
+          },
+          "SourceDelta": {
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "source_spec": {
+                "type": "string"
+              },
+              "target_spec": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "arity",
+              "function",
+              "module",
+              "source_spec",
+              "target_spec"
+            ],
+            "type": "object"
+          },
+          "SymbolRef": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "behaviour"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "callback"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "function",
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "function"
+                    ],
+                    "type": "string"
+                  },
+                  "mfa": {
+                    "$ref": "#/definitions/Mfa"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "mfa"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "macro"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "record"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "type"
+                    ],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "arity",
+                  "kind",
+                  "module",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ],
+            "type": "object"
+          },
+          "TouchedKinds": {
+            "description": "Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable` tell a real green check from a diff with nothing analyzable to check.",
+            "properties": {
+              "app_src": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "ci_workflow": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "docs": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "erl": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "hrl": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "makefile": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "mix_exs": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "only_self_surface": {
+                "description": "The patch touches Erlang surface but references no tracked-dep API (every non-self pin sees zero in-scope references). The CLI sets this after `evaluate_series` when a self-pin is present and every non-self pin's `tracked_refs` is empty; see `InapplicableReason::OnlySelfSurfaceTouched`.",
+                "type": "boolean"
+              },
+              "only_test_visibility": {
+                "description": "Every changed `.erl` hunk is a Variant A unwrap of test-only `-ifdef(TEST)` machinery around an `-export` directive (see `InapplicableReason::OnlyTestVisibilityChanged`). When true, the patch touches Erlang surface but adds no semantic content, so an empty reason set should promote to `Inapplicable` instead of `Compatible`.",
+                "type": "boolean"
+              },
+              "other": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "rebar_config": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "schema": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "tests": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "TranslationSource": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "config_stanza"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "external_file"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Unanalyzed": {
+            "description": "Counts of call sites the analyzer could not resolve: `apply/3`-style BIFs, and dispatch through a variable module or function. Informational only.",
+            "properties": {
+              "apply": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "variable_dispatch": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "Verdict": {
+            "oneOf": [
+              {
+                "properties": {
+                  "verdict": {
+                    "enum": [
+                      "compatible"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "$ref": "#/definitions/Reason"
+                    },
+                    "type": "array"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "requires_adaptation"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reasons",
+                  "verdict"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "$ref": "#/definitions/Reason"
+                    },
+                    "type": "array"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "incompatible"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reasons",
+                  "verdict"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "$ref": "#/definitions/InapplicableReason"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "inapplicable"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "verdict"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "description": "The output of `Patch::evaluate_series`: verdicts plus diagnostics plus `PatchFacts` (source classifiers that drive downstream policy without being verdict reasons).",
+        "properties": {
+          "diagnostics": {
+            "$ref": "#/definitions/Diagnostics"
+          },
+          "patch_facts": {
+            "$ref": "#/definitions/PatchFacts"
+          },
+          "verdict": {
+            "$ref": "#/definitions/SeriesVerdict"
+          }
+        },
+        "required": [
+          "diagnostics",
+          "verdict"
+        ],
+        "title": "SeriesEvaluation",
+        "type": "object"
+      },
+      "exit_code": {
+        "description": "Process exit code carried inside the envelope; matches the process status.",
+        "type": "integer"
+      },
+      "schema_version": {
+        "description": "Wire-format schema version. Bumps when envelope shape changes.",
+        "minimum": 1,
+        "type": "integer"
+      },
+      "warnings": {
+        "description": "Free-form CLI warnings attached to the envelope.",
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "schema_version",
+      "command",
+      "data",
+      "exit_code"
+    ],
+    "type": "object"
+  },
+  "schema_version": 1,
+  "title": "backhopper envelope v1"
+}

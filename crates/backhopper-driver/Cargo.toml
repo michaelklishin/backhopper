@@ -12,12 +12,14 @@ description = "Statically typed Rust driver for the backhopper CLI that simplifi
 workspace = true
 
 [features]
-default = ["tracing"]
-tracing = ["dep:tracing"]
-mock    = []
+default  = ["tracing"]
+tracing  = ["dep:tracing"]
+mock     = []
+schemars = ["dep:schemars", "backhopper-core/schemars"]
 
 [dependencies]
 backhopper-core = { workspace = true }
+schemars        = { workspace = true, optional = true, features = ["derive"] }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 thiserror       = { workspace = true }

@@ -15,7 +15,7 @@ use backhopper_core::compat::{
 };
 use backhopper_core::config::PathTranslations;
 use backhopper_core::git::{GitRepo, TargetTreeIndex};
-use backhopper_core::model::names::GitRef;
+use backhopper_core::model::names::{GitRef, RelativePath};
 use backhopper_core::model::verdict::{
     InapplicableReason, PinVerdict, Reason, SeriesSummary, SeriesVerdict, TranslationSource,
     Verdict,
@@ -151,10 +151,16 @@ pub fn merge_into_series_verdict(summary: &TouchedPathSummary, verdict: &mut Ser
             Verdict::Compatible => {
                 if extra_reasons.is_empty() && !summary.missing.is_empty() && summary.on_target == 0
                 {
+                    let rels: Vec<RelativePath> = summary
+                        .missing
+                        .iter()
+                        .filter_map(|p| {
+                            p.to_str()
+                                .and_then(|s| RelativePath::new(s.to_owned()).ok())
+                        })
+                        .collect();
                     pin.verdict = Verdict::Inapplicable {
-                        reason: InapplicableReason::PathsMissingOnTarget {
-                            paths: summary.missing.clone(),
-                        },
+                        reason: InapplicableReason::PathsMissingOnTarget { paths: rels },
                     };
                 } else if !extra_reasons.is_empty() {
                     pin.verdict = Verdict::from_reasons(extra_reasons);

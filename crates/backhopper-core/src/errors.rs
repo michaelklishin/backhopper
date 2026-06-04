@@ -70,6 +70,13 @@ pub enum NameError {
 
     #[error("invalid mfa {value:?}: expected 'mod:fun/arity'")]
     InvalidMfa { value: String },
+
+    #[error("invalid {kind} {value:?}: {reason}")]
+    Invalid {
+        kind: &'static str,
+        value: String,
+        reason: &'static str,
+    },
 }
 
 #[derive(Debug, Error)]

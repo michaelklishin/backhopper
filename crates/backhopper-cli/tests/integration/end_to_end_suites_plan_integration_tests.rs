@@ -7,6 +7,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run_fails, run_succeeds, run_with_stdin, stdout};
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 
 fn build_fixture(dir: &TempDir) {
     let root = dir.path();
@@ -62,7 +63,7 @@ fn suites_plan_emits_json_envelope() {
     let out = stdout(&a);
     let parsed: serde_json::Value = serde_json::from_str(&out).expect("valid json");
     assert_eq!(parsed["command"], "suites plan");
-    assert_eq!(parsed["schema_version"], 1);
+    assert_eq!(parsed["schema_version"], CURRENT_SCHEMA_VERSION);
     let entries = parsed["data"]["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["suite"]["module"], "vhost_SUITE");

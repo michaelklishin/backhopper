@@ -25,6 +25,7 @@ use crate::verb::{Verb, VerbId};
 
 /// Versioned schema identifier on every CLI envelope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct SchemaVersion(u32);
 
@@ -57,6 +58,7 @@ impl Display for SchemaVersion {
 /// A free-form warning the CLI may attach to an envelope.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EnvelopeWarning {
     /// Stable warning code, kebab-case (e.g. `stale-extractor`).
     pub code: String,

@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::names::RecordName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArgShape {
     /// Variable identifier (starts with `_` or capital letter).

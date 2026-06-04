@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -101,7 +102,7 @@ fn introduced_reports_first_and_last_tags_with_matching_commit_shas() {
     let stdout = String::from_utf8(assert.success().get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
 
-    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["schema_version"], CURRENT_SCHEMA_VERSION);
     assert_eq!(v["command"], "snapshots introduced");
     assert_eq!(v["exit_code"], 0);
 

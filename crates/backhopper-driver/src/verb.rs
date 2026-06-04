@@ -22,6 +22,7 @@ use thiserror::Error;
 /// argv prefix the CLI expects (`["check", "patch"]` and so on).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum Verb {
     /// `backhopper version`.
@@ -70,6 +71,10 @@ pub enum Verb {
     CheckTree,
     /// `backhopper check batch`.
     CheckBatch,
+    /// `backhopper schema show`.
+    SchemaShow,
+    /// `backhopper schema diff`.
+    SchemaDiff,
 }
 
 impl Verb {
@@ -100,6 +105,8 @@ impl Verb {
             Self::CheckMerge => &["check", "merge"],
             Self::CheckTree => &["check", "tree"],
             Self::CheckBatch => &["check", "batch"],
+            Self::SchemaShow => &["schema", "show"],
+            Self::SchemaDiff => &["schema", "diff"],
         }
     }
 
@@ -162,6 +169,8 @@ impl Verb {
         Self::CheckMerge,
         Self::CheckTree,
         Self::CheckBatch,
+        Self::SchemaShow,
+        Self::SchemaDiff,
     ];
 }
 

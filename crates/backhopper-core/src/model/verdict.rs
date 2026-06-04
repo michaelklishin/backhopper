@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
     Arity, CommitSha, FieldName, FunctionName, GitRef, ModuleName, ProjectName, RecordName,
-    TagName, TypeName,
+    RelativePath, TagName, TypeName,
 };
 use crate::model::pin::Pin;
+use crate::model::pr_commit::PrCommit;
 use crate::model::symbol::SymbolRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "verdict", rename_all = "snake_case")]
 pub enum Verdict {
     Compatible,
@@ -24,7 +26,9 @@ pub enum Verdict {
     Inapplicable { reason: InapplicableReason },
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "reason", rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum InapplicableReason {
@@ -64,7 +68,7 @@ pub enum InapplicableReason {
     /// translation mapping any of them. The patch as written does
     /// not apply to the target.
     PathsMissingOnTarget {
-        paths: Vec<PathBuf>,
+        paths: Vec<RelativePath>,
     },
 }
 
@@ -113,7 +117,9 @@ impl Verdict {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Reason {
     MissingSymbol {
@@ -288,6 +294,7 @@ pub enum Reason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TranslationSource {
     ConfigStanza { name: String },
@@ -295,6 +302,7 @@ pub enum TranslationSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "artifact_kind", rename_all = "snake_case")]
 pub enum ArtifactKind {
     /// `<<<<<<<`, `=======`, `>>>>>>>`, or `||||||| ` marker present in a
@@ -310,6 +318,7 @@ pub enum ArtifactKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ConflictMarker {
     /// `<<<<<<<` line: start of the local side.
@@ -382,6 +391,7 @@ impl Reason {
 /// Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable`
 /// tell a real green check from a diff with nothing analyzable to check.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TouchedKinds {
     #[serde(default)]
     pub erl: u32,
@@ -639,6 +649,7 @@ pub enum FileKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PinVerdict {
     pub pin: Pin,
     pub verdict: Verdict,
@@ -653,6 +664,7 @@ pub struct PinVerdict {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SourceDelta {
     pub module: ModuleName,
     pub function: FunctionName,
@@ -700,12 +712,14 @@ impl PinVerdict {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesVerdict {
     pub results: Vec<PinVerdict>,
     pub summary: SeriesSummary,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesSummary {
     pub compatible: u32,
     pub requires_adaptation: u32,
@@ -769,6 +783,7 @@ impl SeriesVerdict {
 /// Series-wide diagnostic envelope. Strictly separate from `Verdict`
 /// so untracked-call signals never leak into machine-readable verdicts.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Diagnostics {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub untracked_calls: BTreeMap<ModuleName, usize>,
@@ -795,6 +810,7 @@ impl Diagnostics {
 /// Counts of call sites the analyzer could not resolve: `apply/3`-style
 /// BIFs, and dispatch through a variable module or function. Informational only.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Unanalyzed {
     #[serde(default)]
     pub apply: usize,
@@ -812,11 +828,25 @@ impl Unanalyzed {
 /// `PatchFacts` (source classifiers that drive downstream policy without
 /// being verdict reasons).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesEvaluation {
     pub verdict: SeriesVerdict,
     pub diagnostics: Diagnostics,
     #[serde(default, skip_serializing_if = "PatchFacts::is_empty")]
     pub patch_facts: PatchFacts,
+
+    /// Paths the analysed patch touched, in diff-encounter order.
+    /// Always emitted; an empty vec means the patch touched zero files.
+    #[serde(default)]
+    pub touched_paths: Vec<RelativePath>,
+
+    /// Inner PR-branch commits for 2-parent merge SHAs. `None` for
+    /// non-2-parent merges and non-merge SHAs.
+    ///
+    /// Do NOT add `skip_serializing_if = "Option::is_none"`. The
+    /// `None` vs `Some(vec![])` distinction is wire-load-bearing.
+    #[serde(default)]
+    pub pr_commits: Option<Vec<PrCommit>>,
 }
 
 impl SeriesEvaluation {
@@ -827,6 +857,7 @@ impl SeriesEvaluation {
 
 /// Source classifiers on the patch. Strictly separate from `Verdict` reasons.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PatchFacts {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub logging_style: BTreeMap<PathBuf, FileLoggingStyle>,
@@ -845,6 +876,7 @@ impl PatchFacts {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LoggingStyle {
     LoggerMacros,
@@ -854,6 +886,7 @@ pub enum LoggingStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FileLoggingStyle {
     pub dominant: LoggingStyle,
     pub logger_macro_sites: usize,
@@ -861,6 +894,7 @@ pub struct FileLoggingStyle {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct KhepriSignals {
     #[serde(default)]
     pub touches_khepri_module: bool,

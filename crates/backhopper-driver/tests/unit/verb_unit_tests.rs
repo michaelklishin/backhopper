@@ -87,3 +87,24 @@ fn iter_yields_every_documented_verb() {
         "iter() must enumerate every variant; got {count}"
     );
 }
+
+#[test]
+fn schema_show_round_trips_via_parse() {
+    assert_eq!(Verb::SchemaShow.cli_path(), &["schema", "show"]);
+    assert_eq!(Verb::SchemaShow.display_name(), "schema show");
+    assert_eq!(Verb::parse("schema show").unwrap(), Verb::SchemaShow);
+}
+
+#[test]
+fn schema_diff_round_trips_via_parse() {
+    assert_eq!(Verb::SchemaDiff.cli_path(), &["schema", "diff"]);
+    assert_eq!(Verb::SchemaDiff.display_name(), "schema diff");
+    assert_eq!(Verb::parse("schema diff").unwrap(), Verb::SchemaDiff);
+}
+
+#[test]
+fn iter_includes_schema_subverbs() {
+    let all: Vec<_> = Verb::iter().collect();
+    assert!(all.contains(&Verb::SchemaShow));
+    assert!(all.contains(&Verb::SchemaDiff));
+}

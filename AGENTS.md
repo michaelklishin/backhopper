@@ -58,6 +58,15 @@ The repo is a Cargo workspace with multiple crates:
    analyses, `XrefDiff`, and the test-suite-selection adapter
  * `crates/backhopper-cli/`: the binary: a `clap`-based parser, command
    dispatch, output formatters
+ * `crates/backhopper-driver/`: statically typed Rust driver that
+   embeds or shells out to the `backhopper` CLI on a caller's behalf.
+   Owns the subprocess, parses the JSON envelope into deserialised
+   payloads, and exposes a type-state builder so "required argument
+   missing" is a compile-time error
+ * `crates/xtask/`: workspace helper binary. `cargo xtask gen-schema`
+   regenerates the JSON schema for every supported envelope version
+   and either verifies `crates/backhopper-cli/schema/vN.json` matches
+   (default) or rewrites it (`--bless`)
 
 Per-crate `tests/` directories use the layout `unit/`, `integration/`,
 `proptests/`, `fixtures/`. Each becomes a single test binary under

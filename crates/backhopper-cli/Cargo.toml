@@ -16,7 +16,8 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-backhopper-core        = { workspace = true }
+backhopper-core        = { workspace = true, features = ["schemars"] }
+backhopper-driver      = { workspace = true, features = ["schemars"] }
 backhopper-erlang      = { workspace = true }
 backhopper-elixir      = { workspace = true }
 backhopper-xref        = { workspace = true }
@@ -26,6 +27,7 @@ anyhow                 = { workspace = true }
 bel7-cli               = { workspace = true }
 clap                   = { workspace = true }
 regex                  = { workspace = true }
+schemars               = { workspace = true, features = ["derive"] }
 serde                  = { workspace = true }
 serde_json             = { workspace = true }
 tabled                 = { workspace = true }

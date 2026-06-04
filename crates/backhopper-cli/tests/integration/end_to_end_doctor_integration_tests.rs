@@ -10,6 +10,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 
 fn write(p: &Path, body: &str) {
     if let Some(parent) = p.parent() {
@@ -90,7 +91,7 @@ fn doctor_json_envelope_carries_the_full_payload() {
     let text = stdout(&a);
     let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
     assert_eq!(v["command"], "doctor");
-    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["schema_version"], CURRENT_SCHEMA_VERSION,);
     assert_eq!(v["data"]["totals"]["missing"], 1);
     assert_eq!(v["data"]["series"][0]["name"], "rabbitmq-4.1");
 }

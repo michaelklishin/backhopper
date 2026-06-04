@@ -567,8 +567,35 @@ impl Patch<Analyzed> {
                 suggested_suites: suggest_suites(&self.files),
             },
             patch_facts: classify_patch_facts(&self.files),
+            touched_paths: collect_touched_paths(&self.files),
+            pr_commits: None,
         }
     }
+}
+
+/// Iterate `PatchedFile`s in diff order, project to `RelativePath`,
+/// dedup by first occurrence. Paths that can't be expressed as UTF-8
+/// relative paths (extremely rare in practice; never seen in RabbitMQ)
+/// are dropped silently — the alternative is failing the verdict.
+fn collect_touched_paths(files: &[PatchedFile]) -> Vec<crate::model::names::RelativePath> {
+    let mut seen: std::collections::BTreeSet<crate::model::names::RelativePath> =
+        std::collections::BTreeSet::new();
+    let mut out = Vec::with_capacity(files.len());
+    for file in files {
+        for p in [file.new_path.as_ref(), file.old_path.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(s) = p.to_str() else { continue };
+            let Ok(rel) = crate::model::names::RelativePath::new(s.to_owned()) else {
+                continue;
+            };
+            if seen.insert(rel.clone()) {
+                out.push(rel);
+            }
+        }
+    }
+    out
 }
 
 impl Patch<Verdicted> {

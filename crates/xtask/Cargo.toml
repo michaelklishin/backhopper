@@ -1,0 +1,25 @@
+[package]
+name        = "xtask"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+publish     = false
+description = "Workspace helper tasks: schema generation, drift checks"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+backhopper-core   = { workspace = true, features = ["schemars"] }
+backhopper-driver = { workspace = true, features = ["schemars"] }
+
+anyhow     = { workspace = true }
+clap       = { workspace = true }
+schemars   = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

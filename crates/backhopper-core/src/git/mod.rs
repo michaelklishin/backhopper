@@ -4,8 +4,10 @@
 
 //! Git access through `gix`. The whole crate's git seam lives here.
 
+mod pr_commits;
 mod target_tree_index;
 
+pub use pr_commits::{classify, pr_commits_for};
 pub use target_tree_index::TargetTreeIndex;
 
 use std::cmp::Ordering;
@@ -55,6 +57,13 @@ impl GitRepo {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Borrow the underlying `gix::Repository`. Intended for `crate::git`
+    /// submodules that need direct access; not part of the stable public
+    /// surface.
+    pub(crate) fn gix(&self) -> &gix::Repository {
+        &self.repo
     }
 
     pub fn list_tags(&self) -> Result<Vec<TagName>, GitError> {
@@ -186,6 +195,20 @@ impl GitRepo {
             }
         }
         Ok(branches)
+    }
+
+    /// Return the one-line subject of a commit message.
+    pub fn commit_subject(&self, commit: &CommitSha) -> Result<String, GitError> {
+        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let object = self
+            .repo
+            .find_object(oid)
+            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?;
+        let c = object
+            .try_into_commit()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        pr_commits::commit_subject(&c)
     }
 
     pub fn parents(&self, commit: &CommitSha) -> Result<Vec<CommitSha>, GitError> {

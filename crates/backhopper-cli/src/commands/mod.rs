@@ -13,6 +13,7 @@ pub mod doctor;
 pub mod init;
 pub mod projects;
 pub mod rabbitmq_components;
+pub mod schema;
 pub mod self_snapshot;
 pub mod series;
 pub mod shell;
@@ -20,6 +21,7 @@ pub mod snapshot_cache;
 pub mod snapshots;
 pub mod suggest;
 pub mod suites;
+pub mod summary;
 pub mod target_repo;
 pub mod tree_source;
 pub mod version;
@@ -42,6 +44,7 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Shell { cmd } => shell::handle(&cli.global, cmd),
         Group::Xref { cmd } => xref::handle(&cli.global, cmd),
         Group::Suites { cmd } => suites::handle(&cli.global, cmd),
+        Group::Schema { cmd } => schema::handle(&cli.global, cmd),
         Group::Version => version::handle(&cli.global),
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use clap::crate_version;
 use serde::Serialize;
 
 use crate::cli::GlobalArgs;
@@ -17,7 +18,7 @@ struct VersionPayload<'a> {
 pub fn handle(args: &GlobalArgs) -> CliResult<i32> {
     let payload = VersionPayload {
         name: "backhopper",
-        version: env!("CARGO_PKG_VERSION"),
+        version: crate_version!(),
     };
     let ctx = OutputContext::new(args.formatter, "version");
     render(&ctx, &payload, |w| {

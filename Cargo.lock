@@ -111,11 +111,12 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cli"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "backhopper-core",
+ "backhopper-driver",
  "backhopper-elixir",
  "backhopper-erlang",
  "backhopper-xref",
@@ -126,6 +127,7 @@ dependencies = [
  "predicates",
  "proptest",
  "regex",
+ "schemars",
  "serde",
  "serde_json",
  "tabled",
@@ -140,13 +142,14 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "gix",
  "imara-diff",
  "insta",
  "proptest",
  "regex",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
@@ -158,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -167,10 +170,11 @@ dependencies = [
 
 [[package]]
 name = "backhopper-driver"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "proptest",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
@@ -180,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -192,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "insta",
@@ -206,7 +210,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -222,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -233,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -514,6 +518,12 @@ name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "encode_unicode"
@@ -2231,6 +2241,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
+dependencies = [
+ "dyn-clone",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2266,6 +2300,17 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3019,6 +3064,18 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "xtask"
+version = "0.10.0"
+dependencies = [
+ "anyhow",
+ "backhopper-core",
+ "backhopper-driver",
+ "clap",
+ "schemars",
+ "serde_json",
 ]
 
 [[package]]

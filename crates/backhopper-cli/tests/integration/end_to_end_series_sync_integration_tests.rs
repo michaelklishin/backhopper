@@ -8,6 +8,7 @@ use assert_cmd::Command;
 use tempfile::TempDir;
 
 use crate::helpers::fixture::FixtureRepo;
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 
 const COMPONENTS_MK: &str = r#"
 PROJECT = rabbit
@@ -222,7 +223,7 @@ fn sync_merge_json_envelope_carries_outcome_counts() {
     let out = assert.success().get_output().clone();
     let stdout = String::from_utf8(out.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
-    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["schema_version"], CURRENT_SCHEMA_VERSION);
     assert_eq!(v["command"], "series sync merge");
     assert_eq!(v["exit_code"], 0);
     let data = &v["data"];

@@ -24,6 +24,8 @@ fn build_eval(verdicts: Vec<PinVerdict>) -> SeriesEvaluation {
         verdict: SeriesVerdict::from_results(verdicts),
         diagnostics: Diagnostics::default(),
         patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
     }
 }
 

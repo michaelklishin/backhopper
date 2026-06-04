@@ -239,6 +239,7 @@ fn validate_module_name(kind: &'static str, value: &str, max_len: usize) -> Resu
 macro_rules! string_newtype {
     ($name:ident, $kind:literal, $max:expr, $validate:expr) => {
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+        #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
         #[serde(transparent)]
         pub struct $name(String);
 
@@ -433,7 +434,88 @@ string_newtype!(
     |v: &str| { validate_erlang_name("callback name", v, MAX_CALLBACK_NAME_LEN) }
 );
 
+const MAX_RELATIVE_PATH_LEN: usize = 4096;
+
+string_newtype!(
+    RelativePath,
+    "relative path",
+    MAX_RELATIVE_PATH_LEN,
+    validate_relative_path
+);
+
+fn validate_relative_path(value: &str) -> Result<(), NameError> {
+    if value.is_empty() {
+        return Err(NameError::Empty {
+            kind: "relative path",
+        });
+    }
+    if value.len() > MAX_RELATIVE_PATH_LEN {
+        return Err(NameError::TooLong {
+            kind: "relative path",
+            len: value.len(),
+            max: MAX_RELATIVE_PATH_LEN,
+        });
+    }
+    if value.starts_with('/') {
+        return Err(NameError::Invalid {
+            kind: "relative path",
+            value: value.to_owned(),
+            reason: "absolute paths are not allowed",
+        });
+    }
+    if value.split('/').any(|seg| seg == "..") {
+        return Err(NameError::Invalid {
+            kind: "relative path",
+            value: value.to_owned(),
+            reason: "parent-directory segments are not allowed",
+        });
+    }
+    if value.contains('\0') {
+        return Err(NameError::Invalid {
+            kind: "relative path",
+            value: value.to_owned(),
+            reason: "NUL bytes are not allowed",
+        });
+    }
+    Ok(())
+}
+
+impl RelativePath {
+    /// Build a `RelativePath` from a `gix` byte string.
+    ///
+    /// `gix` reports paths as `BStr` because filesystems may produce
+    /// non-UTF-8 sequences. We hard-error on non-UTF-8 rather than
+    /// using a lossy conversion: silently mangled paths would leak
+    /// into verdict envelopes and downstream consumers would see the
+    /// wrong path.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, NameError> {
+        let s = std::str::from_utf8(bytes).map_err(|_| NameError::Invalid {
+            kind: "relative path",
+            value: String::from_utf8_lossy(bytes).into_owned(),
+            reason: "path is not valid UTF-8",
+        })?;
+        Self::new(s.to_owned())
+    }
+}
+
+impl TryFrom<&gix::bstr::BStr> for RelativePath {
+    type Error = NameError;
+
+    fn try_from(value: &gix::bstr::BStr) -> Result<Self, Self::Error> {
+        Self::from_bytes(value.as_ref())
+    }
+}
+
+impl TryFrom<&gix::bstr::BString> for RelativePath {
+    type Error = NameError;
+
+    fn try_from(value: &gix::bstr::BString) -> Result<Self, Self::Error> {
+        Self::from_bytes(value.as_ref())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct Arity(u8);
 
@@ -468,6 +550,7 @@ impl FromStr for Arity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct CommitSha(String);
 
@@ -486,6 +569,14 @@ impl CommitSha {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// First 12 hex characters, the conventional `git log --oneline`
+    /// abbreviation length. The validator guarantees 40-char input so
+    /// the slice never panics.
+    #[must_use]
+    pub fn abbreviated(&self) -> &str {
+        &self.0[..12]
     }
 }
 
@@ -510,6 +601,7 @@ impl AsRef<str> for CommitSha {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Mfa {
     pub module: ModuleName,
     pub function: FunctionName,

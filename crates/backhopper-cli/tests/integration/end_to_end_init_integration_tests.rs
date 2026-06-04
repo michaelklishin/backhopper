@@ -7,6 +7,7 @@
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stderr, stdout};
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 
 #[test]
 fn init_writes_a_starter_config_with_absolute_snapshot_dir() {
@@ -93,7 +94,7 @@ fn init_json_envelope_carries_paths() {
     let text = stdout(&a);
     let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
     assert_eq!(v["command"], "init");
-    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["schema_version"], CURRENT_SCHEMA_VERSION);
     assert!(
         v["data"]["wrote"]
             .as_str()
