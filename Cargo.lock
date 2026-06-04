@@ -130,7 +130,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "tabled",
+ "tabled 0.20.0",
  "tempfile",
  "thiserror",
  "time",
@@ -251,9 +251,9 @@ dependencies = [
 
 [[package]]
 name = "bel7-cli"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ce1d068522a6891bff6448c1bd2bca42261087e1d8e99a40409b4e95447fcaa"
+checksum = "160c7f536c80cca14d8d1d64101fca093ed63f96f2e6b88a311a4a44f5daf9d8"
 dependencies = [
  "clap",
  "clap_complete",
@@ -262,7 +262,7 @@ dependencies = [
  "owo-colors",
  "serde",
  "sysexits",
- "tabled",
+ "tabled 0.21.0",
  "terminal_size",
 ]
 
@@ -1932,6 +1932,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "papergrid"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0984e668274d34691bc2b262ef0d115de5fa9973bcdee7ae32213f93099153e"
+dependencies = [
+ "bytecount",
+ "fnv",
+ "unicode-width",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2454,7 +2465,18 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e39a2ee1fbcd360805a771e1b300f78cc88fec7b8d3e2f71cd37bbf23e725c7d"
 dependencies = [
- "papergrid",
+ "papergrid 0.17.0",
+ "tabled_derive",
+ "testing_table",
+]
+
+[[package]]
+name = "tabled"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5dc662e6da844ad6e428ad16b57967c9d33c82e16bb1c258326c0c078605dff"
+dependencies = [
+ "papergrid 0.18.0",
  "tabled_derive",
  "testing_table",
 ]
