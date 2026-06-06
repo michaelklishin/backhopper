@@ -76,6 +76,7 @@ fn synthetic_header(project: &str, tag: &str, extractor_version: &str) -> Snapsh
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: extractor_version.to_owned(),
+        dep_pins: Vec::new(),
     }
 }
 

@@ -5,19 +5,24 @@
 //! Per-pin evaluation of an analyzed patch. Pure functions: take a
 //! snapshot plus optional file bytes and scope, return reasons.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 
 use crate::compat::arg_shape::{ArgShape, satisfies_any};
 use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile};
 use crate::compat::scope::PinScope;
-use crate::model::names::{Arity, FieldName, FunctionName, Mfa, ModuleName, RecordName, TypeName};
+use crate::config::FamilyDefaults;
+use crate::model::names::{
+    Arity, FieldName, FunctionName, MacroName, Mfa, ModuleName, RecordName, TypeName,
+};
 use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
 use crate::model::symbol::{SymbolKind, SymbolRef};
-use crate::model::verdict::{ArtifactKind, ConflictMarker, Reason, SourceDelta, Verdict};
+use crate::model::verdict::{
+    ArtifactKind, ConflictMarker, Reason, SnapshotSide, SourceDelta, Verdict,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn evaluate_pin(
@@ -30,11 +35,15 @@ pub(crate) fn evaluate_pin(
     source_snapshot: Option<&Snapshot<state::Canonical>>,
     pin_files: Option<&EvaluationFiles>,
     scope: Option<&PinScope>,
+    family_defaults: Option<&FamilyDefaults>,
 ) -> EvaluationResult {
     let mut reasons: Vec<Reason> = Vec::new();
     check_syntactic_artifacts(files, &mut reasons);
     if let Some(pf) = pin_files {
         check_files_against_pin(files, pf, snapshot, &mut reasons);
+    }
+    if let Some(fd) = family_defaults {
+        check_versioned_machine_data(files, snapshot, source_snapshot, fd, &mut reasons);
     }
     let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
     let mut tracked_refs: Vec<SymbolRef> = Vec::new();
@@ -213,6 +222,157 @@ fn file_to_module_name(path: &Path) -> Option<ModuleName> {
     let basename = path.file_name()?.to_str()?;
     let stem = basename.strip_suffix(".erl")?;
     ModuleName::from_str(stem).ok()
+}
+
+fn touched_module_set(files: &[PatchedFile]) -> BTreeSet<ModuleName> {
+    let mut set = BTreeSet::new();
+    for f in files {
+        let path = f.new_path.as_ref().or(f.old_path.as_ref());
+        let Some(path) = path else { continue };
+        let ext = path.extension().and_then(|s| s.to_str());
+        if !matches!(ext, Some("erl") | Some("hrl")) {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if let Ok(m) = ModuleName::new(stem) {
+            set.insert(m);
+        }
+    }
+    set
+}
+
+fn recorded_wire_macros<'a>(
+    snapshot: &'a Snapshot<state::Canonical>,
+    module: &ModuleName,
+) -> BTreeSet<&'a str> {
+    snapshot
+        .module_named(module)
+        .map(|m| {
+            m.wire_constants
+                .iter()
+                .map(|wc| wc.macro_name.as_str())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn check_versioned_machine_data(
+    files: &[PatchedFile],
+    target: &Snapshot<state::Canonical>,
+    source: Option<&Snapshot<state::Canonical>>,
+    defaults: &FamilyDefaults,
+    reasons: &mut Vec<Reason>,
+) {
+    let touched = touched_module_set(files);
+    for impl_decl in &defaults.versioned_machine_impls {
+        let Ok(module) = ModuleName::new(&impl_decl.module) else {
+            continue;
+        };
+        if !touched.contains(&module) {
+            continue;
+        }
+        let on_target = target
+            .module_named(&module)
+            .and_then(|m| m.versioned_machine_version.as_ref())
+            .is_some();
+        let on_source = source
+            .and_then(|s| s.module_named(&module))
+            .and_then(|m| m.versioned_machine_version.as_ref())
+            .is_some();
+        let side = match (source.is_some(), on_source, on_target) {
+            (true, false, false) => Some(SnapshotSide::Both),
+            (true, false, true) => Some(SnapshotSide::Source),
+            (true, true, false) => Some(SnapshotSide::Target),
+            (true, true, true) => None,
+            (false, _, false) => Some(SnapshotSide::Target),
+            (false, _, true) => None,
+        };
+        if let Some(side) = side {
+            reasons.push(Reason::VersionedMachineSnapshotMissing { module, side });
+        }
+    }
+    for wc_decl in &defaults.wire_constants {
+        let Ok(module) = ModuleName::new(&wc_decl.module) else {
+            continue;
+        };
+        if !touched.contains(&module) {
+            continue;
+        }
+        let target_present = recorded_wire_macros(target, &module);
+        let missing_target: Vec<MacroName> = wc_decl
+            .macros
+            .iter()
+            .filter(|m| !target_present.contains(m.as_str()))
+            .filter_map(|m| MacroName::new(m).ok())
+            .collect();
+        let Some(src) = source else {
+            if !missing_target.is_empty() {
+                let mut macros = missing_target;
+                macros.sort();
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module,
+                    macros,
+                    side: SnapshotSide::Target,
+                });
+            }
+            continue;
+        };
+        let source_present = recorded_wire_macros(src, &module);
+        let missing_source: Vec<MacroName> = wc_decl
+            .macros
+            .iter()
+            .filter(|m| !source_present.contains(m.as_str()))
+            .filter_map(|m| MacroName::new(m).ok())
+            .collect();
+        match (missing_source.is_empty(), missing_target.is_empty()) {
+            (true, true) => {}
+            (false, true) => {
+                let mut macros = missing_source;
+                macros.sort();
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module,
+                    macros,
+                    side: SnapshotSide::Source,
+                });
+            }
+            (true, false) => {
+                let mut macros = missing_target;
+                macros.sort();
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module,
+                    macros,
+                    side: SnapshotSide::Target,
+                });
+            }
+            (false, false) if missing_source == missing_target => {
+                let mut macros = missing_target;
+                macros.sort();
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module,
+                    macros,
+                    side: SnapshotSide::Both,
+                });
+            }
+            (false, false) => {
+                let mut src_macros = missing_source;
+                src_macros.sort();
+                let mut tgt_macros = missing_target;
+                tgt_macros.sort();
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module: module.clone(),
+                    macros: src_macros,
+                    side: SnapshotSide::Source,
+                });
+                reasons.push(Reason::WireConstantBindingsMissing {
+                    module,
+                    macros: tgt_macros,
+                    side: SnapshotSide::Target,
+                });
+            }
+        }
+    }
 }
 
 fn check_syntactic_artifacts(files: &[PatchedFile], reasons: &mut Vec<Reason>) {

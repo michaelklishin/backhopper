@@ -132,6 +132,8 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::PreimageDrifted { .. } => "PreimageDrifted",
         Reason::PreimageMissing { .. } => "PreimageMissing",
         Reason::PathRename { .. } => "PathRename",
+        Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
+        Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
         _ => "UnknownReason",
     }
 }
@@ -341,6 +343,20 @@ fn reason_detail(r: &Reason) -> String {
             target_path,
             ..
         } => format!("{} → {}", source_path.display(), target_path.display()),
+        Reason::VersionedMachineSnapshotMissing { module, side } => {
+            format!("{module}: versioned-machine snapshot missing on {side:?}")
+        }
+        Reason::WireConstantBindingsMissing {
+            module,
+            macros,
+            side,
+        } => {
+            let names: Vec<String> = macros.iter().map(|m| format!("?{m}")).collect();
+            format!(
+                "{module}: wire-constant bindings [{}] missing on {side:?}",
+                names.join(", ")
+            )
+        }
         _ => format!("{r:?}"),
     }
 }

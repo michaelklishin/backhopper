@@ -32,10 +32,11 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict,
-    TouchedKinds, TranslationSource, Verdict,
+    SnapshotSide, TouchedKinds, TranslationSource, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
+use crate::cli::check::TargetRepoArgs;
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
@@ -46,6 +47,7 @@ use crate::commands::snapshot_cache::SnapshotCache;
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
+use crate::commands::summary::{SummaryFormatter, emit_rows, to_summary_row};
 use crate::commands::target_repo;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
@@ -630,7 +632,7 @@ fn run_check_patch(
     repo_dir_path: Option<&Path>,
     source_files: &FileMap,
     source: &SourcePinArgs,
-    target: &crate::cli::check::TargetRepoArgs,
+    target: &TargetRepoArgs,
     diagnostics: CheckFlags,
     merge_sha: Option<&str>,
 ) -> CliResult<i32> {
@@ -707,6 +709,13 @@ fn run_check_patch(
             .collect();
         let summary = target_repo::classify_touched_paths(&touched, &target_ctx);
         target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
+        let search_globs = target_repo::collect_search_path_globs(cfg);
+        let findings = target_repo::collect_added_file_findings(
+            &parsed.files,
+            &target_ctx.index,
+            &search_globs,
+        );
+        target_repo::merge_added_file_findings_into_evaluation(findings, &mut evaluation);
     }
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
@@ -739,14 +748,13 @@ fn run_check_patch(
     if diagnostics.terse {
         return render_terse(&evaluation, exit);
     }
-    if let Some(summary_fmt) = crate::commands::summary::SummaryFormatter::from_cli(args.formatter)
-    {
+    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
         let sha = merge_sha
             .and_then(|s| CommitSha::new(s.to_owned()).ok())
             .unwrap_or_else(|| CommitSha::new("0".repeat(40)).unwrap());
         let subject = lookup_commit_subject(merge_sha, repo_dir_path).unwrap_or_default();
-        let row = crate::commands::summary::to_summary_row(&evaluation, sha, subject);
-        crate::commands::summary::emit_rows(summary_fmt, &[row])?;
+        let row = to_summary_row(&evaluation, sha, subject);
+        emit_rows(summary_fmt, &[row])?;
         return Ok(exit);
     }
     let style = args.table_style;
@@ -924,7 +932,33 @@ fn reason_md_label(r: &Reason) -> String {
             target_path.display(),
             translation_name(translation),
         ),
+        Reason::VersionedMachineSnapshotMissing { module, side } => {
+            format!(
+                "VersionedMachineSnapshotMissing {module} ({})",
+                side_label(*side)
+            )
+        }
+        Reason::WireConstantBindingsMissing {
+            module,
+            macros,
+            side,
+        } => {
+            let names: Vec<String> = macros.iter().map(|m| format!("?{m}")).collect();
+            format!(
+                "WireConstantBindingsMissing {module} [{}] ({})",
+                names.join(", "),
+                side_label(*side),
+            )
+        }
         _ => format!("{r:?}"),
+    }
+}
+
+fn side_label(s: SnapshotSide) -> &'static str {
+    match s {
+        SnapshotSide::Source => "source",
+        SnapshotSide::Target => "target",
+        SnapshotSide::Both => "both",
     }
 }
 
@@ -1276,7 +1310,9 @@ fn evaluate_one(
             pin_self_override,
         )?;
         let snap = (*snap_arc).clone();
-        let mut ctx = EvaluationContext::new(pin.clone(), snap, scope).with_files(files);
+        let mut ctx = EvaluationContext::new(pin.clone(), snap, scope)
+            .with_files(files)
+            .with_family_defaults(project.family.defaults());
         if let Some(Some(source_pin)) = source_pins.get(idx) {
             let source_snap_arc = cache
                 .get(&source_pin.project, &source_pin.tag)
@@ -1513,7 +1549,7 @@ fn run_batch(
     repo: &Path,
     commits_file_path: &Path,
     source: &SourcePinArgs,
-    target: &crate::cli::check::TargetRepoArgs,
+    target: &TargetRepoArgs,
     diagnostics: CheckFlags,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
@@ -1581,6 +1617,13 @@ fn run_batch(
                     .collect();
                 let summary = target_repo::classify_touched_paths(&touched, target_ctx);
                 target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
+                let search_globs = target_repo::collect_search_path_globs(cfg);
+                let findings = target_repo::collect_added_file_findings(
+                    &parsed.files,
+                    &target_ctx.index,
+                    &search_globs,
+                );
+                target_repo::merge_added_file_findings_into_evaluation(findings, &mut evaluation);
             }
             current += 1;
             reporter.progress(current, pair_count, &item_label);

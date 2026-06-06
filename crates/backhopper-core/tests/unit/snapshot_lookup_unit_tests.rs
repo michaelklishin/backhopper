@@ -20,6 +20,7 @@ fn header() -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     }
 }
 

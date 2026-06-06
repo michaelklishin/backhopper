@@ -10,11 +10,18 @@
 //! callers can match on the same enums the CLI itself produces.
 
 pub use backhopper_core::model::names::{
-    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FieldName,
-    FunctionName, Mfa, ModuleName, ProjectName, RecordName, SeriesName, TagGlob, TagName, TypeName,
+    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, DependencyName,
+    DependencyVersion, FieldName, FunctionName, MacroName, Mfa, ModuleName, ProjectName,
+    RecordName, SeriesName, TagGlob, TagName, TypeName,
 };
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
+pub use backhopper_core::model::snapshot::{
+    FORMAT_VERSION, HrlFile, Module, Provenance, SUPPORTED_FORMAT_VERSIONS, Snapshot,
+    SnapshotHeader, VendoredDep, VendoredDepSource, VersionedMachineVersion, WireConstantBinding,
+    WireValue, state as snapshot_state,
+};
 pub use backhopper_core::model::symbol::{Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
-    FileKind, InapplicableReason, PinVerdict, Reason, SeriesVerdict, TouchedKinds, Verdict,
+    FileKind, InapplicableReason, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TouchedKinds,
+    Verdict,
 };

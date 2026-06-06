@@ -27,6 +27,7 @@ fn write_tag(
         generated_by: "backhopper".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
     store.write(&snap).unwrap();

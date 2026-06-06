@@ -7,18 +7,20 @@
 //! once per invocation, then applies the per-touched-path classifier
 //! to every pin's verdict.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
+use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
 };
-use backhopper_core::config::PathTranslations;
+use backhopper_core::config::{Config, PathTranslations};
 use backhopper_core::git::{GitRepo, TargetTreeIndex};
-use backhopper_core::model::names::{GitRef, RelativePath};
+use backhopper_core::model::names::{GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{
-    InapplicableReason, PinVerdict, Reason, SeriesSummary, SeriesVerdict, TranslationSource,
-    Verdict,
+    Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesSummary,
+    SeriesVerdict, TranslationSource, Verdict,
 };
 
 use crate::cli::check::TargetRepoArgs;
@@ -190,4 +192,123 @@ fn recount_summary(results: &[PinVerdict]) -> SeriesSummary {
         }
     }
     s
+}
+
+/// Synthesise the post-patch content of `file` from its `Added`
+/// hunk lines. Returns `None` when the file is not a fully-added
+/// `.erl` or `.hrl` (the only shape the v1 018 resolvers handle).
+pub fn synthesise_added_file_content(file: &PatchedFile) -> Option<(RelativePath, String)> {
+    if file.binary || file.old_path.is_some() {
+        return None;
+    }
+    let new_path = file.new_path.as_ref()?;
+    if new_path == Path::new("/dev/null") {
+        return None;
+    }
+    if !is_erl_or_hrl(new_path) {
+        return None;
+    }
+    let path_str = new_path.to_str()?.to_owned();
+    let path = RelativePath::new(path_str).ok()?;
+    let mut content = String::new();
+    let mut saw_added = false;
+    for hunk in &file.hunks {
+        for line in &hunk.lines {
+            if let HunkLine::Added(s) = line {
+                content.push_str(s);
+                content.push('\n');
+                saw_added = true;
+            }
+        }
+    }
+    if !saw_added {
+        return None;
+    }
+    Some((path, content))
+}
+
+fn is_erl_or_hrl(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("erl") || s.eq_ignore_ascii_case("hrl"))
+}
+
+/// Union of every configured project family's
+/// `test_helper_search_paths`. The 018 resolvers cast a wide net by
+/// design: the operator can pass the same patch through different
+/// projects without re-declaring globs per call.
+pub fn collect_search_path_globs(cfg: &Config) -> Vec<String> {
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for project in &cfg.projects {
+        for glob in project.family.defaults().test_helper_search_paths {
+            seen.insert(glob);
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Walk every added `.erl` and `.hrl` in `files`, run the 018
+/// resolvers (test-helper missing, behaviour missing, header
+/// missing), and return the merged findings.
+pub fn collect_added_file_findings(
+    files: &[PatchedFile],
+    target: &TargetTreeIndex,
+    search_path_globs: &[String],
+) -> AddedFileFindings {
+    let added: Vec<(RelativePath, String)> = files
+        .iter()
+        .filter_map(synthesise_added_file_content)
+        .collect();
+    analyse_added_files(
+        added.iter().map(|(p, c)| (p, c.as_str())),
+        target,
+        search_path_globs,
+    )
+}
+
+/// Merge `findings` into every pin's verdict and the series-level
+/// diagnostics. Non-blocking reasons promote `Compatible` to
+/// `RequiresAdaptation` and append to existing reason vectors;
+/// `Inapplicable` rows are left alone (the operator's reason for
+/// "this pin has nothing to say" already trumps a new advisory).
+pub fn merge_added_file_findings_into_evaluation(
+    findings: AddedFileFindings,
+    evaluation: &mut SeriesEvaluation,
+) {
+    let AddedFileFindings {
+        reasons,
+        missing_test_modules,
+        ..
+    } = findings;
+    if reasons.is_empty() && missing_test_modules.is_empty() {
+        return;
+    }
+    if !reasons.is_empty() {
+        for pin in evaluation.verdict.results.iter_mut() {
+            let mut to_add = reasons.clone();
+            match &mut pin.verdict {
+                Verdict::Compatible => {
+                    pin.verdict = Verdict::from_reasons(to_add);
+                }
+                Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
+                    reasons.append(&mut to_add);
+                }
+                Verdict::Inapplicable { .. } => {}
+            }
+        }
+        evaluation.verdict.summary = recount_summary(&evaluation.verdict.results);
+    }
+    merge_missing_test_modules(&mut evaluation.diagnostics, missing_test_modules);
+}
+
+fn merge_missing_test_modules(
+    diagnostics: &mut Diagnostics,
+    incoming: BTreeMap<RelativePath, BTreeMap<ModuleName, usize>>,
+) {
+    for (suite, by_mod) in incoming {
+        let entry = diagnostics.missing_test_modules.entry(suite).or_default();
+        for (m, count) in by_mod {
+            *entry.entry(m).or_insert(0) += count;
+        }
+    }
 }

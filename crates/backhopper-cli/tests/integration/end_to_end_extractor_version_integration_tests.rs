@@ -29,6 +29,7 @@ fn write_snapshot_with_extractor_version(
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: extractor_version.to_owned(),
+        dep_pins: Vec::new(),
     };
     let snap = Snapshot::from_extracted(header, vec![], vec![]).into_canonical();
     let dir = store_root.join(project);

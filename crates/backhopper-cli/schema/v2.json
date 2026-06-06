@@ -247,6 +247,18 @@
           "Diagnostics": {
             "description": "Series-wide diagnostic envelope. Strictly separate from `Verdict`\nso untracked-call signals never leak into machine-readable verdicts.",
             "properties": {
+              "missing_test_modules": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "description": "Per-`_SUITE.erl` map of `helper_module -> call_site_count`. The\nalways-on diagnostic counterpart of\n`Reason::TestModuleSymbolMissing`: emitted by the parse pass\neven without a target tree (which is why the inner key is the\n`ModuleName` rather than a resolved-or-not bit). When\n`--target-repo-dir-path` is supplied the resolver re-walks this\nmap and promotes the absent ones to typed reasons. The nested\n`BTreeMap` shape keeps the JSON envelope serialisable without\na custom composite-key encoder.",
+                "type": "object"
+              },
               "suggested_suites": {
                 "description": "SUITE names worth running for the patch, derived from touched paths.\nPopulated even when the verdict promotes to `Inapplicable` so that\nschema-only and config-only diffs still surface relevant suites.",
                 "items": {
@@ -482,6 +494,43 @@
                 "required": [
                   "reason",
                   "paths"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "IncludeDirective": {
+            "description": "`-include` and `-include_lib` are syntactically distinct: the\nformer takes a relative-to-source path, the latter an\n`application/include/file.hrl` shape resolved through OTP's lib\npath. The variant preserves which form the source used so the\nremediation text can match.",
+            "oneOf": [
+              {
+                "properties": {
+                  "form": {
+                    "const": "include",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "form",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "form": {
+                    "const": "include_lib",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "form",
+                  "path"
                 ],
                 "type": "object"
               }
@@ -1408,6 +1457,132 @@
                   "translation"
                 ],
                 "type": "object"
+              },
+              {
+                "description": "A `_SUITE.erl` file in the patch references `missing_module:f/n`\nwhere `missing_module` resolves to no source file under any\nconfigured `FamilyDefaults.test_helper_search_paths` on the\ntarget tree. The cherry-pick compiles and the SUITE may even\nload, but every call to the missing helper crashes at runtime:\nthe failure pattern that bit the Jun 2026 v4.1.x → v4.0.x round\n(the `amqp_utils:connection_config/1` undef in\n`amqp10_connection_max_SUITE`). Non-blocking by default: the\ndiagnostic equivalent (`Diagnostics.missing_test_modules`)\nalways fires; the `Reason` variant fires only when\n`--target-repo-dir-path` is supplied and the resolution is\nauthoritative.",
+                "properties": {
+                  "call_sites": {
+                    "items": {
+                      "$ref": "#/$defs/TestCallSite"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "test_module_symbol_missing",
+                    "type": "string"
+                  },
+                  "missing_module": {
+                    "type": "string"
+                  },
+                  "suite_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "suite_path",
+                  "missing_module",
+                  "call_sites"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` declares `-behaviour(behaviour)` (or\n`-behavior(...)`) where `behaviour` resolves to no source\nmodule on the target tree. `erlc` compiles with a warning,\nthen hook dispatch crashes at runtime. Sister verdict to the\nexisting `BehaviourCallback*` variants which model implementer\ndrift; this one catches the missing-behaviour-module case the\nexisting variants do not.",
+                "properties": {
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_module_missing",
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "behaviour"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` or `.hrl` declares `-include(path)` or\n`-include_lib(app/include/file.hrl)` against a target tree that\ndoes not ship the resolved header. Compile-time failure rather\nthan runtime, but same operator-facing shape as\n`TestModuleSymbolMissing`: looked fine on source, broken on\ntarget.",
+                "properties": {
+                  "attempted_paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "include_directive": {
+                    "$ref": "#/$defs/IncludeDirective"
+                  },
+                  "kind": {
+                    "const": "header_file_missing",
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "include_directive",
+                  "attempted_paths"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "versioned_machine_snapshot_missing",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "$ref": "#/$defs/SnapshotSide"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "side"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Declared wire constants are touched but the snapshot's\n`wire_constants` vector lacks the listed macros on `side`.\n`macros` is sorted alphabetically. Non-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "wire_constant_bindings_missing",
+                    "type": "string"
+                  },
+                  "macros": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "$ref": "#/$defs/SnapshotSide"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "macros",
+                  "side"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -1459,6 +1634,15 @@
               "summary"
             ],
             "type": "object"
+          },
+          "SnapshotSide": {
+            "description": "Which side of a snapshot comparison the data is missing from.",
+            "enum": [
+              "source",
+              "target",
+              "both"
+            ],
+            "type": "string"
           },
           "SourceDelta": {
             "properties": {
@@ -1610,6 +1794,31 @@
                 ],
                 "type": "object"
               }
+            ],
+            "type": "object"
+          },
+          "TestCallSite": {
+            "description": "One `Module:Function/Arity` reference inside a `_SUITE.erl` that\nresolves to a module absent on the target tree. Carries the line\nnumber so the operator can jump straight to the call site.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "function",
+              "arity",
+              "line"
             ],
             "type": "object"
           },

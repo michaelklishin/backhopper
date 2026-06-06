@@ -30,6 +30,7 @@ fn header(project: &str) -> SnapshotHeader {
         generated_by: "proptest".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     }
 }
 

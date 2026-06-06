@@ -24,6 +24,7 @@ fn snapshot() -> Snapshot<state::Canonical> {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     Snapshot::from_extracted(header, vec![], vec![]).into_canonical()
 }

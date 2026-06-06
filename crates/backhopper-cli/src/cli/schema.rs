@@ -10,6 +10,9 @@ pub enum SchemaCmd {
     Show(SchemaShowArgs),
     /// Emit a structured diff between two envelope schema versions.
     Diff(SchemaDiffArgs),
+    /// Emit the envelope schema versions this binary supports.
+    #[command(name = "supported_envelope_versions")]
+    SupportedEnvelopeVersions,
 }
 
 #[derive(Debug, Args)]

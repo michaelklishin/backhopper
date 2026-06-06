@@ -26,6 +26,7 @@ fn store_with_tags(project: &ProjectName, tags: &[&str]) -> (TempDir, SnapshotSt
             generated_by: "backhopper 0.0.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
         mut_store.write(&snap).unwrap();
@@ -110,6 +111,7 @@ fn pattern_matches_only_tags_for_this_project() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
         mut_store.write(&snap).unwrap();

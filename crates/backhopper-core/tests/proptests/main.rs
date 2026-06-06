@@ -21,6 +21,8 @@ mod sort_idempotent_proptests;
 mod spec_normalizer_proptests;
 mod spec_parser_does_not_panic_proptests;
 mod tag_glob_proptests;
+mod test_suite_parser_proptests;
 mod touched_kinds_proptests;
 mod type_refs_proptests;
+mod versioned_machine_canonicalize_proptests;
 mod visibility_only_detector_proptests;

@@ -5,16 +5,18 @@
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
-    TypeName,
+    Arity, CommitSha, FieldName, FunctionName, MacroName, ModuleName, ProjectName, RecordName,
+    TagName, TypeName,
 };
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
-    CallbackSig, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot, SnapshotHeader,
-    TypeArity, TypeDecl,
+    CallbackSig, FunArity, HrlFile, Module, Provenance, RecordDecl, RecordField, Snapshot,
+    SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding, WireValue,
 };
 
-use backhopper_cli::commands::snapshots::{DiffPayload, compute_diff, render_diff_text};
+use backhopper_cli::commands::snapshots::{
+    DiffPayload, VersionedMachineVersionChange, WireConstantChange, compute_diff, render_diff_text,
+};
 
 fn header(project: &str, tag: &str) -> SnapshotHeader {
     SnapshotHeader {
@@ -27,6 +29,7 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     }
 }
 
@@ -250,4 +253,177 @@ fn rendering_orders_removed_before_added_inside_each_category() {
     let removed_idx = text.find("removed export").unwrap();
     let added_idx = text.find("added export").unwrap();
     assert!(removed_idx < added_idx, "{text}");
+}
+
+fn with_machine_version(name: &str, value: Option<u64>) -> Module {
+    module_with(name, |m| {
+        m.versioned_machine_version = Some(VersionedMachineVersion {
+            function: FunctionName::new("version").unwrap(),
+            arity: Arity::new(0),
+            value,
+            provenance: Provenance::Literal,
+        });
+    })
+}
+
+fn with_wire_constants(name: &str, macros: &[(&str, u64)]) -> Module {
+    module_with(name, |m| {
+        m.wire_constants = macros
+            .iter()
+            .map(|(macro_name, value)| WireConstantBinding {
+                macro_name: MacroName::new(*macro_name).unwrap(),
+                value: WireValue::U64(*value),
+                defined_in: None,
+            })
+            .collect();
+    })
+}
+
+#[test]
+fn versioned_machine_version_missing_on_from_side() {
+    let a = snap("p", "v0", vec![module("rabbit_fifo", vec![])], vec![]);
+    let b = snap(
+        "p",
+        "v1",
+        vec![with_machine_version("rabbit_fifo", Some(7))],
+        vec![],
+    );
+    let d = compute_diff(&a, &b);
+    assert_eq!(d.versioned_machine_version_changes.len(), 1);
+    assert!(matches!(
+        &d.versioned_machine_version_changes[0],
+        VersionedMachineVersionChange::Missing { module, side }
+            if module == "rabbit_fifo" && side == "from"
+    ));
+    let text = render(&d);
+    assert!(
+        text.contains("versioned_machine_version missing on from rabbit_fifo"),
+        "{text}"
+    );
+}
+
+#[test]
+fn versioned_machine_version_drift_emits_kind_drift() {
+    let a = snap(
+        "p",
+        "v0",
+        vec![with_machine_version("rabbit_fifo", Some(7))],
+        vec![],
+    );
+    let b = snap(
+        "p",
+        "v1",
+        vec![with_machine_version("rabbit_fifo", Some(8))],
+        vec![],
+    );
+    let d = compute_diff(&a, &b);
+    assert_eq!(d.versioned_machine_version_changes.len(), 1);
+    assert!(matches!(
+        &d.versioned_machine_version_changes[0],
+        VersionedMachineVersionChange::Drift {
+            module, from, to,
+        } if module == "rabbit_fifo" && *from == Some(7) && *to == Some(8)
+    ));
+}
+
+#[test]
+fn equal_versioned_machine_versions_produce_no_rows() {
+    let a = snap(
+        "p",
+        "v0",
+        vec![with_machine_version("rabbit_fifo", Some(7))],
+        vec![],
+    );
+    let b = snap(
+        "p",
+        "v1",
+        vec![with_machine_version("rabbit_fifo", Some(7))],
+        vec![],
+    );
+    let d = compute_diff(&a, &b);
+    assert!(d.versioned_machine_version_changes.is_empty());
+}
+
+#[test]
+fn wire_constant_missing_groups_by_side_and_sorts_macros() {
+    let a = snap(
+        "p",
+        "v0",
+        vec![with_wire_constants(
+            "ra_log_segment",
+            &[("VERSION", 1), ("MAGIC", 2)],
+        )],
+        vec![],
+    );
+    let b = snap(
+        "p",
+        "v1",
+        vec![with_wire_constants("ra_log_segment", &[("VERSION", 1)])],
+        vec![],
+    );
+    let d = compute_diff(&a, &b);
+    let missing: Vec<_> = d
+        .wire_constant_changes
+        .iter()
+        .filter_map(|c| match c {
+            WireConstantChange::Missing {
+                module,
+                side,
+                macros,
+            } => Some((module.clone(), side.clone(), macros.clone())),
+            WireConstantChange::Drift { .. } => None,
+        })
+        .collect();
+    assert_eq!(missing.len(), 1);
+    assert_eq!(missing[0].0, "ra_log_segment");
+    assert_eq!(missing[0].1, "to");
+    assert_eq!(missing[0].2, vec!["MAGIC".to_owned()]);
+}
+
+#[test]
+fn wire_constant_value_drift_emits_one_row_per_macro() {
+    let a = snap(
+        "p",
+        "v0",
+        vec![with_wire_constants("ra_log_segment", &[("VERSION", 1)])],
+        vec![],
+    );
+    let b = snap(
+        "p",
+        "v1",
+        vec![with_wire_constants("ra_log_segment", &[("VERSION", 2)])],
+        vec![],
+    );
+    let d = compute_diff(&a, &b);
+    let drifts: Vec<_> = d
+        .wire_constant_changes
+        .iter()
+        .filter_map(|c| match c {
+            WireConstantChange::Drift {
+                module,
+                macro_name,
+                from,
+                to,
+            } => Some((module.clone(), macro_name.clone(), from.clone(), to.clone())),
+            WireConstantChange::Missing { .. } => None,
+        })
+        .collect();
+    assert_eq!(drifts.len(), 1);
+    assert_eq!(drifts[0].0, "ra_log_segment");
+    assert_eq!(drifts[0].1, "VERSION");
+    assert_eq!(drifts[0].2, "u64 1");
+    assert_eq!(drifts[0].3, "u64 2");
+}
+
+#[test]
+fn diff_payload_serializes_without_new_fields_when_empty() {
+    let a = snap("p", "v0", vec![module("m", vec![])], vec![]);
+    let b = snap("p", "v1", vec![module("m", vec![])], vec![]);
+    let d = compute_diff(&a, &b);
+    let json = serde_json::to_string(&d).unwrap();
+    assert!(
+        !json.contains("versioned_machine_version_changes"),
+        "{json}"
+    );
+    assert!(!json.contains("wire_constant_changes"), "{json}");
 }

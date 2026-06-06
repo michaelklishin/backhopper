@@ -23,9 +23,10 @@ use crate::compat::patch_facts::{
     classify as classify_patch_facts, is_only_test_visibility_change, suggest_suites,
 };
 use crate::compat::scope::{PinScope, UntrackedTally};
+use crate::config::FamilyDefaults;
 use crate::erlang_macros::MacroTable;
 use crate::errors::PatchError;
-use crate::model::names::{Mfa, ModuleName, RecordName};
+use crate::model::names::{Mfa, ModuleName, RecordName, RelativePath};
 use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
 use crate::model::symbol::{RefContext, SymbolKind, SymbolRef};
@@ -318,6 +319,7 @@ pub struct EvaluationContext<S = Scoped> {
     pin: Pin,
     snapshot: Snapshot<state::Canonical>,
     source_snapshot: Option<Snapshot<state::Canonical>>,
+    family_defaults: Option<FamilyDefaults>,
     extras: S,
 }
 
@@ -327,6 +329,7 @@ impl EvaluationContext<Pinned> {
             pin,
             snapshot,
             source_snapshot: None,
+            family_defaults: None,
             extras: Pinned,
         }
     }
@@ -337,6 +340,7 @@ impl EvaluationContext<Pinned> {
             pin: self.pin,
             snapshot: self.snapshot,
             source_snapshot: self.source_snapshot,
+            family_defaults: self.family_defaults,
             extras: Scoped { scope },
         }
     }
@@ -354,6 +358,7 @@ impl EvaluationContext<Scoped> {
             pin: self.pin,
             snapshot: self.snapshot,
             source_snapshot: self.source_snapshot,
+            family_defaults: self.family_defaults,
             extras: Sourced {
                 scope: self.extras.scope,
                 files,
@@ -368,6 +373,14 @@ impl<S> EvaluationContext<S> {
         self.source_snapshot = Some(source);
         self
     }
+
+    /// Attach the pin's project-family declarations. Contexts without
+    /// this skip the versioned-machine and wire-constant checks.
+    #[must_use]
+    pub fn with_family_defaults(mut self, defaults: FamilyDefaults) -> Self {
+        self.family_defaults = Some(defaults);
+        self
+    }
 }
 
 /// Anything the evaluator can read: a context that has at least a scope.
@@ -378,6 +391,7 @@ pub trait EvaluationInput {
     fn scope(&self) -> &PinScope;
     fn files(&self) -> Option<&EvaluationFiles>;
     fn source_snapshot(&self) -> Option<&Snapshot<state::Canonical>>;
+    fn family_defaults(&self) -> Option<&FamilyDefaults>;
 }
 
 impl EvaluationInput for EvaluationContext<Scoped> {
@@ -396,6 +410,9 @@ impl EvaluationInput for EvaluationContext<Scoped> {
     fn source_snapshot(&self) -> Option<&Snapshot<state::Canonical>> {
         self.source_snapshot.as_ref()
     }
+    fn family_defaults(&self) -> Option<&FamilyDefaults> {
+        self.family_defaults.as_ref()
+    }
 }
 
 impl EvaluationInput for EvaluationContext<Sourced> {
@@ -413,6 +430,9 @@ impl EvaluationInput for EvaluationContext<Sourced> {
     }
     fn source_snapshot(&self) -> Option<&Snapshot<state::Canonical>> {
         self.source_snapshot.as_ref()
+    }
+    fn family_defaults(&self) -> Option<&FamilyDefaults> {
+        self.family_defaults.as_ref()
     }
 }
 
@@ -445,6 +465,7 @@ impl Patch<Analyzed> {
             None,
             None,
             None,
+            None,
         );
         let mut verdicts = self.verdicts;
         verdicts.push(PinVerdict::new(pin, result.verdict));
@@ -473,6 +494,7 @@ impl Patch<Analyzed> {
                 None,
                 None,
                 None,
+                None,
             );
             results.push(PinVerdict::new(pin.clone(), r.verdict));
         }
@@ -494,6 +516,7 @@ impl Patch<Analyzed> {
                 snap,
                 None,
                 Some(files),
+                None,
                 None,
             );
             results.push(PinVerdict::new(pin.clone(), r.verdict));
@@ -544,6 +567,7 @@ impl Patch<Analyzed> {
                 ctx.source_snapshot(),
                 ctx.files(),
                 Some(ctx.scope()),
+                ctx.family_defaults(),
             );
             results.push(
                 PinVerdict::new(ctx.pin().clone(), r.verdict)
@@ -565,6 +589,7 @@ impl Patch<Analyzed> {
                 untracked_records,
                 unanalyzed,
                 suggested_suites: suggest_suites(&self.files),
+                missing_test_modules: BTreeMap::new(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),
@@ -576,10 +601,9 @@ impl Patch<Analyzed> {
 /// Iterate `PatchedFile`s in diff order, project to `RelativePath`,
 /// dedup by first occurrence. Paths that can't be expressed as UTF-8
 /// relative paths (extremely rare in practice; never seen in RabbitMQ)
-/// are dropped silently — the alternative is failing the verdict.
-fn collect_touched_paths(files: &[PatchedFile]) -> Vec<crate::model::names::RelativePath> {
-    let mut seen: std::collections::BTreeSet<crate::model::names::RelativePath> =
-        std::collections::BTreeSet::new();
+/// are dropped silently: the alternative is failing the verdict.
+fn collect_touched_paths(files: &[PatchedFile]) -> Vec<RelativePath> {
+    let mut seen: BTreeSet<RelativePath> = BTreeSet::new();
     let mut out = Vec::with_capacity(files.len());
     for file in files {
         for p in [file.new_path.as_ref(), file.old_path.as_ref()]
@@ -587,7 +611,7 @@ fn collect_touched_paths(files: &[PatchedFile]) -> Vec<crate::model::names::Rela
             .flatten()
         {
             let Some(s) = p.to_str() else { continue };
-            let Ok(rel) = crate::model::names::RelativePath::new(s.to_owned()) else {
+            let Ok(rel) = RelativePath::new(s.to_owned()) else {
                 continue;
             };
             if seen.insert(rel.clone()) {

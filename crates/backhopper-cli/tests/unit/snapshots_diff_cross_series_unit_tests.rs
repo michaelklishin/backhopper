@@ -27,6 +27,8 @@ fn payload(project: &str, from: &str, to: &str, removed: &[(&str, &str)]) -> Dif
         headers_removed: Vec::new(),
         records_added: Vec::new(),
         records_removed: Vec::new(),
+        versioned_machine_version_changes: Vec::new(),
+        wire_constant_changes: Vec::new(),
     }
 }
 

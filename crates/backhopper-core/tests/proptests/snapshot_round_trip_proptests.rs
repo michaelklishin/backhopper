@@ -175,6 +175,7 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
             generated_by: "backhopper 0.4.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             extractor_version: String::new(),
+            dep_pins: Vec::new(),
         })
 }
 
@@ -226,7 +227,8 @@ proptest! {
             apps_scanned: Vec::new(),
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
+            extractor_version: String::new(),
+            dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, vec![], vec![hrl]).into_canonical();
         let text = format::to_string(&snap).unwrap();

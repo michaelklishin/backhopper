@@ -264,6 +264,7 @@ impl ProjectFamily {
                     behaviour: "ra_machine".into(),
                 }],
                 versioned_machine_impls: Vec::new(),
+                test_helper_search_paths: Vec::new(),
             },
             Self::Osiris => FamilyDefaults {
                 wire_constants: vec![WireConstantDecl::new(
@@ -301,9 +302,25 @@ impl ProjectFamily {
                         allow_state_flag_gating: false,
                     },
                 ],
+                test_helper_search_paths: rabbitmq_default_test_helper_search_paths(),
             },
         }
     }
+}
+
+/// Per-family relative-path globs the test-module resolver scans when
+/// looking up `helper_module:f/n` references in `_SUITE.erl` files.
+/// Globs are matched against `RelativePath` strings on the target
+/// tree; the first `*` segment expands to the application directory
+/// name (e.g. `deps/rabbit`, `deps/amqp_client`). Empty for
+/// `Generic`, so non-RabbitMQ projects do not get surprise verdict
+/// changes from a feature they did not opt into.
+fn rabbitmq_default_test_helper_search_paths() -> Vec<String> {
+    vec![
+        "deps/*/test".to_owned(),
+        "deps/*/src".to_owned(),
+        "deps/rabbitmq_ct_helpers/src".to_owned(),
+    ]
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -311,6 +328,9 @@ pub struct FamilyDefaults {
     pub wire_constants: Vec<WireConstantDecl>,
     pub versioned_machines: Vec<VersionedMachineDecl>,
     pub versioned_machine_impls: Vec<VersionedMachineImplDecl>,
+    /// See `rabbitmq_default_test_helper_search_paths` for the
+    /// `ProjectFamily::Rabbitmq` default and the glob convention.
+    pub test_helper_search_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

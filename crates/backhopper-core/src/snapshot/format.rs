@@ -14,8 +14,9 @@ use time::format_description::well_known::Rfc3339;
 use crate::errors::SnapshotError;
 use crate::model::names::ModuleName;
 use crate::model::snapshot::{
-    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, IfdefGuardKind, Module, Snapshot,
-    SnapshotHeader, TestExportVariant, Visibility, state,
+    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, IfdefGuardKind, Module, Provenance, Snapshot,
+    SnapshotHeader, TestExportVariant, VendoredDep, VendoredDepSource, VersionedMachineVersion,
+    Visibility, WireConstantBinding, WireValue, state,
 };
 
 pub const HEADER_PREFIX: &str = "# ";
@@ -89,8 +90,20 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
     if !header.extractor_version.is_empty() {
         writeln!(w, "# extractor-version: {}", header.extractor_version)?;
     }
+    for pin in &header.dep_pins {
+        write_dep_pin(w, pin)?;
+    }
     writeln!(w)?;
     Ok(())
+}
+
+fn write_dep_pin<W: Write>(w: &mut W, pin: &VendoredDep) -> io::Result<()> {
+    let label = match pin.source {
+        VendoredDepSource::Hex => "hex",
+        VendoredDepSource::Git => "git",
+        VendoredDepSource::GitRmq => "git_rmq",
+    };
+    writeln!(w, "# dep-pin: {} = {} {}", pin.name, label, pin.version)
 }
 
 fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
@@ -191,7 +204,59 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
             )?,
         }
     }
+    if let Some(v) = &m.versioned_machine_version {
+        write_versioned_machine(w, v)?;
+    }
+    for wc in &m.wire_constants {
+        write_wire_constant(w, wc)?;
+    }
     Ok(())
+}
+
+fn write_versioned_machine<W: Write>(w: &mut W, v: &VersionedMachineVersion) -> io::Result<()> {
+    let value = match v.value {
+        Some(n) => n.to_string(),
+        None => "-".to_owned(),
+    };
+    match &v.provenance {
+        Provenance::Literal => writeln!(
+            w,
+            "  versioned_machine {}/{} = {} literal",
+            v.function, v.arity, value
+        ),
+        Provenance::MacroBody {
+            macro_name,
+            defined_in: Some(path),
+        } => writeln!(
+            w,
+            "  versioned_machine {}/{} = {} macro_body {} at {}",
+            v.function, v.arity, value, macro_name, path
+        ),
+        Provenance::MacroBody {
+            macro_name,
+            defined_in: None,
+        } => writeln!(
+            w,
+            "  versioned_machine {}/{} = {} macro_body {}",
+            v.function, v.arity, value, macro_name
+        ),
+    }
+}
+
+fn write_wire_constant<W: Write>(w: &mut W, wc: &WireConstantBinding) -> io::Result<()> {
+    let (kind, body) = match &wc.value {
+        WireValue::U64(n) => ("u64", n.to_string()),
+        WireValue::Bytes(b) => ("bytes", String::from_utf8_lossy(b).into_owned()),
+        WireValue::Opaque(s) => ("opaque", s.clone()),
+    };
+    match &wc.defined_in {
+        Some(path) => writeln!(
+            w,
+            "  wire_constant {} = {} {} at {}",
+            wc.macro_name, kind, body, path
+        ),
+        None => writeln!(w, "  wire_constant {} = {} {}", wc.macro_name, kind, body),
+    }
 }
 
 fn write_hrl<W: Write>(h: &HrlFile, w: &mut W) -> io::Result<()> {

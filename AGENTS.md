@@ -154,8 +154,14 @@ depends only on its own crate.
    so `backhopper sn li` resolves to `backhopper snapshots list`
  * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,tree_source}.rs`:
    per-group argument shapes. Multi-word verbs use per-variant
-   `#[command(name = "list_callers")]` to render in snake_case while
-   args stay kebab-case (clap default)
+   `#[command(name = "list_callers")]` to render in snake_case
+   (e.g. `xref list_callers`, `snapshots list_tags`,
+   `schema supported_envelope_versions`), matching `rabbitmqadmin`.
+   Long-form flags stay in clap's default kebab-case
+   (`--config-file-path`, `--from-series`). Do not use enum-level
+   `#[command(rename_all = "snake_case")]`: it also rewrites the long
+   names of inline-defined args in each variant, silently turning
+   `--repo-dir-path` into `--repo_dir_path`
  * `src/commands/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,rabbitmq_components,version,tree_source}.rs`:
    command handlers. `rabbitmq_components` is the RabbitMQ
    `rabbitmq-components.mk` parser (CLI-local, never in `backhopper-core`)
@@ -366,6 +372,14 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
  * Use "X and Y" in prose, never "X/Y" slash-shorthand. Unit fractions
    (`bytes/edge`), single-concept abbreviations (`I/O`), and paths or
    code (`tests/unit/`, `m:f/a`) are the exceptions
+ * CLI subcommand names use snake_case (e.g. `snapshots list_tags`,
+   `xref list_callers`), matching `rabbitmqadmin`. Apply this per
+   multi-word variant with `#[command(name = "list_tags")]`, never via
+   enum-level `#[command(rename_all = "snake_case")]`: the latter also
+   rewrites long arg names inside inline-defined variants, silently
+   breaking `--repo-dir-path` into `--repo_dir_path`. Long-form flags
+   themselves stay in clap's default kebab-case (`--config-file-path`,
+   `--from-series`)
 
 ## After Completing a Task
 

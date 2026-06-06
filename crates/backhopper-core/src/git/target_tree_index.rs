@@ -80,4 +80,8 @@ impl TargetTreeIndex {
     pub fn dir_count(&self) -> usize {
         self.present_dirs.len()
     }
+
+    pub fn present_paths(&self) -> &BTreeSet<PathBuf> {
+        &self.present_paths
+    }
 }

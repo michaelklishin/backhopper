@@ -96,6 +96,7 @@ fn snapshot_round_trip_for_realistic_module() {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     // The text format does not (yet) round-trip clause_heads; clear them
     // on both sides so the comparison stays focused on persisted state.

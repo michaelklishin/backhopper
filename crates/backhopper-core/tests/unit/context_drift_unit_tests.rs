@@ -39,6 +39,7 @@ fn snapshot() -> Snapshot<state::Canonical> {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     let mut m = Module::new(ModuleName::new("demo").unwrap());
     m.visibility = Visibility::Public;
@@ -70,6 +71,7 @@ fn file_absent_when_path_missing_at_pin() {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     let empty_snap = Snapshot::from_extracted(header, vec![], vec![]).into_canonical();
     let files = EvaluationFiles::new().with(PathBuf::from("src/demo.erl"), None);

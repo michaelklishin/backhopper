@@ -23,6 +23,7 @@ fn snap(modules: Vec<Module>) -> Snapshot<state::Canonical> {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     Snapshot::from_extracted(header, modules, Vec::new()).into_canonical()
 }

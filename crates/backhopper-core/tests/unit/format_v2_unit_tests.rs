@@ -25,19 +25,21 @@ fn header() -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     }
 }
 
 #[test]
-fn format_version_constant_is_three() {
-    assert_eq!(FORMAT_VERSION, 3);
+fn format_version_constant_is_four() {
+    assert_eq!(FORMAT_VERSION, 4);
 }
 
 #[test]
-fn supported_versions_include_v1_v2_and_v3() {
+fn supported_versions_include_v1_through_v4() {
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&1));
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&2));
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&3));
+    assert!(SUPPORTED_FORMAT_VERSIONS.contains(&4));
 }
 
 fn v1_text(body: &str) -> String {

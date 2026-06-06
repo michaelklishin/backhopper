@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+pub mod added_file;
 pub mod arg_shape;
 pub mod call_sites;
 pub(crate) mod diff;
@@ -11,8 +12,10 @@ pub mod patch;
 pub(crate) mod patch_facts;
 pub mod routing;
 pub mod scope;
+pub mod source_attributes;
 pub mod source_macros;
 pub mod target_tree;
+pub mod test_suite;
 
 pub use otp::is_otp_module;
 pub use patch::{

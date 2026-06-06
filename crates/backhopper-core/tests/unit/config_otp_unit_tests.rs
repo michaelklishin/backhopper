@@ -265,6 +265,7 @@ fn series_resolve_pins_walks_specs_against_store() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            dep_pins: Vec::new(),
         };
         mut_store
             .write(&Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical())

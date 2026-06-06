@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::schema::{SchemaError, schema_value_for};
+use backhopper_core::schema::{
+    CURRENT_SCHEMA_VERSION, SchemaError, embedded_versions, schema_value_for,
+};
 use backhopper_core::schema_diff::{SchemaDiff, diff};
 use serde::Serialize;
 use serde_json::Value;
@@ -15,7 +17,37 @@ pub fn handle(args: &GlobalArgs, cmd: SchemaCmd) -> CliResult<i32> {
     match cmd {
         SchemaCmd::Show(a) => show(args, a),
         SchemaCmd::Diff(a) => diff_cmd(args, a),
+        SchemaCmd::SupportedEnvelopeVersions => supported_envelope_versions(args),
     }
+}
+
+fn supported_envelope_versions(args: &GlobalArgs) -> CliResult<i32> {
+    let payload = SupportedEnvelopeVersionsPayload {
+        current_envelope_version: CURRENT_SCHEMA_VERSION,
+        supported_envelope_versions: embedded_versions(),
+        backhopper_version: env!("CARGO_PKG_VERSION").into(),
+    };
+    let ctx = OutputContext::new(args.formatter, "schema supported_envelope_versions");
+    render(&ctx, &payload, |w| {
+        writeln!(
+            w,
+            "current_envelope_version: {}",
+            payload.current_envelope_version
+        )?;
+        writeln!(
+            w,
+            "supported_envelope_versions: [{}]",
+            payload
+                .supported_envelope_versions
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+        )?;
+        writeln!(w, "backhopper_version: {}", payload.backhopper_version)?;
+        Ok(())
+    })?;
+    Ok(0)
 }
 
 fn show(args: &GlobalArgs, a: SchemaShowArgs) -> CliResult<i32> {
@@ -73,4 +105,11 @@ fn map_schema_err(e: SchemaError) -> CliError {
 struct ShowPayload {
     version: u32,
     schema: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct SupportedEnvelopeVersionsPayload {
+    current_envelope_version: u32,
+    supported_envelope_versions: Vec<u32>,
+    backhopper_version: String,
 }

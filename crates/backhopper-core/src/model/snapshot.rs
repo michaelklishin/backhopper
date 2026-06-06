@@ -17,8 +17,8 @@ use time::OffsetDateTime;
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    ApplicationName, Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName,
-    RecordName, TagName, TypeName,
+    ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
+    MacroName, ModuleName, ProjectName, RecordName, TagName, TypeName,
 };
 use crate::snapshot::sort::canonicalize;
 
@@ -30,12 +30,12 @@ pub mod state {
     pub struct Canonical;
 }
 
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// Older snapshot file versions the parser still accepts. New writers
 /// always emit `FORMAT_VERSION`. `snapshots migrate` regenerates each
 /// stored snapshot at the current version.
-pub const SUPPORTED_FORMAT_VERSIONS: &[u32] = &[1, 2, 3];
+pub const SUPPORTED_FORMAT_VERSIONS: &[u32] = &[1, 2, 3, 4];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotHeader {
@@ -56,6 +56,12 @@ pub struct SnapshotHeader {
     /// Empty string when reading pre-extractor-versioning snapshots.
     #[serde(default)]
     pub extractor_version: String,
+    /// Vendored dependency pins captured from the project's components file
+    /// (e.g. `rabbitmq-components.mk`). Populated for projects whose family
+    /// declares a components-file shape; empty otherwise. Format version 4
+    /// and later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dep_pins: Vec<VendoredDep>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +132,19 @@ pub struct Module {
     /// surfacing (see feedback §7.3); no verdict rule fires on them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variant_c_blocks: Vec<VariantCBlock>,
+    /// Extracted body of the version function for modules that implement
+    /// a `versioned_machine_impl` declared by the project family (e.g.
+    /// `rabbit_fifo:version/0`). `None` when the module is not a declared
+    /// versioned-machine impl or when the body did not resolve. Format
+    /// version 4 and later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub versioned_machine_version: Option<VersionedMachineVersion>,
+    /// Bound values of the wire-bearing macros declared by the project
+    /// family for this module (e.g. `RA_PROTO_VERSION` on `ra`). Empty
+    /// when the module declares no tracked wire constants. Format
+    /// version 4 and later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wire_constants: Vec<WireConstantBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -187,6 +206,90 @@ pub struct VariantCBlock {
     pub else_line: Option<usize>,
 }
 
+/// Snapshot-level record of a versioned state-machine's `version/0`
+/// function value, captured from the source at snapshot time. Populated
+/// only for modules the project family declares as versioned-machine
+/// impls (e.g. `rabbit_fifo`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct VersionedMachineVersion {
+    pub function: FunctionName,
+    pub arity: Arity,
+    /// Resolved integer value of the version-function body. `None` when
+    /// the body did not parse to an integer literal (directly or through
+    /// macro expansion).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<u64>,
+    pub provenance: Provenance,
+}
+
+/// How a versioned-machine `version/0` value was resolved at snapshot
+/// time.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Provenance {
+    /// The body was an integer literal directly in the function clause.
+    Literal,
+    /// The body referenced a `?MACRO` that resolved to an integer.
+    /// `defined_in` is the file path of the source that bound the macro
+    /// (own `.erl`, own `.hrl`, or a transitive include).
+    MacroBody {
+        macro_name: MacroName,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        defined_in: Option<String>,
+    },
+}
+
+/// Snapshot-level record of a wire-bearing macro's bound value (e.g.
+/// `RA_PROTO_VERSION`, segment-file `VERSION` and `MAGIC`). Captured
+/// per module declared by the project family as wire-bearing.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WireConstantBinding {
+    pub macro_name: MacroName,
+    pub value: WireValue,
+    /// Source file where the macro was `-define`'d. May be the module's
+    /// own `.erl`, a sibling `.hrl`, or a transitive include.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub defined_in: Option<String>,
+}
+
+/// Type-discriminated wire-constant value. Integers and ASCII bytestrings
+/// are typed; anything else is preserved verbatim as `Opaque`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum WireValue {
+    /// Unsigned integer literal (`-define(VERSION, 2)`).
+    U64(u64),
+    /// Bytestring literal (`-define(MAGIC, <<"RASG">>)`). Stored as
+    /// the inner bytes without the `<<"...">>` wrapper. The text-format
+    /// round-trip assumes ASCII-printable bytes: non-printable byte
+    /// content should land in `Opaque` instead.
+    Bytes(Vec<u8>),
+    /// Anything else, preserved as the raw token text.
+    Opaque(String),
+}
+
+/// Pinned dependency captured from the project's components file (e.g.
+/// `rabbitmq-components.mk`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct VendoredDep {
+    pub name: DependencyName,
+    pub version: DependencyVersion,
+    pub source: VendoredDepSource,
+}
+
+/// How a vendored dependency is sourced. Mirrors the three real
+/// `rabbitmq-components.mk` line shapes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VendoredDepSource {
+    /// `dep_NAME = hex VERSION`.
+    Hex,
+    /// `dep_NAME = git URL TAG`.
+    Git,
+    /// `dep_NAME = git_rmq NAME TAG` (vendored fork).
+    GitRmq,
+}
+
 impl Module {
     pub fn new(name: ModuleName) -> Self {
         Self {
@@ -208,6 +311,8 @@ impl Module {
             test_only_exports: Vec::new(),
             ifdef_macros: Vec::new(),
             variant_c_blocks: Vec::new(),
+            versioned_machine_version: None,
+            wire_constants: Vec::new(),
         }
     }
 
@@ -342,6 +447,8 @@ impl Snapshot<state::Unsorted> {
         canonicalize(&mut self.modules, &mut self.headers);
         self.header.apps_scanned.sort();
         self.header.apps_scanned.dedup();
+        self.header.dep_pins.sort_by(|a, b| a.name.cmp(&b.name));
+        self.header.dep_pins.dedup_by(|a, b| a.name == b.name);
         Snapshot {
             header: self.header,
             modules: self.modules,
@@ -429,6 +536,7 @@ impl Default for Snapshot<state::Unsorted> {
                 generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
                 extractor_version: String::new(),
+                dep_pins: Vec::new(),
             },
             modules: Vec::new(),
             headers: Vec::new(),

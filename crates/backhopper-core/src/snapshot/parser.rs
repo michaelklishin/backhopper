@@ -16,14 +16,15 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::errors::{NameError, SnapshotError};
 use crate::model::names::{
-    ApplicationName, Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName,
-    RecordName, TagName, TypeName,
+    ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
+    MacroName, ModuleName, ProjectName, RecordName, TagName, TypeName,
 };
 use crate::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
-    HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl, RecordField,
+    HrlFile, IfdefGuardKind, IfdefMacro, Module, Provenance, RecordDecl, RecordField,
     SUPPORTED_FORMAT_VERSIONS, Snapshot, SnapshotHeader, SpecSig, TestExportVariant,
-    TestOnlyExport, TypeArity, TypeDecl, VariantCBlock, Visibility, state,
+    TestOnlyExport, TypeArity, TypeDecl, VariantCBlock, VendoredDep, VendoredDepSource,
+    VersionedMachineVersion, Visibility, WireConstantBinding, WireValue, state,
 };
 use crate::snapshot::SNAPSHOT_SIZE_LIMIT;
 
@@ -112,6 +113,7 @@ impl<'a> Parser<'a> {
         let mut generated_by: Option<String> = None;
         let mut generated_at: Option<OffsetDateTime> = None;
         let mut extractor_version: String = String::new();
+        let mut dep_pins: Vec<VendoredDep> = Vec::new();
         let mut format_version_seen = false;
         loop {
             let Some((lineno, line)) = self.peek() else {
@@ -176,6 +178,9 @@ impl<'a> Parser<'a> {
                 }
                 "generated-by" => generated_by = Some(value.to_owned()),
                 "extractor-version" => value.clone_into(&mut extractor_version),
+                "dep-pin" => {
+                    dep_pins.push(parse_dep_pin_line(lineno, value)?);
+                }
                 "generated-at" => {
                     generated_at = Some(OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
                         SnapshotError::MalformedHeader {
@@ -211,6 +216,7 @@ impl<'a> Parser<'a> {
                 key: "generated-at",
             })?,
             extractor_version,
+            dep_pins,
         })
     }
 
@@ -362,6 +368,37 @@ impl<'a> Parser<'a> {
                     }
                 })?;
                 module.variant_c_blocks.push(entry);
+            } else if let Some(rest) = trimmed.strip_prefix("versioned_machine ") {
+                state.advance(EntryClass::VersionedMachine, lineno)?;
+                if module.versioned_machine_version.is_some() {
+                    return Err(SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail: "duplicate versioned_machine entry".to_owned(),
+                    });
+                }
+                let entry = parse_versioned_machine(rest).map_err(|detail| {
+                    SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail,
+                    }
+                })?;
+                module.versioned_machine_version = Some(entry);
+            } else if let Some(rest) = trimmed.strip_prefix("wire_constant ") {
+                state.advance(EntryClass::WireConstant, lineno)?;
+                let entry =
+                    parse_wire_constant(rest).map_err(|detail| SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail,
+                    })?;
+                if let Some(prev) = module.wire_constants.last()
+                    && entry.macro_name <= prev.macro_name
+                {
+                    return Err(SnapshotError::NotCanonical {
+                        line: lineno,
+                        detail: format!("wire_constant {} out of order", entry.macro_name),
+                    });
+                }
+                module.wire_constants.push(entry);
             } else {
                 return Err(SnapshotError::UnexpectedToken {
                     line: lineno,
@@ -785,6 +822,118 @@ fn check_type_arity_order(
     Ok(())
 }
 
+fn parse_dep_pin_line(line: usize, value: &str) -> Result<VendoredDep, SnapshotError> {
+    let (name_part, after_eq) =
+        value
+            .split_once('=')
+            .ok_or_else(|| SnapshotError::MalformedHeader {
+                line,
+                detail: format!("dep-pin missing '=': {value:?}"),
+            })?;
+    let name_str = name_part.trim();
+    let source_and_version = after_eq.trim();
+    let (source_label, version_str) =
+        source_and_version
+            .split_once(' ')
+            .ok_or_else(|| SnapshotError::MalformedHeader {
+                line,
+                detail: format!("dep-pin missing version after source: {value:?}"),
+            })?;
+    let source = match source_label.trim() {
+        "hex" => VendoredDepSource::Hex,
+        "git" => VendoredDepSource::Git,
+        "git_rmq" => VendoredDepSource::GitRmq,
+        other => {
+            return Err(SnapshotError::MalformedHeader {
+                line,
+                detail: format!("unknown dep-pin source {other:?}"),
+            });
+        }
+    };
+    let name = DependencyName::from_str(name_str).map_err(SnapshotError::Name)?;
+    let version = DependencyVersion::from_str(version_str.trim()).map_err(SnapshotError::Name)?;
+    Ok(VendoredDep {
+        name,
+        version,
+        source,
+    })
+}
+
+fn parse_versioned_machine(rest: &str) -> Result<VersionedMachineVersion, String> {
+    let (fa_part, after_fa) = rest
+        .split_once('=')
+        .ok_or_else(|| format!("versioned_machine missing '=': {rest:?}"))?;
+    let fa = parse_fun_arity(fa_part.trim()).map_err(|e| e.to_string())?;
+    let after_fa = after_fa.trim();
+    let (value_part, provenance_part) = match after_fa.split_once(' ') {
+        Some((v, p)) => (v.trim(), p.trim()),
+        None => (after_fa, ""),
+    };
+    let value = match value_part {
+        "-" => None,
+        s => Some(
+            s.parse::<u64>()
+                .map_err(|e| format!("versioned_machine value: {e}"))?,
+        ),
+    };
+    let provenance = parse_provenance(provenance_part)?;
+    Ok(VersionedMachineVersion {
+        function: fa.name,
+        arity: fa.arity,
+        value,
+        provenance,
+    })
+}
+
+fn parse_provenance(rest: &str) -> Result<Provenance, String> {
+    if rest.is_empty() || rest == "literal" {
+        return Ok(Provenance::Literal);
+    }
+    if let Some(after) = rest.strip_prefix("macro_body ") {
+        let (name_str, at_tail) = match after.split_once(" at ") {
+            Some((n, p)) => (n.trim(), Some(p.trim().to_owned())),
+            None => (after.trim(), None),
+        };
+        let macro_name = MacroName::from_str(name_str).map_err(|e| e.to_string())?;
+        return Ok(Provenance::MacroBody {
+            macro_name,
+            defined_in: at_tail,
+        });
+    }
+    Err(format!("unknown provenance {rest:?}"))
+}
+
+fn parse_wire_constant(rest: &str) -> Result<WireConstantBinding, String> {
+    let (name_part, after_eq) = rest
+        .split_once('=')
+        .ok_or_else(|| format!("wire_constant missing '=': {rest:?}"))?;
+    let macro_name = MacroName::from_str(name_part.trim()).map_err(|e| e.to_string())?;
+    let body = after_eq.trim();
+    let (body_no_at, defined_in) = match body.rsplit_once(" at ") {
+        Some((b, p)) => (b.trim(), Some(p.trim().to_owned())),
+        None => (body, None),
+    };
+    let (kind, value_str) = body_no_at
+        .split_once(' ')
+        .ok_or_else(|| format!("wire_constant missing type/value: {rest:?}"))?;
+    let value = match kind.trim() {
+        "u64" => WireValue::U64(
+            value_str
+                .trim()
+                .parse::<u64>()
+                .map_err(|e| format!("wire_constant u64 value: {e}"))?,
+        ),
+        "bytes" => WireValue::Bytes(value_str.trim().as_bytes().to_vec()),
+        "opaque" => WireValue::Opaque(value_str.trim().to_owned()),
+        other => return Err(format!("unknown wire_constant kind {other:?}")),
+    };
+    Ok(WireConstantBinding {
+        macro_name,
+        value,
+        defined_in,
+    })
+}
+
 #[derive(Debug, Default)]
 struct ClassOrder {
     last: Option<EntryClass>,
@@ -808,6 +957,8 @@ enum EntryClass {
     TestOnlyExport,
     IfdefMacro,
     VariantCBlock,
+    VersionedMachine,
+    WireConstant,
 }
 
 impl ClassOrder {

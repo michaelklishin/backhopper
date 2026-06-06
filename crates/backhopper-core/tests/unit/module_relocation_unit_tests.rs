@@ -24,6 +24,7 @@ fn snap_with(modules: Vec<&str>) -> Snapshot<state::Canonical> {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     let mods: Vec<Module> = modules
         .into_iter()

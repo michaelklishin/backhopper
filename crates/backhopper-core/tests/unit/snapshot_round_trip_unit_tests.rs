@@ -25,6 +25,7 @@ fn header() -> SnapshotHeader {
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     }
 }
 

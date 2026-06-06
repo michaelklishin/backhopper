@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, GitRef, ModuleName, ProjectName, RecordName,
-    RelativePath, TagName, TypeName,
+    Arity, CommitSha, FieldName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
+    RecordName, RelativePath, TagName, TypeName,
 };
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
@@ -291,6 +291,102 @@ pub enum Reason {
         target_path: PathBuf,
         translation: TranslationSource,
     },
+    /// A `_SUITE.erl` file in the patch references `missing_module:f/n`
+    /// where `missing_module` resolves to no source file under any
+    /// configured `FamilyDefaults.test_helper_search_paths` on the
+    /// target tree. The cherry-pick compiles and the SUITE may even
+    /// load, but every call to the missing helper crashes at runtime:
+    /// the failure pattern that bit the Jun 2026 v4.1.x → v4.0.x round
+    /// (the `amqp_utils:connection_config/1` undef in
+    /// `amqp10_connection_max_SUITE`). Non-blocking by default: the
+    /// diagnostic equivalent (`Diagnostics.missing_test_modules`)
+    /// always fires; the `Reason` variant fires only when
+    /// `--target-repo-dir-path` is supplied and the resolution is
+    /// authoritative.
+    TestModuleSymbolMissing {
+        suite_path: RelativePath,
+        missing_module: ModuleName,
+        call_sites: Vec<TestCallSite>,
+    },
+    /// A touched `.erl` declares `-behaviour(behaviour)` (or
+    /// `-behavior(...)`) where `behaviour` resolves to no source
+    /// module on the target tree. `erlc` compiles with a warning,
+    /// then hook dispatch crashes at runtime. Sister verdict to the
+    /// existing `BehaviourCallback*` variants which model implementer
+    /// drift; this one catches the missing-behaviour-module case the
+    /// existing variants do not.
+    BehaviourModuleMissing {
+        source_path: RelativePath,
+        behaviour: ModuleName,
+    },
+    /// A touched `.erl` or `.hrl` declares `-include(path)` or
+    /// `-include_lib(app/include/file.hrl)` against a target tree that
+    /// does not ship the resolved header. Compile-time failure rather
+    /// than runtime, but same operator-facing shape as
+    /// `TestModuleSymbolMissing`: looked fine on source, broken on
+    /// target.
+    HeaderFileMissing {
+        source_path: RelativePath,
+        include_directive: IncludeDirective,
+        attempted_paths: Vec<RelativePath>,
+    },
+    /// Declared versioned-machine module is touched but the snapshot
+    /// has no recorded `versioned_machine_version` on `side`.
+    /// Non-blocking.
+    VersionedMachineSnapshotMissing {
+        module: ModuleName,
+        side: SnapshotSide,
+    },
+    /// Declared wire constants are touched but the snapshot's
+    /// `wire_constants` vector lacks the listed macros on `side`.
+    /// `macros` is sorted alphabetically. Non-blocking.
+    WireConstantBindingsMissing {
+        module: ModuleName,
+        macros: Vec<MacroName>,
+        side: SnapshotSide,
+    },
+}
+
+/// Which side of a snapshot comparison the data is missing from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SnapshotSide {
+    Source,
+    Target,
+    Both,
+}
+
+/// One `Module:Function/Arity` reference inside a `_SUITE.erl` that
+/// resolves to a module absent on the target tree. Carries the line
+/// number so the operator can jump straight to the call site.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TestCallSite {
+    pub function: FunctionName,
+    pub arity: Arity,
+    pub line: u32,
+}
+
+/// `-include` and `-include_lib` are syntactically distinct: the
+/// former takes a relative-to-source path, the latter an
+/// `application/include/file.hrl` shape resolved through OTP's lib
+/// path. The variant preserves which form the source used so the
+/// remediation text can match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "form", rename_all = "snake_case")]
+pub enum IncludeDirective {
+    Include { path: String },
+    IncludeLib { path: String },
+}
+
+impl IncludeDirective {
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Include { path } | Self::IncludeLib { path } => path,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -796,6 +892,17 @@ pub struct Diagnostics {
     /// schema-only and config-only diffs still surface relevant suites.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suggested_suites: Vec<String>,
+    /// Per-`_SUITE.erl` map of `helper_module -> call_site_count`. The
+    /// always-on diagnostic counterpart of
+    /// `Reason::TestModuleSymbolMissing`: emitted by the parse pass
+    /// even without a target tree (which is why the inner key is the
+    /// `ModuleName` rather than a resolved-or-not bit). When
+    /// `--target-repo-dir-path` is supplied the resolver re-walks this
+    /// map and promotes the absent ones to typed reasons. The nested
+    /// `BTreeMap` shape keeps the JSON envelope serialisable without
+    /// a custom composite-key encoder.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub missing_test_modules: BTreeMap<RelativePath, BTreeMap<ModuleName, usize>>,
 }
 
 impl Diagnostics {
@@ -804,6 +911,14 @@ impl Diagnostics {
             && self.untracked_records.is_empty()
             && self.unanalyzed.is_empty()
             && self.suggested_suites.is_empty()
+            && self.missing_test_modules.is_empty()
+    }
+
+    /// Record that `suite` references `helper`; bumps the call-site
+    /// counter. Convenience for the parse pass.
+    pub fn record_missing_test_module(&mut self, suite: RelativePath, helper: ModuleName) {
+        let inner = self.missing_test_modules.entry(suite).or_default();
+        *inner.entry(helper).or_insert(0) += 1;
     }
 }
 

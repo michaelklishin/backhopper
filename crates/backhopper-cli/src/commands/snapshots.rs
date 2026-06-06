@@ -23,7 +23,9 @@ use backhopper_core::model::names::{
     ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, SeriesName, TagName,
 };
 use backhopper_core::model::pin::PinSpec;
-use backhopper_core::model::snapshot::{FunArity, Module, SnapshotHeader, Visibility, state};
+use backhopper_core::model::snapshot::{
+    FunArity, Module, SnapshotHeader, Visibility, WireConstantBinding, WireValue, state,
+};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
 use backhopper_elixir::ElixirExtractor;
@@ -110,6 +112,40 @@ pub struct DiffPayload {
     pub headers_removed: Vec<String>,
     pub records_added: Vec<QualifiedRecord>,
     pub records_removed: Vec<QualifiedRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versioned_machine_version_changes: Vec<VersionedMachineVersionChange>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wire_constant_changes: Vec<WireConstantChange>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum VersionedMachineVersionChange {
+    Missing {
+        module: String,
+        side: String,
+    },
+    Drift {
+        module: String,
+        from: Option<u64>,
+        to: Option<u64>,
+    },
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum WireConstantChange {
+    Missing {
+        module: String,
+        side: String,
+        macros: Vec<String>,
+    },
+    Drift {
+        module: String,
+        macro_name: String,
+        from: String,
+        to: String,
+    },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq, Clone)]
@@ -618,6 +654,7 @@ pub(crate) fn build_snapshot_at_commit(
             Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION.to_owned(),
             Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION.to_owned(),
         },
+        dep_pins: Vec::new(),
     };
     let (modules, headers) = extracted;
     let snapshot = Snapshot::from_extracted(header, modules, headers).into_canonical();
@@ -1674,7 +1711,55 @@ pub fn render_diff_text<W: Write + ?Sized>(w: &mut W, d: &DiffPayload) -> io::Re
     for r in &d.records_added {
         writeln!(w, "added record {}:{}", r.header, r.record)?;
     }
+    for c in &d.versioned_machine_version_changes {
+        match c {
+            VersionedMachineVersionChange::Missing { module, side } => {
+                writeln!(w, "versioned_machine_version missing on {side} {module}")?;
+            }
+            VersionedMachineVersionChange::Drift { module, from, to } => {
+                writeln!(
+                    w,
+                    "versioned_machine_version drift {module} {} -> {}",
+                    fmt_opt_u64(*from),
+                    fmt_opt_u64(*to),
+                )?;
+            }
+        }
+    }
+    for c in &d.wire_constant_changes {
+        match c {
+            WireConstantChange::Missing {
+                module,
+                side,
+                macros,
+            } => {
+                writeln!(
+                    w,
+                    "wire_constant missing on {side} {module} [{}]",
+                    macros.join(", "),
+                )?;
+            }
+            WireConstantChange::Drift {
+                module,
+                macro_name,
+                from,
+                to,
+            } => {
+                writeln!(
+                    w,
+                    "wire_constant drift {module}.?{macro_name} {from} -> {to}",
+                )?;
+            }
+        }
+    }
     Ok(())
+}
+
+fn fmt_opt_u64(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => "-".into(),
+    }
 }
 
 pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
@@ -1755,6 +1840,12 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
             },
         );
     }
+    let mut versioned_machine_version_changes = Vec::new();
+    let mut wire_constant_changes = Vec::new();
+    for name in a_names.union(&b_names) {
+        diff_versioned_machine_version(a, b, name, &mut versioned_machine_version_changes);
+        diff_wire_constants(a, b, name, &mut wire_constant_changes);
+    }
     DiffPayload {
         project: a.header().project.to_string(),
         from: a.header().tag.to_string(),
@@ -1771,6 +1862,110 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
         headers_removed,
         records_added,
         records_removed,
+        versioned_machine_version_changes,
+        wire_constant_changes,
+    }
+}
+
+fn diff_versioned_machine_version(
+    a: &Snapshot<state::Canonical>,
+    b: &Snapshot<state::Canonical>,
+    name: &ModuleName,
+    out: &mut Vec<VersionedMachineVersionChange>,
+) {
+    let from = a
+        .module_named(name)
+        .and_then(|m| m.versioned_machine_version.as_ref());
+    let to = b
+        .module_named(name)
+        .and_then(|m| m.versioned_machine_version.as_ref());
+    match (from, to) {
+        (None, None) => {}
+        (Some(_), None) => out.push(VersionedMachineVersionChange::Missing {
+            module: name.to_string(),
+            side: "to".into(),
+        }),
+        (None, Some(_)) => out.push(VersionedMachineVersionChange::Missing {
+            module: name.to_string(),
+            side: "from".into(),
+        }),
+        (Some(x), Some(y)) if x.value != y.value => {
+            out.push(VersionedMachineVersionChange::Drift {
+                module: name.to_string(),
+                from: x.value,
+                to: y.value,
+            });
+        }
+        _ => {}
+    }
+}
+
+fn wire_macros_by_name<'a>(
+    snap: &'a Snapshot<state::Canonical>,
+    name: &ModuleName,
+) -> BTreeMap<&'a str, &'a WireConstantBinding> {
+    snap.module_named(name)
+        .map(|m| {
+            m.wire_constants
+                .iter()
+                .map(|wc| (wc.macro_name.as_str(), wc))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn diff_wire_constants(
+    a: &Snapshot<state::Canonical>,
+    b: &Snapshot<state::Canonical>,
+    name: &ModuleName,
+    out: &mut Vec<WireConstantChange>,
+) {
+    let from_map = wire_macros_by_name(a, name);
+    let to_map = wire_macros_by_name(b, name);
+    if from_map.is_empty() && to_map.is_empty() {
+        return;
+    }
+    let mut missing_from: Vec<String> = Vec::new();
+    let mut missing_to: Vec<String> = Vec::new();
+    let keys: BTreeSet<&str> = from_map.keys().chain(to_map.keys()).copied().collect();
+    for k in &keys {
+        match (from_map.get(k), to_map.get(k)) {
+            (Some(x), Some(y)) if x.value != y.value => {
+                out.push(WireConstantChange::Drift {
+                    module: name.to_string(),
+                    macro_name: (*k).to_owned(),
+                    from: wire_value_text(&x.value),
+                    to: wire_value_text(&y.value),
+                });
+            }
+            (Some(_), None) => missing_to.push((*k).to_owned()),
+            (None, Some(_)) => missing_from.push((*k).to_owned()),
+            _ => {}
+        }
+    }
+    missing_from.sort();
+    missing_to.sort();
+    if !missing_from.is_empty() {
+        out.push(WireConstantChange::Missing {
+            module: name.to_string(),
+            side: "from".into(),
+            macros: missing_from,
+        });
+    }
+    if !missing_to.is_empty() {
+        out.push(WireConstantChange::Missing {
+            module: name.to_string(),
+            side: "to".into(),
+            macros: missing_to,
+        });
+    }
+}
+
+fn wire_value_text(v: &WireValue) -> String {
+    match v {
+        WireValue::U64(n) => format!("u64 {n}"),
+        WireValue::Bytes(b) => format!("bytes {}", b.len()),
+        WireValue::Opaque(s) => format!("opaque {s}"),
     }
 }
 

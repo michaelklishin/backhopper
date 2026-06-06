@@ -92,4 +92,49 @@ fn schema_group_advertises_show_and_diff_in_help() {
     let body = stdout(&a);
     assert!(body.contains("show"), "schema --help must mention show");
     assert!(body.contains("diff"), "schema --help must mention diff");
+    assert!(
+        body.contains("supported_envelope_versions"),
+        "schema --help must mention supported_envelope_versions",
+    );
+}
+
+#[test]
+fn supported_envelope_versions_json_carries_current_and_supported_lists() {
+    let a = run_succeeds([
+        "--formatter",
+        "json",
+        "schema",
+        "supported_envelope_versions",
+    ]);
+    let body = stdout(&a);
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid json envelope");
+    let data = v.get("data").expect("data key");
+    let current = data
+        .get("current_envelope_version")
+        .and_then(serde_json::Value::as_u64)
+        .expect("current_envelope_version is u64");
+    let supported: Vec<u64> = data
+        .get("supported_envelope_versions")
+        .and_then(serde_json::Value::as_array)
+        .expect("supported_envelope_versions is array")
+        .iter()
+        .map(|v| v.as_u64().expect("each version is u64"))
+        .collect();
+    assert!(supported.contains(&current), "current must be in supported");
+    assert_eq!(supported.first().copied(), Some(1));
+    assert_eq!(supported.last().copied(), Some(current));
+    let backhopper_version = data
+        .get("backhopper_version")
+        .and_then(serde_json::Value::as_str)
+        .expect("backhopper_version is string");
+    assert_eq!(backhopper_version, env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
+fn supported_envelope_versions_text_format_includes_each_field_label() {
+    let a = run_succeeds(["schema", "supported_envelope_versions"]);
+    let body = stdout(&a);
+    assert!(body.contains("current_envelope_version:"), "{body}");
+    assert!(body.contains("supported_envelope_versions:"), "{body}");
+    assert!(body.contains("backhopper_version:"), "{body}");
 }

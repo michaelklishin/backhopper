@@ -26,6 +26,7 @@ fn make_snapshot(project: &str, tag: &str) -> Snapshot<state::Canonical> {
         generated_by: "backhopper 0.1.0".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        dep_pins: Vec::new(),
     };
     let mut m = Module::new(ModuleName::new("foo").unwrap());
     m.exports.push(FunArity {

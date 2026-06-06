@@ -7,6 +7,7 @@
 pub mod app_src;
 pub mod compat;
 pub mod config;
+pub mod envelope_version;
 pub mod erlang_macros;
 pub mod errors;
 pub mod git;

@@ -14,27 +14,15 @@ use thiserror::Error;
 use crate::model::summary::SummaryRow;
 use crate::model::verdict::SeriesEvaluation;
 
-/// The most recent envelope schema version this build knows about.
-/// Bumps on every wire-format change; a fresh `vN.json` is regenerated
-/// in lockstep via `cargo xtask gen-schema --bless`.
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub use crate::envelope_version::{
+    CURRENT_SCHEMA_VERSION, MIN_EMBEDDED_VERSION, embedded_versions,
+};
 
 /// Frozen v1 schema bytes. Generated before `touched_paths` and
 /// `pr_commits` were added to `SeriesEvaluation`; preserved so
 /// `schema show 1` stays a stable archaeological record across binary
 /// versions.
 const SCHEMA_V1_FROZEN: &str = include_str!("schema_v1_snapshot.json");
-
-/// Lowest version this build embeds. Old versions stay embedded so
-/// `schema show <N>` can answer for any version the binary ever
-/// shipped.
-pub const MIN_EMBEDDED_VERSION: u32 = 1;
-
-/// Versions this build embeds, in ascending order.
-#[must_use]
-pub fn embedded_versions() -> Vec<u32> {
-    (MIN_EMBEDDED_VERSION..=CURRENT_SCHEMA_VERSION).collect()
-}
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -66,6 +54,7 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         )),
         3 => Ok(combined_v3()),
         4 => Ok(combined_v4()),
+        5 => Ok(combined_v5()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -89,6 +78,28 @@ fn combined_v4() -> Value {
         );
     }
     v3
+}
+
+fn combined_v5() -> Value {
+    let series = envelope_with_payload::<SeriesEvaluation>(
+        5,
+        "check",
+        "v5 adds the candidate-1, candidate-5, and candidate-6 surface from \
+         backhopper/018: `Diagnostics.missing_test_modules` (always-on \
+         counter-style diagnostic) and three new `Reason` variants \
+         (`TestModuleSymbolMissing`, `BehaviourModuleMissing`, \
+         `HeaderFileMissing`). Additive on shapes already declared \
+         `#[non_exhaustive]`; older readers tolerate.",
+    );
+    let summary_row =
+        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
+    let Value::Object(mut obj) = series else {
+        unreachable!("envelope_with_payload always returns a Value::Object")
+    };
+    obj.insert("summary_row".into(), summary_row);
+    obj.insert("schema_version".into(), json!(5));
+    obj.insert("title".into(), json!("backhopper envelope v5"));
+    Value::Object(obj)
 }
 
 fn combined_v3() -> Value {

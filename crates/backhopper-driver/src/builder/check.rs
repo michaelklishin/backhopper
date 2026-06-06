@@ -9,14 +9,20 @@
 //! `run` and `run_with_diagnostics`. Calling `run()` before both
 //! slots are filled is a compile-time error.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
-use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{
+    CommitSha, MacroName, ModuleName, ProjectName, RelativePath, SeriesName, TagName,
+};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::{Diagnostics, PinVerdict, Reason, SeriesVerdict, Verdict};
+use backhopper_core::model::verdict::{
+    Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TestCallSite,
+    Verdict,
+};
 use serde::Deserialize;
 
 use crate::backend::Backend;
@@ -669,6 +675,204 @@ impl SeriesEvaluation {
             .results
             .iter()
             .find(|p| &p.pin.project == project)
+    }
+
+    /// Always-on diagnostic counterpart of
+    /// `Reason::TestModuleSymbolMissing` from `018_ci_signal_gaps`:
+    /// per-`_SUITE.erl` map of `helper_module -> call_site_count`.
+    /// Empty when the patch did not touch a SUITE that references an
+    /// unresolved helper.
+    #[must_use]
+    pub fn missing_test_modules(&self) -> &BTreeMap<RelativePath, BTreeMap<ModuleName, usize>> {
+        &self.diagnostics.missing_test_modules
+    }
+
+    /// Iterate every `Reason::TestModuleSymbolMissing` flattened to
+    /// `(pin, suite_path, missing_module, call_sites)`. Convenience
+    /// for q-port-style consumers that walk all pins to surface the
+    /// signal without re-deriving from the `Reason` enum match.
+    pub fn test_module_symbol_missing(
+        &self,
+    ) -> impl Iterator<Item = TestModuleSymbolMissingFinding<'_>> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+            .filter_map(|(pin, r)| match r {
+                Reason::TestModuleSymbolMissing {
+                    suite_path,
+                    missing_module,
+                    call_sites,
+                } => Some(TestModuleSymbolMissingFinding {
+                    pin,
+                    suite_path,
+                    missing_module,
+                    call_sites: call_sites.as_slice(),
+                }),
+                _ => None,
+            })
+    }
+
+    /// Iterate every `Reason::HeaderFileMissing` flattened to
+    /// `(pin, source_path, include_directive, attempted_paths)`.
+    pub fn header_file_missing(&self) -> impl Iterator<Item = HeaderFileMissingFinding<'_>> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+            .filter_map(|(pin, r)| match r {
+                Reason::HeaderFileMissing {
+                    source_path,
+                    include_directive,
+                    attempted_paths,
+                } => Some(HeaderFileMissingFinding {
+                    pin,
+                    source_path,
+                    include_directive,
+                    attempted_paths: attempted_paths.as_slice(),
+                }),
+                _ => None,
+            })
+    }
+
+    /// Iterate every `Reason::BehaviourModuleMissing` flattened to
+    /// `(pin, source_path, behaviour)`.
+    pub fn behaviour_module_missing(
+        &self,
+    ) -> impl Iterator<Item = BehaviourModuleMissingFinding<'_>> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+            .filter_map(|(pin, r)| match r {
+                Reason::BehaviourModuleMissing {
+                    source_path,
+                    behaviour,
+                } => Some(BehaviourModuleMissingFinding {
+                    pin,
+                    source_path,
+                    behaviour,
+                }),
+                _ => None,
+            })
+    }
+
+    /// Iterate every `Reason::VersionedMachineSnapshotMissing` flattened
+    /// to `(pin, module, side)`.
+    pub fn versioned_machine_snapshot_missing(
+        &self,
+    ) -> impl Iterator<Item = VersionedMachineSnapshotMissingFinding<'_>> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+            .filter_map(|(pin, r)| match r {
+                Reason::VersionedMachineSnapshotMissing { module, side } => {
+                    Some(VersionedMachineSnapshotMissingFinding {
+                        pin,
+                        module,
+                        side: *side,
+                    })
+                }
+                _ => None,
+            })
+    }
+
+    /// Iterate every `Reason::WireConstantBindingsMissing` flattened to
+    /// `(pin, module, macros, side)`.
+    pub fn wire_constant_bindings_missing(
+        &self,
+    ) -> impl Iterator<Item = WireConstantBindingsMissingFinding<'_>> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+            .filter_map(|(pin, r)| match r {
+                Reason::WireConstantBindingsMissing {
+                    module,
+                    macros,
+                    side,
+                } => Some(WireConstantBindingsMissingFinding {
+                    pin,
+                    module,
+                    macros: macros.as_slice(),
+                    side: *side,
+                }),
+                _ => None,
+            })
+    }
+}
+
+/// Borrowed view of one `Reason::TestModuleSymbolMissing` with its
+/// owning pin.
+#[derive(Debug, Clone, Copy)]
+pub struct TestModuleSymbolMissingFinding<'a> {
+    /// The pin whose verdict carries this reason.
+    pub pin: &'a PinVerdict,
+    /// The `_SUITE.erl` path the suite is at on the source side.
+    pub suite_path: &'a RelativePath,
+    /// The unresolved helper module the suite references.
+    pub missing_module: &'a ModuleName,
+    /// Every call site inside the suite that reaches the missing helper.
+    pub call_sites: &'a [TestCallSite],
+}
+
+/// Borrowed view of one `Reason::HeaderFileMissing` with its owning pin.
+#[derive(Debug, Clone, Copy)]
+pub struct HeaderFileMissingFinding<'a> {
+    /// The pin whose verdict carries this reason.
+    pub pin: &'a PinVerdict,
+    /// The touched `.erl` or `.hrl` that declared the unresolved include.
+    pub source_path: &'a RelativePath,
+    /// The include directive verbatim.
+    pub include_directive: &'a IncludeDirective,
+    /// Target paths the resolver tried in order.
+    pub attempted_paths: &'a [RelativePath],
+}
+
+/// Borrowed view of one `Reason::BehaviourModuleMissing` with its owning pin.
+#[derive(Debug, Clone, Copy)]
+pub struct BehaviourModuleMissingFinding<'a> {
+    /// The pin whose verdict carries this reason.
+    pub pin: &'a PinVerdict,
+    /// The touched `.erl` that declared `-behaviour(behaviour)`.
+    pub source_path: &'a RelativePath,
+    /// The unresolved behaviour module name.
+    pub behaviour: &'a ModuleName,
+}
+
+/// Borrowed view of one `Reason::VersionedMachineSnapshotMissing` with
+/// its owning pin.
+#[derive(Debug, Clone, Copy)]
+pub struct VersionedMachineSnapshotMissingFinding<'a> {
+    /// The pin whose verdict carries this reason.
+    pub pin: &'a PinVerdict,
+    /// The declared versioned-machine module the data is missing for.
+    pub module: &'a ModuleName,
+    /// Which snapshot side lacks the data.
+    pub side: SnapshotSide,
+}
+
+/// Borrowed view of one `Reason::WireConstantBindingsMissing` with its
+/// owning pin.
+#[derive(Debug, Clone, Copy)]
+pub struct WireConstantBindingsMissingFinding<'a> {
+    /// The pin whose verdict carries this reason.
+    pub pin: &'a PinVerdict,
+    /// The declared module whose wire-constant bindings are missing.
+    pub module: &'a ModuleName,
+    /// The macros that lack a binding on `side`, sorted alphabetically.
+    pub macros: &'a [MacroName],
+    /// Which snapshot side lacks the bindings.
+    pub side: SnapshotSide,
+}
+
+fn pin_reasons(pin: &PinVerdict) -> impl Iterator<Item = &Reason> {
+    match &pin.verdict {
+        Verdict::Compatible | Verdict::Inapplicable { .. } => [].iter(),
+        Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
+            reasons.iter()
+        }
     }
 }
 

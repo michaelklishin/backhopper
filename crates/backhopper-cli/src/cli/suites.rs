@@ -12,9 +12,9 @@ use crate::cli::tree_source::TreeSource;
 
 #[derive(Debug, Subcommand)]
 #[allow(clippy::enum_variant_names)]
-#[command(rename_all = "snake_case")]
 pub enum SuitesCmd {
     /// Suites that reference any of the supplied modules.
+    #[command(name = "list_for_modules")]
     ListForModules {
         #[command(flatten)]
         tree: TreeSource,
@@ -22,6 +22,7 @@ pub enum SuitesCmd {
         module: Vec<ModuleName>,
     },
     /// Suites that call any of the supplied MFAs.
+    #[command(name = "list_for_mfas")]
     ListForMfas {
         #[command(flatten)]
         tree: TreeSource,
@@ -29,6 +30,7 @@ pub enum SuitesCmd {
         mfa: Vec<Mfa>,
     },
     /// All callers of an MFA, without the suite filter.
+    #[command(name = "list_callers_of")]
     ListCallersOf {
         #[command(flatten)]
         tree: TreeSource,

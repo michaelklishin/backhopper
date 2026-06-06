@@ -25,6 +25,9 @@ const MAX_APPLICATION_NAME_LEN: usize = 128;
 const MAX_BEHAVIOUR_NAME_LEN: usize = 256;
 const MAX_ATTRIBUTE_NAME_LEN: usize = 64;
 const MAX_CALLBACK_NAME_LEN: usize = 256;
+const MAX_MACRO_NAME_LEN: usize = 256;
+const MAX_DEPENDENCY_NAME_LEN: usize = 128;
+const MAX_DEPENDENCY_VERSION_LEN: usize = 128;
 
 const APPLICATION_PATTERN: &str = "[a-z][a-z0-9_]{0,127}";
 
@@ -433,6 +436,77 @@ string_newtype!(
     MAX_CALLBACK_NAME_LEN,
     |v: &str| { validate_erlang_name("callback name", v, MAX_CALLBACK_NAME_LEN) }
 );
+
+string_newtype!(MacroName, "macro name", MAX_MACRO_NAME_LEN, |v: &str| {
+    validate_macro_name("macro name", v, MAX_MACRO_NAME_LEN)
+});
+
+string_newtype!(
+    DependencyName,
+    "dependency name",
+    MAX_DEPENDENCY_NAME_LEN,
+    |v: &str| { validate_dependency_name("dependency name", v, MAX_DEPENDENCY_NAME_LEN) }
+);
+
+string_newtype!(
+    DependencyVersion,
+    "dependency version",
+    MAX_DEPENDENCY_VERSION_LEN,
+    |v: &str| { validate_dependency_version("dependency version", v, MAX_DEPENDENCY_VERSION_LEN) }
+);
+
+fn validate_macro_name(kind: &'static str, value: &str, max_len: usize) -> Result<(), NameError> {
+    validate_simple_name(
+        kind,
+        value,
+        max_len,
+        |c| c.is_ascii_alphabetic() || c == '_',
+        |c| c.is_ascii_alphanumeric() || c == '_',
+        "letter or underscore, then letters digits underscores",
+    )
+}
+
+fn validate_dependency_name(
+    kind: &'static str,
+    value: &str,
+    max_len: usize,
+) -> Result<(), NameError> {
+    validate_simple_name(
+        kind,
+        value,
+        max_len,
+        |c| c.is_ascii_lowercase(),
+        is_application_name_char,
+        "lowercase letter, then lowercase digits underscores",
+    )
+}
+
+fn validate_dependency_version(
+    kind: &'static str,
+    value: &str,
+    max_len: usize,
+) -> Result<(), NameError> {
+    if value.is_empty() {
+        return Err(NameError::Empty { kind });
+    }
+    if value.len() > max_len {
+        return Err(NameError::TooLong {
+            kind,
+            len: value.len(),
+            max: max_len,
+        });
+    }
+    for ch in value.chars() {
+        if ch.is_ascii_control() || ch == '\0' || ch.is_whitespace() {
+            return Err(NameError::InvalidCharacter {
+                kind,
+                ch,
+                value: value.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
 
 const MAX_RELATIVE_PATH_LEN: usize = 4096;
 

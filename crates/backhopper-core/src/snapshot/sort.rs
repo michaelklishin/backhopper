@@ -45,6 +45,10 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
             .sort_by(|a, b| a.start_line.cmp(&b.start_line).then(a.guard.cmp(&b.guard)));
         m.variant_c_blocks
             .dedup_by(|a, b| a.start_line == b.start_line && a.guard == b.guard);
+        m.wire_constants
+            .sort_by(|a, b| a.macro_name.cmp(&b.macro_name));
+        m.wire_constants
+            .dedup_by(|a, b| a.macro_name == b.macro_name);
         m.behaviours.dedup();
         m.exports
             .dedup_by(|a, b| a.name == b.name && a.arity == b.arity);
