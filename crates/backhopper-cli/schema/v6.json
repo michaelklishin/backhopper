@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
   "command_family": "check",
-  "description": "v5 adds `Diagnostics.missing_test_modules` (always-on counter-style diagnostic) and three new `Reason` variants (`TestModuleSymbolMissing`, `BehaviourModuleMissing`, `HeaderFileMissing`). Additive on shapes already declared `#[non_exhaustive]`; older readers tolerate.",
+  "description": "v6: operator-facing SHA inputs accept 7-to-40 hex prefixes (resolved through gix before any analyser sees them), new typed `GitError::AmbiguousSha` and `GitError::NotACommit` variants surface through the error path, the `rev resolve` companion verb expands a prefix to a full SHA, and `BisectPayload.commit` plus `MultiPayload.commit` carry typed `CommitSha` rather than raw strings.",
   "envelope": {
     "properties": {
       "command": {
@@ -2107,7 +2107,7 @@
     ],
     "type": "object"
   },
-  "schema_version": 5,
+  "schema_version": 6,
   "summary_row": {
     "$defs": {
       "TouchedKinds": {
@@ -2233,5 +2233,5 @@
     "title": "SummaryRow",
     "type": "object"
   },
-  "title": "backhopper envelope v5"
+  "title": "backhopper envelope v6"
 }

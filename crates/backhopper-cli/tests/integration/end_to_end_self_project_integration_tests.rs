@@ -181,7 +181,7 @@ fn check_patch_fails_clearly_when_self_pin_cwd_is_not_a_git_repo() {
         .failure();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
     assert!(
-        stderr.contains("repository open failed"),
+        stderr.contains("repository open failed") || stderr.contains("not a git repository"),
         "expected git error about repo open, got: {stderr}"
     );
 }

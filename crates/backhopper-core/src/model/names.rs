@@ -674,6 +674,108 @@ impl AsRef<str> for CommitSha {
     }
 }
 
+const MIN_COMMIT_SHA_PREFIX_LEN: usize = 7;
+const MAX_COMMIT_SHA_PREFIX_LEN: usize = 40;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(try_from = "String", into = "String")]
+pub struct CommitShaPrefix(String);
+
+impl TryFrom<String> for CommitShaPrefix {
+    type Error = NameError;
+    fn try_from(value: String) -> Result<Self, NameError> {
+        Self::new(value)
+    }
+}
+
+impl From<CommitShaPrefix> for String {
+    fn from(p: CommitShaPrefix) -> Self {
+        p.0
+    }
+}
+
+impl CommitShaPrefix {
+    pub fn new(value: impl Into<String>) -> Result<Self, NameError> {
+        let raw = value.into();
+        if raw.is_empty() {
+            return Err(NameError::EmptyCommitShaPrefix);
+        }
+        let normalised = raw.to_ascii_lowercase();
+        if let Some((position, ch)) = normalised
+            .chars()
+            .enumerate()
+            .find(|(_, c)| !c.is_ascii_hexdigit())
+        {
+            return Err(NameError::CommitShaPrefixNonHex {
+                value: normalised,
+                ch,
+                position,
+            });
+        }
+        let len = normalised.len();
+        if len < MIN_COMMIT_SHA_PREFIX_LEN {
+            return Err(NameError::CommitShaPrefixTooShort {
+                value: normalised,
+                len,
+            });
+        }
+        if len > MAX_COMMIT_SHA_PREFIX_LEN {
+            return Err(NameError::CommitShaPrefixTooLong {
+                value: normalised,
+                len,
+            });
+        }
+        Ok(Self(normalised))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[must_use]
+    pub fn is_full(&self) -> bool {
+        self.0.len() == MAX_COMMIT_SHA_PREFIX_LEN
+    }
+
+    #[must_use]
+    pub fn as_full_sha(&self) -> Option<CommitSha> {
+        if self.is_full() {
+            CommitSha::new(self.0.clone()).ok()
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Display for CommitShaPrefix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FromStr for CommitShaPrefix {
+    type Err = NameError;
+
+    fn from_str(s: &str) -> Result<Self, NameError> {
+        Self::new(s.to_owned())
+    }
+}
+
+impl AsRef<str> for CommitShaPrefix {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Mfa {

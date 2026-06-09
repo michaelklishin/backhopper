@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
-use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{CommitShaPrefix, ProjectName, SeriesName, TagName};
 
 #[derive(Debug, Args, Clone, Copy, Default)]
 pub struct CheckFlags {
@@ -141,8 +141,11 @@ pub enum CheckCmd {
         target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
-        #[arg(value_name = "COMMIT_SHA")]
-        commit: String,
+        #[arg(
+            value_name = "COMMIT_SHA",
+            long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"
+        )]
+        commit: CommitShaPrefix,
     },
     /// Check a commit range or the diff of a merge commit.
     Range {
@@ -156,8 +159,11 @@ pub enum CheckCmd {
         repo_dir_path: PathBuf,
         #[arg(long, conflicts_with = "merge_commit")]
         range: Option<String>,
-        #[arg(long)]
-        merge_commit: Option<String>,
+        #[arg(
+            long,
+            long_help = "Merge commit SHA (7 to 40 hex characters; case-insensitive)"
+        )]
+        merge_commit: Option<CommitShaPrefix>,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -183,8 +189,11 @@ pub enum CheckCmd {
         target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
-        #[arg(value_name = "MERGE_SHA")]
-        merge_sha: String,
+        #[arg(
+            value_name = "MERGE_SHA",
+            long_help = "Merge commit SHA (7 to 40 hex characters; case-insensitive)"
+        )]
+        merge_sha: CommitShaPrefix,
     },
     /// Check a GitHub PR. The diff comes from `gh pr diff`.
     Pr {
@@ -221,8 +230,11 @@ pub enum CheckCmd {
         target: TargetRepoArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
-        #[arg(value_name = "COMMIT_SHA")]
-        commit: String,
+        #[arg(
+            value_name = "COMMIT_SHA",
+            long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"
+        )]
+        commit: CommitShaPrefix,
     },
     /// Evaluate many commits against one or more series. One row per
     /// (commit, series) pair. Blank lines and `#` comments in the
@@ -234,7 +246,8 @@ pub enum CheckCmd {
         series: Vec<SeriesName>,
         #[arg(long, default_value = ".")]
         repo_dir_path: PathBuf,
-        /// File of one SHA or rev-spec per line; `-` reads stdin.
+        /// File of one commit SHA prefix per line (7 to 40 hex characters;
+        /// trailing `# annotation` ignored); `-` reads stdin.
         #[arg(long, required = true)]
         commits_file_path: PathBuf,
         #[command(flatten)]

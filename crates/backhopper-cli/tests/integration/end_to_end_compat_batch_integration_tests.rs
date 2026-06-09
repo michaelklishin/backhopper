@@ -295,6 +295,81 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
 }
 
 #[test]
+fn batch_accepts_short_sha_prefixes_in_commits_file() {
+    let (repo, work, head_sha) = build_two_commit_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
+    discover_snapshots(&cfg);
+    let mut commits = NamedTempFile::new().unwrap();
+    writeln!(commits, "{}", &head_sha[..10]).unwrap();
+    let out = stdout(&run(batch_args(
+        &cfg,
+        repo.dir.path(),
+        commits.path(),
+        true,
+    )));
+    assert!(
+        out.contains("compatible="),
+        "expected batch summary, got: {out}"
+    );
+}
+
+#[test]
+fn batch_accepts_trailing_inline_annotation_after_hash() {
+    let (repo, work, head_sha) = build_two_commit_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
+    discover_snapshots(&cfg);
+    let mut commits = NamedTempFile::new().unwrap();
+    writeln!(commits, "{}  # [GO] backport candidate", &head_sha[..10]).unwrap();
+    let out = stdout(&run(batch_args(
+        &cfg,
+        repo.dir.path(),
+        commits.path(),
+        true,
+    )));
+    assert!(
+        out.contains("compatible="),
+        "expected batch summary, got: {out}"
+    );
+}
+
+#[test]
+fn batch_strips_leading_utf8_bom_from_commits_file() {
+    let (repo, work, head_sha) = build_two_commit_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
+    discover_snapshots(&cfg);
+    let mut commits = NamedTempFile::new().unwrap();
+    write!(commits, "\u{FEFF}").unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
+    let out = stdout(&run(batch_args(
+        &cfg,
+        repo.dir.path(),
+        commits.path(),
+        true,
+    )));
+    assert!(out.contains("compatible="), "expected summary, got: {out}");
+}
+
+#[test]
+fn batch_reports_line_number_on_malformed_commit_entry() {
+    let (repo, work, head_sha) = build_two_commit_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
+    discover_snapshots(&cfg);
+    let mut commits = NamedTempFile::new().unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
+    writeln!(commits, "bogus").unwrap();
+    let err = stderr(&run(batch_args(&cfg, repo.dir.path(), commits.path(), true)).failure());
+    assert!(
+        err.contains("line 3"),
+        "expected line number 3 in error, got: {err}"
+    );
+}
+
+#[test]
 fn batch_reads_commits_from_stdin_when_path_is_dash() {
     let (repo, work, head_sha) = build_two_commit_repo();
     let snap = work.path().join("snapshots");

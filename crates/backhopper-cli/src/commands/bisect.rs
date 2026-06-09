@@ -13,7 +13,7 @@ use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::config::{Config, Project};
 use backhopper_core::git::version_cmp;
-use backhopper_core::model::names::{ModuleName, ProjectName};
+use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::Snapshot;
 use backhopper_core::model::snapshot::state::Canonical;
@@ -22,6 +22,7 @@ use backhopper_core::model::verdict::Verdict;
 use crate::cli::{BisectCmd, GlobalArgs};
 use crate::commands::check::commit_patch_bytes;
 use crate::commands::context::{load_config, open_store_read};
+use crate::commands::sha_prefix::expand_prefix;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
 
@@ -34,7 +35,7 @@ struct BisectRow {
 #[derive(Debug, Serialize)]
 struct BisectPayload {
     project: String,
-    commit: String,
+    commit: CommitSha,
     rows: Vec<BisectRow>,
     last_compatible_tag: Option<String>,
     first_incompatible_tag: Option<String>,
@@ -48,7 +49,10 @@ pub fn handle(args: &GlobalArgs, cmd: BisectCmd) -> CliResult<i32> {
             project,
             repo_dir_path,
             commit,
-        } => run_commit(args, &cfg, project, &repo_dir_path, &commit),
+        } => {
+            let commit = expand_prefix(&repo_dir_path, &commit)?;
+            run_commit(args, &cfg, project, &repo_dir_path, &commit)
+        }
     }
 }
 
@@ -57,7 +61,7 @@ fn run_commit(
     cfg: &Config,
     project: ProjectName,
     repo_dir_path: &Path,
-    commit: &str,
+    commit: &CommitSha,
 ) -> CliResult<i32> {
     let p = cfg
         .project(&project)
@@ -116,7 +120,7 @@ fn run_commit(
     let any_blocking = first_incompatible_tag.is_some();
     let payload = BisectPayload {
         project: project.to_string(),
-        commit: commit.to_owned(),
+        commit: commit.clone(),
         rows,
         last_compatible_tag,
         first_incompatible_tag,

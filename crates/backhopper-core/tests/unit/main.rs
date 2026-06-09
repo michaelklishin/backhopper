@@ -12,6 +12,7 @@ mod build_system_unit_tests;
 mod call_sites_type_refs_unit_tests;
 mod call_sites_unit_tests;
 mod commit_sha_abbreviated_unit_tests;
+mod commit_sha_prefix_unit_tests;
 mod compat_apply_family_unit_tests;
 mod compat_macro_resolution_unit_tests;
 mod compat_patch_unit_tests;

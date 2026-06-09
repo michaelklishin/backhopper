@@ -60,6 +60,32 @@ impl FakeRepo {
     pub(crate) fn tag(&self, name: &str) {
         run(self.dir.path(), &["git", "tag", name]);
     }
+
+    pub(crate) fn annotated_tag(&self, name: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "tag",
+                "-a",
+                name,
+                "-m",
+                message,
+            ],
+        );
+    }
+
+    pub(crate) fn head_sha(&self) -> String {
+        rev_parse_output(self.dir.path(), "HEAD")
+    }
+
+    pub(crate) fn rev_parse(&self, spec: &str) -> String {
+        rev_parse_output(self.dir.path(), spec)
+    }
 }
 
 fn run(cwd: &Path, argv: &[&str]) {
@@ -69,4 +95,14 @@ fn run(cwd: &Path, argv: &[&str]) {
         .status()
         .expect("git");
     assert!(status.success(), "{argv:?} failed");
+}
+
+fn rev_parse_output(cwd: &Path, spec: &str) -> String {
+    let output = Command::new("git")
+        .args(["rev-parse", spec])
+        .current_dir(cwd)
+        .output()
+        .expect("git rev-parse");
+    assert!(output.status.success(), "rev-parse {spec} failed");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }

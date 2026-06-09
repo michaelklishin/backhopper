@@ -12,6 +12,7 @@ pub use target_tree_index::TargetTreeIndex;
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -19,7 +20,42 @@ use std::str;
 use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
 
 use crate::errors::GitError;
-use crate::model::names::{CommitSha, TagName};
+use crate::model::names::{CommitSha, CommitShaPrefix, TagName};
+
+pub const AMBIGUOUS_SHA_CANDIDATE_CAP: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSha {
+    pub commit: CommitSha,
+    pub kind: ObjectKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectKind {
+    Commit,
+    Tag,
+    Blob,
+    Tree,
+}
+
+enum PrefixLookup {
+    None,
+    Ambiguous {
+        total: usize,
+        sample: Vec<gix::ObjectId>,
+    },
+}
+
+impl fmt::Display for ObjectKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ObjectKind::Commit => "commit",
+            ObjectKind::Tag => "tag",
+            ObjectKind::Blob => "blob",
+            ObjectKind::Tree => "tree",
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct GitRepo {
@@ -49,10 +85,136 @@ pub struct BlobAtPath {
 impl GitRepo {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, GitError> {
         let path = path.into();
+        if !path.exists() {
+            return Err(GitError::NotAGitRepository(path));
+        }
         let repo = gix::open(&path)
             .or_else(|_| gix::discover(&path))
-            .map_err(|e| GitError::OpenFailed(e.to_string()))?;
+            .map_err(|_| GitError::NotAGitRepository(path.clone()))?;
         Ok(Self { repo, path })
+    }
+
+    pub fn is_shallow(&self) -> bool {
+        self.repo.is_shallow()
+    }
+
+    pub fn resolve_sha_prefix(&self, prefix: &CommitShaPrefix) -> Result<ResolvedSha, GitError> {
+        if let Some(full) = prefix.as_full_sha() {
+            return self.classify_full_sha(prefix, full);
+        }
+        match self.repo.rev_parse_single(prefix.as_str()) {
+            Ok(object) => {
+                let id = object.detach();
+                self.peel_to_commit(prefix, id)
+            }
+            Err(_) => {
+                let candidates = self.lookup_prefix_candidates(prefix);
+                match candidates {
+                    PrefixLookup::None => Err(GitError::CommitNotFound(prefix.to_string())),
+                    PrefixLookup::Ambiguous { total, sample } => {
+                        let truncated_at = total as u32;
+                        let candidates: Vec<String> =
+                            sample.iter().map(|o| o.to_string()).collect();
+                        Err(GitError::AmbiguousSha {
+                            prefix: prefix.to_string(),
+                            candidates,
+                            truncated_at,
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    fn classify_full_sha(
+        &self,
+        prefix: &CommitShaPrefix,
+        full: CommitSha,
+    ) -> Result<ResolvedSha, GitError> {
+        let oid = gix::ObjectId::from_hex(full.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        self.peel_to_commit(prefix, oid)
+    }
+
+    fn peel_to_commit(
+        &self,
+        prefix: &CommitShaPrefix,
+        id: gix::ObjectId,
+    ) -> Result<ResolvedSha, GitError> {
+        let object = self
+            .repo
+            .find_object(id)
+            .map_err(|_| GitError::CommitNotFound(prefix.to_string()))?;
+        let kind = match object.kind {
+            gix::objs::Kind::Commit => ObjectKind::Commit,
+            gix::objs::Kind::Tag => ObjectKind::Tag,
+            gix::objs::Kind::Tree => ObjectKind::Tree,
+            gix::objs::Kind::Blob => ObjectKind::Blob,
+        };
+        match kind {
+            ObjectKind::Commit => {
+                let commit =
+                    CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?;
+                Ok(ResolvedSha {
+                    commit,
+                    kind: ObjectKind::Commit,
+                })
+            }
+            ObjectKind::Tag => {
+                let commit_object = object.peel_to_kind(gix::objs::Kind::Commit).map_err(|_| {
+                    GitError::NotACommit {
+                        prefix: prefix.to_string(),
+                        kind: ObjectKind::Tag.to_string(),
+                        resolved: id.to_string(),
+                    }
+                })?;
+                let commit_id = commit_object.detach().id;
+                let commit = CommitSha::new(commit_id.to_string())
+                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                Ok(ResolvedSha {
+                    commit,
+                    kind: ObjectKind::Tag,
+                })
+            }
+            other => Err(GitError::NotACommit {
+                prefix: prefix.to_string(),
+                kind: other.to_string(),
+                resolved: id.to_string(),
+            }),
+        }
+    }
+
+    fn lookup_prefix_candidates(&self, prefix: &CommitShaPrefix) -> PrefixLookup {
+        let Ok(hex_prefix) = gix::hash::Prefix::from_hex(prefix.as_str()) else {
+            return PrefixLookup::None;
+        };
+        let mut candidates: Vec<gix::ObjectId> = Vec::new();
+        let mut total: usize = 0;
+        for oid in self
+            .repo
+            .objects
+            .iter()
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if hex_prefix.cmp_oid(&oid) == Ordering::Equal {
+                total += 1;
+                if candidates.len() < AMBIGUOUS_SHA_CANDIDATE_CAP {
+                    candidates.push(oid);
+                }
+            }
+        }
+        if total <= 1 {
+            PrefixLookup::None
+        } else {
+            candidates.sort();
+            PrefixLookup::Ambiguous {
+                total,
+                sample: candidates,
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {

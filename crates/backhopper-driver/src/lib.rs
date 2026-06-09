@@ -53,7 +53,7 @@ pub use backhopper_core::envelope_version::{
 /// Range of envelope schema versions this driver release understands.
 pub const SUPPORTED_SCHEMA: SchemaVersionRange = SchemaVersionRange {
     min: SchemaVersion::new(1),
-    max: SchemaVersion::new(5),
+    max: SchemaVersion::new(6),
 };
 
 /// Inclusive range of envelope schema versions.

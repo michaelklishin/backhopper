@@ -10,9 +10,9 @@
 //! callers can match on the same enums the CLI itself produces.
 
 pub use backhopper_core::model::names::{
-    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, DependencyName,
-    DependencyVersion, FieldName, FunctionName, MacroName, Mfa, ModuleName, ProjectName,
-    RecordName, SeriesName, TagGlob, TagName, TypeName,
+    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
+    DependencyName, DependencyVersion, FieldName, FunctionName, MacroName, Mfa, ModuleName,
+    ProjectName, RecordName, SeriesName, TagGlob, TagName, TypeName,
 };
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::snapshot::{

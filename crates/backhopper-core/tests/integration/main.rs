@@ -5,6 +5,7 @@
 mod added_file_findings_integration_tests;
 mod app_src_discovery_integration_tests;
 mod git_repo_integration_tests;
+mod git_resolve_prefix_integration_tests;
 mod helpers;
 mod pr_commits_walk_integration_tests;
 mod source_attributes_resolve_integration_tests;

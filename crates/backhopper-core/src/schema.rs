@@ -55,6 +55,7 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         3 => Ok(combined_v3()),
         4 => Ok(combined_v4()),
         5 => Ok(combined_v5()),
+        6 => Ok(combined_v6()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -80,16 +81,34 @@ fn combined_v4() -> Value {
     v3
 }
 
+fn combined_v6() -> Value {
+    let mut v5 = combined_v5();
+    if let Some(obj) = v5.as_object_mut() {
+        obj.insert("schema_version".into(), json!(6));
+        obj.insert("title".into(), json!("backhopper envelope v6"));
+        obj.insert(
+            "description".into(),
+            json!(
+                "v6: operator-facing SHA inputs accept 7-to-40 hex prefixes (resolved through \
+                 gix before any analyser sees them), new typed `GitError::AmbiguousSha` and \
+                 `GitError::NotACommit` variants surface through the error path, the \
+                 `rev resolve` companion verb expands a prefix to a full SHA, and \
+                 `BisectPayload.commit` plus `MultiPayload.commit` carry typed `CommitSha` \
+                 rather than raw strings."
+            ),
+        );
+    }
+    v5
+}
+
 fn combined_v5() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
         5,
         "check",
-        "v5 adds the candidate-1, candidate-5, and candidate-6 surface from \
-         backhopper/018: `Diagnostics.missing_test_modules` (always-on \
-         counter-style diagnostic) and three new `Reason` variants \
-         (`TestModuleSymbolMissing`, `BehaviourModuleMissing`, \
-         `HeaderFileMissing`). Additive on shapes already declared \
-         `#[non_exhaustive]`; older readers tolerate.",
+        "v5 adds `Diagnostics.missing_test_modules` (always-on counter-style \
+         diagnostic) and three new `Reason` variants (`TestModuleSymbolMissing`, \
+         `BehaviourModuleMissing`, `HeaderFileMissing`). Additive on shapes \
+         already declared `#[non_exhaustive]`; older readers tolerate.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");

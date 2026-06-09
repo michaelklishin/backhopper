@@ -154,3 +154,60 @@ fn check_merge_evaluates_the_merge_diff() {
         "merge diff should not be Incompatible. stdout: {stdout}"
     );
 }
+
+#[test]
+fn check_merge_accepts_short_sha_prefix() {
+    let (repo, work, merge_sha) = build_repo_with_merge();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    discover(&cfg);
+    let assert = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "check",
+            "merge",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            "--repo-dir-path",
+            repo.dir.path().to_str().unwrap(),
+            "--formatter",
+            "text",
+            &merge_sha[..10],
+        ])
+        .assert();
+    let code = assert.get_output().status.code().unwrap_or(-1);
+    assert!(code == 0 || code == 4, "got unexpected exit {code}");
+}
+
+#[test]
+fn check_range_merge_commit_accepts_short_sha_prefix() {
+    let (repo, work, merge_sha) = build_repo_with_merge();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    discover(&cfg);
+    let assert = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "check",
+            "range",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            "--repo-dir-path",
+            repo.dir.path().to_str().unwrap(),
+            "--merge-commit",
+            &merge_sha[..10],
+            "--formatter",
+            "text",
+        ])
+        .assert();
+    let code = assert.get_output().status.code().unwrap_or(-1);
+    assert!(code == 0 || code == 4, "got unexpected exit {code}");
+}

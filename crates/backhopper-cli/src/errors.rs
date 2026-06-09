@@ -131,14 +131,26 @@ const SNAPSHOT_DIR_ESCAPE_HINT: &str = "set `[defaults] snapshot_dir` to an abso
 
 fn git_hint(e: &GitError) -> Option<String> {
     match e {
-        GitError::CommitNotFound(_) => {
-            Some("if this is a missing commit, try `git fetch` in the target repository".into())
-        }
+        GitError::CommitNotFound(_) => Some(
+            "if this is a missing commit, try `git fetch` in the target repository \
+                  (or `git fetch --unshallow` if the clone is shallow)"
+                .into(),
+        ),
         GitError::TagNotFound(_) => Some(
             "if the tag exists upstream, try `git fetch --tags` in the target repository".into(),
         ),
         GitError::OpenFailed(_) => Some(
             "check that `git_url` points at a valid git directory (bare or working tree)".into(),
+        ),
+        GitError::NotAGitRepository(_) => Some(
+            "pass `--repo-dir-path <PATH>` pointing at a git directory (bare or working tree)"
+                .into(),
+        ),
+        GitError::AmbiguousSha { .. } => {
+            Some("extend the prefix by one or more characters and try again".into())
+        }
+        GitError::NotACommit { .. } => Some(
+            "the prefix resolved to a non-commit object; check that the SHA names a commit".into(),
         ),
         GitError::PathNotPresent { .. } => Some(
             "the path is absent at that commit; verify the file exists at the pinned tag".into(),

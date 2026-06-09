@@ -65,6 +65,7 @@ pub fn resolve_self_pin(cli_fallback: Option<&Path>, spec: &PinSpec) -> CliResul
 
 /// Materialize the self-pin's snapshot into the store if absent. Cached
 /// by `(project, sha-as-tag)`: subsequent runs hit the existing file.
+#[allow(clippy::disallowed_methods)]
 pub fn ensure_self_snapshot_present(
     args: &GlobalArgs,
     cfg: &Config,

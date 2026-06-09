@@ -18,6 +18,7 @@ pub mod config;
 pub mod doctor;
 pub mod init;
 pub mod projects;
+pub mod rev;
 pub mod schema;
 pub mod series;
 pub mod shell;
@@ -32,6 +33,7 @@ pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
 pub use init::InitCmd;
 pub use projects::ProjectsCmd;
+pub use rev::RevCmd;
 pub use schema::{SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
 pub use series::{PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
@@ -191,6 +193,11 @@ pub enum Group {
     Schema {
         #[command(subcommand)]
         cmd: SchemaCmd,
+    },
+    /// Resolve operator-facing commit-SHA prefixes against a git repo.
+    Rev {
+        #[command(subcommand)]
+        cmd: RevCmd,
     },
     /// Print the `backhopper` version.
     Version,

@@ -62,6 +62,22 @@ pub enum NameError {
     #[error("invalid commit sha {value:?}: must be exactly 40 lowercase hex characters")]
     InvalidCommitSha { value: String },
 
+    #[error("commit sha prefix is empty")]
+    EmptyCommitShaPrefix,
+
+    #[error("invalid commit sha prefix {value:?}: too short ({len} chars; needs 7 to 40)")]
+    CommitShaPrefixTooShort { value: String, len: usize },
+
+    #[error("invalid commit sha prefix {value:?}: too long ({len} chars; needs 7 to 40)")]
+    CommitShaPrefixTooLong { value: String, len: usize },
+
+    #[error("invalid commit sha prefix {value:?}: non-hex character {ch:?} at position {position}")]
+    CommitShaPrefixNonHex {
+        value: String,
+        ch: char,
+        position: usize,
+    },
+
     #[error("invalid arity: {raw:?} could not be parsed as an integer in 0..=255")]
     InvalidArityParse { raw: String },
 
@@ -266,11 +282,31 @@ pub enum GitError {
     #[error("repository open failed: {0}")]
     OpenFailed(String),
 
+    #[error("not a git repository: {0:?}")]
+    NotAGitRepository(PathBuf),
+
     #[error("tag {0:?} not found")]
     TagNotFound(String),
 
     #[error("commit {0:?} not found")]
     CommitNotFound(String),
+
+    #[error(
+        "commit sha prefix {prefix:?} matched {truncated_at} object{}",
+        if *truncated_at == 1 { "" } else { "s" }
+    )]
+    AmbiguousSha {
+        prefix: String,
+        candidates: Vec<String>,
+        truncated_at: u32,
+    },
+
+    #[error("commit sha prefix {prefix:?} resolved to {kind}, not a commit")]
+    NotACommit {
+        prefix: String,
+        kind: String,
+        resolved: String,
+    },
 
     #[error("path {path:?} not present at commit {commit}")]
     PathNotPresent { commit: String, path: String },
