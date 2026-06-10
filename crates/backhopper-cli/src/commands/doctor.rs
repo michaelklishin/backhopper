@@ -10,6 +10,7 @@ use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
 use serde::Serialize;
 use tabled::{Table, Tabled};
 
+use backhopper_cache::{WorkspaceCaches, stats};
 use backhopper_core::config::{Config, Project, Series};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
@@ -31,7 +32,19 @@ struct DoctorPayload {
     series: Vec<SeriesRow>,
     totals: Totals,
     unpinned_projects: Vec<String>,
+    cache: CacheRow,
 }
+
+/// One informational row about the workspace caches: never affects
+/// the exit code.
+#[derive(Debug, Serialize)]
+struct CacheRow {
+    entries: u64,
+    bytes: u64,
+}
+
+/// Past this the text renderer suggests `cache prune`.
+const CACHE_SIZE_HINT_BYTES: u64 = 50 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 struct Totals {
@@ -112,12 +125,19 @@ fn build_payload(
         series_rows.push(row);
         totals.series += 1;
     }
+    let cache_stats = stats(&WorkspaceCaches::at(&snapshots));
     Ok(DoctorPayload {
         config_path: cfg.config_path.display().to_string(),
         snapshot_dir: snapshots.display().to_string(),
         series: series_rows,
         totals,
         unpinned_projects: unpinned_projects(cfg),
+        cache: CacheRow {
+            entries: cache_stats.by_input.entries
+                + cache_stats.by_content.entries
+                + cache_stats.siblings.entries,
+            bytes: cache_stats.total_bytes,
+        },
     })
 }
 
@@ -272,6 +292,22 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
         w,
         "summary: {} series, {}/{} pin(s) covered, {} missing",
         payload.totals.series, payload.totals.covered, payload.totals.pins, payload.totals.missing,
+    )?;
+    writeln!(
+        w,
+        "caches: {} entr{}, {} bytes{}",
+        payload.cache.entries,
+        if payload.cache.entries == 1 {
+            "y"
+        } else {
+            "ies"
+        },
+        payload.cache.bytes,
+        if payload.cache.bytes > CACHE_SIZE_HINT_BYTES {
+            " (consider `backhopper cache prune --older-than <DAYS>`)"
+        } else {
+            ""
+        },
     )?;
     if payload.series.is_empty() {
         writeln!(

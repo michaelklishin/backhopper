@@ -12,8 +12,24 @@
 
 pub mod cache_io;
 pub mod errors;
+pub mod inspect;
 pub mod policy;
+pub mod sweep;
+pub mod verdict;
 
-pub use cache_io::{CacheDir, ENTRY_FORMAT_VERSION, canonical_json, content_hash};
+pub use cache_io::{
+    CacheDir, ENTRY_FORMAT_VERSION, canonical_json, content_hash, hash_bytes, hash_file,
+    is_entry_file_name,
+};
 pub use errors::CacheError;
+pub use inspect::{
+    KeyLookupError, Removed, ScannedEntry, WorkspaceCaches, clear, evict_entry, find_by_key_prefix,
+    prune, scan, stats,
+};
 pub use policy::{CacheMode, FORCE_CACHE_ENV, NO_CACHE_ENV};
+pub use sweep::{maybe_daily_sweep, sweep_dir};
+pub use verdict::{
+    CacheKeyInputs, ContentKeyInputs, ContentOutcome, EvaluationShape, InputMissToken,
+    InputOutcome, MissToken, PinKeyRow, SIBLINGS_CACHE_DIR_NAME, TargetKeyInputs,
+    VERDICT_CACHE_DIR_NAME, VerdictCache, ttl_from_days,
+};

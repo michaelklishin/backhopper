@@ -62,6 +62,9 @@ pub struct ConfigFile {
     #[serde(default)]
     pub defaults: DefaultsRaw,
 
+    #[serde(default)]
+    pub cache: CacheRaw,
+
     #[serde(default, rename = "project")]
     pub projects: Vec<ProjectRaw>,
 
@@ -135,6 +138,36 @@ pub struct DefaultsRaw {
     pub snapshot_dir: Option<String>,
     pub fallback_branch: Option<String>,
     pub scan_paths: Option<Vec<String>>,
+}
+
+/// TOML form of the `[cache]` section.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CacheRaw {
+    pub ttl_days: Option<u32>,
+}
+
+/// Expiration policy for the workspace's on-disk caches. Time-based
+/// expiry is the whole policy: no LRU, no size caps. Expiration is
+/// hygiene, never correctness — the cache key components own
+/// correctness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheSettings {
+    /// Entries older than this many days expire. `0` disables expiry
+    /// (`cache prune` and `cache clear` still work). The default is
+    /// sized to RabbitMQ's monthly patch-release cadence: the real
+    /// reuse window is one round warming the next, four to six weeks.
+    pub ttl_days: u32,
+}
+
+pub const DEFAULT_CACHE_TTL_DAYS: u32 = 42;
+
+impl Default for CacheSettings {
+    fn default() -> Self {
+        Self {
+            ttl_days: DEFAULT_CACHE_TTL_DAYS,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -641,6 +674,8 @@ impl Series {
 pub struct Config {
     pub config_path: PathBuf,
     pub defaults: Defaults,
+    #[serde(default)]
+    pub cache: CacheSettings,
     pub projects: Vec<Project>,
     pub series: Vec<Series>,
     pub suite_rules: Vec<ExtraRule>,
@@ -675,6 +710,9 @@ impl Config {
                 .defaults
                 .scan_paths
                 .unwrap_or_else(|| DEFAULT_SCAN_PATHS.iter().map(|s| (*s).to_owned()).collect()),
+        };
+        let cache = CacheSettings {
+            ttl_days: raw.cache.ttl_days.unwrap_or(DEFAULT_CACHE_TTL_DAYS),
         };
         let mut projects = Vec::with_capacity(raw.projects.len());
         for p in raw.projects {
@@ -723,6 +761,7 @@ impl Config {
         Ok(Self {
             config_path,
             defaults,
+            cache,
             projects,
             series,
             suite_rules,

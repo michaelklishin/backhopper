@@ -355,6 +355,35 @@ candidates and `3` when at least one surfaced; `--explain` adds the
 per-factor score breakdown to every row.
 
 
+### The Verdict Cache
+
+A verdict is a pure function of content-addressed inputs, so `check
+commit`, `check merge`, `check multi`, `check batch`, and `bisect
+commit` cache their evaluations under
+`<snapshot_dir>/.verdict_cache/`. The cache is two-level: the input
+level keys on the commit SHA plus every evaluation input (snapshots,
+resolved pins, config bytes, versions), and the content level keys on
+the normalized patch plus the macros it can reach — so a
+`git cherry-pick -x` that re-mints the SHA on the next branch down
+still hits, and the new SHA gets its own fast-path entry on first
+sight. Correctness lives in the key: any input change is a miss, and
+a hit renders byte-identically to a fresh run.
+
+Entries expire after `[cache] ttl_days` (default 42; `0` disables).
+`--no-cache` skips the cache for one invocation, for both reads and
+writes; `BACKHOPPER_NO_CACHE=1` is the global kill switch. Debug
+builds bypass by default. The `cache` group manages the workspace's
+caches:
+
+```shell
+backhopper cache stats
+backhopper cache list --commit 1a2b3c4d
+backhopper cache show <KEY-PREFIX> --full
+backhopper cache evict --commit 1a2b3c4d
+backhopper cache prune --older-than 14
+backhopper cache clear
+```
+
 ### Bisecting Across a Project's Tags
 
 `bisect commit` walks every stored tag of a project and reports the

@@ -12,8 +12,10 @@
 //! an atomic rename so a crashed process can never leave a torn entry.
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::time::{Duration, SystemTime};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -46,9 +48,80 @@ pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, CacheError> {
 /// to a length that still rules out collisions in practice.
 pub fn content_hash<T: Serialize>(value: &T) -> Result<String, CacheError> {
     let bytes = canonical_json(value)?;
-    let mut hex = blake3::hash(&bytes).to_hex().to_string();
+    Ok(truncated_hex(blake3::hash(&bytes)))
+}
+
+/// BLAKE3 hex digest of raw bytes, same truncation as `content_hash`.
+#[must_use]
+pub fn hash_bytes(bytes: &[u8]) -> String {
+    truncated_hex(blake3::hash(bytes))
+}
+
+/// BLAKE3 hex digest of a file's bytes, streamed without parsing.
+pub fn hash_file(path: &Path) -> Result<String, CacheError> {
+    let mut hasher = blake3::Hasher::new();
+    let mut file = fs::File::open(path)?;
+    io::copy(&mut file, &mut hasher)?;
+    Ok(truncated_hex(hasher.finalize()))
+}
+
+fn truncated_hex(hash: blake3::Hash) -> String {
+    let mut hex = hash.to_hex().to_string();
     hex.truncate(KEY_HASH_LEN);
-    Ok(hex)
+    hex
+}
+
+/// File name for an entry addressed by `hash`, carrying the layout
+/// version as a prune-safe prefix.
+pub(crate) fn entry_file_name(hash: &str) -> String {
+    format!("v{ENTRY_FORMAT_VERSION}-{hash}.json")
+}
+
+/// True for file names shaped like cache entries (`v<N>-<hex>.json`).
+/// Sweeps and prunes only ever delete names this accepts, so a cache
+/// directory misconfigured onto real data cannot lose it.
+#[must_use]
+pub fn is_entry_file_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix('v') else {
+        return false;
+    };
+    let Some((version, hash_json)) = rest.split_once('-') else {
+        return false;
+    };
+    let Some(hash) = hash_json.strip_suffix(".json") else {
+        return false;
+    };
+    !version.is_empty()
+        && version.chars().all(|c| c.is_ascii_digit())
+        && hash.len() >= 16
+        && hash.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Write `bytes` to `path` via a same-directory temp file and an
+/// atomic rename, so readers never observe a torn entry.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), CacheError> {
+    let tmp = path.with_extension(format!("json.{}.tmp", process::id()));
+    fs::write(&tmp, bytes)?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(CacheError::Io(e));
+    }
+    Ok(())
+}
+
+/// True when the file at `path` is older than `max_age`. Unreadable
+/// metadata reads as not expired (the parse path decides what to do
+/// with the entry).
+pub(crate) fn is_older_than(path: &Path, max_age: Duration) -> bool {
+    let Ok(meta) = fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = meta.modified() else {
+        return false;
+    };
+    SystemTime::now()
+        .duration_since(modified)
+        .is_ok_and(|age| age > max_age)
 }
 
 /// One cache directory holding entries of a single logical kind
@@ -56,6 +129,7 @@ pub fn content_hash<T: Serialize>(value: &T) -> Result<String, CacheError> {
 #[derive(Debug, Clone)]
 pub struct CacheDir {
     root: PathBuf,
+    max_age: Option<Duration>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,7 +143,17 @@ struct EntryEnvelope<V> {
 
 impl CacheDir {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            max_age: None,
+        }
+    }
+
+    /// Adopt a TTL: lookups treat entries older than `max_age` as
+    /// misses and delete them. `None` disables expiry.
+    pub fn with_max_age(mut self, max_age: Option<Duration>) -> Self {
+        self.max_age = max_age;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -79,14 +163,13 @@ impl CacheDir {
     /// Path the entry for `key` lives at (whether or not it exists).
     pub fn entry_path<K: Serialize>(&self, key: &K) -> Result<PathBuf, CacheError> {
         let hash = content_hash(key)?;
-        Ok(self
-            .root
-            .join(format!("v{ENTRY_FORMAT_VERSION}-{hash}.json")))
+        Ok(self.root.join(entry_file_name(&hash)))
     }
 
     /// Serve the stored value for `key` when the entry exists, parses,
-    /// and its stored freshness document equals `freshness`. Every
-    /// other outcome (absent, torn, foreign layout, stale) is a miss.
+    /// is younger than any configured TTL, and its stored freshness
+    /// document equals `freshness`. Every other outcome (absent, torn,
+    /// foreign layout, expired, stale) is a miss.
     pub fn lookup<K, F, V>(&self, key: &K, freshness: &F) -> Result<Option<V>, CacheError>
     where
         K: Serialize,
@@ -94,6 +177,12 @@ impl CacheDir {
         V: DeserializeOwned,
     {
         let path = self.entry_path(key)?;
+        if let Some(max_age) = self.max_age
+            && is_older_than(&path, max_age)
+        {
+            let _ = fs::remove_file(&path);
+            return Ok(None);
+        }
         let Ok(bytes) = fs::read(&path) else {
             return Ok(None);
         };
@@ -133,12 +222,7 @@ impl CacheDir {
             value,
         };
         let bytes = serde_json::to_vec_pretty(&entry)?;
-        let tmp = path.with_extension(format!("json.{}.tmp", process::id()));
-        fs::write(&tmp, &bytes)?;
-        if let Err(e) = fs::rename(&tmp, &path) {
-            let _ = fs::remove_file(&tmp);
-            return Err(CacheError::Io(e));
-        }
+        write_atomic(&path, &bytes)?;
         Ok(path)
     }
 }

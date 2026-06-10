@@ -3,3 +3,4 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod cache_io_proptests;
+mod verdict_key_proptests;

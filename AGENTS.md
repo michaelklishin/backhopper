@@ -41,12 +41,18 @@ The repo is a Cargo workspace with multiple crates:
 
  * `crates/backhopper-core/`: model types, snapshot I/O, store, config,
    compatibility analysis. No `clap`, no `gix`. No I/O policy decisions
- * `crates/backhopper-cache/`: on-disk cache plumbing — `CacheDir`
+ * `crates/backhopper-cache/`: the on-disk caches — `CacheDir`
    (content-addressed entries: BLAKE3 over canonical JSON, freshness
-   documents, atomic writes) and `CacheMode` (the `--no-cache` /
-   `BACKHOPPER_NO_CACHE` / `BACKHOPPER_FORCE_CACHE` / debug-bypass
-   policy). No backhopper-specific types; the CLI's cached verbs
-   build on it
+   documents, atomic writes, optional TTL), `VerdictCache` (the
+   two-level content-keyed verdict cache with its type-state token
+   protocol for lookups and stores, plus L2 SHA aliasing),
+   `CacheMode` (decides whether caching is on at all, from
+   `--no-cache`, `BACKHOPPER_NO_CACHE`, `BACKHOPPER_FORCE_CACHE`, and
+   the debug-build default), the scan, stats, evict, and prune
+   surface behind the `cache` verbs, and the marker-gated daily
+   sweep. Depends on `backhopper-core` for `SeriesEvaluation` and
+   newtypes; gix-free by design — the CLI computes git-derived key
+   inputs and passes them in as values
  * `crates/backhopper-git/`: the gix-backed git layer — `GitRepo`,
    PR-commit enumeration, `ResolvedPatchInput` (shared patch resolution
    with `MergePolicy` and `PrCommitPolicy`), first-parent window walks
@@ -97,9 +103,9 @@ depends only on its own crate.
  * `src/model/verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
    Incompatible | Inapplicable }` and `Reason` enums
  * `src/model/sibling_drift.rs`: `siblings doctor` types — the
-   `SiblingCandidate<Unscored|Scored>` pipeline, `Confidence`,
-   `Vocabulary`, and the pure scorer the labeled-corpus F1 gate
-   exercises
+   `SiblingCandidate` scoring pipeline (`Unscored`, then `Scored`),
+   `Confidence`, `Vocabulary`, and the pure scorer the
+   labeled-corpus F1 gate exercises
  * `src/snapshot/format.rs`: canonical writer
  * `src/snapshot/parser.rs`: canonical reader (rejects non-canonical
    input)
@@ -164,10 +170,15 @@ depends only on its own crate.
 
  * `src/main.rs`: entry point
  * `src/cli/mod.rs`: `clap` derive parser. Top-level groups:
-   `projects`, `series`, `snapshots`, `check`, `config`, `shell`,
-   `xref`, `suites`, `siblings`, `rabbitmq`, `version`.
-   `infer_subcommands = true` so `backhopper sn li` resolves to
-   `backhopper snapshots list`
+   `projects`, `series`, `snapshots`, `check`, `bisect`, `cache`,
+   `config`, `shell`, `xref`, `suites`, `siblings`, `rabbitmq`,
+   `version`. `infer_subcommands = true` so `backhopper sn li`
+   resolves to `backhopper snapshots list`
+ * `src/commands/verdict_cache.rs`: the per-run `CacheSession` — key
+   construction with memos, bypass policy, the hit and miss
+   counters, and the one-line summary. `src/commands/macro_env.rs`
+   mirrors `FileMap`'s include resolution over gix to hash the
+   patch-reachable macro slice for the content key
  * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,tree_source}.rs`:
    per-group argument shapes. Multi-word verbs use per-variant
    `#[command(name = "list_callers")]` to render in snake_case

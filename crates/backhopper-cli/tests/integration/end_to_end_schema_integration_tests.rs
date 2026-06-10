@@ -96,6 +96,31 @@ fn diff_v7_to_v8_adds_exactly_the_siblings_doctor_payload() {
     assert!(data["removed_paths"].as_array().unwrap().is_empty());
 }
 
+/// Golden pin for the 024 slice: v9 adds exactly the cache verb
+/// payloads on top of v8.
+#[test]
+fn diff_v8_to_v9_adds_exactly_the_cache_payloads() {
+    let a = run_succeeds(["--formatter", "json", "schema", "diff", "8", "9"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json");
+    let data = v.get("data").expect("data");
+    let added: Vec<&str> = data["added_paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "/cache_list_payload",
+            "/cache_mutation_payload",
+            "/cache_show_payload",
+            "/cache_stats_payload",
+        ]
+    );
+    assert!(data["removed_paths"].as_array().unwrap().is_empty());
+}
+
 #[test]
 fn diff_unknown_version_fails_cleanly() {
     let a = run_fails(["schema", "diff", "1", "99"]);

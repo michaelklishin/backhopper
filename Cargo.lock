@@ -119,6 +119,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "backhopper-cache"
 version = "0.13.0"
 dependencies = [
+ "backhopper-core",
  "blake3",
  "proptest",
  "serde",

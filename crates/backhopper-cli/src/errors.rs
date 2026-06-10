@@ -54,6 +54,9 @@ pub enum CliError {
     #[error("series {series} has no self-pin to derive the target branch from")]
     SeriesHasNoSelfPin { series: SeriesName },
 
+    #[error("no cache entry matches key prefix {prefix:?}")]
+    CacheKeyNotFound { prefix: String },
+
     #[error(
         "no release tag{} is reachable from {target_branch}; cannot derive a default --since",
         pattern.as_deref().map(|p| format!(" matching {p:?}")).unwrap_or_default()
@@ -81,6 +84,7 @@ impl ExitCodeProvider for CliError {
             Self::SnapshotDirEscape { .. } => codes::USAGE,
             Self::SeriesHasNoSelfPin { .. } => codes::USAGE,
             Self::NoReachableSinceTag { .. } => codes::USAGE,
+            Self::CacheKeyNotFound { .. } => codes::NO_INPUT,
             Self::Other(_) => codes::SOFTWARE,
         }
     }
@@ -128,6 +132,9 @@ impl CliError {
                 "pass `--target-branch <REF>`, or add a self-pin (`branch = \"...\"`) to the series"
                     .into(),
             ),
+            Self::CacheKeyNotFound { .. } => {
+                Some("list entries and their keys with `backhopper cache list`".into())
+            }
             Self::NoReachableSinceTag { shallow, .. } => Some(if *shallow {
                 "pass `--since <SHA|TAG>` to bound the walk; this clone is shallow, so `git fetch --unshallow` may also restore tag reachability".into()
             } else {

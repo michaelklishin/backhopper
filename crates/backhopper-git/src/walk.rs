@@ -148,7 +148,17 @@ pub fn patch_id(
     sha: &CommitSha,
 ) -> Result<Option<PatchId>, GitError> {
     let bytes = diff_bytes(repo, base, sha)?;
-    let text = String::from_utf8_lossy(&bytes);
+    Ok(normalized_patch_hash(&bytes).map(PatchId))
+}
+
+/// BLAKE3 hex over a unified diff with the `@@` hunk-header lines
+/// excluded, so pure offset drift keeps the identity while any
+/// content-line or path drift changes it. Returns `None` for an
+/// empty diff. Shared by the sibling-drift `PatchId` and the verdict
+/// cache's content key.
+#[must_use]
+pub fn normalized_patch_hash(diff: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(diff);
     let mut hasher = blake3::Hasher::new();
     let mut hashed_any = false;
     for line in text.lines() {
@@ -160,7 +170,7 @@ pub fn patch_id(
         hashed_any = true;
     }
     if !hashed_any {
-        return Ok(None);
+        return None;
     }
-    Ok(Some(PatchId(hasher.finalize().to_hex().to_string())))
+    Some(hasher.finalize().to_hex().to_string())
 }

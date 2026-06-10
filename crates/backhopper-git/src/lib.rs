@@ -16,6 +16,7 @@ pub mod walk;
 pub use errors::GitError;
 pub use patch_input::{
     CommitDiffSource, MergePolicy, PatchInputError, PrCommitPolicy, ResolvedPatchInput,
+    load_files_at,
 };
 pub use pr_commits::{classify, pr_commits_for};
 pub use repo::{
@@ -23,4 +24,7 @@ pub use repo::{
     unified_diff_body,
 };
 pub use target_tree::build_target_tree_index;
-pub use walk::{PatchId, WalkedCommit, cherry_pick_trailers, first_parent_walk_since, patch_id};
+pub use walk::{
+    PatchId, WalkedCommit, cherry_pick_trailers, first_parent_walk_since, normalized_patch_hash,
+    patch_id,
+};

@@ -13,6 +13,7 @@ use bel7_cli::TableStyle;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum, crate_version};
 
 pub mod bisect;
+pub mod cache;
 pub mod check;
 pub mod config;
 pub mod doctor;
@@ -29,6 +30,7 @@ pub mod tree_source;
 pub mod xref;
 
 pub use bisect::BisectCmd;
+pub use cache::CacheCmd;
 pub use check::{CheckCmd, CheckFlags, SourcePinArgs};
 pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
@@ -170,6 +172,11 @@ pub enum Group {
     Bisect {
         #[command(subcommand)]
         cmd: BisectCmd,
+    },
+    /// Inspect and maintain the workspace's on-disk caches.
+    Cache {
+        #[command(subcommand)]
+        cmd: CacheCmd,
     },
     /// Inspect or validate the loaded configuration file.
     Config {

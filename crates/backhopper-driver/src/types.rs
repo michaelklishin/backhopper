@@ -10,6 +10,10 @@
 //! callers can match on the same enums the CLI itself produces.
 
 pub use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
+pub use backhopper_core::model::cache::{
+    CacheLevel, CacheLevelStats, CacheListPayload, CacheListRow, CacheMutationPayload,
+    CacheShowPayload, CacheStatsPayload,
+};
 pub use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
     DependencyName, DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName,

@@ -12,6 +12,8 @@ use std::process::Command;
 use serde_json::Value;
 use tempfile::TempDir;
 
+use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+
 use crate::helpers::cli::{run, stderr, stdout};
 
 /// A workspace with a config, a snapshot dir, and a two-branch repo:
@@ -216,7 +218,7 @@ fn unswept_fix_surfaces_and_x_picked_fix_is_suppressed() {
     let fx = DoctorFixture::new("rabbitmq");
     let assert = run(fx.doctor_args()).code(3);
     let body = parse_envelope(&stdout(&assert));
-    assert_eq!(body["schema_version"], 8);
+    assert_eq!(body["schema_version"], u64::from(CURRENT_SCHEMA_VERSION));
     assert_eq!(body["command"], "siblings doctor");
     let data = &body["data"];
     assert_eq!(data["series"], "demo-1.0");

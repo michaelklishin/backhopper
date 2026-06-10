@@ -183,7 +183,10 @@ pub(crate) fn diff_bytes(
     Ok(text.into_bytes())
 }
 
-fn load_files_at(repo: &GitRepo, commit: &CommitSha) -> Result<FileMap, GitError> {
+/// Read every `.erl` and `.hrl` blob at `commit` into a `FileMap`.
+/// The full-tree macro context evaluation builds tables from; callers
+/// that can prove a patch is empty should skip this entirely.
+pub fn load_files_at(repo: &GitRepo, commit: &CommitSha) -> Result<FileMap, GitError> {
     let blobs =
         repo.read_paths_at_commit(commit, |p| p.ends_with(".erl") || p.ends_with(".hrl"))?;
     let mut map = FileMap::new();

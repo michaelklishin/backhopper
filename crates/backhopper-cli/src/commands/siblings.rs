@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tabled::{Table, Tabled};
 use time::OffsetDateTime;
 
-use backhopper_cache::{CacheDir, CacheMode, content_hash};
+use backhopper_cache::{CacheDir, CacheMode, content_hash, ttl_from_days};
 use backhopper_core::compat::patch::{HunkLine, Patch};
 use backhopper_core::config::{Config, Project, Series};
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix, GitRef, RelativePath, TagName};
@@ -327,7 +327,9 @@ fn compute_with_cache(
             .map_err(|e| CliError::Other(e.to_string()))?,
         crate_version: env!("CARGO_PKG_VERSION"),
     };
-    let cache = CacheDir::new(snapshot_dir(global, cfg).join(CACHE_DIR_NAME));
+    // the verdict cache's [cache] ttl_days governs this cache too
+    let cache = CacheDir::new(snapshot_dir(global, cfg).join(CACHE_DIR_NAME))
+        .with_max_age(ttl_from_days(cfg.cache.ttl_days));
     if mode.is_enabled()
         && let Ok(Some(hit)) = cache.lookup::<_, _, DoctorComputation>(&key, &freshness)
     {

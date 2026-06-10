@@ -598,6 +598,27 @@ impl GitRepo {
         Ok(out)
     }
 
+    /// Read one blob at `path` inside `commit`'s tree. `Ok(None)`
+    /// when the path is absent or names a non-blob entry.
+    pub fn read_blob_at(
+        &self,
+        commit: &CommitSha,
+        path: &Path,
+    ) -> Result<Option<Vec<u8>>, GitError> {
+        let tree = self.tree_of(commit)?;
+        let Some(entry) = tree
+            .lookup_entry_by_path(path)
+            .map_err(|e| GitError::Gix(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if !entry.mode().is_blob() {
+            return Ok(None);
+        }
+        let object = entry.object().map_err(|e| GitError::Gix(e.to_string()))?;
+        Ok(Some(object.data.clone()))
+    }
+
     fn tree_of(&self, commit: &CommitSha) -> Result<gix::Tree<'_>, GitError> {
         let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
             .map_err(|e| GitError::Gix(e.to_string()))?;

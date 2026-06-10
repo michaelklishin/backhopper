@@ -18,6 +18,10 @@ pub enum BisectCmd {
         project: ProjectName,
         #[arg(long, default_value = ".")]
         repo_dir_path: PathBuf,
+        /// Skip the verdict cache for this invocation, for both reads
+        /// and writes.
+        #[arg(long)]
+        no_cache: bool,
         #[arg(
             value_name = "COMMIT_SHA",
             long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"

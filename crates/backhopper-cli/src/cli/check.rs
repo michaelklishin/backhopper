@@ -61,6 +61,10 @@ pub struct CheckFlags {
     /// histories.
     #[arg(long)]
     pub suggest_prereqs: bool,
+    /// Skip the verdict cache for this invocation, for both reads
+    /// and writes.
+    #[arg(long)]
+    pub no_cache: bool,
 }
 
 /// Cross-branch target-repo flags. When `target_repo_dir_path` is set,

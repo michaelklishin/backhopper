@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 pub mod batch;
+pub mod cache;
 pub mod names;
 pub mod pin;
 pub mod pr_commit;

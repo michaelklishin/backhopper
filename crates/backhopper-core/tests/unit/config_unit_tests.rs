@@ -153,3 +153,26 @@ pins = [{ project = "ra", tag = "v1" }]
     assert_eq!(direct.name, checked.name);
     assert_eq!(direct.pins.len(), checked.pins.len());
 }
+
+#[test]
+fn cache_section_defaults_to_a_six_week_ttl() {
+    let tmp = TempDir::new().unwrap();
+    let path = write_config(&tmp, "config_version = 1\n");
+    let cfg = Config::load(&path).unwrap();
+    assert_eq!(cfg.cache.ttl_days, 42);
+}
+
+#[test]
+fn cache_ttl_is_configurable_and_zero_disables_expiry() {
+    let tmp = TempDir::new().unwrap();
+    let path = write_config(&tmp, "config_version = 1\n\n[cache]\nttl_days = 0\n");
+    let cfg = Config::load(&path).unwrap();
+    assert_eq!(cfg.cache.ttl_days, 0);
+}
+
+#[test]
+fn cache_section_rejects_unknown_fields() {
+    let tmp = TempDir::new().unwrap();
+    let path = write_config(&tmp, "config_version = 1\n\n[cache]\nlru = true\n");
+    assert!(Config::load(&path).is_err());
+}

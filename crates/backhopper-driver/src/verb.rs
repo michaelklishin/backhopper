@@ -73,6 +73,18 @@ pub enum Verb {
     CheckBatch,
     /// `backhopper siblings doctor`.
     SiblingsDoctor,
+    /// `backhopper cache stats`.
+    CacheStats,
+    /// `backhopper cache list`.
+    CacheList,
+    /// `backhopper cache show`.
+    CacheShow,
+    /// `backhopper cache evict`.
+    CacheEvict,
+    /// `backhopper cache prune`.
+    CachePrune,
+    /// `backhopper cache clear`.
+    CacheClear,
     /// `backhopper schema show`.
     SchemaShow,
     /// `backhopper schema diff`.
@@ -108,6 +120,12 @@ impl Verb {
             Self::CheckTree => &["check", "tree"],
             Self::CheckBatch => &["check", "batch"],
             Self::SiblingsDoctor => &["siblings", "doctor"],
+            Self::CacheStats => &["cache", "stats"],
+            Self::CacheList => &["cache", "list"],
+            Self::CacheShow => &["cache", "show"],
+            Self::CacheEvict => &["cache", "evict"],
+            Self::CachePrune => &["cache", "prune"],
+            Self::CacheClear => &["cache", "clear"],
             Self::SchemaShow => &["schema", "show"],
             Self::SchemaDiff => &["schema", "diff"],
         }
@@ -173,6 +191,12 @@ impl Verb {
         Self::CheckTree,
         Self::CheckBatch,
         Self::SiblingsDoctor,
+        Self::CacheStats,
+        Self::CacheList,
+        Self::CacheShow,
+        Self::CacheEvict,
+        Self::CachePrune,
+        Self::CacheClear,
         Self::SchemaShow,
         Self::SchemaDiff,
     ];

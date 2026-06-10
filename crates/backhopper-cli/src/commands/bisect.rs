@@ -14,14 +14,17 @@ use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::Snapshot;
 use backhopper_core::model::snapshot::state::Canonical;
-use backhopper_core::model::verdict::Verdict;
+use backhopper_core::model::verdict::{SeriesEvaluation, Verdict};
 use backhopper_core::versions::version_cmp;
 
 use crate::cli::{BisectCmd, GlobalArgs};
-use backhopper_git::{GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput};
+use backhopper_git::{
+    GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput, normalized_patch_hash,
+};
 
 use crate::commands::context::{load_config, open_store_read};
 use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
+use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
 
@@ -47,12 +50,13 @@ pub fn handle(args: &GlobalArgs, cmd: BisectCmd) -> CliResult<i32> {
         BisectCmd::Commit {
             project,
             repo_dir_path,
+            no_cache,
             commit,
         } => {
             let repo = GitRepo::open(repo_dir_path.clone()).map_err(CliError::Git)?;
             let commit = expand_prefix_with(&repo, &commit)
                 .map_err(|e| enrich_with_repo_path(e, &repo_dir_path))?;
-            run_commit(args, &cfg, project, &repo, &commit)
+            run_commit(args, &cfg, project, &repo, &commit, no_cache)
         }
     }
 }
@@ -63,6 +67,7 @@ fn run_commit(
     project: ProjectName,
     repo: &GitRepo,
     commit: &CommitSha,
+    no_cache: bool,
 ) -> CliResult<i32> {
     let p = cfg
         .project(&project)
@@ -81,23 +86,53 @@ fn run_commit(
         ResolvedPatchInput::for_commit(repo, commit, MergePolicy::Refuse, PrCommitPolicy::Skip)?;
     let patch = Patch::parse(&input.bytes).map_err(|e| CliError::Core(e.into()))?;
     let analyzed = patch.analyze();
-    let mut contexts: Vec<EvaluationContext> = Vec::with_capacity(tags.len());
+    let session = CacheSession::open(args, cfg, no_cache, false);
+    let patch_blake3 = normalized_patch_hash(&input.bytes).unwrap_or_else(|| "empty".to_owned());
+    // one evaluation per tag, so a re-bisect after the store grows
+    // reuses every overlapping (commit, tag) pair from the cache
+    let mut verdicts: Vec<Verdict> = Vec::with_capacity(tags.len());
     for tag in &tags {
-        let snap = store
-            .read(&project, tag)
-            .map_err(|e| CliError::Core(e.into()))?;
-        let scope = build_pin_scope(p, &snap);
-        let pin = Pin::new(project.clone(), tag.clone());
-        contexts.push(EvaluationContext::new(pin, snap, scope));
+        let evaluate = || -> CliResult<SeriesEvaluation> {
+            let snap = store
+                .read(&project, tag)
+                .map_err(|e| CliError::Core(e.into()))?;
+            let scope = build_pin_scope(p, &snap);
+            let pin = Pin::new(project.clone(), tag.clone());
+            let ctx = EvaluationContext::new(pin, snap, scope);
+            Ok(analyzed.clone().evaluate_series(&[ctx]))
+        };
+        let key = session.bisect_key(&store, commit, &project, tag);
+        let evaluation = match session.lookup(key) {
+            SessionLookup::Hit(evaluation) => evaluation,
+            SessionLookup::Bypassed => evaluate()?,
+            SessionLookup::Miss(miss) => {
+                match session.consult_content(miss, patch_blake3.clone(), &MacroEnv::Unused) {
+                    CacheLookupOutcome::Hit(evaluation) => evaluation,
+                    CacheLookupOutcome::Miss(slot) => {
+                        let evaluation = evaluate()?;
+                        slot.store(&evaluation);
+                        evaluation
+                    }
+                }
+            }
+        };
+        let verdict = evaluation
+            .verdict
+            .results
+            .into_iter()
+            .next()
+            .map(|pv| pv.verdict)
+            .ok_or_else(|| CliError::Other("bisect evaluation produced no verdict row".into()))?;
+        verdicts.push(verdict);
     }
-    let evaluation = analyzed.evaluate_series(&contexts);
+    session.report();
     let mut rows: Vec<BisectRow> = Vec::with_capacity(tags.len());
     let mut last_compatible_tag: Option<String> = None;
     let mut first_incompatible_tag: Option<String> = None;
     let mut first_requires_adaptation_tag: Option<String> = None;
-    for (tag, pin_verdict) in tags.iter().zip(evaluation.verdict.results.iter()) {
-        let verdict_str = verdict_label(&pin_verdict.verdict);
-        match &pin_verdict.verdict {
+    for (tag, verdict) in tags.iter().zip(verdicts.iter()) {
+        let verdict_str = verdict_label(verdict);
+        match verdict {
             Verdict::Compatible => {
                 last_compatible_tag = Some(tag.to_string());
             }

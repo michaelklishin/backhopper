@@ -7,11 +7,13 @@
 pub mod auto_generate;
 pub mod batch_plan;
 pub mod bisect;
+pub mod cache;
 pub mod check;
 pub mod config;
 pub mod context;
 pub mod doctor;
 pub mod init;
+pub mod macro_env;
 pub mod projects;
 pub mod rabbitmq_components;
 pub mod rev;
@@ -28,6 +30,7 @@ pub mod suites;
 pub mod summary;
 pub mod target_repo;
 pub mod tree_source;
+pub mod verdict_cache;
 pub mod version;
 pub mod xref;
 pub mod xref_backport_applicability;
@@ -44,6 +47,7 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Snapshots { cmd } => snapshots::handle(&cli.global, cmd),
         Group::Check { cmd } => check::handle(&cli.global, cmd),
         Group::Bisect { cmd } => bisect::handle(&cli.global, cmd),
+        Group::Cache { cmd } => cache::handle(&cli.global, cmd),
         Group::Config { cmd } => config::handle(&cli.global, cmd),
         Group::Shell { cmd } => shell::handle(&cli.global, cmd),
         Group::Xref { cmd } => xref::handle(&cli.global, cmd),

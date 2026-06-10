@@ -12,6 +12,9 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::model::batch::BatchPayload;
+use crate::model::cache::{
+    CacheListPayload, CacheMutationPayload, CacheShowPayload, CacheStatsPayload,
+};
 use crate::model::sibling_drift::SiblingDoctorReport;
 use crate::model::summary::SummaryRow;
 use crate::model::verdict::SeriesEvaluation;
@@ -67,6 +70,7 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         6 => Ok(combined_v6()),
         7 => Ok(combined_v7()),
         8 => Ok(combined_v8()),
+        9 => Ok(combined_v9()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -164,6 +168,45 @@ fn combined_v8() -> Value {
     obj.insert("siblings_doctor_payload".into(), siblings_doctor_payload);
     obj.insert("schema_version".into(), json!(8));
     obj.insert("title".into(), json!("backhopper envelope v8"));
+    Value::Object(obj)
+}
+
+fn combined_v9() -> Value {
+    let series = envelope_with_payload::<SeriesEvaluation>(
+        9,
+        "check",
+        "v9 adds the content-keyed verdict cache and its `cache` verb group (`stats`, \
+         `list`, `show`, `evict`, `prune`, `clear`); the new payloads ride under \
+         `cache_stats_payload`, `cache_list_payload`, `cache_show_payload`, and \
+         `cache_mutation_payload`. The `check` and `bisect` envelopes are unchanged: \
+         cache hits and misses are deliberately invisible on the wire.",
+    );
+    let summary_row =
+        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
+    let batch_payload =
+        serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
+    let siblings_doctor_payload = serde_json::to_value(schema_for!(SiblingDoctorReport))
+        .expect("SiblingDoctorReport schema serialises");
+    let cache_stats_payload = serde_json::to_value(schema_for!(CacheStatsPayload))
+        .expect("CacheStatsPayload schema serialises");
+    let cache_list_payload = serde_json::to_value(schema_for!(CacheListPayload))
+        .expect("CacheListPayload schema serialises");
+    let cache_show_payload = serde_json::to_value(schema_for!(CacheShowPayload))
+        .expect("CacheShowPayload schema serialises");
+    let cache_mutation_payload = serde_json::to_value(schema_for!(CacheMutationPayload))
+        .expect("CacheMutationPayload schema serialises");
+    let Value::Object(mut obj) = series else {
+        unreachable!("envelope_with_payload always returns a Value::Object")
+    };
+    obj.insert("summary_row".into(), summary_row);
+    obj.insert("batch_payload".into(), batch_payload);
+    obj.insert("siblings_doctor_payload".into(), siblings_doctor_payload);
+    obj.insert("cache_stats_payload".into(), cache_stats_payload);
+    obj.insert("cache_list_payload".into(), cache_list_payload);
+    obj.insert("cache_show_payload".into(), cache_show_payload);
+    obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
+    obj.insert("schema_version".into(), json!(9));
+    obj.insert("title".into(), json!("backhopper envelope v9"));
     Value::Object(obj)
 }
 

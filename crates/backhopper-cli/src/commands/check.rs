@@ -39,7 +39,10 @@ use backhopper_core::model::verdict::{
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
-use backhopper_git::{GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput};
+use backhopper_git::{
+    GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput, load_files_at,
+    normalized_patch_hash,
+};
 
 use crate::cli::check::TargetRepoArgs;
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
@@ -48,6 +51,7 @@ use crate::commands::auto_generate::{
 };
 use crate::commands::batch_plan::BatchPlan;
 use crate::commands::context::{load_config, open_store_read};
+use crate::commands::macro_env::macro_environment_hash;
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
 use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
 use crate::commands::snapshot_cache::SnapshotCache;
@@ -58,6 +62,7 @@ use crate::commands::summary::{
     SummaryFormatter, batch_result_to_summary_row, emit_rows, to_summary_row,
 };
 use crate::commands::target_repo;
+use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
 use crate::tables::render_evaluation_table;
@@ -83,22 +88,25 @@ enum QueriedAgainst {
     Series { name: String, pins: Vec<PinPayload> },
 }
 
-/// Commit identity carried into `run_check_patch` for summary rows
-/// and the `pr_commits` payload. Absent for patch, range, and PR
-/// inputs, which have no single commit identity.
+/// Commit identity carried into `run_check_patch` for summary rows,
+/// the `pr_commits` payload, and the verdict-cache key. Absent for
+/// patch, range, and PR inputs, which have no single commit identity.
 #[derive(Debug)]
 struct PatchProvenance {
     sha: CommitSha,
+    /// The commit the diff was computed against; the macro
+    /// environment is read here on a cache miss.
+    diff_base: CommitSha,
     parent_count: NonZeroU32,
     pr_commits: Option<Vec<PrCommit>>,
 }
 
-/// Everything the per-commit check arms need: patch bytes, the macro
-/// file map at the diff base, and the provenance for the summary row.
+/// Patch bytes plus provenance for the per-commit check arms. The
+/// macro file map is deliberately not here: it is loaded only when a
+/// cache miss makes the evaluation pay for it.
 #[derive(Debug)]
 struct ResolvedForCheck {
     bytes: Vec<u8>,
-    source_files: FileMap,
     provenance: PatchProvenance,
 }
 
@@ -112,23 +120,54 @@ fn resolve_commit_input(
     let sha =
         expand_prefix_with(&repo, prefix).map_err(|e| enrich_with_repo_path(e, repo_dir_path))?;
     let input = ResolvedPatchInput::for_commit(&repo, &sha, merges, pr)?;
-    let source_files = input.load_source_files(&repo).map_err(CliError::Git)?;
     let parent_count = input.source.parent_count();
     let ResolvedPatchInput {
         sha,
+        diff_base,
         bytes,
         pr_commits,
         ..
     } = input;
     Ok(ResolvedForCheck {
         bytes,
-        source_files,
         provenance: PatchProvenance {
             sha,
+            diff_base,
             parent_count,
             pr_commits,
         },
     })
+}
+
+/// Where `run_check_patch` gets its macro file map: an eagerly built
+/// map (patch, pr, and range inputs) or the diff base it can be read
+/// from when an evaluation actually runs.
+#[derive(Debug)]
+enum SourceFilesInput<'a> {
+    Eager(FileMap),
+    AtDiffBase {
+        repo_dir: &'a Path,
+        diff_base: CommitSha,
+    },
+}
+
+impl SourceFilesInput<'_> {
+    /// Materialize the map. An empty patch touches nothing, so it
+    /// skips the tree read, matching
+    /// `ResolvedPatchInput::load_source_files`.
+    fn load(self, bytes: &[u8]) -> CliResult<FileMap> {
+        match self {
+            Self::Eager(map) => Ok(map),
+            Self::AtDiffBase { .. } if bytes.is_empty() => Ok(FileMap::new()),
+            Self::AtDiffBase {
+                repo_dir,
+                diff_base,
+            } => {
+                let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
+                load_files_at(&repo, &diff_base).map_err(CliError::Git)
+            }
+        }
+    }
 }
 
 pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
@@ -154,7 +193,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &FileMap::new(),
+                SourceFilesInput::Eager(FileMap::new()),
                 &source,
                 &target,
                 diagnostics,
@@ -185,7 +224,10 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &resolved.source_files,
+                SourceFilesInput::AtDiffBase {
+                    repo_dir: &repo_dir_path,
+                    diff_base: resolved.provenance.diff_base.clone(),
+                },
                 &source,
                 &target,
                 diagnostics,
@@ -218,7 +260,10 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                     tag,
                     series,
                     Some(&repo_dir_path),
-                    &resolved.source_files,
+                    SourceFilesInput::AtDiffBase {
+                        repo_dir: &repo_dir_path,
+                        diff_base: resolved.provenance.diff_base.clone(),
+                    },
                     &source,
                     &target,
                     diagnostics,
@@ -235,7 +280,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                     tag,
                     series,
                     Some(&repo_dir_path),
-                    &source_files,
+                    SourceFilesInput::Eager(source_files),
                     &source,
                     &target,
                     diagnostics,
@@ -267,7 +312,10 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &resolved.source_files,
+                SourceFilesInput::AtDiffBase {
+                    repo_dir: &repo_dir_path,
+                    diff_base: resolved.provenance.diff_base.clone(),
+                },
                 &source,
                 &target,
                 diagnostics,
@@ -293,7 +341,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &FileMap::new(),
+                SourceFilesInput::Eager(FileMap::new()),
                 &source,
                 &target,
                 diagnostics,
@@ -652,6 +700,29 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
     Ok(text.into_bytes())
 }
 
+/// The content-key patch component. Empty diffs share one sentinel:
+/// they are cached uniformly, keyed by everything else.
+fn patch_hash_for_key(bytes: &[u8]) -> String {
+    normalized_patch_hash(bytes).unwrap_or_else(|| "empty".to_owned())
+}
+
+/// The content-key macro component for a commit-shaped input: the
+/// patch-reachable slice of the touched files' macro tables, rebuilt
+/// at the diff base.
+fn commit_macro_env(repo_dir: &Path, diff_base: &CommitSha, bytes: &[u8]) -> CliResult<MacroEnv> {
+    if bytes.is_empty() {
+        return Ok(MacroEnv::Resolved("no-touched-files".to_owned()));
+    }
+    let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
+    let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
+    Ok(
+        match macro_environment_hash(&repo, diff_base, &patch.files) {
+            Some(hash) => MacroEnv::Resolved(hash),
+            None => MacroEnv::Unresolvable,
+        },
+    )
+}
+
 fn apply_target_context(
     cfg: &Config,
     target_ctx: &target_repo::TargetContext,
@@ -687,12 +758,16 @@ fn run_check_patch(
     tag: Option<TagName>,
     series: Option<SeriesName>,
     repo_dir_path: Option<&Path>,
-    source_files: &FileMap,
+    source_files: SourceFilesInput<'_>,
     source: &SourcePinArgs,
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
     provenance: Option<PatchProvenance>,
 ) -> CliResult<i32> {
+    debug_assert!(
+        provenance.is_none() || repo_dir_path.is_some(),
+        "commit-shaped inputs always carry a repo path"
+    );
     let store = open_store_read(args, cfg)?;
     let pin_specs: Vec<PinSpec> = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => vec![PinSpec::literal(p.clone(), t.clone())],
@@ -720,23 +795,77 @@ fn run_check_patch(
         series.as_ref(),
         source,
     )?;
+    let target_ctx = target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?;
+    // patch, pr, and range inputs have no stable content address; the
+    // two flags rescan state that lives outside the cache key
+    let cache_bypass = provenance.is_none()
+        || diagnostics.resolve_untracked_modules
+        || diagnostics.suggest_prereqs;
+    let session = CacheSession::open(args, cfg, diagnostics.no_cache, cache_bypass);
+    let key = provenance.as_ref().and_then(|p| {
+        session.check_key(
+            cfg,
+            &store,
+            &p.sha,
+            series.as_ref(),
+            &pins,
+            &pin_specs,
+            &source_pins,
+            target_ctx.as_ref(),
+        )
+    });
     let cache = SnapshotCache::new(&store);
-    let mut evaluation = evaluate_one(
-        cfg,
-        &cache,
-        bytes,
-        &pins,
-        &pin_specs,
-        &source_pins,
-        source_files,
-        repo_dir_path,
-    )?;
-    if diagnostics.resolve_untracked_modules {
-        let repo = repo_dir_path.ok_or_else(|| {
-            CliError::InvalidInput("--resolve-untracked-modules requires --repo-dir-path".into())
-        })?;
-        resolve_untracked_modules_against_tree(&mut evaluation, repo)?;
-    }
+    let evaluate_and_finish = |files: FileMap| -> CliResult<SeriesEvaluation> {
+        let mut evaluation = evaluate_one(
+            cfg,
+            &cache,
+            bytes,
+            &pins,
+            &pin_specs,
+            &source_pins,
+            &files,
+            repo_dir_path,
+        )?;
+        if diagnostics.resolve_untracked_modules {
+            let repo = repo_dir_path.ok_or_else(|| {
+                CliError::InvalidInput(
+                    "--resolve-untracked-modules requires --repo-dir-path".into(),
+                )
+            })?;
+            resolve_untracked_modules_against_tree(&mut evaluation, repo)?;
+        }
+        if let Some(p) = &provenance {
+            evaluation.pr_commits.clone_from(&p.pr_commits);
+        }
+        if let Some(target_ctx) = &target_ctx {
+            apply_target_context(cfg, target_ctx, bytes, &mut evaluation)?;
+        }
+        Ok(evaluation)
+    };
+    let mut evaluation = match session.lookup(key) {
+        SessionLookup::Hit(evaluation) => evaluation,
+        SessionLookup::Bypassed => evaluate_and_finish(source_files.load(bytes)?)?,
+        SessionLookup::Miss(miss) => {
+            // a key exists, so provenance and a repo path do too
+            let p = provenance
+                .as_ref()
+                .expect("cache keys are derived from provenance");
+            let repo_dir = repo_dir_path.expect("commit-shaped inputs always carry a repo path");
+            let macro_env = commit_macro_env(repo_dir, &p.diff_base, bytes)?;
+            match session.consult_content(miss, patch_hash_for_key(bytes), &macro_env) {
+                CacheLookupOutcome::Hit(evaluation) => evaluation,
+                CacheLookupOutcome::Miss(slot) => {
+                    let evaluation = evaluate_and_finish(source_files.load(bytes)?)?;
+                    slot.store(&evaluation);
+                    evaluation
+                }
+            }
+        }
+    };
+    session.report();
+    // prereq promotion stays out of the cached value so batch rows
+    // and check rows share entries; it commutes with the target merge
+    // (it only rewrites MissingSymbol reasons)
     promote_self_missing_to_prereq(
         &mut evaluation,
         cfg,
@@ -744,14 +873,6 @@ fn run_check_patch(
         repo_dir_path,
         diagnostics.suggest_prereqs,
     );
-    if let Some(p) = &provenance {
-        evaluation.pr_commits.clone_from(&p.pr_commits);
-    }
-    if let Some(target_ctx) =
-        target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?
-    {
-        apply_target_context(cfg, &target_ctx, bytes, &mut evaluation)?;
-    }
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),
@@ -1641,6 +1762,7 @@ fn run_batch(
     let mut worst_exit: i32 = 0;
     let mut current: usize = 0;
     let cache = SnapshotCache::new(&store);
+    let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
     // Source pins depend only on the series, never on the commit.
     let mut source_pins_by_series = Vec::with_capacity(resolved_series.len());
     for series in &resolved_series {
@@ -1655,50 +1777,101 @@ fn run_batch(
         )?);
     }
     for planned in plan.commits() {
-        let input = ResolvedPatchInput::from_parents(
-            &git_repo,
-            &planned.sha,
-            &planned.parents,
-            MergePolicy::FirstParentDiff,
-            PrCommitPolicy::Collect,
-        )?;
-        let source_files = input.load_source_files(&git_repo).map_err(CliError::Git)?;
-        let merge_marker = if input.source.is_merge() {
+        // resolved lazily: only a miss pays for the diff, the macro
+        // environment, or the file map
+        let mut input: Option<ResolvedPatchInput> = None;
+        let mut source_files: Option<FileMap> = None;
+        let mut macro_env: Option<MacroEnv> = None;
+        let merge_marker = if planned.parents.len() > 1 {
             " (merge)"
         } else {
             ""
         };
         for (series, source_pins) in resolved_series.iter().zip(&source_pins_by_series) {
-            let item_label = format!("{} @ {}{merge_marker}", input.sha, series.name);
-            let mut evaluation = evaluate_one(
+            let item_label = format!("{} @ {}{merge_marker}", planned.sha, series.name);
+            let key = session.check_key(
                 cfg,
-                &cache,
-                &input.bytes,
+                &store,
+                &planned.sha,
+                Some(&series.name),
                 &series.pins,
                 &series.pin_specs,
                 source_pins,
-                &source_files,
-                Some(repo),
-            )?;
-            if let Some(target_ctx) = &target_ctx {
-                apply_target_context(cfg, target_ctx, &input.bytes, &mut evaluation)?;
+                target_ctx.as_ref(),
+            );
+            let lookup = session.lookup(key);
+            if !matches!(lookup, SessionLookup::Hit(_)) && input.is_none() {
+                input = Some(ResolvedPatchInput::from_parents(
+                    &git_repo,
+                    &planned.sha,
+                    &planned.parents,
+                    MergePolicy::FirstParentDiff,
+                    PrCommitPolicy::Collect,
+                )?);
             }
+            let evaluate = |source_files: &mut Option<FileMap>| -> CliResult<SeriesEvaluation> {
+                let input = input.as_ref().expect("resolved before any evaluation");
+                if source_files.is_none() {
+                    *source_files =
+                        Some(input.load_source_files(&git_repo).map_err(CliError::Git)?);
+                }
+                let files = source_files.as_ref().expect("loaded above");
+                let mut evaluation = evaluate_one(
+                    cfg,
+                    &cache,
+                    &input.bytes,
+                    &series.pins,
+                    &series.pin_specs,
+                    source_pins,
+                    files,
+                    Some(repo),
+                )?;
+                evaluation.pr_commits.clone_from(&input.pr_commits);
+                if let Some(target_ctx) = &target_ctx {
+                    apply_target_context(cfg, target_ctx, &input.bytes, &mut evaluation)?;
+                }
+                Ok(evaluation)
+            };
+            let evaluation = match lookup {
+                SessionLookup::Hit(evaluation) => evaluation,
+                SessionLookup::Bypassed => evaluate(&mut source_files)?,
+                SessionLookup::Miss(miss) => {
+                    let resolved = input.as_ref().expect("resolved on the miss path");
+                    if macro_env.is_none() {
+                        macro_env = Some(commit_macro_env(
+                            repo,
+                            &resolved.diff_base,
+                            &resolved.bytes,
+                        )?);
+                    }
+                    let env = macro_env.as_ref().expect("computed above");
+                    match session.consult_content(miss, patch_hash_for_key(&resolved.bytes), env) {
+                        CacheLookupOutcome::Hit(evaluation) => evaluation,
+                        CacheLookupOutcome::Miss(slot) => {
+                            let evaluation = evaluate(&mut source_files)?;
+                            slot.store(&evaluation);
+                            evaluation
+                        }
+                    }
+                }
+            };
             current += 1;
             reporter.progress(current, pair_count, &item_label);
             worst_exit = worst_exit.max(evaluation.worst_exit_code());
             results.push(BatchResult {
-                commit: input.sha.clone(),
+                commit: planned.sha.clone(),
                 series: series.name.clone(),
+                pr_commits: evaluation.pr_commits.clone(),
                 verdict: evaluation.verdict,
                 diagnostics: evaluation.diagnostics,
                 patch_facts: evaluation.patch_facts,
                 touched_paths: evaluation.touched_paths,
-                pr_commits: input.pr_commits.clone(),
-                parent_count: Some(input.source.parent_count()),
+                parent_count: NonZeroU32::new(planned.parents.len() as u32),
             });
         }
     }
     reporter.finish(pair_count);
+    session.report();
     let payload = BatchPayload {
         queried_against: queried,
         results,
@@ -1804,18 +1977,18 @@ fn run_multi(
     let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
     let commit =
         &expand_prefix_with(&git_repo, commit).map_err(|e| enrich_with_repo_path(e, repo))?;
-    let input = ResolvedPatchInput::for_commit(
-        &git_repo,
-        commit,
-        MergePolicy::FirstParentDiff,
-        PrCommitPolicy::Collect,
-    )?;
-    let source_files = input.load_source_files(&git_repo).map_err(CliError::Git)?;
+    let parents = git_repo.parents(commit).map_err(CliError::Git)?;
     let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
     let queried = batch_queries(&resolved_series);
     let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
     let mut worst_exit: i32 = 0;
     let cache = SnapshotCache::new(&store);
+    let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
+    // resolved lazily: only a miss pays for the diff, the macro
+    // environment, or the file map
+    let mut input: Option<ResolvedPatchInput> = None;
+    let mut source_files: Option<FileMap> = None;
+    let mut macro_env: Option<MacroEnv> = None;
     for series in &resolved_series {
         let source_pins = resolve_source_pins(
             cfg,
@@ -1826,28 +1999,81 @@ fn run_multi(
             Some(&series.name),
             source,
         )?;
-        let evaluation = evaluate_one(
+        let key = session.check_key(
             cfg,
-            &cache,
-            &input.bytes,
+            &store,
+            commit,
+            Some(&series.name),
             &series.pins,
             &series.pin_specs,
             &source_pins,
-            &source_files,
-            Some(repo),
-        )?;
+            None,
+        );
+        let lookup = session.lookup(key);
+        if !matches!(lookup, SessionLookup::Hit(_)) && input.is_none() {
+            input = Some(ResolvedPatchInput::from_parents(
+                &git_repo,
+                commit,
+                &parents,
+                MergePolicy::FirstParentDiff,
+                PrCommitPolicy::Collect,
+            )?);
+        }
+        let evaluate = |source_files: &mut Option<FileMap>| -> CliResult<SeriesEvaluation> {
+            let input = input.as_ref().expect("resolved before any evaluation");
+            if source_files.is_none() {
+                *source_files = Some(input.load_source_files(&git_repo).map_err(CliError::Git)?);
+            }
+            let files = source_files.as_ref().expect("loaded above");
+            let mut evaluation = evaluate_one(
+                cfg,
+                &cache,
+                &input.bytes,
+                &series.pins,
+                &series.pin_specs,
+                &source_pins,
+                files,
+                Some(repo),
+            )?;
+            evaluation.pr_commits.clone_from(&input.pr_commits);
+            Ok(evaluation)
+        };
+        let evaluation = match lookup {
+            SessionLookup::Hit(evaluation) => evaluation,
+            SessionLookup::Bypassed => evaluate(&mut source_files)?,
+            SessionLookup::Miss(miss) => {
+                let resolved = input.as_ref().expect("resolved on the miss path");
+                if macro_env.is_none() {
+                    macro_env = Some(commit_macro_env(
+                        repo,
+                        &resolved.diff_base,
+                        &resolved.bytes,
+                    )?);
+                }
+                let env = macro_env.as_ref().expect("computed above");
+                match session.consult_content(miss, patch_hash_for_key(&resolved.bytes), env) {
+                    CacheLookupOutcome::Hit(evaluation) => evaluation,
+                    CacheLookupOutcome::Miss(slot) => {
+                        let evaluation = evaluate(&mut source_files)?;
+                        slot.store(&evaluation);
+                        evaluation
+                    }
+                }
+            }
+        };
         worst_exit = worst_exit.max(evaluation.worst_exit_code());
         results.push(BatchResult {
             commit: commit.clone(),
             series: series.name.clone(),
+            pr_commits: evaluation.pr_commits.clone(),
             verdict: evaluation.verdict,
             diagnostics: evaluation.diagnostics,
             patch_facts: evaluation.patch_facts,
             touched_paths: evaluation.touched_paths,
-            pr_commits: input.pr_commits.clone(),
-            parent_count: Some(input.source.parent_count()),
+            parent_count: NonZeroU32::new(parents.len() as u32),
         });
     }
+    session.report();
     let payload = MultiPayload {
         commit: commit.clone(),
         queried_against: queried,
