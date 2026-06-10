@@ -18,7 +18,7 @@ use crate::compat::call_sites::{
     extract_dynamic_into, extract_into_with_macros, extract_type_refs_into,
 };
 use crate::compat::diff;
-use crate::compat::evaluate::evaluate_pin;
+use crate::compat::evaluate::{PostimageTally, evaluate_pin};
 use crate::compat::patch_facts::{
     classify as classify_patch_facts, is_only_test_visibility_change, suggest_suites,
 };
@@ -26,11 +26,14 @@ use crate::compat::scope::{PinScope, UntrackedTally};
 use crate::config::FamilyDefaults;
 use crate::erlang_macros::MacroTable;
 use crate::errors::PatchError;
-use crate::model::names::{Mfa, ModuleName, RecordName, RelativePath};
+use crate::model::names::{Mfa, ModuleName, ProjectName, RecordName, RelativePath};
 use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
 use crate::model::symbol::{RefContext, SymbolKind, SymbolRef};
-use crate::model::verdict::{Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict, Unanalyzed};
+use crate::model::verdict::{
+    AlreadyPresent, ContentPresence, Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict,
+    Unanalyzed,
+};
 
 pub use crate::compat::diff::PATCH_SIZE_LIMIT;
 
@@ -556,6 +559,10 @@ impl Patch<Analyzed> {
             }
         }
         let mut results = Vec::with_capacity(contexts.len());
+        // One pin's tally becomes the series-level content-presence
+        // diagnostic: the one that considered the most hunks, which
+        // in cross-branch mode is the self pin carrying target bytes.
+        let mut best_presence: Option<ContentPresence> = None;
         for ctx in contexts {
             let r = evaluate_pin(
                 &self.files,
@@ -569,6 +576,17 @@ impl Patch<Analyzed> {
                 Some(ctx.scope()),
                 ctx.family_defaults(),
             );
+            if let Some(tally) = r.postimage {
+                let denser = best_presence
+                    .as_ref()
+                    .is_none_or(|b| tally.considered > b.hunks_considered);
+                if denser {
+                    best_presence = Some(content_presence_from_tally(
+                        ctx.pin().project.clone(),
+                        tally,
+                    ));
+                }
+            }
             results.push(
                 PinVerdict::new(ctx.pin().clone(), r.verdict)
                     .with_tracked_ref_details(r.tracked_refs)
@@ -582,6 +600,10 @@ impl Patch<Analyzed> {
                 DynamicCall::VariableDispatch => unanalyzed.variable_dispatch += 1,
             }
         }
+        let already_present = best_presence.map(|content| AlreadyPresent {
+            identical: None,
+            content: Some(content),
+        });
         SeriesEvaluation {
             verdict: SeriesVerdict::from_results(results),
             diagnostics: Diagnostics {
@@ -590,6 +612,9 @@ impl Patch<Analyzed> {
                 unanalyzed,
                 suggested_suites: suggest_suites(&self.files),
                 missing_test_modules: BTreeMap::new(),
+                already_present,
+                already_present_skipped: None,
+                dep_pin_divergence: Vec::new(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),
@@ -602,6 +627,28 @@ impl Patch<Analyzed> {
 /// dedup by first occurrence. Paths that can't be expressed as UTF-8
 /// relative paths (extremely rare in practice; never seen in RabbitMQ)
 /// are dropped silently: the alternative is failing the verdict.
+/// Project a per-pin tally into the envelope shape, converting the
+/// per-file keys to `RelativePath` with the same drop-on-failure
+/// policy as `collect_touched_paths`.
+fn content_presence_from_tally(pin: ProjectName, tally: PostimageTally) -> ContentPresence {
+    let mut per_file = BTreeMap::new();
+    for (path, counts) in tally.per_file {
+        let Some(s) = path.to_str() else { continue };
+        let Ok(rel) = RelativePath::new(s.to_owned()) else {
+            continue;
+        };
+        per_file.insert(rel, counts);
+    }
+    ContentPresence {
+        pin,
+        hunks_already_applied: tally.applied,
+        hunks_considered: tally.considered,
+        hunks_ambiguous: tally.ambiguous,
+        hunks_low_confidence: tally.low_confidence,
+        per_file,
+    }
+}
+
 fn collect_touched_paths(files: &[PatchedFile]) -> Vec<RelativePath> {
     let mut seen: BTreeSet<RelativePath> = BTreeSet::new();
     let mut out = Vec::with_capacity(files.len());

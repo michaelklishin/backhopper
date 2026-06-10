@@ -87,7 +87,21 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
     }
     let build_system = BuildSystem::detect(&args.repo_dir_path);
     let library_apps = resolve_library_apps(&args, &discovery.specs);
-    let cfg = load_config(global).ok();
+    // A broken config must not silently degrade to "no extra rules":
+    // workflows rely on configured rules firing. Having no config at
+    // all stays silent; there are no rules to lose.
+    let cfg = match load_config(global) {
+        Ok(c) => Some(c),
+        Err(e) if global.config_file_path.is_some() => return Err(e),
+        Err(CliError::ConfigNotFound { .. }) => None,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "config load failed; configured suite rules will not fire"
+            );
+            None
+        }
+    };
     let extra_rules = cfg
         .as_ref()
         .map(|c| c.suite_rules.clone())
@@ -221,6 +235,26 @@ fn render_plan(
                 }
             }
         }
+        for u in &result.uncovered {
+            writeln!(
+                w,
+                "uncovered: {} ({} modified module(s), {} suite(s) discovered, 0 selected)",
+                u.application, u.modified_modules, u.discovered_suites
+            )?;
+            if u.suites.is_empty() {
+                writeln!(w, "  this application has no test suites")?;
+            } else {
+                let names: Vec<&str> = u.suites.iter().map(|m| m.as_str()).collect();
+                writeln!(w, "  candidates: {}", names.join(", "))?;
+            }
+        }
+        if result.unattributed_paths > 0 {
+            writeln!(
+                w,
+                "{} modified path(s) resolve to no application",
+                result.unattributed_paths
+            )?;
+        }
         if let Some(hint) = build_system_hint(build_system, result) {
             writeln!(w)?;
             writeln!(w, "{hint}")?;
@@ -231,7 +265,9 @@ fn render_plan(
 }
 
 fn build_system_hint(bs: BuildSystem, result: &SuitePlan) -> Option<&'static str> {
-    if result.is_empty() {
+    // Uncovered candidates want the run hint just as much as
+    // selected entries do.
+    if result.is_empty() && result.uncovered.is_empty() {
         return None;
     }
     match bs {

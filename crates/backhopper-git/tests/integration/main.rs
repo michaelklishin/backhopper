@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod added_file_findings_integration_tests;
+mod already_present_integration_tests;
 mod git_repo_integration_tests;
 mod git_resolve_prefix_integration_tests;
 mod helpers;

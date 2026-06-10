@@ -85,6 +85,14 @@ pub struct TargetRepoArgs {
     /// file is a hard error.
     #[arg(long)]
     pub path_translations_file_path: Option<PathBuf>,
+    /// Cap the target-branch first-parent walk used by already-present
+    /// detection. A backstop, not a tuning knob: real divergence
+    /// windows are a few hundred commits.
+    #[arg(long, default_value_t = 5000, requires = "target_repo_dir_path")]
+    pub target_walk_limit: usize,
+    /// Skip already-present detection against the target branch.
+    #[arg(long, requires = "target_repo_dir_path")]
+    pub skip_already_present: bool,
 }
 
 /// Optional source-side pin descriptor. When set, the analyzer diffs

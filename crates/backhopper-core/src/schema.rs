@@ -18,6 +18,7 @@ use crate::model::cache::{
 use crate::model::sibling_drift::SiblingDoctorReport;
 use crate::model::summary::SummaryRow;
 use crate::model::verdict::SeriesEvaluation;
+use crate::suites::SuitePlan;
 
 pub use crate::envelope_version::{
     CURRENT_SCHEMA_VERSION, MIN_EMBEDDED_VERSION, embedded_versions,
@@ -35,6 +36,13 @@ const SCHEMA_V1_FROZEN: &str = include_str!("schema_v1_snapshot.json");
 /// type changes. v4 and v6 derive from these (they only retitle).
 const SCHEMA_V3_FROZEN: &str = include_str!("schema_v3_snapshot.json");
 const SCHEMA_V5_FROZEN: &str = include_str!("schema_v5_snapshot.json");
+/// v2, v7, v8, and v9 froze when v10 changed the live types they
+/// were generated from (`SeriesEvaluation` grew the already-present
+/// and dep-pin diagnostics): historical versions must not drift.
+const SCHEMA_V2_FROZEN: &str = include_str!("schema_v2_snapshot.json");
+const SCHEMA_V7_FROZEN: &str = include_str!("schema_v7_snapshot.json");
+const SCHEMA_V8_FROZEN: &str = include_str!("schema_v8_snapshot.json");
+const SCHEMA_V9_FROZEN: &str = include_str!("schema_v9_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -57,20 +65,15 @@ pub fn rendered_schema(version: u32) -> Result<String, SchemaError> {
 pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
     match version {
         1 => Ok(serde_json::from_str(SCHEMA_V1_FROZEN).expect("frozen v1 snapshot is valid JSON")),
-        2 => Ok(envelope_with_payload::<SeriesEvaluation>(
-            2,
-            "check",
-            "v2 adds `touched_paths: Vec<RelativePath>` and `pr_commits: \
-             Option<Vec<PrCommit>>` to SeriesEvaluation. The check batch payload \
-             (BatchPayload) was also promoted to a public type with the same fields.",
-        )),
+        2 => Ok(serde_json::from_str(SCHEMA_V2_FROZEN).expect("frozen v2 snapshot is valid JSON")),
         3 => Ok(serde_json::from_str(SCHEMA_V3_FROZEN).expect("frozen v3 snapshot is valid JSON")),
         4 => Ok(combined_v4()),
         5 => Ok(serde_json::from_str(SCHEMA_V5_FROZEN).expect("frozen v5 snapshot is valid JSON")),
         6 => Ok(combined_v6()),
-        7 => Ok(combined_v7()),
-        8 => Ok(combined_v8()),
-        9 => Ok(combined_v9()),
+        7 => Ok(serde_json::from_str(SCHEMA_V7_FROZEN).expect("frozen v7 snapshot is valid JSON")),
+        8 => Ok(serde_json::from_str(SCHEMA_V8_FROZEN).expect("frozen v8 snapshot is valid JSON")),
+        9 => Ok(serde_json::from_str(SCHEMA_V9_FROZEN).expect("frozen v9 snapshot is valid JSON")),
+        10 => Ok(combined_v10()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -118,68 +121,18 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v7() -> Value {
+fn combined_v10() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
-        7,
+        10,
         "check",
-        "v7 makes `check batch` and `check multi` merge-aware: 2-parent merge SHAs \
-         evaluate as the first-parent diff with `pr_commits` populated, octopus merges \
-         evaluate first-parent with `pr_commits: null`. `BatchResult` gains \
-         `parent_count` (1 plain, 2 PR merge, 3+ octopus; null only from pre-v7 \
-         binaries). `SummaryRow` gains `series` and `parent_count`, and the summary \
-         formatters now emit one row per (commit, series) pair on batch and multi.",
-    );
-    let summary_row =
-        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
-    let batch_payload =
-        serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
-    let Value::Object(mut obj) = series else {
-        unreachable!("envelope_with_payload always returns a Value::Object")
-    };
-    obj.insert("summary_row".into(), summary_row);
-    obj.insert("batch_payload".into(), batch_payload);
-    obj.insert("schema_version".into(), json!(7));
-    obj.insert("title".into(), json!("backhopper envelope v7"));
-    Value::Object(obj)
-}
-
-fn combined_v8() -> Value {
-    let series = envelope_with_payload::<SeriesEvaluation>(
-        8,
-        "check",
-        "v8 adds the `siblings doctor` verb: a ranked report of sibling-branch commits \
-         that look like they should have cascaded to a series but never did \
-         (`siblings_doctor_payload`), with `-x` trailer plus patch-id suppression of \
-         already-cascaded fixes and a typed `since` derivation. The `version` payload \
-         gains a `verbs` capability list so drivers probe verb presence by name instead \
-         of inferring it from the schema number.",
-    );
-    let summary_row =
-        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
-    let batch_payload =
-        serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
-    let siblings_doctor_payload = serde_json::to_value(schema_for!(SiblingDoctorReport))
-        .expect("SiblingDoctorReport schema serialises");
-    let Value::Object(mut obj) = series else {
-        unreachable!("envelope_with_payload always returns a Value::Object")
-    };
-    obj.insert("summary_row".into(), summary_row);
-    obj.insert("batch_payload".into(), batch_payload);
-    obj.insert("siblings_doctor_payload".into(), siblings_doctor_payload);
-    obj.insert("schema_version".into(), json!(8));
-    obj.insert("title".into(), json!("backhopper envelope v8"));
-    Value::Object(obj)
-}
-
-fn combined_v9() -> Value {
-    let series = envelope_with_payload::<SeriesEvaluation>(
-        9,
-        "check",
-        "v9 adds the content-keyed verdict cache and its `cache` verb group (`stats`, \
-         `list`, `show`, `evict`, `prune`, `clear`); the new payloads ride under \
-         `cache_stats_payload`, `cache_list_payload`, `cache_show_payload`, and \
-         `cache_mutation_payload`. The `check` and `bisect` envelopes are unchanged: \
-         cache hits and misses are deliberately invisible on the wire.",
+        "v10 adds the already-present and dep-pin advisory surface: `Diagnostics` gains \
+         `already_present` (tier-1 `identical: TargetMatch` from trailer or patch-hash \
+         matching against the target branch, tier-2 `content: ContentPresence` hunk \
+         tallies), `already_present_skipped`, and `dep_pin_divergence`. `suites plan` \
+         output gains `uncovered: Vec<UncoveredApplication>` and `unattributed_paths` \
+         (`suite_plan_payload`). New `series pins` verb reads a branch's \
+         `rabbitmq-components.mk`; `--target-walk-limit` and `--skip-already-present` \
+         join the verdict-cache key.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
@@ -195,6 +148,8 @@ fn combined_v9() -> Value {
         .expect("CacheShowPayload schema serialises");
     let cache_mutation_payload = serde_json::to_value(schema_for!(CacheMutationPayload))
         .expect("CacheMutationPayload schema serialises");
+    let suite_plan_payload =
+        serde_json::to_value(schema_for!(SuitePlan)).expect("SuitePlan schema serialises");
     let Value::Object(mut obj) = series else {
         unreachable!("envelope_with_payload always returns a Value::Object")
     };
@@ -205,8 +160,9 @@ fn combined_v9() -> Value {
     obj.insert("cache_list_payload".into(), cache_list_payload);
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
-    obj.insert("schema_version".into(), json!(9));
-    obj.insert("title".into(), json!("backhopper envelope v9"));
+    obj.insert("suite_plan_payload".into(), suite_plan_payload);
+    obj.insert("schema_version".into(), json!(10));
+    obj.insert("title".into(), json!("backhopper envelope v10"));
     Value::Object(obj)
 }
 

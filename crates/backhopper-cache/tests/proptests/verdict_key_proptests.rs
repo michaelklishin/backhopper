@@ -44,6 +44,8 @@ fn arb_key() -> impl Strategy<Value = CacheKeyInputs> {
                 target: target.map(|(seed, hash)| TargetKeyInputs {
                     resolved_commit: hex_sha(seed),
                     translations_blake3: hash,
+                    walk_limit: 5000,
+                    already_present_enabled: true,
                 }),
                 config_blake3: config,
                 schema_version: 9,

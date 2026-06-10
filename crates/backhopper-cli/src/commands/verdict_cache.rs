@@ -75,8 +75,8 @@ pub struct CacheSession {
 pub enum SessionLookup<'c> {
     /// The session or this pair is uncacheable; evaluate normally.
     Bypassed,
-    Hit(SeriesEvaluation),
-    Miss(SessionMiss<'c>),
+    Hit(Box<SeriesEvaluation>),
+    Miss(Box<SessionMiss<'c>>),
 }
 
 /// An L1 miss: carries the key for content-component derivation and
@@ -90,7 +90,7 @@ pub struct SessionMiss<'c> {
 /// L2 consultation result.
 #[derive(Debug)]
 pub enum CacheLookupOutcome<'c> {
-    Hit(SeriesEvaluation),
+    Hit(Box<SeriesEvaluation>),
     Miss(SessionStore<'c>),
 }
 
@@ -194,6 +194,8 @@ impl CacheSession {
             Some(ctx) => Some(TargetKeyInputs {
                 resolved_commit: ctx.index.resolved_commit().clone(),
                 translations_blake3: content_hash(&ctx.translations).ok()?,
+                walk_limit: ctx.walk_limit,
+                already_present_enabled: ctx.already_present_enabled,
             }),
             None => None,
         };
@@ -253,7 +255,9 @@ impl CacheSession {
                 self.counters.l1_hits.set(self.counters.l1_hits.get() + 1);
                 SessionLookup::Hit(evaluation)
             }
-            InputOutcome::MissOnInput(token) => SessionLookup::Miss(SessionMiss { token, key }),
+            InputOutcome::MissOnInput(token) => {
+                SessionLookup::Miss(Box::new(SessionMiss { token, key }))
+            }
         }
     }
 

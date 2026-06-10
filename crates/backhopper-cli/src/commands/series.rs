@@ -18,7 +18,7 @@ use backhopper_core::model::pin::{PinSelect, PinSpec};
 use backhopper_git::{GitRepo, unified_diff_body};
 
 use crate::cli::series::default_branches;
-use crate::cli::{GlobalArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
+use crate::cli::{GlobalArgs, PinsArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 use crate::commands::context::load_config;
 use crate::commands::rabbitmq_components::{
     DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
@@ -208,11 +208,172 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
 }
 
 pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<i32> {
+    // `pins` is a pure repo read: it must work without a config.
+    if let SeriesCmd::Pins(pins_args) = &cmd {
+        return pins(args, pins_args);
+    }
     let cfg = load_config(args)?;
     match cmd {
         SeriesCmd::List => list(args, &cfg),
         SeriesCmd::Show { series } => show(args, &cfg, series),
+        SeriesCmd::Pins(_) => unreachable!("handled above"),
         SeriesCmd::Sync(sync) => sync_dispatch(args, &cfg, sync),
+    }
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct DepPinPayload {
+    pub name: String,
+    pub source: String,
+    pub version: String,
+}
+
+impl DepPinPayload {
+    fn from_pin(pin: &DepPin) -> Self {
+        Self {
+            name: pin.name.clone(),
+            source: pin.source.label().to_owned(),
+            version: pin.version.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct BranchPins {
+    branch: String,
+    pins: Vec<DepPinPayload>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct DivergedPin {
+    pub name: String,
+    pub branch_source: String,
+    pub branch_version: String,
+    pub against_source: String,
+    pub against_version: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PinsDivergence {
+    branch: String,
+    against_branch: String,
+    diverged: Vec<DivergedPin>,
+    only_on_branch: Vec<DepPinPayload>,
+    only_on_against: Vec<DepPinPayload>,
+}
+
+fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<i32> {
+    let repo = GitRepo::open(pins_args.repo_dir_path.clone()).map_err(CliError::Git)?;
+    let branch_pins = read_sorted_pins(&repo, &pins_args.branch)?;
+    let Some(against) = &pins_args.against_branch else {
+        let payload = BranchPins {
+            branch: pins_args.branch.clone(),
+            pins: branch_pins,
+        };
+        let ctx = OutputContext::new(args.formatter, "series pins");
+        render(&ctx, &payload, |w| {
+            for p in &payload.pins {
+                writeln!(w, "{}\t{}\t{}", p.name, p.source, p.version)?;
+            }
+            Ok(())
+        })?;
+        return Ok(0);
+    };
+    let against_pins = read_sorted_pins(&repo, against)?;
+    let payload = divergence(&pins_args.branch, against, &branch_pins, &against_pins);
+    let ctx = OutputContext::new(args.formatter, "series pins");
+    render(&ctx, &payload, |w| {
+        if payload.diverged.is_empty()
+            && payload.only_on_branch.is_empty()
+            && payload.only_on_against.is_empty()
+        {
+            writeln!(w, "no dep pin divergence")?;
+            return Ok(());
+        }
+        for d in &payload.diverged {
+            writeln!(
+                w,
+                "{}: {} {} ({}) vs {} {} ({})",
+                d.name,
+                d.branch_source,
+                d.branch_version,
+                payload.branch,
+                d.against_source,
+                d.against_version,
+                payload.against_branch
+            )?;
+        }
+        for p in &payload.only_on_branch {
+            writeln!(
+                w,
+                "{}: {} {} only on {}",
+                p.name, p.source, p.version, payload.branch
+            )?;
+        }
+        for p in &payload.only_on_against {
+            writeln!(
+                w,
+                "{}: {} {} only on {}",
+                p.name, p.source, p.version, payload.against_branch
+            )?;
+        }
+        Ok(())
+    })?;
+    Ok(0)
+}
+
+fn read_sorted_pins(repo: &GitRepo, branch: &str) -> CliResult<Vec<DepPinPayload>> {
+    let text = read_components_mk_at(repo, branch)?;
+    let mut pins: Vec<DepPinPayload> = parse_components_mk(&text)
+        .iter()
+        .map(DepPinPayload::from_pin)
+        .collect();
+    pins.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(pins)
+}
+
+fn divergence(
+    branch: &str,
+    against_branch: &str,
+    branch_pins: &[DepPinPayload],
+    against_pins: &[DepPinPayload],
+) -> PinsDivergence {
+    let branch_by_name: BTreeMap<&str, &DepPinPayload> =
+        branch_pins.iter().map(|p| (p.name.as_str(), p)).collect();
+    let against_by_name: BTreeMap<&str, &DepPinPayload> =
+        against_pins.iter().map(|p| (p.name.as_str(), p)).collect();
+    let mut diverged = Vec::new();
+    let mut only_on_branch = Vec::new();
+    let mut only_on_against = Vec::new();
+    for (name, b) in &branch_by_name {
+        match against_by_name.get(name) {
+            // A source-kind change counts as divergence even at the
+            // same nominal version: a hex release and a git ref can
+            // hide different trees.
+            Some(a) if a.version != b.version || a.source != b.source => {
+                diverged.push(DivergedPin {
+                    name: (*name).to_owned(),
+                    branch_source: b.source.clone(),
+                    branch_version: b.version.clone(),
+                    against_source: a.source.clone(),
+                    against_version: a.version.clone(),
+                });
+            }
+            Some(_) => {}
+            None => only_on_branch.push((*b).clone()),
+        }
+    }
+    for (name, a) in &against_by_name {
+        if !branch_by_name.contains_key(name) {
+            only_on_against.push((*a).clone());
+        }
+    }
+    PinsDivergence {
+        branch: branch.to_owned(),
+        against_branch: against_branch.to_owned(),
+        diverged,
+        only_on_branch,
+        only_on_against,
     }
 }
 

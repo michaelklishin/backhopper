@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use backhopper_core::SymbolRef;
 use backhopper_core::model::names::{
-    Arity, FunctionName, ModuleName, ProjectName, RecordName, TagName,
+    Arity, CommitSha, DependencyName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::{PinVerdict, Reason, SeriesVerdict, Verdict, exit};
+use backhopper_core::model::verdict::{
+    AlreadyPresent, AlreadyPresentSkipped, ContentPresence, DepPinDivergence, Diagnostics,
+    HunkTally, PinVerdict, Reason, SeriesVerdict, TargetMatch, TargetMatchKind, Verdict, exit,
+};
 
 #[test]
 fn no_reasons_means_compatible() {
@@ -114,4 +118,86 @@ fn series_verdict_summarizes_results() {
     assert_eq!(s.summary.requires_adaptation, 0);
     assert_eq!(s.summary.inapplicable, 0);
     assert_eq!(s.worst_exit_code(), exit::NEEDS_ATTENTION);
+}
+
+// The is_empty conjunction is hand-maintained; these pin the trap
+// where a new Diagnostics field forgets to join it.
+#[test]
+fn diagnostics_with_only_already_present_is_not_empty() {
+    let mut d = Diagnostics::default();
+    assert!(d.is_empty());
+    d.already_present = Some(AlreadyPresent {
+        identical: None,
+        content: None,
+    });
+    assert!(!d.is_empty());
+}
+
+#[test]
+fn diagnostics_with_only_a_skip_note_is_not_empty() {
+    let mut d = Diagnostics::default();
+    d.already_present_skipped = Some(AlreadyPresentSkipped::NoMergeBase);
+    assert!(!d.is_empty());
+}
+
+// The verdict cache persists these via serde; a round-trip failure
+// would corrupt cached envelopes silently.
+#[test]
+fn new_diagnostics_fields_round_trip_through_serde() {
+    let mut d = Diagnostics::default();
+    d.already_present = Some(AlreadyPresent {
+        identical: Some(TargetMatch {
+            commit: CommitSha::new("b".repeat(40)).unwrap(),
+            via: TargetMatchKind::PatchId,
+            subject: "the fix".to_owned(),
+        }),
+        content: Some(ContentPresence {
+            pin: ProjectName::new("demo").unwrap(),
+            hunks_already_applied: 2,
+            hunks_considered: 3,
+            hunks_ambiguous: 1,
+            hunks_low_confidence: 0,
+            per_file: BTreeMap::from([(
+                "src/demo.erl".parse().unwrap(),
+                HunkTally {
+                    applied: 2,
+                    considered: 3,
+                    ambiguous: 1,
+                    low_confidence: 0,
+                },
+            )]),
+        }),
+    });
+    d.already_present_skipped = Some(AlreadyPresentSkipped::CandidateMissingFromTargetOdb {
+        sha: CommitSha::new("c".repeat(40)).unwrap(),
+    });
+    d.dep_pin_divergence = vec![DepPinDivergence {
+        dep: DependencyName::new("cowboy").unwrap(),
+        source: "hex 2.16.0".to_owned(),
+        target: "hex 2.13.0".to_owned(),
+    }];
+    let json = serde_json::to_string(&d).unwrap();
+    let back: Diagnostics = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, d);
+}
+
+// Envelopes written before v10 lack the new fields entirely; they
+// must deserialize to the empty defaults.
+#[test]
+fn pre_v10_diagnostics_json_deserializes_with_empty_defaults() {
+    let back: Diagnostics = serde_json::from_str("{}").unwrap();
+    assert!(back.already_present.is_none());
+    assert!(back.already_present_skipped.is_none());
+    assert!(back.dep_pin_divergence.is_empty());
+}
+
+#[test]
+fn diagnostics_with_only_dep_pin_divergence_is_not_empty() {
+    let mut d = Diagnostics::default();
+    d.dep_pin_divergence = vec![DepPinDivergence {
+        dep: DependencyName::new("cowboy").unwrap(),
+        source: "hex 2.16.0".to_owned(),
+        target: "hex 2.13.0".to_owned(),
+    }];
+    assert!(!d.is_empty());
 }

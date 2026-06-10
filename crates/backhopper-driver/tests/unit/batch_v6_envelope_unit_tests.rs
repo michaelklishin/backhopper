@@ -51,7 +51,8 @@ fn v6_batch_payload_parses_with_parent_count_none() {
 fn v6_is_inside_the_supported_schema_range() {
     assert!(SUPPORTED_SCHEMA.contains(SchemaVersion::new(6)));
     assert!(SUPPORTED_SCHEMA.contains(SchemaVersion::new(9)));
-    assert!(!SUPPORTED_SCHEMA.contains(SchemaVersion::new(10)));
+    assert!(SUPPORTED_SCHEMA.contains(SchemaVersion::new(10)));
+    assert!(!SUPPORTED_SCHEMA.contains(SchemaVersion::new(11)));
 }
 
 #[test]

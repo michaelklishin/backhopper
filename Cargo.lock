@@ -117,7 +117,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cache"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "blake3",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cli"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "insta",
  "proptest",
@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -191,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-driver"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -206,7 +206,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "insta",
@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-git"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "blake3",
@@ -242,11 +242,12 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
+ "tracing",
 ]
 
 [[package]]
 name = "backhopper-xref"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -262,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -273,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -2248,9 +2249,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.3"
+version = "1.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2271,9 +2272,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rustix"
@@ -3135,7 +3136,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "backhopper-core",
@@ -3147,18 +3148,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.50"
+version = "0.8.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b065d4f0e55f82fae73202e189638116a87c55ab6b8e6c2721e13dd9d854ad1"
+checksum = "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.50"
+version = "0.8.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b631b19d36a892ab55420c92dbc83ccd79274f25be714855d3074aa71cab639"
+checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
 dependencies = [
  "proc-macro2",
  "quote",

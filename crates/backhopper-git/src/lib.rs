@@ -6,6 +6,7 @@
 //! seam. `backhopper-core` stays gix-free; everything that opens a
 //! repository lives here.
 
+pub mod already_present;
 pub mod errors;
 pub mod patch_input;
 pub mod pr_commits;
@@ -13,6 +14,7 @@ pub mod repo;
 pub mod target_tree;
 pub mod walk;
 
+pub use already_present::{CandidateIdentity, TargetWalkIndex, trailer_origin_on_target};
 pub use errors::GitError;
 pub use patch_input::{
     CommitDiffSource, MergePolicy, PatchInputError, PrCommitPolicy, ResolvedPatchInput,

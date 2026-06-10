@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
-    RecordName, RelativePath, TagName, TypeName,
+    Arity, CommitSha, DependencyName, FieldName, FunctionName, GitRef, MacroName, ModuleName,
+    ProjectName, RecordName, RelativePath, TagName, TypeName,
 };
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
@@ -903,6 +903,17 @@ pub struct Diagnostics {
     /// a custom composite-key encoder.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub missing_test_modules: BTreeMap<RelativePath, BTreeMap<ModuleName, usize>>,
+    /// Advisory: the patch's content appears to already exist on the
+    /// target (tier-1 identical patch, tier-2 content tally, or both).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub already_present: Option<AlreadyPresent>,
+    /// Why already-present detection was skipped, when it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub already_present_skipped: Option<AlreadyPresentSkipped>,
+    /// Dep pins that diverge between source and target trees and are
+    /// reachable from the apps this patch touches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dep_pin_divergence: Vec<DepPinDivergence>,
 }
 
 impl Diagnostics {
@@ -912,6 +923,9 @@ impl Diagnostics {
             && self.unanalyzed.is_empty()
             && self.suggested_suites.is_empty()
             && self.missing_test_modules.is_empty()
+            && self.already_present.is_none()
+            && self.already_present_skipped.is_none()
+            && self.dep_pin_divergence.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -920,6 +934,118 @@ impl Diagnostics {
         let inner = self.missing_test_modules.entry(suite).or_default();
         *inner.entry(helper).or_insert(0) += 1;
     }
+}
+
+/// How a tier-1 already-present match against the target branch was
+/// established.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TargetMatchKind {
+    /// A walked target commit's `-x` trailer names the candidate (or
+    /// one of its trailer origins or inner PR commits).
+    TrailerIntersection,
+    /// One of the candidate's own trailer origins is already an
+    /// ancestor of the target tip.
+    TrailerAncestry,
+    /// A walked target commit's normalized patch hash equals the
+    /// candidate's.
+    PatchId,
+}
+
+/// A target commit found to carry the candidate's patch. The subject
+/// rides along so consumers can auto-fill exclusion reasons without
+/// a second git query.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TargetMatch {
+    pub commit: CommitSha,
+    pub via: TargetMatchKind,
+    pub subject: String,
+}
+
+/// Per-file hunk counters for the content-presence check.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct HunkTally {
+    pub applied: usize,
+    pub considered: usize,
+    pub ambiguous: usize,
+    pub low_confidence: usize,
+}
+
+/// Tier-2 advisory: how much of the patch's post-image already exists
+/// in the named pin's tree. A tally, never a boolean: partial presence
+/// is common and the fraction is the signal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ContentPresence {
+    /// The pin whose evaluation produced the tally. In cross-branch
+    /// mode the self pin resolves to the target branch, so its tally
+    /// is the target-tree answer.
+    pub pin: ProjectName,
+    pub hunks_already_applied: usize,
+    pub hunks_considered: usize,
+    pub hunks_ambiguous: usize,
+    pub hunks_low_confidence: usize,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub per_file: BTreeMap<RelativePath, HunkTally>,
+}
+
+impl ContentPresence {
+    /// Every considered hunk is already applied: the strong signal.
+    pub fn fully_present(&self) -> bool {
+        self.hunks_considered > 0 && self.hunks_already_applied == self.hunks_considered
+    }
+}
+
+/// Advisory: the patch's content appears to already exist on the
+/// target. Never affects the verdict; q-port and the operator own
+/// the exclusion decision.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct AlreadyPresent {
+    /// Tier-1 hit: an identical patch landed on the target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identical: Option<TargetMatch>,
+    /// Tier-2 tally: the post-image is (partly) present in the tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<ContentPresence>,
+}
+
+impl AlreadyPresent {
+    pub fn is_empty(&self) -> bool {
+        self.identical.is_none() && self.content.is_none()
+    }
+}
+
+/// A dependency whose `rabbitmq-components.mk` pin differs between
+/// the source commit's tree and the target tree, and that an app
+/// touched by the patch (transitively) depends on. Advisory only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct DepPinDivergence {
+    pub dep: DependencyName,
+    /// Pin at the source commit, e.g. `hex 2.16.0`.
+    pub source: String,
+    /// Pin at the target tree, e.g. `hex 2.13.0`.
+    pub target: String,
+}
+
+/// Why already-present detection could not run. Emitted instead of
+/// silence: an invisible skip would read as "not present".
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum AlreadyPresentSkipped {
+    /// The candidate commit object is absent from the target object
+    /// store (an unfetched branch, usually).
+    CandidateMissingFromTargetOdb { sha: CommitSha },
+    /// The candidate and the target tip share no history.
+    NoMergeBase,
+    /// The target-side walk failed (shallow clone, corrupt object).
+    TargetWalkFailed { detail: String },
 }
 
 /// Counts of call sites the analyzer could not resolve: `apply/3`-style

@@ -20,6 +20,7 @@ imara-diff  = { workspace = true }
 regex       = { workspace = true }
 thiserror   = { workspace = true }
 time        = { workspace = true }
+tracing     = { workspace = true }
 
 [dev-dependencies]
 tempfile    = { workspace = true }

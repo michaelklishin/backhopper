@@ -69,10 +69,16 @@ pub struct PinKeyRow {
 }
 
 /// Target-repo inputs, when `--target-repo-dir-path` is in play.
+/// The already-present knobs join the key because they change the
+/// cached diagnostic: two walk limits must not share an entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetKeyInputs {
     pub resolved_commit: CommitSha,
     pub translations_blake3: String,
+    #[serde(default)]
+    pub walk_limit: usize,
+    #[serde(default)]
+    pub already_present_enabled: bool,
 }
 
 /// The input-level (L1) key pre-image: the full 40-char SHA plus
@@ -144,7 +150,7 @@ pub struct ContentKeyInputs {
 /// L1 lookup result.
 #[derive(Debug)]
 pub enum InputOutcome<'c> {
-    Hit(SeriesEvaluation),
+    Hit(Box<SeriesEvaluation>),
     MissOnInput(InputMissToken<'c>),
 }
 
@@ -152,7 +158,7 @@ pub enum InputOutcome<'c> {
 /// was minted before returning.
 #[derive(Debug)]
 pub enum ContentOutcome<'c> {
-    Hit(SeriesEvaluation),
+    Hit(Box<SeriesEvaluation>),
     Miss(MissToken<'c>),
 }
 
@@ -227,7 +233,7 @@ impl VerdictCache {
         };
         let path = self.by_input.join(entry_file_name(&hash));
         if let Some(entry) = self.read_entry(&path) {
-            return InputOutcome::Hit(entry.evaluation);
+            return InputOutcome::Hit(Box::new(entry.evaluation));
         }
         InputOutcome::MissOnInput(InputMissToken {
             cache: self,
@@ -326,7 +332,7 @@ impl<'c> InputMissToken<'c> {
                 Some(hash),
                 &entry.evaluation,
             );
-            return ContentOutcome::Hit(entry.evaluation);
+            return ContentOutcome::Hit(Box::new(entry.evaluation));
         }
         ContentOutcome::Miss(MissToken {
             cache: self.cache,

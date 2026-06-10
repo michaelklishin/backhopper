@@ -25,6 +25,6 @@ pub use library::derive_library_apps;
 pub use matcher::{SubstringMatcher, SuiteMatcher, text_references_module};
 pub use model::{
     ExtraRule, ExtraRuleTrigger, LineMatch, PlanInput, SuiteInclusionReason, SuitePlan,
-    SuitePlanEntry, SuiteRef, SuiteRefSpec,
+    SuitePlanEntry, SuiteRef, SuiteRefSpec, UncoveredApplication,
 };
 pub use plan::{plan, plan_with_matcher};

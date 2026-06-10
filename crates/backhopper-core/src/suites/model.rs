@@ -14,6 +14,7 @@ use crate::model::names::{ApplicationName, ModuleName};
 
 /// A test-suite module reference. `module` ends in `_SUITE` by
 /// convention but the constructor does not enforce this.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SuiteRef {
     pub application: ApplicationName,
@@ -23,6 +24,7 @@ pub struct SuiteRef {
 
 /// Why a suite was included in the plan. A suite can appear under
 /// multiple reasons when more than one rule fires.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SuiteInclusionReason {
@@ -78,17 +80,40 @@ pub struct PlanInput {
 }
 
 /// One entry in the plan: the suite plus every rule that included it.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SuitePlanEntry {
     pub suite: SuiteRef,
     pub reasons: Vec<SuiteInclusionReason>,
 }
 
+/// An application with modified source modules that no plan entry
+/// covers. Advisory only: the operator picks suites from `suites`
+/// (or learns the application has none) instead of discovering the
+/// gap from a silent empty plan.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UncoveredApplication {
+    pub application: ApplicationName,
+    pub modified_modules: usize,
+    pub discovered_suites: usize,
+    /// The application's discovered suites: the operator's candidate
+    /// list. Empty means the application has no tests at all.
+    pub suites: Vec<ModuleName>,
+}
+
 /// Output of `plan()`. Entries are sorted by suite; reasons within
 /// each entry are in rule-application order.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SuitePlan {
     pub entries: Vec<SuitePlanEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uncovered: Vec<UncoveredApplication>,
+    /// Modified paths that resolve to no application, so a plan with
+    /// fewer reasons than inputs is still fully accounted for.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unattributed_paths: usize,
 }
 
 impl SuitePlan {
@@ -130,6 +155,11 @@ pub struct LineMatch {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// Path-glob trigger expression. `PathRegex` supports named captures

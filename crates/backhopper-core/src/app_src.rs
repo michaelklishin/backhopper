@@ -54,6 +54,46 @@ const SKIP_DIRS: &[&str] = &[
     "target",
 ];
 
+/// Resolves a file path under `repo_root` to the application it
+/// belongs to: the app whose `.app.src` lives in the deepest shared
+/// prefix of `path`.
+pub fn application_of_path<'a>(
+    apps: &'a [AppSrcSpec],
+    repo_root: &Path,
+    path: &Path,
+) -> Option<&'a ApplicationName> {
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    };
+    let mut best: Option<(&'a ApplicationName, usize)> = None;
+    for app in apps {
+        let app_dir = app_root_dir(&app.path);
+        if abs.starts_with(&app_dir) {
+            let depth = app_dir.components().count();
+            if best.map(|(_, d)| depth > d).unwrap_or(true) {
+                best = Some((&app.name, depth));
+            }
+        }
+    }
+    best.map(|(name, _)| name)
+}
+
+/// The directory containing the application: one level up from the
+/// `.app.src` file's parent when that parent is `src/` or `ebin/`.
+pub(crate) fn app_root_dir(app_src_path: &Path) -> PathBuf {
+    let parent = app_src_path.parent().unwrap_or(Path::new(""));
+    if parent
+        .file_name()
+        .is_some_and(|n| n == "src" || n == "ebin")
+    {
+        parent.parent().unwrap_or(parent).to_path_buf()
+    } else {
+        parent.to_path_buf()
+    }
+}
+
 /// Walks `root` recursively, parses every `*.app.src` found, returns
 /// a `DiscoveryOutput` carrying the parsed specs plus any per-file
 /// warnings.

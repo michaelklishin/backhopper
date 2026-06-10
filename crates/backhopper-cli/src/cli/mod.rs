@@ -38,7 +38,7 @@ pub use init::InitCmd;
 pub use projects::ProjectsCmd;
 pub use rev::RevCmd;
 pub use schema::{SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
-pub use series::{PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
+pub use series::{PinsArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
 pub use siblings::{SiblingsCmd, SiblingsDoctorArgs};
 pub use snapshots::SnapshotsCmd;

@@ -12,6 +12,7 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use gix::bstr::ByteSlice;
 use gix::object::tree::diff::Change;
 use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
 use time::OffsetDateTime;
@@ -403,6 +404,105 @@ impl GitRepo {
         for id in c.parent_ids() {
             out.push(CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?);
         }
+        Ok(out)
+    }
+
+    /// Full raw commit message (subject plus body plus trailers).
+    pub fn commit_message(&self, commit: &CommitSha) -> Result<String, GitError> {
+        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let c = self
+            .repo
+            .find_object(oid)
+            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
+            .try_into_commit()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        Ok(c.message_raw()
+            .map_err(|e| GitError::Gix(e.to_string()))?
+            .to_str_lossy()
+            .into_owned())
+    }
+
+    /// True when the commit object exists in this repository's object
+    /// store. An object of another kind under the same id does not
+    /// count.
+    pub fn has_commit(&self, commit: &CommitSha) -> Result<bool, GitError> {
+        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        Ok(self
+            .repo
+            .find_object(oid)
+            .is_ok_and(|o| o.try_into_commit().is_ok()))
+    }
+
+    /// Best merge base of two commits, `None` when the histories are
+    /// unrelated. Errors when either commit object is absent.
+    pub fn merge_base(
+        &self,
+        one: &CommitSha,
+        two: &CommitSha,
+    ) -> Result<Option<CommitSha>, GitError> {
+        for sha in [one, two] {
+            if !self.has_commit(sha)? {
+                return Err(GitError::CommitNotFound(sha.to_string()));
+            }
+        }
+        let a = gix::ObjectId::from_hex(one.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let b = gix::ObjectId::from_hex(two.as_str().as_bytes())
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        match self.repo.merge_base(a, b) {
+            Ok(id) => {
+                let sha =
+                    CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?;
+                Ok(Some(sha))
+            }
+            Err(gix::repository::merge_base::Error::NotFound { .. }) => Ok(None),
+            Err(e) => Err(GitError::Gix(e.to_string())),
+        }
+    }
+
+    /// Paths changed between two commits: a tree diff that never reads
+    /// blob contents, for cheap pre-filtering before a full text diff.
+    pub fn changed_paths(
+        &self,
+        from: &CommitSha,
+        to: &CommitSha,
+    ) -> Result<BTreeSet<PathBuf>, GitError> {
+        let from_tree = self.tree_of(from)?;
+        let to_tree = self.tree_of(to)?;
+        let mut out: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut platform = from_tree
+            .changes()
+            .map_err(|e| GitError::Gix(e.to_string()))?;
+        platform
+            .options(|opts| {
+                opts.track_rewrites(None);
+            })
+            .for_each_to_obtain_tree(&to_tree, |change| -> Result<_, GitError> {
+                match change {
+                    Change::Addition {
+                        location,
+                        entry_mode,
+                        ..
+                    }
+                    | Change::Deletion {
+                        location,
+                        entry_mode,
+                        ..
+                    }
+                    | Change::Modification {
+                        location,
+                        entry_mode,
+                        ..
+                    } if entry_mode.is_blob() => {
+                        out.insert(PathBuf::from(location.to_string()));
+                    }
+                    _ => {}
+                }
+                Ok(ControlFlow::Continue(()))
+            })
+            .map_err(|e| GitError::Gix(e.to_string()))?;
         Ok(out)
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
@@ -9,6 +10,7 @@ use std::mem;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 use std::str;
 
 use bel7_cli::{
@@ -17,6 +19,7 @@ use bel7_cli::{
 use serde::Serialize;
 
 use backhopper_core::Error as CoreError;
+use backhopper_core::app_src::{AppSrcSpec, application_of_path, parse as app_src_parse};
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::routing::{PathRouting, classify_paths_for_pin};
@@ -26,7 +29,8 @@ use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 use backhopper_core::model::names::{
-    CommitSha, CommitShaPrefix, ModuleName, ProjectName, SeriesName, TagName,
+    ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
+    SeriesName, TagName,
 };
 use backhopper_core::model::pin::{self, Pin, PinSpec};
 use backhopper_core::model::pr_commit::PrCommit;
@@ -34,14 +38,16 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict,
-    SnapshotSide, TouchedKinds, TranslationSource, Verdict,
+    AlreadyPresentSkipped, DepPinDivergence, Diagnostics, InapplicableReason, PinVerdict, Reason,
+    SeriesEvaluation, SeriesVerdict, SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds,
+    TranslationSource, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
 use backhopper_git::{
-    GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput, load_files_at,
-    normalized_patch_hash,
+    CandidateIdentity, GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput,
+    TargetWalkIndex, cherry_pick_trailers, load_files_at, normalized_patch_hash,
+    trailer_origin_on_target,
 };
 
 use crate::cli::check::TargetRepoArgs;
@@ -52,6 +58,7 @@ use crate::commands::auto_generate::{
 use crate::commands::batch_plan::BatchPlan;
 use crate::commands::context::{load_config, open_store_read};
 use crate::commands::macro_env::macro_environment_hash;
+use crate::commands::rabbitmq_components::{DepPin, parse_components_mk};
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
 use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
 use crate::commands::snapshot_cache::SnapshotCache;
@@ -749,6 +756,293 @@ fn apply_target_context(
     Ok(())
 }
 
+/// What tier-1 already-present detection concluded for one candidate.
+enum AlreadyOnTarget {
+    Match(TargetMatch),
+    NoMatch,
+    Skipped(AlreadyPresentSkipped),
+}
+
+/// Per-invocation already-present prober. Walk indexes are keyed by
+/// merge base and shared across batch rows; candidates from one
+/// source branch share a merge base in the common case.
+struct AlreadyPresentProbe {
+    target: GitRepo,
+    tip: CommitSha,
+    walk_limit: usize,
+    source: GitRepo,
+    indexes: RefCell<BTreeMap<CommitSha, Rc<TargetWalkIndex>>>,
+}
+
+impl AlreadyPresentProbe {
+    fn maybe_open(
+        target_ctx: Option<&target_repo::TargetContext>,
+        source_repo: Option<&Path>,
+    ) -> Option<Self> {
+        let ctx = target_ctx?;
+        if !ctx.already_present_enabled {
+            return None;
+        }
+        let source = GitRepo::open(source_repo?.to_path_buf()).ok()?;
+        let target = GitRepo::open(ctx.index.target_repo().to_path_buf()).ok()?;
+        Some(Self {
+            target,
+            tip: ctx.index.resolved_commit().clone(),
+            walk_limit: ctx.walk_limit,
+            source,
+            indexes: RefCell::new(BTreeMap::new()),
+        })
+    }
+
+    /// Attach the tier-1 outcome to the evaluation's diagnostics.
+    /// Detection failures degrade to a skipped-note, never an error:
+    /// the advisory must not break the verdict pipeline.
+    fn apply(&self, sha: &CommitSha, bytes: &[u8], evaluation: &mut SeriesEvaluation) {
+        let candidate = self.candidate_identity(sha, bytes, evaluation);
+        let outcome = self.detect(&candidate).unwrap_or_else(|e| {
+            AlreadyOnTarget::Skipped(AlreadyPresentSkipped::TargetWalkFailed {
+                detail: e.to_string(),
+            })
+        });
+        match outcome {
+            AlreadyOnTarget::Match(m) => {
+                evaluation
+                    .diagnostics
+                    .already_present
+                    .get_or_insert_default()
+                    .identical = Some(m);
+            }
+            AlreadyOnTarget::NoMatch => {}
+            AlreadyOnTarget::Skipped(s) => {
+                evaluation.diagnostics.already_present_skipped = Some(s);
+            }
+        }
+    }
+
+    fn candidate_identity(
+        &self,
+        sha: &CommitSha,
+        bytes: &[u8],
+        evaluation: &SeriesEvaluation,
+    ) -> CandidateIdentity {
+        let trailer_origins = match self.source.commit_message(sha) {
+            Ok(message) => cherry_pick_trailers(&message),
+            Err(_) => Vec::new(),
+        };
+        let inner_pr_shas = evaluation
+            .pr_commits
+            .iter()
+            .flatten()
+            .map(|c| c.sha.clone())
+            .collect();
+        let touched_paths = evaluation
+            .touched_paths
+            .iter()
+            .map(|p| PathBuf::from(p.as_str()))
+            .collect();
+        CandidateIdentity {
+            sha: sha.clone(),
+            trailer_origins,
+            inner_pr_shas,
+            patch_hash: normalized_patch_hash(bytes),
+            touched_paths,
+        }
+    }
+
+    fn detect(&self, candidate: &CandidateIdentity) -> Result<AlreadyOnTarget, GitError> {
+        // Trailer-origin ancestry first: it needs no walk and works
+        // even when the candidate object is absent from the target.
+        if let Some(m) =
+            trailer_origin_on_target(&self.target, &candidate.trailer_origins, &self.tip)?
+        {
+            return Ok(AlreadyOnTarget::Match(m));
+        }
+        if !self.target.has_commit(&candidate.sha)? {
+            return Ok(AlreadyOnTarget::Skipped(
+                AlreadyPresentSkipped::CandidateMissingFromTargetOdb {
+                    sha: candidate.sha.clone(),
+                },
+            ));
+        }
+        let Some(since) = self.target.merge_base(&candidate.sha, &self.tip)? else {
+            return Ok(AlreadyOnTarget::Skipped(AlreadyPresentSkipped::NoMergeBase));
+        };
+        let index = {
+            let mut map = self.indexes.borrow_mut();
+            match map.get(&since) {
+                Some(index) => Rc::clone(index),
+                None => {
+                    let built = Rc::new(TargetWalkIndex::build(
+                        &self.target,
+                        &self.tip,
+                        &since,
+                        self.walk_limit,
+                    )?);
+                    map.insert(since, Rc::clone(&built));
+                    built
+                }
+            }
+        };
+        Ok(match index.find_match(&self.target, candidate) {
+            Some(m) => AlreadyOnTarget::Match(m),
+            None => AlreadyOnTarget::NoMatch,
+        })
+    }
+}
+
+/// Per-invocation dep-pin divergence prober: target pins parsed
+/// once, source pins and `.app.src` edges read per commit from git,
+/// so every input the cached diagnostic depends on is keyed by the
+/// commit or the target tip. The per-commit result is memoized: a
+/// multi-series batch evaluates the same commit once per series.
+struct DepPinProbe {
+    source: GitRepo,
+    target_pins: BTreeMap<String, DepPin>,
+    by_commit: RefCell<BTreeMap<CommitSha, Vec<DepPinDivergence>>>,
+}
+
+impl DepPinProbe {
+    fn maybe_open(
+        target_ctx: Option<&target_repo::TargetContext>,
+        source_repo: Option<&Path>,
+    ) -> Option<Self> {
+        let ctx = target_ctx?;
+        let source_path = source_repo?;
+        let target = GitRepo::open(ctx.index.target_repo().to_path_buf()).ok()?;
+        let target_text = read_components_mk_blob(&target, ctx.index.resolved_commit())?;
+        let target_pins = parse_components_mk(&target_text)
+            .into_iter()
+            .map(|p| (p.name.clone(), p))
+            .collect();
+        let source = GitRepo::open(source_path.to_path_buf()).ok()?;
+        Some(Self {
+            source,
+            target_pins,
+            by_commit: RefCell::new(BTreeMap::new()),
+        })
+    }
+
+    /// Attach divergent pins reachable from the patch's touched apps.
+    /// When no touched path resolves to an application the full
+    /// divergent set is attached instead: coarse beats silent.
+    fn apply(&self, sha: &CommitSha, evaluation: &mut SeriesEvaluation) {
+        if let Some(memoized) = self.by_commit.borrow().get(sha) {
+            evaluation
+                .diagnostics
+                .dep_pin_divergence
+                .clone_from(memoized);
+            return;
+        }
+        let divergence = self.divergence_for(sha, evaluation);
+        evaluation
+            .diagnostics
+            .dep_pin_divergence
+            .clone_from(&divergence);
+        self.by_commit.borrow_mut().insert(sha.clone(), divergence);
+    }
+
+    fn divergence_for(
+        &self,
+        sha: &CommitSha,
+        evaluation: &SeriesEvaluation,
+    ) -> Vec<DepPinDivergence> {
+        let Some(source_text) = read_components_mk_blob(&self.source, sha) else {
+            return Vec::new();
+        };
+        let mut divergent: Vec<DepPinDivergence> = Vec::new();
+        for pin in parse_components_mk(&source_text) {
+            let Some(target_pin) = self.target_pins.get(&pin.name) else {
+                continue;
+            };
+            if pin.version == target_pin.version && pin.source == target_pin.source {
+                continue;
+            }
+            let Ok(dep) = DependencyName::new(pin.name.clone()) else {
+                continue;
+            };
+            divergent.push(DepPinDivergence {
+                dep,
+                source: format!("{} {}", pin.source.label(), pin.version),
+                target: format!("{} {}", target_pin.source.label(), target_pin.version),
+            });
+        }
+        if divergent.is_empty() {
+            return Vec::new();
+        }
+        let apps = self.apps_at_commit(sha);
+        // Blob paths from git are repo-relative; an empty root keeps
+        // them comparable with the equally relative touched paths.
+        let repo_root = Path::new("");
+        let touched_apps: BTreeSet<&ApplicationName> = evaluation
+            .touched_paths
+            .iter()
+            .filter_map(|p| application_of_path(&apps, repo_root, Path::new(p.as_str())))
+            .collect();
+        if touched_apps.is_empty() {
+            return divergent;
+        }
+        let reachable = reachable_app_names(&apps, &touched_apps);
+        divergent
+            .into_iter()
+            .filter(|d| reachable.contains(d.dep.as_str()))
+            .collect()
+    }
+
+    /// `.app.src` specs read from git at the commit: deterministic
+    /// per key inputs, and works against bare clones.
+    fn apps_at_commit(&self, sha: &CommitSha) -> Vec<AppSrcSpec> {
+        let Ok(blobs) = self
+            .source
+            .read_paths_at_commit(sha, |p| p.ends_with(".app.src"))
+        else {
+            return Vec::new();
+        };
+        let mut specs = Vec::with_capacity(blobs.len());
+        for blob in blobs {
+            let Ok(text) = str::from_utf8(&blob.bytes) else {
+                continue;
+            };
+            if let Ok(spec) = app_src_parse(&blob.path, text) {
+                specs.push(spec);
+            }
+        }
+        specs
+    }
+}
+
+/// Transitive closure over `.app.src` `applications` edges, starting
+/// from the touched apps. `rabbitmq_management` reaches `cowboy`
+/// only through `rabbitmq_web_dispatch`.
+fn reachable_app_names(
+    apps: &[AppSrcSpec],
+    start: &BTreeSet<&ApplicationName>,
+) -> BTreeSet<String> {
+    let by_name: BTreeMap<&str, &AppSrcSpec> = apps.iter().map(|a| (a.name.as_str(), a)).collect();
+    let mut reachable: BTreeSet<String> = BTreeSet::new();
+    let mut queue: VecDeque<&str> = start.iter().map(|a| a.as_str()).collect();
+    while let Some(name) = queue.pop_front() {
+        if !reachable.insert(name.to_owned()) {
+            continue;
+        }
+        if let Some(spec) = by_name.get(name) {
+            for dep in &spec.applications {
+                if !reachable.contains(dep.as_str()) {
+                    queue.push_back(dep.as_str());
+                }
+            }
+        }
+    }
+    reachable
+}
+
+fn read_components_mk_blob(repo: &GitRepo, commit: &CommitSha) -> Option<String> {
+    let blobs = repo
+        .read_paths_at_commit(commit, |p| p == "rabbitmq-components.mk")
+        .ok()?;
+    let blob = blobs.into_iter().next()?;
+    String::from_utf8(blob.bytes).ok()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_check_patch(
     args: &GlobalArgs,
@@ -839,11 +1133,22 @@ fn run_check_patch(
         }
         if let Some(target_ctx) = &target_ctx {
             apply_target_context(cfg, target_ctx, bytes, &mut evaluation)?;
+            // Patch-shaped inputs have no commit identity to probe.
+            if let Some(p) = &provenance {
+                if let Some(probe) =
+                    AlreadyPresentProbe::maybe_open(Some(target_ctx), repo_dir_path)
+                {
+                    probe.apply(&p.sha, bytes, &mut evaluation);
+                }
+                if let Some(probe) = DepPinProbe::maybe_open(Some(target_ctx), repo_dir_path) {
+                    probe.apply(&p.sha, &mut evaluation);
+                }
+            }
         }
         Ok(evaluation)
     };
     let mut evaluation = match session.lookup(key) {
-        SessionLookup::Hit(evaluation) => evaluation,
+        SessionLookup::Hit(evaluation) => *evaluation,
         SessionLookup::Bypassed => evaluate_and_finish(source_files.load(bytes)?)?,
         SessionLookup::Miss(miss) => {
             // a key exists, so provenance and a repo path do too
@@ -852,8 +1157,8 @@ fn run_check_patch(
                 .expect("cache keys are derived from provenance");
             let repo_dir = repo_dir_path.expect("commit-shaped inputs always carry a repo path");
             let macro_env = commit_macro_env(repo_dir, &p.diff_base, bytes)?;
-            match session.consult_content(miss, patch_hash_for_key(bytes), &macro_env) {
-                CacheLookupOutcome::Hit(evaluation) => evaluation,
+            match session.consult_content(*miss, patch_hash_for_key(bytes), &macro_env) {
+                CacheLookupOutcome::Hit(evaluation) => *evaluation,
                 CacheLookupOutcome::Miss(slot) => {
                     let evaluation = evaluate_and_finish(source_files.load(bytes)?)?;
                     slot.store(&evaluation);
@@ -1258,6 +1563,14 @@ fn render_text(
     )?;
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
+    render_already_present(w, &evaluation.diagnostics)?;
+    for d in &evaluation.diagnostics.dep_pin_divergence {
+        writeln!(
+            w,
+            "dep pin divergence: {} {} (source) vs {} (target)",
+            d.dep, d.source, d.target
+        )?;
+    }
     if flags.explain {
         render_explain_section(w, &evaluation.verdict.results)?;
     }
@@ -1269,6 +1582,59 @@ fn render_text(
             known_projects,
             flags.show_otp_calls,
         )?;
+    }
+    Ok(())
+}
+
+/// Always-on advisory lines: an already-present patch changes what
+/// the operator does next, so it never hides behind a flag.
+fn render_already_present(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
+    if let Some(ap) = &diagnostics.already_present {
+        if let Some(m) = &ap.identical {
+            let via = match m.via {
+                TargetMatchKind::TrailerIntersection => "trailer intersection",
+                TargetMatchKind::TrailerAncestry => "trailer ancestry",
+                TargetMatchKind::PatchId => "patch id",
+            };
+            writeln!(
+                w,
+                "already present on target: identical patch {} via {via} (\"{}\")",
+                m.commit, m.subject
+            )?;
+        }
+        if let Some(c) = &ap.content {
+            let strength = if c.fully_present() {
+                "all hunks already present"
+            } else {
+                "content partially present"
+            };
+            writeln!(
+                w,
+                "{strength} on {}: {}/{} hunks applied ({} ambiguous, {} low-confidence)",
+                c.pin,
+                c.hunks_already_applied,
+                c.hunks_considered,
+                c.hunks_ambiguous,
+                c.hunks_low_confidence,
+            )?;
+        }
+    }
+    if let Some(skipped) = &diagnostics.already_present_skipped {
+        match skipped {
+            AlreadyPresentSkipped::CandidateMissingFromTargetOdb { sha } => writeln!(
+                w,
+                "already-present detection skipped: candidate {sha} missing from target object store"
+            )?,
+            AlreadyPresentSkipped::NoMergeBase => writeln!(
+                w,
+                "already-present detection skipped: no merge base with the target tip"
+            )?,
+            AlreadyPresentSkipped::TargetWalkFailed { detail } => writeln!(
+                w,
+                "already-present detection skipped: target walk failed ({detail})"
+            )?,
+            _ => writeln!(w, "already-present detection skipped")?,
+        }
     }
     Ok(())
 }
@@ -1752,6 +2118,8 @@ fn run_batch(
         ));
     }
     let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let probe = AlreadyPresentProbe::maybe_open(target_ctx.as_ref(), Some(repo));
+    let dep_pin_probe = DepPinProbe::maybe_open(target_ctx.as_ref(), Some(repo));
     let plan = BatchPlan::resolve(&git_repo, repo, &entries)?;
     let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
     let queried = batch_queries(&resolved_series);
@@ -1829,11 +2197,17 @@ fn run_batch(
                 evaluation.pr_commits.clone_from(&input.pr_commits);
                 if let Some(target_ctx) = &target_ctx {
                     apply_target_context(cfg, target_ctx, &input.bytes, &mut evaluation)?;
+                    if let Some(probe) = &probe {
+                        probe.apply(&planned.sha, &input.bytes, &mut evaluation);
+                    }
+                    if let Some(probe) = &dep_pin_probe {
+                        probe.apply(&planned.sha, &mut evaluation);
+                    }
                 }
                 Ok(evaluation)
             };
             let evaluation = match lookup {
-                SessionLookup::Hit(evaluation) => evaluation,
+                SessionLookup::Hit(evaluation) => *evaluation,
                 SessionLookup::Bypassed => evaluate(&mut source_files)?,
                 SessionLookup::Miss(miss) => {
                     let resolved = input.as_ref().expect("resolved on the miss path");
@@ -1845,8 +2219,8 @@ fn run_batch(
                         )?);
                     }
                     let env = macro_env.as_ref().expect("computed above");
-                    match session.consult_content(miss, patch_hash_for_key(&resolved.bytes), env) {
-                        CacheLookupOutcome::Hit(evaluation) => evaluation,
+                    match session.consult_content(*miss, patch_hash_for_key(&resolved.bytes), env) {
+                        CacheLookupOutcome::Hit(evaluation) => *evaluation,
                         CacheLookupOutcome::Miss(slot) => {
                             let evaluation = evaluate(&mut source_files)?;
                             slot.store(&evaluation);
@@ -2039,7 +2413,7 @@ fn run_multi(
             Ok(evaluation)
         };
         let evaluation = match lookup {
-            SessionLookup::Hit(evaluation) => evaluation,
+            SessionLookup::Hit(evaluation) => *evaluation,
             SessionLookup::Bypassed => evaluate(&mut source_files)?,
             SessionLookup::Miss(miss) => {
                 let resolved = input.as_ref().expect("resolved on the miss path");
@@ -2051,8 +2425,8 @@ fn run_multi(
                     )?);
                 }
                 let env = macro_env.as_ref().expect("computed above");
-                match session.consult_content(miss, patch_hash_for_key(&resolved.bytes), env) {
-                    CacheLookupOutcome::Hit(evaluation) => evaluation,
+                match session.consult_content(*miss, patch_hash_for_key(&resolved.bytes), env) {
+                    CacheLookupOutcome::Hit(evaluation) => *evaluation,
                     CacheLookupOutcome::Miss(slot) => {
                         let evaluation = evaluate(&mut source_files)?;
                         slot.store(&evaluation);

@@ -21,7 +21,7 @@ use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
 use crate::model::symbol::{SymbolKind, SymbolRef};
 use crate::model::verdict::{
-    ArtifactKind, ConflictMarker, Reason, SnapshotSide, SourceDelta, Verdict,
+    ArtifactKind, ConflictMarker, HunkTally, Reason, SnapshotSide, SourceDelta, Verdict,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -39,8 +39,12 @@ pub(crate) fn evaluate_pin(
 ) -> EvaluationResult {
     let mut reasons: Vec<Reason> = Vec::new();
     check_syntactic_artifacts(files, &mut reasons);
+    let mut postimage = None;
     if let Some(pf) = pin_files {
-        check_files_against_pin(files, pf, snapshot, &mut reasons);
+        let tally = check_files_against_pin(files, pf, snapshot, &mut reasons);
+        if tally.considered > 0 {
+            postimage = Some(tally);
+        }
     }
     if let Some(fd) = family_defaults {
         check_versioned_machine_data(files, snapshot, source_snapshot, fd, &mut reasons);
@@ -114,6 +118,7 @@ pub(crate) fn evaluate_pin(
         verdict: Verdict::from_reasons(reasons),
         tracked_refs,
         source_deltas,
+        postimage,
     }
 }
 
@@ -121,6 +126,20 @@ pub(crate) struct EvaluationResult {
     pub verdict: Verdict,
     pub tracked_refs: Vec<SymbolRef>,
     pub source_deltas: Vec<SourceDelta>,
+    /// Content-presence tally over the pin's files, when any hunk
+    /// added lines and the pin had file bytes to compare against.
+    pub postimage: Option<PostimageTally>,
+}
+
+/// Per-pin counters for the tier-2 content-presence check; the
+/// per-pin precursor of the envelope's `ContentPresence`.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct PostimageTally {
+    pub applied: usize,
+    pub considered: usize,
+    pub ambiguous: usize,
+    pub low_confidence: usize,
+    pub per_file: BTreeMap<PathBuf, HunkTally>,
 }
 
 fn record_source_delta(
@@ -410,7 +429,8 @@ fn check_files_against_pin(
     pin_files: &EvaluationFiles,
     snapshot: &Snapshot<state::Canonical>,
     reasons: &mut Vec<Reason>,
-) {
+) -> PostimageTally {
+    let mut tally = PostimageTally::default();
     for file in files {
         let path = match (&file.new_path, &file.old_path) {
             (Some(p), _) | (None, Some(p)) => p,
@@ -437,7 +457,9 @@ fn check_files_against_pin(
             Err(_) => continue,
         };
         for (idx, hunk) in file.hunks.iter().enumerate() {
-            match classify_preimage(hunk, &target_lines) {
+            let pre = classify_preimage(hunk, &target_lines);
+            tally_postimage(hunk, &pre, &target_lines, path, &mut tally);
+            match pre {
                 PreimageMatch::Exact => {}
                 PreimageMatch::Drifted { line_delta } => {
                     reasons.push(Reason::PreimageDrifted {
@@ -455,6 +477,64 @@ fn check_files_against_pin(
                 }
             }
         }
+    }
+    tally
+}
+
+/// The dual of `classify_preimage`: does the hunk's post-image
+/// (Context plus Added lines) already exist in the pin's file? Only
+/// hunks that add lines are considered; deletions get no signal.
+fn tally_postimage(
+    hunk: &Hunk,
+    pre: &PreimageMatch,
+    target_lines: &[&str],
+    path: &Path,
+    tally: &mut PostimageTally,
+) {
+    let added = hunk
+        .lines
+        .iter()
+        .filter(|l| matches!(l, HunkLine::Added(_)))
+        .count();
+    if added == 0 {
+        return;
+    }
+    let postimage: Vec<&str> = hunk
+        .lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Context(t) | HunkLine::Added(t) => Some(t.as_str()),
+            HunkLine::Removed(_) => None,
+        })
+        .collect();
+    let context = hunk
+        .lines
+        .iter()
+        .filter(|l| matches!(l, HunkLine::Context(_)))
+        .count();
+    let preimage_empty = hunk.lines.iter().all(|l| matches!(l, HunkLine::Added(_)));
+    tally.considered += 1;
+    let entry = tally.per_file.entry(path.to_path_buf()).or_default();
+    entry.considered += 1;
+    if find_subsequence(&postimage, target_lines).is_none() {
+        return;
+    }
+    // An empty preimage classifies `Exact`, so added files must be
+    // decided by the postimage alone.
+    let pre_matches = !preimage_empty && !matches!(pre, PreimageMatch::Missing { .. });
+    if pre_matches {
+        tally.ambiguous += 1;
+        entry.ambiguous += 1;
+        return;
+    }
+    // Context lines make the postimage block a distinctive needle; a
+    // context-less near-empty block is too weak to call applied.
+    if context == 0 && postimage.len() < 2 {
+        tally.low_confidence += 1;
+        entry.low_confidence += 1;
+    } else {
+        tally.applied += 1;
+        entry.applied += 1;
     }
 }
 

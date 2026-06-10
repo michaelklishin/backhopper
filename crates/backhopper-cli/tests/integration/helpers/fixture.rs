@@ -61,6 +61,25 @@ impl FixtureRepo {
         run(self.dir.path(), &["git", "tag", name]);
     }
 
+    // Only consumed by the unix-gated cross-branch tests; gate to
+    // match so Windows CI doesn't flag dead code.
+    #[cfg(unix)]
+    pub(crate) fn cherry_pick_x(&self, sha: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "cherry-pick",
+                "-x",
+                sha,
+            ],
+        );
+    }
+
     // Only consumed by `end_to_end_target_repo_integration_tests`, which is
     // `#![cfg(unix)]`. Gate to match so Windows CI doesn't flag dead code.
     #[cfg(unix)]

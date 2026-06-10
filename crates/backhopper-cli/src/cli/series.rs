@@ -23,9 +23,24 @@ pub enum SeriesCmd {
         #[arg(long)]
         series: SeriesName,
     },
+    /// Read the dep pins from a branch's `rabbitmq-components.mk`.
+    Pins(PinsArgs),
     /// Build a `[[series]]` stanza from a RabbitMQ branch's `rabbitmq-components.mk`.
     #[command(subcommand)]
     Sync(SyncCmd),
+}
+
+#[derive(Debug, Args)]
+pub struct PinsArgs {
+    /// Branch name, tag, or any rev `gix` can resolve.
+    #[arg(long)]
+    pub branch: String,
+    #[arg(long)]
+    pub repo_dir_path: PathBuf,
+    /// Compare against a second branch and report pin divergence
+    /// instead of the raw pin list.
+    #[arg(long)]
+    pub against_branch: Option<String>,
 }
 
 #[derive(Debug, Args)]

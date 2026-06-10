@@ -31,6 +31,12 @@ use crate::errors::{CliError, CliResult};
 pub struct TargetContext {
     pub index: TargetTreeIndex,
     pub translations: PathTranslations,
+    /// Already-present walk cap; joins the verdict-cache key because
+    /// it changes the diagnostic output.
+    pub walk_limit: usize,
+    /// Already-present detection toggle; joins the key for the same
+    /// reason.
+    pub already_present_enabled: bool,
 }
 
 pub fn build_context(
@@ -71,6 +77,8 @@ pub fn build_context(
     Ok(Some(TargetContext {
         index,
         translations,
+        walk_limit: args.target_walk_limit,
+        already_present_enabled: !args.skip_already_present,
     }))
 }
 

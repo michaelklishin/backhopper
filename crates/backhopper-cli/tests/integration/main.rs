@@ -23,6 +23,7 @@ mod end_to_end_schema_integration_tests;
 mod end_to_end_scope_integration_tests;
 mod end_to_end_self_project_integration_tests;
 mod end_to_end_series_coverage_integration_tests;
+mod end_to_end_series_pins_integration_tests;
 mod end_to_end_series_sync_integration_tests;
 mod end_to_end_siblings_doctor_integration_tests;
 mod end_to_end_snapshot_dir_escape_integration_tests;

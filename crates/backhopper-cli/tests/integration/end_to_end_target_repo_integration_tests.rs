@@ -173,6 +173,297 @@ fn missing_target_path_without_translation_emits_inapplicable() {
     assert!(!paths.is_empty());
 }
 
+/// One repo, two branches: v1 carries a `-x` pick of the candidate.
+/// The probe must flag the candidate as already present via trailer
+/// intersection, carrying the matched commit and its subject.
+#[test]
+fn already_present_via_x_pick_lands_in_diagnostics() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("base");
+    repo.checkout_new_branch("v1");
+    repo.checkout("main");
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+    );
+    repo.commit("the fix");
+    let cand = repo.head_sha();
+    repo.tag("source-v1");
+    repo.checkout("v1");
+    repo.cherry_pick_x(&cand);
+    let pick = repo.head_sha();
+    repo.checkout("main");
+    let cfg_path = write_config(&workdir, &repo, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-ref",
+        "v1",
+        &cand,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let identical = &env["data"]["diagnostics"]["already_present"]["identical"];
+    assert_eq!(identical["via"], "trailer_intersection");
+    assert_eq!(identical["commit"], pick.as_str());
+    assert_eq!(identical["subject"], "the fix");
+}
+
+/// `--skip-already-present` suppresses the probe entirely: no
+/// diagnostic, no skip note.
+#[test]
+fn skip_already_present_flag_suppresses_the_probe() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("base");
+    repo.checkout_new_branch("v1");
+    repo.checkout("main");
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+    );
+    repo.commit("the fix");
+    let cand = repo.head_sha();
+    repo.tag("source-v1");
+    repo.checkout("v1");
+    repo.cherry_pick_x(&cand);
+    repo.checkout("main");
+    let cfg_path = write_config(&workdir, &repo, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-ref",
+        "v1",
+        "--skip-already-present",
+        &cand,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    assert!(env["data"]["diagnostics"]["already_present"].is_null());
+    assert!(env["data"]["diagnostics"]["already_present_skipped"].is_null());
+}
+
+/// `check batch` is the workflow path: the per-row diagnostics must
+/// carry the already-present match exactly like single-commit check.
+#[test]
+fn batch_rows_carry_already_present_diagnostics() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("base");
+    repo.checkout_new_branch("v1");
+    repo.checkout("main");
+    repo.write_file(
+        "deps/rabbitmq_federation_common/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+    );
+    repo.commit("the fix");
+    let cand = repo.head_sha();
+    repo.tag("source-v1");
+    repo.checkout("v1");
+    repo.cherry_pick_x(&cand);
+    let pick = repo.head_sha();
+    repo.checkout("main");
+    let cfg_path = write_config(&workdir, &repo, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let commits_file = workdir.path().join("commits.txt");
+    fs::write(&commits_file, format!("{cand}\n")).unwrap();
+
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "batch",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-ref",
+        "v1",
+        "--commits-file-path",
+        commits_file.to_str().unwrap(),
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let row = &env["data"]["results"][0];
+    let identical = &row["diagnostics"]["already_present"]["identical"];
+    assert_eq!(identical["via"], "trailer_intersection");
+    assert_eq!(identical["commit"], pick.as_str());
+}
+
+/// The candidate object is absent from the target object store: the
+/// probe degrades to a skipped-note instead of silence.
+#[test]
+fn unrelated_target_repo_yields_a_skipped_note() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = make_source_repo();
+    let target = make_target_repo_without_path();
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let skipped = &env["data"]["diagnostics"]["already_present_skipped"];
+    assert_eq!(skipped["reason"], "candidate_missing_from_target_odb");
+    assert_eq!(skipped["sha"], sha.as_str());
+}
+
+/// Builds one repo where v1 pins cowboy 2.13 and main pins 2.16,
+/// with an `.app.src` chain mgmt → web_dispatch → cowboy. Returns
+/// the repo and the SHA of a commit touching mgmt source.
+fn build_dep_pin_fixture() -> (FixtureRepo, String) {
+    let repo = FixtureRepo::new();
+    repo.write_file("rabbitmq-components.mk", "dep_cowboy = hex 2.13.0\n");
+    repo.write_file(
+        "deps/mgmt/src/mgmt.app.src",
+        "{application, mgmt, [{applications, [kernel, web_dispatch]}]}.",
+    );
+    repo.write_file(
+        "deps/web_dispatch/src/web_dispatch.app.src",
+        "{application, web_dispatch, [{applications, [kernel, cowboy]}]}.",
+    );
+    repo.write_file(
+        "deps/mgmt/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("base");
+    repo.checkout_new_branch("v1");
+    repo.checkout("main");
+    repo.write_file("rabbitmq-components.mk", "dep_cowboy = hex 2.16.0\n");
+    repo.commit("bump cowboy");
+    repo.write_file(
+        "deps/mgmt/src/foo.erl",
+        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+    );
+    repo.commit("mgmt fix");
+    let sha = repo.head_sha();
+    repo.tag("source-v1");
+    repo.checkout("main");
+    (repo, sha)
+}
+
+fn check_commit_json(repo: &FixtureRepo, cfg_path: &Path, sha: &str) -> Value {
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--target-ref",
+        "v1",
+        sha,
+    ]);
+    serde_json::from_str(&stdout(&a)).expect("envelope parses")
+}
+
+/// The Cowboy shape: the touched app reaches the divergent dep only
+/// transitively, through another app's `.app.src`.
+#[test]
+fn dep_pin_divergence_reaches_through_the_app_src_chain() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let (repo, sha) = build_dep_pin_fixture();
+    let cfg_path = write_config(&workdir, &repo, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let env = check_commit_json(&repo, &cfg_path, &sha);
+    let divergence = &env["data"]["diagnostics"]["dep_pin_divergence"];
+    assert_eq!(divergence[0]["dep"], "cowboy");
+    assert_eq!(divergence[0]["source"], "hex 2.16.0");
+    assert_eq!(divergence[0]["target"], "hex 2.13.0");
+}
+
+/// A commit touching an app with no path to the divergent dep stays
+/// clean: the advisory is per-commit, not per-round.
+#[test]
+fn dep_pin_divergence_is_silent_for_unrelated_apps() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let (repo, _) = build_dep_pin_fixture();
+    repo.write_file(
+        "deps/standalone/src/standalone.app.src",
+        "{application, standalone, [{applications, [kernel]}]}.",
+    );
+    repo.write_file(
+        "deps/standalone/src/bar.erl",
+        "-module(bar).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("standalone change");
+    let sha = repo.head_sha();
+    let cfg_path = write_config(&workdir, &repo, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let env = check_commit_json(&repo, &cfg_path, &sha);
+    assert!(
+        env["data"]["diagnostics"]["dep_pin_divergence"].is_null(),
+        "unrelated app must not carry the divergence: {}",
+        env["data"]["diagnostics"]
+    );
+}
+
 #[test]
 fn no_target_repo_dir_path_preserves_legacy_verdict() {
     let workdir = TempDir::new().unwrap();

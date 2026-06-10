@@ -5,7 +5,7 @@
 //! File-system scanning helpers for suite selection.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::app_src::AppSrcSpec;
 use crate::model::names::{ApplicationName, ModuleName};
@@ -21,46 +21,7 @@ const SKIP_DIRS: &[&str] = &[
     "target",
 ];
 
-/// Resolves a file path under `repo_root` to the application it
-/// belongs to. Strategy: find the app whose `.app.src` file lives
-/// in the deepest shared prefix of `path`.
-pub(crate) fn application_of_path<'a>(
-    apps: &'a [AppSrcSpec],
-    repo_root: &Path,
-    path: &Path,
-) -> Option<&'a ApplicationName> {
-    let abs = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root.join(path)
-    };
-    let mut best: Option<(&'a ApplicationName, usize)> = None;
-    for app in apps {
-        let app_dir = app_root_dir(&app.path);
-        if abs.starts_with(&app_dir) {
-            let depth = app_dir.components().count();
-            if best.map(|(_, d)| depth > d).unwrap_or(true) {
-                best = Some((&app.name, depth));
-            }
-        }
-    }
-    best.map(|(name, _)| name)
-}
-
-/// Returns the directory containing the `*.app.src` file's enclosing
-/// application: one level up from `src/` if the `.app.src` lives in
-/// `src/`, otherwise the file's parent.
-fn app_root_dir(app_src_path: &Path) -> PathBuf {
-    let parent = app_src_path.parent().unwrap_or(Path::new(""));
-    if parent
-        .file_name()
-        .is_some_and(|n| n == "src" || n == "ebin")
-    {
-        parent.parent().unwrap_or(parent).to_path_buf()
-    } else {
-        parent.to_path_buf()
-    }
-}
+pub(crate) use crate::app_src::{app_root_dir, application_of_path};
 
 /// Enumerates `_SUITE.erl` files under each application's `test/`
 /// subdirectory.
