@@ -216,7 +216,8 @@ pub enum CheckCmd {
         pr_url: String,
     },
     /// Evaluate ONE commit against multiple series. Produces a per-series
-    /// summary row plus a worst-case verdict across all series.
+    /// summary row plus a worst-case verdict across all series. Merge
+    /// SHAs evaluate as the first-parent diff, like `check merge`.
     Multi {
         /// Series to evaluate against. Repeat the flag or use a
         /// comma-separated list.
@@ -238,7 +239,9 @@ pub enum CheckCmd {
     },
     /// Evaluate many commits against one or more series. One row per
     /// (commit, series) pair. Blank lines and `#` comments in the
-    /// commits file are skipped.
+    /// commits file are skipped. Merge SHAs evaluate as the
+    /// first-parent diff, like `check merge`, with `pr_commits` and
+    /// `parent_count` on the row.
     Batch {
         /// Series to evaluate against. Repeat the flag or use a
         /// comma-separated list.

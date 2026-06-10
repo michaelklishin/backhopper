@@ -14,9 +14,9 @@ use std::str;
 
 use tempfile::TempDir;
 
-use backhopper_core::git::{GitRepo, pr_commits_for};
 use backhopper_core::model::names::CommitSha;
 use backhopper_core::model::pr_commit::PrCommitKind;
+use backhopper_git::{GitRepo, pr_commits_for};
 
 struct Fixture {
     _dir: TempDir,

@@ -15,8 +15,6 @@ workspace = true
 schemars = ["dep:schemars"]
 
 [dependencies]
-gix         = { workspace = true }
-imara-diff  = { workspace = true }
 regex       = { workspace = true }
 schemars    = { workspace = true, optional = true, features = ["derive"] }
 serde       = { workspace = true }

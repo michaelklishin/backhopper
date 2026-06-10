@@ -21,8 +21,8 @@ use std::collections::BTreeMap;
 use crate::compat::source_attributes::{
     behaviour_resolves, extract_behaviours, extract_includes, resolve_include,
 };
+use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::{TestSuiteFile, is_stdlib_or_otp};
-use crate::git::TargetTreeIndex;
 use crate::model::names::{ModuleName, RelativePath};
 use crate::model::verdict::{IncludeDirective, Reason};
 

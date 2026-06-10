@@ -1,0 +1,32 @@
+[package]
+name        = "backhopper-git"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "gix-backed git access layer for backhopper: repository reads, patch resolution, PR-commit enumeration"
+
+[lints]
+workspace = true
+
+[dependencies]
+backhopper-core = { workspace = true }
+
+gix         = { workspace = true }
+imara-diff  = { workspace = true }
+regex       = { workspace = true }
+thiserror   = { workspace = true }
+time        = { workspace = true }
+
+[dev-dependencies]
+tempfile    = { workspace = true }
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

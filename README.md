@@ -308,7 +308,9 @@ backhopper check patch --series stable-3.x /path/to/the.patch
 ```
 
 For many commits at once, `check batch` evaluates each commit against one
-or more series in a single invocation:
+or more series in a single invocation. Merge SHAs are fine on any line:
+they evaluate as the first-parent diff, like `check merge`, and each row
+reports its `parent_count`:
 
 ```shell
 backhopper check batch \

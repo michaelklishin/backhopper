@@ -40,8 +40,12 @@ tests cover it through the process boundary.
 The repo is a Cargo workspace with multiple crates:
 
  * `crates/backhopper-core/`: model types, snapshot I/O, store, config,
-   git access (via `gix`), compatibility analysis. No `clap`. No I/O
-   policy decisions
+   compatibility analysis. No `clap`, no `gix`. No I/O policy decisions
+ * `crates/backhopper-git/`: the gix-backed git layer — `GitRepo`,
+   PR-commit enumeration, `ResolvedPatchInput` (shared patch resolution
+   with `MergePolicy` and `PrCommitPolicy`), and the `TargetTreeIndex`
+   builder. Depends on `backhopper-core` for newtypes; nothing depends
+   on it except the CLI
  * `crates/backhopper-erlang/`: Erlang source surface extractor —
    tokenizer, attribute parser, spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
@@ -92,7 +96,7 @@ depends only on its own crate.
  * `src/snapshot/spec_normalize.rs`: `-spec` and `-callback` pretty-printer
  * `src/store/fs.rs`: `SnapshotStore<M>` (`ReadOnly` and `Mutable`)
  * `src/config/mod.rs`: `backhopper.toml` schema, `deny_unknown_fields`
- * `src/git/mod.rs`: `GitRepo` wrapping `gix::Repository`
+ * `src/versions.rs`: `version_cmp` tag ordering
  * `src/compat/patch.rs`: unified-diff parser, `Patch<S>` type-state
    pipeline (`Raw` → `Analyzed` → `Verdicted`)
  * `src/compat/call_sites.rs`: extractor for `mod:fun(...)`,
@@ -324,8 +328,9 @@ unknown values; bumps ship with a `snapshots migrate` command.
 
 Use `gix` exclusively. Never shell out to `git` from production code
 (test helpers may, but should prefer `gix`'s write-side APIs to build
-fixtures). The git seam is the single `GitRepo` struct in
-`backhopper_core::git`.
+fixtures). The git seam is the `backhopper-git` crate: `GitRepo` plus
+the `ResolvedPatchInput` patch resolver. `backhopper-core` stays
+gix-free so driver consumers never compile `gix`.
 
 We pin `gix` to an exact version and bump it deliberately. Each bump
 gets its own commit and CHANGELOG entry so a regression is bisectable.

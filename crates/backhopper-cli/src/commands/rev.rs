@@ -10,10 +10,8 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use backhopper_core::Error as CoreError;
-use backhopper_core::errors::GitError;
-use backhopper_core::git::{GitRepo, ObjectKind};
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix};
+use backhopper_git::{GitError, GitRepo, ObjectKind};
 
 use crate::cli::{Formatter, GlobalArgs, RevCmd};
 use crate::commands::sha_prefix::resolve_with_kind;
@@ -76,19 +74,17 @@ fn run_resolve(
             repo_dir_path,
             want_subject,
         ),
-        Err(CliError::Core(CoreError::Git(GitError::AmbiguousSha {
+        Err(CliError::Git(GitError::AmbiguousSha {
             prefix: p,
             candidates,
             truncated_at,
-        }))) => render_ambiguous(args, &p, &candidates, truncated_at),
-        Err(CliError::Core(CoreError::Git(GitError::NotACommit {
+        })) => render_ambiguous(args, &p, &candidates, truncated_at),
+        Err(CliError::Git(GitError::NotACommit {
             prefix: p,
             kind,
             resolved,
-        }))) => render_not_a_commit(args, &p, &kind, &resolved),
-        Err(CliError::Core(CoreError::Git(GitError::CommitNotFound(p)))) => {
-            render_not_found(args, &p)
-        }
+        })) => render_not_a_commit(args, &p, &kind, &resolved),
+        Err(CliError::Git(GitError::CommitNotFound(p))) => render_not_found(args, &p),
         Err(other) => Err(other),
     }
 }

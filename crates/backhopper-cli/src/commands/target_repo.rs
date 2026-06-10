@@ -12,16 +12,17 @@ use std::path::{Path, PathBuf};
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
+use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
 };
 use backhopper_core::config::{Config, PathTranslations};
-use backhopper_core::git::{GitRepo, TargetTreeIndex};
 use backhopper_core::model::names::{GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesSummary,
     SeriesVerdict, TranslationSource, Verdict,
 };
+use backhopper_git::{GitRepo, build_target_tree_index};
 
 use crate::cli::check::TargetRepoArgs;
 use crate::errors::{CliError, CliResult};
@@ -48,9 +49,9 @@ pub fn build_context(
             .merge_external(external)
             .map_err(|e| CliError::Core(e.into()))?;
     }
-    let repo = GitRepo::open(target_repo.clone()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(target_repo.clone()).map_err(CliError::Git)?;
     let target_ref = GitRef::new(args.target_ref.clone()).map_err(|e| CliError::Core(e.into()))?;
-    let index = TargetTreeIndex::build(&repo, &target_ref).map_err(|e| CliError::Core(e.into()))?;
+    let index = build_target_tree_index(&repo, &target_ref).map_err(CliError::Git)?;
 
     if let Some(src) = source_repo {
         if same_repo(src, target_repo) {

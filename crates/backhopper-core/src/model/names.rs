@@ -572,22 +572,6 @@ impl RelativePath {
     }
 }
 
-impl TryFrom<&gix::bstr::BStr> for RelativePath {
-    type Error = NameError;
-
-    fn try_from(value: &gix::bstr::BStr) -> Result<Self, Self::Error> {
-        Self::from_bytes(value.as_ref())
-    }
-}
-
-impl TryFrom<&gix::bstr::BString> for RelativePath {
-    type Error = NameError;
-
-    fn try_from(value: &gix::bstr::BString) -> Result<Self, Self::Error> {
-        Self::from_bytes(value.as_ref())
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]

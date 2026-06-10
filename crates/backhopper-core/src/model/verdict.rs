@@ -322,7 +322,7 @@ pub enum Reason {
     /// A touched `.erl` or `.hrl` declares `-include(path)` or
     /// `-include_lib(app/include/file.hrl)` against a target tree that
     /// does not ship the resolved header. Compile-time failure rather
-    /// than runtime, but same operator-facing shape as
+    /// than runtime, but same user-facing shape as
     /// `TestModuleSymbolMissing`: looked fine on source, broken on
     /// target.
     HeaderFileMissing {

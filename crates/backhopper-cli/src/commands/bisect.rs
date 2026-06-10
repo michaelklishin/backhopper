@@ -4,25 +4,24 @@
 
 //! Bisect a commit's verdict across every stored tag of a project.
 
-use std::path::Path;
-
 use bel7_cli::PARTIAL_SUCCESS_I32;
 use serde::Serialize;
 
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::config::{Config, Project};
-use backhopper_core::git::version_cmp;
 use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::Snapshot;
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::verdict::Verdict;
+use backhopper_core::versions::version_cmp;
 
 use crate::cli::{BisectCmd, GlobalArgs};
-use crate::commands::check::commit_patch_bytes;
+use backhopper_git::{GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput};
+
 use crate::commands::context::{load_config, open_store_read};
-use crate::commands::sha_prefix::expand_prefix;
+use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
 
@@ -50,8 +49,10 @@ pub fn handle(args: &GlobalArgs, cmd: BisectCmd) -> CliResult<i32> {
             repo_dir_path,
             commit,
         } => {
-            let commit = expand_prefix(&repo_dir_path, &commit)?;
-            run_commit(args, &cfg, project, &repo_dir_path, &commit)
+            let repo = GitRepo::open(repo_dir_path.clone()).map_err(CliError::Git)?;
+            let commit = expand_prefix_with(&repo, &commit)
+                .map_err(|e| enrich_with_repo_path(e, &repo_dir_path))?;
+            run_commit(args, &cfg, project, &repo, &commit)
         }
     }
 }
@@ -60,7 +61,7 @@ fn run_commit(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
-    repo_dir_path: &Path,
+    repo: &GitRepo,
     commit: &CommitSha,
 ) -> CliResult<i32> {
     let p = cfg
@@ -76,8 +77,9 @@ fn run_commit(
         )));
     }
     tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
-    let bytes = commit_patch_bytes(repo_dir_path, commit)?;
-    let patch = Patch::parse(&bytes).map_err(|e| CliError::Core(e.into()))?;
+    let input =
+        ResolvedPatchInput::for_commit(repo, commit, MergePolicy::Refuse, PrCommitPolicy::Skip)?;
+    let patch = Patch::parse(&input.bytes).map_err(|e| CliError::Core(e.into()))?;
     let analyzed = patch.analyze();
     let mut contexts: Vec<EvaluationContext> = Vec::with_capacity(tags.len());
     for tag in &tags {

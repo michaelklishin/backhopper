@@ -5,6 +5,8 @@
 //! Public wire-format types for `check batch`. Promoted from the
 //! previously-private types in `backhopper-cli::commands::check`.
 
+use std::num::NonZeroU32;
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
@@ -75,4 +77,11 @@ pub struct BatchResult {
     /// `None` vs `Some(vec![])` distinction is wire-load-bearing.
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
+
+    /// Number of parents of the evaluated commit: 1 for plain
+    /// commits, 2 for PR merges, 3+ for octopus merges. `None` only
+    /// when the envelope was produced by a pre-v7 binary; v7
+    /// producers always emit it.
+    #[serde(default)]
+    pub parent_count: Option<NonZeroU32>,
 }

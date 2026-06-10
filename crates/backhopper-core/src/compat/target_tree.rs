@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::config::{PathTranslation, PathTranslations, TranslationOrigin};
-use crate::git::TargetTreeIndex;
 use crate::model::verdict::TranslationSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

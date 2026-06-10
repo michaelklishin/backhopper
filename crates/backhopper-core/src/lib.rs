@@ -10,7 +10,6 @@ pub mod config;
 pub mod envelope_version;
 pub mod erlang_macros;
 pub mod errors;
-pub mod git;
 pub mod model;
 #[cfg(feature = "schemars")]
 pub mod schema;
@@ -18,6 +17,7 @@ pub mod schema_diff;
 pub mod snapshot;
 pub mod store;
 pub mod suites;
+pub mod versions;
 
 pub use errors::{Error, Result};
 pub use model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};

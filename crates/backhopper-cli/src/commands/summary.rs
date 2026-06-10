@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Projection from a `SeriesEvaluation` to one `SummaryRow`, plus
-//! emission of the `--formatter summary` (JSONL) and
-//! `--formatter text-summary` (tab-separated text) outputs.
+//! Projection from evaluation results to `SummaryRow`s, plus emission
+//! of the `--formatter summary` (JSONL) and `--formatter text-summary`
+//! (tab-separated text) outputs.
 
 use std::io::{self, BufWriter, Write};
+use std::num::NonZeroU32;
 
-use backhopper_core::model::names::CommitSha;
+use backhopper_core::model::batch::BatchResult;
+use backhopper_core::model::names::{CommitSha, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
-use backhopper_core::model::verdict::{SeriesEvaluation, TouchedKinds, Verdict};
+use backhopper_core::model::verdict::{SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict};
 
 use crate::cli::Formatter;
 use crate::errors::{CliError, CliResult};
@@ -18,19 +20,48 @@ use crate::errors::{CliError, CliResult};
 /// Roll a `SeriesEvaluation` up into one summary row. `tracked` is
 /// the saturating sum of per-pin `tracked_refs`.
 #[must_use]
-pub fn to_summary_row(eval: &SeriesEvaluation, sha: CommitSha, subject: String) -> SummaryRow {
-    let verdict = rollup_verdict_kind(eval);
-    let touched = rollup_touched(eval);
-    let tracked: u32 = eval.verdict.results.iter().fold(0u32, |acc, pin| {
+pub fn to_summary_row(
+    eval: &SeriesEvaluation,
+    sha: CommitSha,
+    subject: String,
+    series: Option<SeriesName>,
+    parent_count: Option<NonZeroU32>,
+) -> SummaryRow {
+    summary_row(&eval.verdict, sha, subject, series, parent_count)
+}
+
+/// Roll one batch row up into one summary row. Batch rows carry the
+/// commit, series, and parent count already.
+#[must_use]
+pub fn batch_result_to_summary_row(result: &BatchResult, subject: String) -> SummaryRow {
+    summary_row(
+        &result.verdict,
+        result.commit.clone(),
+        subject,
+        Some(result.series.clone()),
+        result.parent_count,
+    )
+}
+
+fn summary_row(
+    verdict: &SeriesVerdict,
+    sha: CommitSha,
+    subject: String,
+    series: Option<SeriesName>,
+    parent_count: Option<NonZeroU32>,
+) -> SummaryRow {
+    let tracked: u32 = verdict.results.iter().fold(0u32, |acc, pin| {
         let v = u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX);
         acc.saturating_add(v)
     });
     SummaryRow {
         sha,
-        verdict,
-        touched,
+        verdict: rollup_verdict_kind(verdict),
+        touched: rollup_touched(verdict),
         tracked,
         subject,
+        series,
+        parent_count,
     }
 }
 
@@ -39,10 +70,10 @@ pub fn to_summary_row(eval: &SeriesEvaluation, sha: CommitSha, subject: String) 
 /// Priority: any `Incompatible` → `Incompatible`; else any
 /// `RequiresAdaptation` → `RequiresAdaptation`; else any `Compatible`
 /// → `Compatible`; else `Inapplicable`.
-fn rollup_verdict_kind(eval: &SeriesEvaluation) -> VerdictKind {
+fn rollup_verdict_kind(verdict: &SeriesVerdict) -> VerdictKind {
     let mut any_compat = false;
     let mut any_requires = false;
-    for pin in &eval.verdict.results {
+    for pin in &verdict.results {
         match pin.verdict {
             Verdict::Incompatible { .. } => return VerdictKind::Incompatible,
             Verdict::RequiresAdaptation { .. } => any_requires = true,
@@ -59,8 +90,8 @@ fn rollup_verdict_kind(eval: &SeriesEvaluation) -> VerdictKind {
     }
 }
 
-fn rollup_touched(eval: &SeriesEvaluation) -> TouchedKinds {
-    eval.verdict
+fn rollup_touched(verdict: &SeriesVerdict) -> TouchedKinds {
+    verdict
         .results
         .iter()
         .map(|p| p.touched)
@@ -113,13 +144,15 @@ fn emit_jsonl(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
 fn emit_text(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
     for row in rows {
         let touched = render_touched_short(&row.touched);
+        let series = row.series.as_ref().map_or("-", |s| s.as_str());
         writeln!(
             w,
-            "{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}",
             row.sha.abbreviated(),
             row.verdict.as_str(),
             touched,
             row.tracked,
+            series,
             row.subject.replace('\t', " "),
         )?;
     }

@@ -194,7 +194,7 @@ pub enum Group {
         #[command(subcommand)]
         cmd: SchemaCmd,
     },
-    /// Resolve operator-facing commit-SHA prefixes against a git repo.
+    /// Resolve commit-SHA prefixes against a git repo.
     Rev {
         #[command(subcommand)]
         cmd: RevCmd,

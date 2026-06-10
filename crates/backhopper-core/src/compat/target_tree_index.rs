@@ -4,13 +4,12 @@
 
 //! Built-once-per-invocation index of every blob path in a target
 //! tree. Backs the `--target-repo-dir-path` cross-branch backport
-//! analyser.
+//! analyser. Pure data: construction from a live repository lives in
+//! `backhopper-git`.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::errors::GitError;
-use crate::git::GitRepo;
 use crate::model::names::{CommitSha, GitRef};
 
 #[derive(Debug, Clone)]
@@ -23,34 +22,32 @@ pub struct TargetTreeIndex {
 }
 
 impl TargetTreeIndex {
-    pub fn build(repo: &GitRepo, target_ref: &GitRef) -> Result<Self, GitError> {
-        let resolved_commit = repo.resolve_rev(target_ref.as_str())?;
-        let blobs = repo.read_paths_at_commit(&resolved_commit, |_| true)?;
-        let mut present_paths: BTreeSet<PathBuf> = BTreeSet::new();
+    /// Assemble an index from already-listed blob paths. The ancestor
+    /// directories are derived here so the path and dir views can
+    /// never disagree.
+    #[must_use]
+    pub fn from_parts(
+        target_repo: PathBuf,
+        target_ref: GitRef,
+        resolved_commit: CommitSha,
+        present_paths: BTreeSet<PathBuf>,
+    ) -> Self {
         let mut present_dirs: BTreeSet<PathBuf> = BTreeSet::new();
-        for blob in &blobs {
-            present_paths.insert(blob.path.clone());
-            for ancestor in blob.path.ancestors().skip(1) {
+        for path in &present_paths {
+            for ancestor in path.ancestors().skip(1) {
                 if ancestor.as_os_str().is_empty() {
                     continue;
                 }
                 present_dirs.insert(ancestor.to_path_buf());
             }
         }
-        if present_paths.is_empty() {
-            return Err(GitError::Gix(format!(
-                "target repo {} resolves to a commit with no blobs at {}; refusing to build empty index",
-                repo.path().display(),
-                target_ref
-            )));
-        }
-        Ok(Self {
-            target_repo: repo.path().to_path_buf(),
-            target_ref: target_ref.clone(),
+        Self {
+            target_repo,
+            target_ref,
             resolved_commit,
             present_paths,
             present_dirs,
-        })
+        }
     }
 
     pub fn target_repo(&self) -> &Path {

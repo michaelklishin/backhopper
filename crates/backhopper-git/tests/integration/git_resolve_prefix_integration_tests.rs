@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use backhopper_core::errors::GitError;
-use backhopper_core::git::{GitRepo, ObjectKind};
 use backhopper_core::model::names::CommitShaPrefix;
+use backhopper_git::GitError;
+use backhopper_git::{GitRepo, ObjectKind};
 
 use crate::helpers::repo::FakeRepo;
 

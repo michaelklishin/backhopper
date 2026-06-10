@@ -8,9 +8,10 @@
 //! and the merge into `SeriesEvaluation`.
 
 use backhopper_core::compat::added_file::{analyse_added_file, analyse_added_files};
-use backhopper_core::git::{GitRepo, TargetTreeIndex};
+use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::model::names::{GitRef, RelativePath};
 use backhopper_core::model::verdict::Reason;
+use backhopper_git::{GitRepo, build_target_tree_index};
 
 use crate::helpers::repo::FakeRepo;
 
@@ -21,7 +22,7 @@ fn rp(s: &str) -> RelativePath {
 fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let head = GitRef::new("HEAD").unwrap();
-    TargetTreeIndex::build(&g, &head).unwrap()
+    build_target_tree_index(&g, &head).unwrap()
 }
 
 fn rabbit_globs() -> Vec<String> {

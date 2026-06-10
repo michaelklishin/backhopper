@@ -1508,7 +1508,7 @@
                 "type": "object"
               },
               {
-                "description": "A touched `.erl` or `.hrl` declares `-include(path)` or\n`-include_lib(app/include/file.hrl)` against a target tree that\ndoes not ship the resolved header. Compile-time failure rather\nthan runtime, but same operator-facing shape as\n`TestModuleSymbolMissing`: looked fine on source, broken on\ntarget.",
+                "description": "A touched `.erl` or `.hrl` declares `-include(path)` or\n`-include_lib(app/include/file.hrl)` against a target tree that\ndoes not ship the resolved header. Compile-time failure rather\nthan runtime, but same user-facing shape as\n`TestModuleSymbolMissing`: looked fine on source, broken on\ntarget.",
                 "properties": {
                   "attempted_paths": {
                     "items": {

@@ -15,6 +15,7 @@ pub mod scope;
 pub mod source_attributes;
 pub mod source_macros;
 pub mod target_tree;
+pub mod target_tree_index;
 pub mod test_suite;
 
 pub use otp::is_otp_module;

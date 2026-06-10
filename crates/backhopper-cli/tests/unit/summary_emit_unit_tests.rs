@@ -3,7 +3,12 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use backhopper_cli::cli::Formatter;
-use backhopper_cli::commands::summary::{SummaryFormatter, emit_rows, to_summary_row};
+use std::num::NonZeroU32;
+
+use backhopper_cli::commands::summary::{
+    SummaryFormatter, batch_result_to_summary_row, emit_rows, to_summary_row,
+};
+use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
@@ -29,7 +34,7 @@ fn rollup_prefers_incompatible_over_other_kinds() {
     compat.tracked_refs = 3;
     incompat.tracked_refs = 5;
     let eval = series_eval_with(vec![compat, incompat]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into());
+    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
     assert_eq!(row.verdict, VerdictKind::Incompatible);
     assert_eq!(row.tracked, 8);
 }
@@ -43,7 +48,7 @@ fn rollup_promotes_requires_adaptation_over_compatible() {
             Verdict::RequiresAdaptation { reasons: vec![] },
         ),
     ]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into());
+    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
     assert_eq!(row.verdict, VerdictKind::RequiresAdaptation);
 }
 
@@ -55,7 +60,7 @@ fn rollup_substantive_kind_when_all_inapplicable() {
             reason: InapplicableReason::Untracked,
         },
     )]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into());
+    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
     assert_eq!(row.verdict, VerdictKind::Inapplicable);
 }
 
@@ -64,7 +69,7 @@ fn tracked_saturates_at_u32_max_on_huge_sums() {
     let mut pin = PinVerdict::new(fixture_pin("a"), Verdict::Compatible);
     pin.tracked_refs = usize::MAX;
     let eval = series_eval_with(vec![pin]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into());
+    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
     assert_eq!(row.tracked, u32::MAX);
 }
 
@@ -79,6 +84,8 @@ fn emit_rows_text_summary_smoke_runs() {
         },
         tracked: 0,
         subject: "Hello".to_owned(),
+        series: None,
+        parent_count: None,
     };
     emit_rows(SummaryFormatter::Text, &[row]).expect("emit ok");
 }
@@ -107,4 +114,31 @@ fn fixture_pin(name: &str) -> Pin {
         project: ProjectName::new(name).unwrap(),
         tag: TagName::new("v1.0.0").unwrap(),
     }
+}
+
+#[test]
+fn batch_row_projection_carries_series_and_parent_count() {
+    let eval = series_eval_with(vec![
+        PinVerdict::new(fixture_pin("a"), Verdict::Compatible),
+        PinVerdict::new(
+            fixture_pin("b"),
+            Verdict::RequiresAdaptation { reasons: vec![] },
+        ),
+    ]);
+    let result = BatchResult {
+        commit: fixture_sha(),
+        series: "stable".parse().unwrap(),
+        verdict: eval.verdict,
+        diagnostics: eval.diagnostics,
+        patch_facts: eval.patch_facts,
+        touched_paths: vec![],
+        pr_commits: None,
+        parent_count: NonZeroU32::new(2),
+    };
+    let row = batch_result_to_summary_row(&result, "merge subject".into());
+    assert_eq!(row.sha, fixture_sha());
+    assert_eq!(row.verdict, VerdictKind::RequiresAdaptation);
+    assert_eq!(row.series, Some("stable".parse().unwrap()));
+    assert_eq!(row.parent_count, NonZeroU32::new(2));
+    assert_eq!(row.subject, "merge subject");
 }

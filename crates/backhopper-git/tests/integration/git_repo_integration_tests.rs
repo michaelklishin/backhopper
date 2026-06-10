@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::TagName;
+use backhopper_git::GitRepo;
 
 use crate::helpers::repo::FakeRepo;
 

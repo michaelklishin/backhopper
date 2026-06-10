@@ -5,9 +5,11 @@
 //! Compact per-result projection emitted by `--formatter summary`
 //! and `--formatter text-summary`.
 
+use std::num::NonZeroU32;
+
 use serde::{Deserialize, Serialize};
 
-use crate::model::names::CommitSha;
+use crate::model::names::{CommitSha, SeriesName};
 use crate::model::verdict::{TouchedKinds, Verdict};
 
 /// One row in the summary output: a compact projection of a single
@@ -23,6 +25,14 @@ pub struct SummaryRow {
     /// row is safe to skip at a glance.
     pub tracked: u32,
     pub subject: String,
+    /// The series the row was evaluated against. `None` for
+    /// pin-targeted single evaluations and pre-v7 envelopes.
+    #[serde(default)]
+    pub series: Option<SeriesName>,
+    /// Parent count of the evaluated commit; `None` for patch and PR
+    /// inputs (no commit identity) and pre-v7 envelopes.
+    #[serde(default)]
+    pub parent_count: Option<NonZeroU32>,
 }
 
 /// Kind-only projection of `Verdict`: drops the variant payloads so a

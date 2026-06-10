@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Git access through `gix`. The whole crate's git seam lives here.
-
-mod pr_commits;
-mod target_tree_index;
-
-pub use pr_commits::{classify, pr_commits_for};
-pub use target_tree_index::TargetTreeIndex;
+//! `GitRepo`: the single wrapper around `gix::Repository`.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -19,8 +13,11 @@ use std::str;
 
 use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
 
+use backhopper_core::model::names::{CommitSha, CommitShaPrefix, TagName};
+use backhopper_core::versions::version_cmp;
+
 use crate::errors::GitError;
-use crate::model::names::{CommitSha, CommitShaPrefix, TagName};
+use crate::pr_commits;
 
 pub const AMBIGUOUS_SHA_CANDIDATE_CAP: usize = 8;
 
@@ -61,13 +58,6 @@ impl fmt::Display for ObjectKind {
 pub struct GitRepo {
     repo: gix::Repository,
     path: PathBuf,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TagInfo {
-    pub name: TagName,
-    pub commit: CommitSha,
-    pub branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -221,9 +211,8 @@ impl GitRepo {
         &self.path
     }
 
-    /// Borrow the underlying `gix::Repository`. Intended for `crate::git`
-    /// submodules that need direct access; not part of the stable public
-    /// surface.
+    /// Borrow the underlying `gix::Repository`. Intended for sibling
+    /// modules in this crate; not part of the stable public surface.
     pub(crate) fn gix(&self) -> &gix::Repository {
         &self.repo
     }
@@ -447,21 +436,4 @@ pub fn unified_diff_body(before: &str, after: &str) -> String {
     let printer = BasicLineDiffPrinter(&input.interner);
     diff.unified_diff(&printer, UnifiedDiffConfig::default(), &input)
         .to_string()
-}
-
-/// Compares two version-like tag strings in *descending* order: numerically
-/// newer comes first. Pairs with `min_by`/`max_by` callers that want the
-/// "latest" or "oldest" tag.
-pub fn version_cmp(a: &str, b: &str) -> Ordering {
-    let a_parts = parse_version(a);
-    let b_parts = parse_version(b);
-    a_parts.cmp(&b_parts).reverse()
-}
-
-fn parse_version(tag: &str) -> Vec<u64> {
-    let stripped = tag.strip_prefix('v').unwrap_or(tag);
-    stripped
-        .split(['.', '-', '+', '_'])
-        .filter_map(|p| p.parse::<u64>().ok())
-        .collect()
 }

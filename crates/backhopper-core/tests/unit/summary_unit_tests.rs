@@ -59,6 +59,8 @@ fn summary_row_round_trips_via_json() {
         },
         tracked: 7,
         subject: "Add a thing".to_owned(),
+        series: None,
+        parent_count: None,
     };
     let json = serde_json::to_string(&row).unwrap();
     let back: SummaryRow = serde_json::from_str(&json).unwrap();
@@ -76,6 +78,8 @@ fn summary_row_json_includes_touched_breakdown() {
         },
         tracked: 0,
         subject: "x".to_owned(),
+        series: None,
+        parent_count: None,
     };
     let json = serde_json::to_string(&row).unwrap();
     assert!(json.contains("\"erl\":1"));

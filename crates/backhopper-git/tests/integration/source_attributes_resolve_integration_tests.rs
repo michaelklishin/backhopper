@@ -8,9 +8,10 @@
 //! (`BehaviourModuleMissing`).
 
 use backhopper_core::compat::source_attributes::{behaviour_resolves, resolve_include};
-use backhopper_core::git::{GitRepo, TargetTreeIndex};
+use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::model::names::{GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::IncludeDirective;
+use backhopper_git::{GitRepo, build_target_tree_index};
 
 use crate::helpers::repo::FakeRepo;
 
@@ -25,7 +26,7 @@ fn mn(s: &str) -> ModuleName {
 fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let head = GitRef::new("HEAD").unwrap();
-    TargetTreeIndex::build(&g, &head).unwrap()
+    build_target_tree_index(&g, &head).unwrap()
 }
 
 #[test]

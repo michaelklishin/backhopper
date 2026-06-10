@@ -6,10 +6,11 @@ use std::collections::BTreeMap;
 
 use backhopper_core::Error as CoreError;
 use backhopper_core::config::{Config, Language};
-use backhopper_core::git::{GitRepo, version_cmp};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
+use backhopper_core::versions::version_cmp;
+use backhopper_git::GitRepo;
 
 use crate::cli::GlobalArgs;
 use crate::commands::context::open_store_mut;
@@ -54,7 +55,7 @@ fn generate_one_pin(cfg: &Config, store: &SnapshotStore<Mutable>, pin: &Pin) -> 
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
     let snapshot = build_snapshot(project, &repo, &pin.tag)?;
     store
         .write(&snapshot)

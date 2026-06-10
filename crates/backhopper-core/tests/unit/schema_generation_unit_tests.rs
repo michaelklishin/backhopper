@@ -113,3 +113,47 @@ fn v1_frozen_snapshot_remains_byte_stable() {
         "the frozen v1 snapshot must be deterministic across renderings"
     );
 }
+
+#[test]
+fn v7_embeds_batch_payload_and_v7_summary_row_fields() {
+    let v7 = schema_value_for(7).expect("v7 renders");
+    let batch = v7.get("batch_payload").expect("v7 carries batch_payload");
+    let batch_text = serde_json::to_string(batch).unwrap();
+    assert!(
+        batch_text.contains("parent_count"),
+        "BatchResult.parent_count in v7"
+    );
+    let row = v7.get("summary_row").expect("v7 carries summary_row");
+    let row_text = serde_json::to_string(row).unwrap();
+    assert!(row_text.contains("\"series\""), "SummaryRow.series in v7");
+    assert!(
+        row_text.contains("parent_count"),
+        "SummaryRow.parent_count in v7"
+    );
+}
+
+#[test]
+fn frozen_v3_and_v5_predate_the_v7_summary_row_fields() {
+    for v in [3u32, 5] {
+        let value = schema_value_for(v).expect("frozen render");
+        let row = value.get("summary_row").expect("summary_row present");
+        let row_text = serde_json::to_string(row).unwrap();
+        assert!(
+            !row_text.contains("parent_count"),
+            "v{v} summary_row must stay frozen without parent_count"
+        );
+    }
+}
+
+#[test]
+fn v7_description_names_the_merge_aware_batch_surface() {
+    let v7 = schema_value_for(7).expect("v7 renders");
+    let desc = v7
+        .get("description")
+        .and_then(|x| x.as_str())
+        .expect("description string");
+    assert!(
+        desc.contains("parent_count") && desc.contains("merge"),
+        "{desc}"
+    );
+}

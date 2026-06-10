@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use backhopper_core::model::names::{ProjectName, TagName};
+use backhopper_core::model::pin::Pin;
+use backhopper_git::GitError;
 use std::path::PathBuf;
 
 use bel7_cli::{ExitCode, ExitCodeProvider};
@@ -78,43 +81,33 @@ fn invalid_input_has_no_hint_by_default() {
 
 #[test]
 fn git_hint_for_commit_not_found_suggests_git_fetch() {
-    use backhopper_core::Error as CoreError;
-    use backhopper_core::errors::GitError;
-    let e = CliError::Core(CoreError::Git(GitError::CommitNotFound("deadbeef".into())));
+    let e = CliError::Git(GitError::CommitNotFound("deadbeef".into()));
     let hint = e.hint().unwrap();
     assert!(hint.contains("git fetch"));
 }
 
 #[test]
 fn git_hint_for_tag_not_found_suggests_fetch_tags() {
-    use backhopper_core::Error as CoreError;
-    use backhopper_core::errors::GitError;
-    let e = CliError::Core(CoreError::Git(GitError::TagNotFound("v1.0.0".into())));
+    let e = CliError::Git(GitError::TagNotFound("v1.0.0".into()));
     let hint = e.hint().unwrap();
     assert!(hint.contains("--tags"));
 }
 
 #[test]
 fn git_hint_for_open_failed_mentions_git_url() {
-    use backhopper_core::Error as CoreError;
-    use backhopper_core::errors::GitError;
-    let e = CliError::Core(CoreError::Git(GitError::OpenFailed("nope".into())));
+    let e = CliError::Git(GitError::OpenFailed("nope".into()));
     let hint = e.hint().unwrap();
     assert!(hint.contains("git_url"));
 }
 
 #[test]
 fn git_hint_for_io_error_has_no_canned_hint() {
-    use backhopper_core::Error as CoreError;
-    use backhopper_core::errors::GitError;
-    let e = CliError::Core(CoreError::Git(GitError::Io(std::io::Error::other("x"))));
+    let e = CliError::Git(GitError::Io(std::io::Error::other("x")));
     assert!(e.hint().is_none());
 }
 
 #[test]
 fn missing_snapshots_detail_lists_pins() {
-    use backhopper_core::model::names::{ProjectName, TagName};
-    use backhopper_core::model::pin::Pin;
     let e = CliError::MissingSnapshots {
         missing: vec![Pin::new(
             ProjectName::new("ra").unwrap(),

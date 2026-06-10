@@ -5,6 +5,7 @@
 //! Command dispatch.
 
 pub mod auto_generate;
+pub mod batch_plan;
 pub mod bisect;
 pub mod check;
 pub mod config;

@@ -11,8 +11,8 @@ use std::str;
 
 use serde::Serialize;
 
-use backhopper_core::git::GitRepo;
 use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
+use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, InitCmd};
 use crate::commands::rabbitmq_components::{
@@ -126,7 +126,7 @@ pub struct InferredPin {
 }
 
 fn infer_from_rabbitmq(repo_dir: &Path, branches: &[String]) -> CliResult<InferredWorkspace> {
-    let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
     let mut workspace = InferredWorkspace::default();
     for branch in branches {
         match read_components_at_branch(&repo, branch) {

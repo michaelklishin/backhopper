@@ -22,13 +22,13 @@
 use std::path::{Path, PathBuf};
 use std::str;
 
+use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
-use crate::git::TargetTreeIndex;
 use crate::model::names::{ModuleName, RelativePath};
 use crate::model::verdict::IncludeDirective;
 
 /// One `-behaviour(M)` declaration the scanner saw, with the line
-/// number for the operator-facing report.
+/// number for the user-facing report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BehaviourRef {
     pub behaviour: ModuleName,
@@ -36,7 +36,7 @@ pub struct BehaviourRef {
 }
 
 /// One `-include(...)` or `-include_lib(...)` declaration the scanner
-/// saw, with the line number for the operator-facing report.
+/// saw, with the line number for the user-facing report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncludeRef {
     pub directive: IncludeDirective,

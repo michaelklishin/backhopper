@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::errors::ConfigError;
-use crate::git::version_cmp;
 use crate::model::names::{GitRef, ProjectName, TagGlob, TagName};
 use crate::store::SnapshotStore;
+use crate::versions::version_cmp;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]

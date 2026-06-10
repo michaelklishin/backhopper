@@ -111,7 +111,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cli"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -119,6 +119,7 @@ dependencies = [
  "backhopper-driver",
  "backhopper-elixir",
  "backhopper-erlang",
+ "backhopper-git",
  "backhopper-xref",
  "backhopper-xref-reader",
  "bel7-cli",
@@ -142,10 +143,8 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
- "gix",
- "imara-diff",
  "insta",
  "proptest",
  "regex",
@@ -161,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -170,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-driver"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -185,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -197,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "insta",
@@ -210,8 +209,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "backhopper-git"
+version = "0.13.0"
+dependencies = [
+ "backhopper-core",
+ "gix",
+ "imara-diff",
+ "regex",
+ "tempfile",
+ "thiserror",
+ "time",
+]
+
+[[package]]
 name = "backhopper-xref"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -227,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -238,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang",
@@ -3049,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "backhopper-core",

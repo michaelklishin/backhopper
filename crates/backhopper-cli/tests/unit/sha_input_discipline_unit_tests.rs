@@ -31,7 +31,7 @@ fn nearest_preceding_fn_line(body: &str, call_idx: usize) -> Option<usize> {
         best = Some(idx + 1);
     }
     for (idx, _) in prefix.match_indices("\npub fn ") {
-        if best.map_or(true, |b| idx + 1 > b) {
+        if best.is_none_or(|b| idx + 1 > b) {
             best = Some(idx + 1);
         }
     }

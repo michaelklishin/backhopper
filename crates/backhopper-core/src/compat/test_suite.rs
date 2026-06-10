@@ -24,7 +24,7 @@ use std::str;
 use thiserror::Error;
 
 use crate::compat::otp::is_otp_module;
-use crate::git::TargetTreeIndex;
+use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::verdict::{Reason, TestCallSite};
 

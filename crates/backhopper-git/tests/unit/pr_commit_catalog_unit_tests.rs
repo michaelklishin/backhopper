@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::git::classify;
 use backhopper_core::model::pr_commit::PrCommitKind;
+use backhopper_git::classify;
 
 const SUBSET_HELD: bool = true;
 const SUBSET_FAILED: bool = false;

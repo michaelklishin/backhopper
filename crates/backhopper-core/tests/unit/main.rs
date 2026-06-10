@@ -41,7 +41,6 @@ mod path_routing_unit_tests;
 mod path_translation_unit_tests;
 mod per_pin_repo_override_unit_tests;
 mod pin_spec_unit_tests;
-mod pr_commit_catalog_unit_tests;
 mod preimage_check_unit_tests;
 mod project_layout_unit_tests;
 mod relative_path_unit_tests;

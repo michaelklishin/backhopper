@@ -18,7 +18,6 @@ use time::OffsetDateTime;
 use backhopper_core::Error as CoreError;
 use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project, ProjectLayout};
-use backhopper_core::git::{GitRepo, version_cmp};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, SeriesName, TagName,
 };
@@ -28,8 +27,10 @@ use backhopper_core::model::snapshot::{
 };
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
+use backhopper_core::versions::version_cmp;
 use backhopper_elixir::ElixirExtractor;
 use backhopper_erlang::ErlangExtractor;
+use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
 use crate::commands::context::{load_config, open_store_mut, open_store_read};
@@ -240,8 +241,8 @@ fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> C
                 .map_err(|e| CliError::Core(e.into()))?
                 .to_path_buf(),
         )
-        .map_err(|e| CliError::Core(e.into()))?;
-        let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
+        .map_err(CliError::Git)?;
+        let listing = repo.list_tag_refs().map_err(CliError::Git)?;
         let mut pending: Vec<String> = Vec::new();
         for tag in listing.tags {
             if !store.has(&p.name, &tag) {
@@ -331,8 +332,8 @@ fn generate_one(
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
-    let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
+    let listing = repo.list_tag_refs().map_err(CliError::Git)?;
     let tags = filter_tags_for_project(listing.tags, p, since);
     let mut captured = 0usize;
     let mut skipped = 0usize;
@@ -503,7 +504,7 @@ fn generate_pinned_tag(
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
     match build_snapshot(p, &repo, tag) {
         Ok(snapshot) => {
             if !dry_run {
@@ -579,9 +580,7 @@ pub(crate) fn build_snapshot(
     repo: &GitRepo,
     tag: &TagName,
 ) -> CliResult<Snapshot<state::Canonical>> {
-    let commit = repo
-        .resolve_tag(tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let commit = repo.resolve_tag(tag).map_err(CliError::Git)?;
     build_snapshot_at_commit(p, repo, &commit, tag)
 }
 
@@ -597,7 +596,7 @@ pub(crate) fn build_snapshot_at_commit(
             let scan_paths = p.scan_paths.clone();
             let blobs = repo
                 .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
-                .map_err(|e| CliError::Core(e.into()))?;
+                .map_err(CliError::Git)?;
             let files: Vec<(PathBuf, Vec<u8>)> =
                 blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
             (files, scan_paths, Vec::new())
@@ -612,7 +611,7 @@ pub(crate) fn build_snapshot_at_commit(
                     }
                     None => false,
                 })
-                .map_err(|e| CliError::Core(e.into()))?;
+                .map_err(CliError::Git)?;
             let files: Vec<(PathBuf, Vec<u8>)> =
                 blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
             let apps: Vec<ApplicationName> = apps_set.into_inner().into_iter().collect();
@@ -860,7 +859,7 @@ fn verify_one(
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
     let regenerated = build_snapshot(p, &repo, &tag)?;
     let store = open_store_read(args, cfg)?;
     let stored = store
@@ -1207,7 +1206,7 @@ fn rebuild(
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
     let snapshot = build_snapshot(p, &repo, &tag)?;
     let store = open_store_mut(args, cfg)?;
     if !dry_run {

@@ -6,7 +6,6 @@ use std::str::FromStr;
 
 use backhopper_core::errors::NameError;
 use backhopper_core::model::names::RelativePath;
-use gix::bstr::{BStr, BString, ByteSlice};
 
 #[test]
 fn accepts_ordinary_repo_relative_paths() {
@@ -75,25 +74,14 @@ fn display_matches_inner_string() {
 }
 
 #[test]
-fn try_from_bstr_accepts_utf8_bytes() {
-    let raw: &[u8] = b"deps/rabbit/src/rabbit.erl";
-    let bstr: &BStr = raw.as_bstr();
-    let p = RelativePath::try_from(bstr).expect("utf-8 bytes parse");
+fn from_bytes_accepts_utf8_bytes() {
+    let p = RelativePath::from_bytes(b"deps/rabbit/src/rabbit.erl").expect("utf-8 bytes parse");
     assert_eq!(p.as_str(), "deps/rabbit/src/rabbit.erl");
 }
 
 #[test]
-fn try_from_bstring_accepts_utf8_bytes() {
-    let bs: BString = BString::from("Cargo.toml");
-    let p = RelativePath::try_from(&bs).expect("utf-8 bytes parse");
-    assert_eq!(p.as_str(), "Cargo.toml");
-}
-
-#[test]
-fn try_from_bstr_rejects_invalid_utf8() {
-    let raw: &[u8] = &[0x66, 0x6F, 0x80, 0x6F];
-    let bstr: &BStr = raw.as_bstr();
-    let err = RelativePath::try_from(bstr).expect_err("non-utf-8 rejected");
+fn from_bytes_rejects_invalid_utf8() {
+    let err = RelativePath::from_bytes(&[0x66, 0x6F, 0x80, 0x6F]).expect_err("non-utf-8 rejected");
     assert!(matches!(err, NameError::Invalid { .. }));
 }
 

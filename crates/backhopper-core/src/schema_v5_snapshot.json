@@ -1,0 +1,2237 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "command_family": "check",
+  "description": "v5 adds `Diagnostics.missing_test_modules` (always-on counter-style diagnostic) and three new `Reason` variants (`TestModuleSymbolMissing`, `BehaviourModuleMissing`, `HeaderFileMissing`). Additive on shapes already declared `#[non_exhaustive]`; older readers tolerate.",
+  "envelope": {
+    "properties": {
+      "command": {
+        "description": "Verb identifier in kebab-case, e.g. \"check merge\".",
+        "type": "string"
+      },
+      "data": {
+        "$defs": {
+          "ArgShape": {
+            "oneOf": [
+              {
+                "description": "Variable identifier (starts with `_` or capital letter).",
+                "properties": {
+                  "kind": {
+                    "const": "variable",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Atom literal: `foo`, `'quoted atom'`.",
+                "properties": {
+                  "kind": {
+                    "const": "atom",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Integer literal.",
+                "properties": {
+                  "kind": {
+                    "const": "integer",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Float literal.",
+                "properties": {
+                  "kind": {
+                    "const": "float",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Binary literal: `<<...>>`.",
+                "properties": {
+                  "kind": {
+                    "const": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "List literal: `[...]`.",
+                "properties": {
+                  "kind": {
+                    "const": "list",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Tuple literal: `{...}` (size is the number of elements).",
+                "properties": {
+                  "kind": {
+                    "const": "tuple",
+                    "type": "string"
+                  },
+                  "size": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "size"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Record reference: `#name{...}`.",
+                "properties": {
+                  "kind": {
+                    "const": "record",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "String literal: `\"...\"`.",
+                "properties": {
+                  "kind": {
+                    "const": "string",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Anonymous fun: `fun ... end` or `fun mod:f/A`.",
+                "properties": {
+                  "kind": {
+                    "const": "fun",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Anything the extractor cannot classify. Always matches.",
+                "properties": {
+                  "kind": {
+                    "const": "unknown",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ArtifactKind": {
+            "oneOf": [
+              {
+                "description": "`<<<<<<<`, `=======`, `>>>>>>>`, or `||||||| ` marker present in a\ntouched file. The cherry-pick driver left a conflict unresolved.",
+                "properties": {
+                  "artifact_kind": {
+                    "const": "conflict_marker",
+                    "type": "string"
+                  },
+                  "marker": {
+                    "$ref": "#/$defs/ConflictMarker"
+                  }
+                },
+                "required": [
+                  "artifact_kind",
+                  "marker"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`-export([f/N])` line without a matching clause defining `f/N`.\nCompiles, then crashes at runtime on the first call.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "artifact_kind": {
+                    "const": "export_without_body",
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "artifact_kind",
+                  "module",
+                  "function",
+                  "arity"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ConflictMarker": {
+            "oneOf": [
+              {
+                "const": "ours",
+                "description": "`<<<<<<<` line: start of the local side.",
+                "type": "string"
+              },
+              {
+                "const": "divider",
+                "description": "`=======` line: divider between sides.",
+                "type": "string"
+              },
+              {
+                "const": "theirs",
+                "description": "`>>>>>>>` line: end of the incoming side.",
+                "type": "string"
+              },
+              {
+                "const": "ancestor",
+                "description": "`||||||| ` line: base ancestor marker from a 3-way diff.",
+                "type": "string"
+              }
+            ]
+          },
+          "Diagnostics": {
+            "description": "Series-wide diagnostic envelope. Strictly separate from `Verdict`\nso untracked-call signals never leak into machine-readable verdicts.",
+            "properties": {
+              "missing_test_modules": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "description": "Per-`_SUITE.erl` map of `helper_module -> call_site_count`. The\nalways-on diagnostic counterpart of\n`Reason::TestModuleSymbolMissing`: emitted by the parse pass\neven without a target tree (which is why the inner key is the\n`ModuleName` rather than a resolved-or-not bit). When\n`--target-repo-dir-path` is supplied the resolver re-walks this\nmap and promotes the absent ones to typed reasons. The nested\n`BTreeMap` shape keeps the JSON envelope serialisable without\na custom composite-key encoder.",
+                "type": "object"
+              },
+              "suggested_suites": {
+                "description": "SUITE names worth running for the patch, derived from touched paths.\nPopulated even when the verdict promotes to `Inapplicable` so that\nschema-only and config-only diffs still surface relevant suites.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unanalyzed": {
+                "$ref": "#/$defs/Unanalyzed"
+              },
+              "untracked_calls": {
+                "additionalProperties": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "untracked_records": {
+                "additionalProperties": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "FileLoggingStyle": {
+            "properties": {
+              "dominant": {
+                "$ref": "#/$defs/LoggingStyle"
+              },
+              "logger_macro_sites": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "rabbit_log_sites": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dominant",
+              "logger_macro_sites",
+              "rabbit_log_sites"
+            ],
+            "type": "object"
+          },
+          "InapplicableReason": {
+            "oneOf": [
+              {
+                "properties": {
+                  "reason": {
+                    "const": "no_erlang_surface_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_docs_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_test_fixtures_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_schema_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_makefile_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_mix_exs_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_ci_workflow_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_app_src_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "const": "only_rebar_config_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every changed `.erl` hunk is a Variant A unwrap: dropping\n`-ifdef(TEST).` or `-endif.` around an `-export(...)` directive,\nor rewriting `-compile(export_all).` to an explicit\n`-export([...])`. No call sites, no specs, no bodies touched —\nonly test-visibility metadata.",
+                "properties": {
+                  "reason": {
+                    "const": "only_test_visibility_changed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The patch touches Erlang surface but every referenced symbol\nresolves to the self-pin or to a local definition: every\ntracked-dep pin sees zero in-scope references. Without this\nreason the operator would see a wall of vacuous `Compatible`\nrows for a patch that backhopper genuinely has no signal on.",
+                "properties": {
+                  "reason": {
+                    "const": "only_self_surface_touched",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every touched path lives in a sibling project's scope, not this\npin's. The pin has nothing to say about the patch. `project`\nnames the first sibling project (alphabetical) that owns the\nout-of-scope paths.",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "const": "out_of_scope_for",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "project"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Every touched path is unclaimed by any configured project's\nscan_paths or app_roots. Vendored files, docs, build scripts.",
+                "properties": {
+                  "reason": {
+                    "const": "untracked",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`--target-repo-dir-path` was supplied and every touched path\nis missing from the target tree, with no configured\ntranslation mapping any of them. The patch as written does\nnot apply to the target.",
+                "properties": {
+                  "paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "reason": {
+                    "const": "paths_missing_on_target",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason",
+                  "paths"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "IncludeDirective": {
+            "description": "`-include` and `-include_lib` are syntactically distinct: the\nformer takes a relative-to-source path, the latter an\n`application/include/file.hrl` shape resolved through OTP's lib\npath. The variant preserves which form the source used so the\nremediation text can match.",
+            "oneOf": [
+              {
+                "properties": {
+                  "form": {
+                    "const": "include",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "form",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "form": {
+                    "const": "include_lib",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "form",
+                  "path"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "KhepriSignals": {
+            "properties": {
+              "touches_dual_branch": {
+                "default": false,
+                "type": "boolean"
+              },
+              "touches_khepri_module": {
+                "default": false,
+                "type": "boolean"
+              },
+              "touches_only_khepri_branch": {
+                "default": false,
+                "type": "boolean"
+              },
+              "uses_khepri_macros": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "LoggingStyle": {
+            "enum": [
+              "logger_macros",
+              "rabbit_log_module",
+              "mixed",
+              "none"
+            ],
+            "type": "string"
+          },
+          "Mfa": {
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "module",
+              "function",
+              "arity"
+            ],
+            "type": "object"
+          },
+          "PatchFacts": {
+            "description": "Source classifiers on the patch. Strictly separate from `Verdict` reasons.",
+            "properties": {
+              "introduces_versioned_record": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "khepri_signals": {
+                "$ref": "#/$defs/KhepriSignals"
+              },
+              "logging_style": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/FileLoggingStyle"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "Pin": {
+            "properties": {
+              "project": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "project",
+              "tag"
+            ],
+            "type": "object"
+          },
+          "PinVerdict": {
+            "properties": {
+              "pin": {
+                "$ref": "#/$defs/Pin"
+              },
+              "source_delta_details": {
+                "items": {
+                  "$ref": "#/$defs/SourceDelta"
+                },
+                "type": "array"
+              },
+              "touched": {
+                "$ref": "#/$defs/TouchedKinds"
+              },
+              "tracked_ref_details": {
+                "items": {
+                  "$ref": "#/$defs/SymbolRef"
+                },
+                "type": "array"
+              },
+              "tracked_refs": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "verdict": {
+                "$ref": "#/$defs/Verdict"
+              }
+            },
+            "required": [
+              "pin",
+              "verdict"
+            ],
+            "type": "object"
+          },
+          "PrCommit": {
+            "description": "One commit on the PR-branch side of a 2-parent merge.",
+            "properties": {
+              "author_date": {
+                "type": "string"
+              },
+              "kind": {
+                "$ref": "#/$defs/PrCommitKind"
+              },
+              "sha": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sha",
+              "subject",
+              "author_date",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "PrCommitKind": {
+            "description": "Classification of a PR-branch commit's role.\n\n`#[non_exhaustive]` so future, richer taxonomies (test-only,\ndocs-only, dependency-bump, etc.) can add variants without a\nbreaking change.",
+            "oneOf": [
+              {
+                "const": "substantive",
+                "description": "Default: substantive change worth reviewing.",
+                "type": "string"
+              },
+              {
+                "const": "conflict_resolution",
+                "description": "Subject matched the conflict-resolution catalog AND the file\nset was a strict subset of prior PR-branch commits.",
+                "type": "string"
+              },
+              {
+                "const": "review_feedback",
+                "description": "Subject indicated the commit applied code-review feedback.",
+                "type": "string"
+              },
+              {
+                "const": "fixup",
+                "description": "`git --fixup` auto-generated or the manual `fixup:` convention.",
+                "type": "string"
+              },
+              {
+                "const": "wip_or_cleanup",
+                "description": "Subject was `WIP` or bare `Cleanup`.",
+                "type": "string"
+              }
+            ]
+          },
+          "Reason": {
+            "oneOf": [
+              {
+                "properties": {
+                  "first_seen_at_tag": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "missing_symbol",
+                    "type": "string"
+                  },
+                  "suggested_replacement": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/SymbolRef"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/$defs/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "expected": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "found": {
+                    "items": {
+                      "format": "uint8",
+                      "maximum": 255,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "arity_changed",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "function",
+                  "expected",
+                  "found"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expected_spec": {
+                    "type": "string"
+                  },
+                  "found_spec": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "signature_changed",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "function",
+                  "arity",
+                  "expected_spec",
+                  "found_spec"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "file_absent",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "context_drift",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "hunk_index"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The contiguous preimage block (Context and Removed lines from\nthe hunk) was found verbatim at a different starting line.\nCherry-pick adapters handle this with the `-x` trailer; the\noperator just needs the delta to confirm the patch's intent\nstill applies.",
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "preimage_drifted",
+                    "type": "string"
+                  },
+                  "line_delta": {
+                    "format": "int",
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "hunk_index",
+                  "line_delta"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The preimage block does not appear anywhere in the file. The\npatch was authored against a tree where the lines existed; on\nthis pin they don't. Structurally inapplicable: the operator\nneeds an excerpt to reason about why.",
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "preimage_missing",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "preimage_excerpt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "hunk_index",
+                  "preimage_excerpt"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "deprecated_usage",
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/SymbolRef"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "since": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/$defs/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "now_hidden",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "expected": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "found": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "record_fields_changed",
+                    "type": "string"
+                  },
+                  "record": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "record",
+                  "expected",
+                  "found"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "unsupported_file_type",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "untracked_module_missing",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Call-site argument shapes don't satisfy any clause head at the\npin. Emitted when both the call and the pin's clause patterns\nare concrete enough to compare; `Unknown` on either side is the\nescape hatch that suppresses the reason.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "call_args": {
+                    "items": {
+                      "$ref": "#/$defs/ArgShape"
+                    },
+                    "type": "array"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "clause_mismatch",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "pin_clauses": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/$defs/ArgShape"
+                      },
+                      "type": "array"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "function",
+                  "arity",
+                  "call_args",
+                  "pin_clauses"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch references an MFA owned by the self-project but absent from the\nresolved self-snapshot. `suggested_source_for_prereq` is filled only\nwith `--suggest-prereqs`.",
+                "properties": {
+                  "kind": {
+                    "const": "missing_prereq",
+                    "type": "string"
+                  },
+                  "self_branch": {
+                    "type": "string"
+                  },
+                  "suggested_source_for_prereq": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "symbol": {
+                    "$ref": "#/$defs/SymbolRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol",
+                  "self_branch"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Pre-flight syntactic damage in a touched file: an unresolved\nmerge-conflict marker, an exported function with no definition, etc.",
+                "properties": {
+                  "artifact": {
+                    "$ref": "#/$defs/ArtifactKind"
+                  },
+                  "kind": {
+                    "const": "syntactic_artifact",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "line",
+                  "artifact"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch changes a `-callback` signature; an implementer still has the old one.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "expected_after_patch": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "implementer_signature": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_callback_signature_changed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "behaviour",
+                  "callback",
+                  "arity",
+                  "expected_after_patch",
+                  "implementer",
+                  "implementer_signature"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch removes a required callback; implementer still exports it.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_callback_removed",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "behaviour",
+                  "callback",
+                  "arity",
+                  "implementer"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch adds a required callback; implementer is missing the export.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "implementer": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_callback_added",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "behaviour",
+                  "callback",
+                  "arity",
+                  "implementer"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Patch touches a path absent on pin, but a module of the same basename exists elsewhere.",
+                "properties": {
+                  "kind": {
+                    "const": "module_relocated",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "patch_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "patch_path"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Wire-bearing macro value differs between source and pin.",
+                "properties": {
+                  "after": {
+                    "type": "string"
+                  },
+                  "before": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "wire_constant_changed",
+                    "type": "string"
+                  },
+                  "macro_name": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "macro_name",
+                  "before",
+                  "after"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`version/0` advanced without the matching historical-implementation module.",
+                "properties": {
+                  "advertised_version_after": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "advertised_version_before": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expected_historical_module": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "historical_implementation_missing",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "advertised_version_before",
+                  "advertised_version_after",
+                  "expected_historical_module"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Function bodies drifted at the same advertised `version/0`. Mixed-version cluster risk.",
+                "properties": {
+                  "advertised_version": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "functions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "wire_contract_body_drift",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "functions",
+                  "advertised_version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "`version/0` decreased pin → patch.",
+                "properties": {
+                  "kind": {
+                    "const": "wire_contract_regression",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "patch_version": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "pin_version": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "pin_version",
+                  "patch_version"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Spec return shape differs between source and pin for a referenced MFA.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "return_shape_mismatch",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "pin_signature": {
+                    "type": "string"
+                  },
+                  "source_signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "function",
+                  "arity",
+                  "source_signature",
+                  "pin_signature"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A type-reference inside a `-spec`, `-callback`, `-type`, or\n`-opaque` attribute resolves to a name and arity that the pin\ndoes not expose via `-export_type`. Non-blocking: a missing\ntype alias is a dialyzer-level concern, not a load-time crash.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "missing_type",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "name",
+                  "arity"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched path is absent from the target tree, but a\nconfigured `[[path_translation]]` rewrites it to a path that\ndoes exist on the target. Non-blocking: the operator (or the\ncherry-pick driver) rewrites the path before applying.",
+                "properties": {
+                  "kind": {
+                    "const": "path_rename",
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "target_path": {
+                    "type": "string"
+                  },
+                  "translation": {
+                    "$ref": "#/$defs/TranslationSource"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "target_path",
+                  "translation"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A `_SUITE.erl` file in the patch references `missing_module:f/n`\nwhere `missing_module` resolves to no source file under any\nconfigured `FamilyDefaults.test_helper_search_paths` on the\ntarget tree. The cherry-pick compiles and the SUITE may even\nload, but every call to the missing helper crashes at runtime:\nthe failure pattern that bit the Jun 2026 v4.1.x → v4.0.x round\n(the `amqp_utils:connection_config/1` undef in\n`amqp10_connection_max_SUITE`). Non-blocking by default: the\ndiagnostic equivalent (`Diagnostics.missing_test_modules`)\nalways fires; the `Reason` variant fires only when\n`--target-repo-dir-path` is supplied and the resolution is\nauthoritative.",
+                "properties": {
+                  "call_sites": {
+                    "items": {
+                      "$ref": "#/$defs/TestCallSite"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "const": "test_module_symbol_missing",
+                    "type": "string"
+                  },
+                  "missing_module": {
+                    "type": "string"
+                  },
+                  "suite_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "suite_path",
+                  "missing_module",
+                  "call_sites"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` declares `-behaviour(behaviour)` (or\n`-behavior(...)`) where `behaviour` resolves to no source\nmodule on the target tree. `erlc` compiles with a warning,\nthen hook dispatch crashes at runtime. Sister verdict to the\nexisting `BehaviourCallback*` variants which model implementer\ndrift; this one catches the missing-behaviour-module case the\nexisting variants do not.",
+                "properties": {
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_module_missing",
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "behaviour"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` or `.hrl` declares `-include(path)` or\n`-include_lib(app/include/file.hrl)` against a target tree that\ndoes not ship the resolved header. Compile-time failure rather\nthan runtime, but same operator-facing shape as\n`TestModuleSymbolMissing`: looked fine on source, broken on\ntarget.",
+                "properties": {
+                  "attempted_paths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "include_directive": {
+                    "$ref": "#/$defs/IncludeDirective"
+                  },
+                  "kind": {
+                    "const": "header_file_missing",
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "include_directive",
+                  "attempted_paths"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "versioned_machine_snapshot_missing",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "$ref": "#/$defs/SnapshotSide"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "side"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Declared wire constants are touched but the snapshot's\n`wire_constants` vector lacks the listed macros on `side`.\n`macros` is sorted alphabetically. Non-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "wire_constant_bindings_missing",
+                    "type": "string"
+                  },
+                  "macros": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "$ref": "#/$defs/SnapshotSide"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "macros",
+                  "side"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SeriesSummary": {
+            "properties": {
+              "compatible": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inapplicable": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "incompatible": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "requires_adaptation": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "compatible",
+              "requires_adaptation",
+              "incompatible"
+            ],
+            "type": "object"
+          },
+          "SeriesVerdict": {
+            "properties": {
+              "results": {
+                "items": {
+                  "$ref": "#/$defs/PinVerdict"
+                },
+                "type": "array"
+              },
+              "summary": {
+                "$ref": "#/$defs/SeriesSummary"
+              }
+            },
+            "required": [
+              "results",
+              "summary"
+            ],
+            "type": "object"
+          },
+          "SnapshotSide": {
+            "description": "Which side of a snapshot comparison the data is missing from.",
+            "enum": [
+              "source",
+              "target",
+              "both"
+            ],
+            "type": "string"
+          },
+          "SourceDelta": {
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "source_spec": {
+                "type": "string"
+              },
+              "target_spec": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "module",
+              "function",
+              "arity",
+              "source_spec",
+              "target_spec"
+            ],
+            "type": "object"
+          },
+          "SymbolRef": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "behaviour",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "callback",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "function",
+                  "arity"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "function",
+                    "type": "string"
+                  },
+                  "mfa": {
+                    "$ref": "#/$defs/Mfa"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "mfa"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "macro",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "record",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "type",
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "module",
+                  "name",
+                  "arity"
+                ],
+                "type": "object"
+              }
+            ],
+            "type": "object"
+          },
+          "TestCallSite": {
+            "description": "One `Module:Function/Arity` reference inside a `_SUITE.erl` that\nresolves to a module absent on the target tree. Carries the line\nnumber so the operator can jump straight to the call site.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "function",
+              "arity",
+              "line"
+            ],
+            "type": "object"
+          },
+          "TouchedKinds": {
+            "description": "Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable`\ntell a real green check from a diff with nothing analyzable to check.",
+            "properties": {
+              "app_src": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "ci_workflow": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "docs": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "erl": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "hrl": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "makefile": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mix_exs": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "only_self_surface": {
+                "description": "The patch touches Erlang surface but references no tracked-dep\nAPI (every non-self pin sees zero in-scope references). The CLI\nsets this after `evaluate_series` when a self-pin is present\nand every non-self pin's `tracked_refs` is empty; see\n`InapplicableReason::OnlySelfSurfaceTouched`.",
+                "type": "boolean"
+              },
+              "only_test_visibility": {
+                "description": "Every changed `.erl` hunk is a Variant A unwrap of test-only\n`-ifdef(TEST)` machinery around an `-export` directive (see\n`InapplicableReason::OnlyTestVisibilityChanged`). When true,\nthe patch touches Erlang surface but adds no semantic\ncontent, so an empty reason set should promote to\n`Inapplicable` instead of `Compatible`.",
+                "type": "boolean"
+              },
+              "other": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "rebar_config": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "schema": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tests": {
+                "default": 0,
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "TranslationSource": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "config_stanza",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "external_file",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Unanalyzed": {
+            "description": "Counts of call sites the analyzer could not resolve: `apply/3`-style\nBIFs, and dispatch through a variable module or function. Informational only.",
+            "properties": {
+              "apply": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "variable_dispatch": {
+                "default": 0,
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "Verdict": {
+            "oneOf": [
+              {
+                "properties": {
+                  "verdict": {
+                    "const": "compatible",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "$ref": "#/$defs/Reason"
+                    },
+                    "type": "array"
+                  },
+                  "verdict": {
+                    "const": "requires_adaptation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict",
+                  "reasons"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "$ref": "#/$defs/Reason"
+                    },
+                    "type": "array"
+                  },
+                  "verdict": {
+                    "const": "incompatible",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict",
+                  "reasons"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "reason": {
+                    "$ref": "#/$defs/InapplicableReason"
+                  },
+                  "verdict": {
+                    "const": "inapplicable",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "The output of `Patch::evaluate_series`: verdicts plus diagnostics plus\n`PatchFacts` (source classifiers that drive downstream policy without\nbeing verdict reasons).",
+        "properties": {
+          "diagnostics": {
+            "$ref": "#/$defs/Diagnostics"
+          },
+          "patch_facts": {
+            "$ref": "#/$defs/PatchFacts"
+          },
+          "pr_commits": {
+            "default": null,
+            "description": "Inner PR-branch commits for 2-parent merge SHAs. `None` for\nnon-2-parent merges and non-merge SHAs.\n\nDo NOT add `skip_serializing_if = \"Option::is_none\"`. The\n`None` vs `Some(vec![])` distinction is wire-load-bearing.",
+            "items": {
+              "$ref": "#/$defs/PrCommit"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "touched_paths": {
+            "default": [],
+            "description": "Paths the analysed patch touched, in diff-encounter order.\nAlways emitted; an empty vec means the patch touched zero files.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verdict": {
+            "$ref": "#/$defs/SeriesVerdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "diagnostics"
+        ],
+        "title": "SeriesEvaluation",
+        "type": "object"
+      },
+      "exit_code": {
+        "description": "Process exit code carried inside the envelope; matches the process status.",
+        "type": "integer"
+      },
+      "schema_version": {
+        "description": "Wire-format schema version. Bumps when envelope shape changes.",
+        "minimum": 1,
+        "type": "integer"
+      },
+      "warnings": {
+        "description": "Free-form CLI warnings attached to the envelope.",
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "schema_version",
+      "command",
+      "data",
+      "exit_code"
+    ],
+    "type": "object"
+  },
+  "schema_version": 5,
+  "summary_row": {
+    "$defs": {
+      "TouchedKinds": {
+        "description": "Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable`\ntell a real green check from a diff with nothing analyzable to check.",
+        "properties": {
+          "app_src": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ci_workflow": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "docs": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "erl": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hrl": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "makefile": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mix_exs": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "only_self_surface": {
+            "description": "The patch touches Erlang surface but references no tracked-dep\nAPI (every non-self pin sees zero in-scope references). The CLI\nsets this after `evaluate_series` when a self-pin is present\nand every non-self pin's `tracked_refs` is empty; see\n`InapplicableReason::OnlySelfSurfaceTouched`.",
+            "type": "boolean"
+          },
+          "only_test_visibility": {
+            "description": "Every changed `.erl` hunk is a Variant A unwrap of test-only\n`-ifdef(TEST)` machinery around an `-export` directive (see\n`InapplicableReason::OnlyTestVisibilityChanged`). When true,\nthe patch touches Erlang surface but adds no semantic\ncontent, so an empty reason set should promote to\n`Inapplicable` instead of `Compatible`.",
+            "type": "boolean"
+          },
+          "other": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rebar_config": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tests": {
+            "default": 0,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "VerdictKind": {
+        "description": "Kind-only projection of `Verdict`: drops the variant payloads so a\nsummary row stays single-line.",
+        "enum": [
+          "compatible",
+          "requires_adaptation",
+          "incompatible",
+          "inapplicable"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "One row in the summary output: a compact projection of a single\n`SeriesEvaluation` result. JSON and text formatters share the type.",
+    "properties": {
+      "sha": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string"
+      },
+      "touched": {
+        "$ref": "#/$defs/TouchedKinds"
+      },
+      "tracked": {
+        "description": "Total tracked-dep symbol references summed over every evaluated\npin. Zero means the patch references no tracked-dep API; the\nrow is safe to skip at a glance.",
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "verdict": {
+        "$ref": "#/$defs/VerdictKind"
+      }
+    },
+    "required": [
+      "sha",
+      "verdict",
+      "touched",
+      "tracked",
+      "subject"
+    ],
+    "title": "SummaryRow",
+    "type": "object"
+  },
+  "title": "backhopper envelope v5"
+}

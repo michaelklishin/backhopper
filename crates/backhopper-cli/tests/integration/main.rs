@@ -16,6 +16,7 @@ mod end_to_end_extractor_version_integration_tests;
 mod end_to_end_init_integration_tests;
 mod end_to_end_integration_tests;
 mod end_to_end_json_integration_tests;
+mod end_to_end_merge_batch_integration_tests;
 mod end_to_end_multi_app_integration_tests;
 mod end_to_end_rev_resolve_integration_tests;
 mod end_to_end_schema_integration_tests;

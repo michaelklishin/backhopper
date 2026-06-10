@@ -11,10 +11,12 @@ use serde::Serialize;
 use tabled::{Table, Tabled};
 
 use backhopper_core::config::{Config, Project, Series};
-use backhopper_core::git::{GitRepo, version_cmp};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
+use backhopper_core::versions::version_cmp;
+
+use backhopper_git::GitRepo;
 
 use crate::cli::{DoctorCmd, GlobalArgs};
 use crate::commands::context::{load_config, open_store_read, snapshot_dir};
@@ -219,8 +221,8 @@ fn upstream_lead(project: &Project, resolved: Option<&TagName>) -> Result<usize,
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf(),
     )
-    .map_err(|e| CliError::Core(e.into()))?;
-    let listing = repo.list_tag_refs().map_err(|e| CliError::Core(e.into()))?;
+    .map_err(CliError::Git)?;
+    let listing = repo.list_tag_refs().map_err(CliError::Git)?;
     let filtered = filter_tags_for_project(listing.tags, project, None);
     Ok(count_newer_tags(&filtered, resolved))
 }

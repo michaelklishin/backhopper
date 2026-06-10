@@ -11,6 +11,7 @@ use schemars::{JsonSchema, schema_for};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use crate::model::batch::BatchPayload;
 use crate::model::summary::SummaryRow;
 use crate::model::verdict::SeriesEvaluation;
 
@@ -23,6 +24,13 @@ pub use crate::envelope_version::{
 /// `schema show 1` stays a stable archaeological record across binary
 /// versions.
 const SCHEMA_V1_FROZEN: &str = include_str!("schema_v1_snapshot.json");
+
+/// Frozen v3 and v5 schema bytes. Generated before v7 added `series`
+/// and `parent_count` to `SummaryRow`; frozen so older versions stay
+/// stable archaeological records instead of silently absorbing later
+/// type changes. v4 and v6 derive from these (they only retitle).
+const SCHEMA_V3_FROZEN: &str = include_str!("schema_v3_snapshot.json");
+const SCHEMA_V5_FROZEN: &str = include_str!("schema_v5_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -52,10 +60,11 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
              Option<Vec<PrCommit>>` to SeriesEvaluation. The check batch payload \
              (BatchPayload) was also promoted to a public type with the same fields.",
         )),
-        3 => Ok(combined_v3()),
+        3 => Ok(serde_json::from_str(SCHEMA_V3_FROZEN).expect("frozen v3 snapshot is valid JSON")),
         4 => Ok(combined_v4()),
-        5 => Ok(combined_v5()),
+        5 => Ok(serde_json::from_str(SCHEMA_V5_FROZEN).expect("frozen v5 snapshot is valid JSON")),
         6 => Ok(combined_v6()),
+        7 => Ok(combined_v7()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -64,7 +73,8 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
 }
 
 fn combined_v4() -> Value {
-    let mut v3 = combined_v3();
+    let mut v3: Value =
+        serde_json::from_str(SCHEMA_V3_FROZEN).expect("frozen v3 snapshot is valid JSON");
     if let Some(obj) = v3.as_object_mut() {
         obj.insert("schema_version".into(), json!(4));
         obj.insert("title".into(), json!("backhopper envelope v4"));
@@ -82,7 +92,8 @@ fn combined_v4() -> Value {
 }
 
 fn combined_v6() -> Value {
-    let mut v5 = combined_v5();
+    let mut v5: Value =
+        serde_json::from_str(SCHEMA_V5_FROZEN).expect("frozen v5 snapshot is valid JSON");
     if let Some(obj) = v5.as_object_mut() {
         obj.insert("schema_version".into(), json!(6));
         obj.insert("title".into(), json!("backhopper envelope v6"));
@@ -101,41 +112,28 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v5() -> Value {
+fn combined_v7() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
-        5,
+        7,
         "check",
-        "v5 adds `Diagnostics.missing_test_modules` (always-on counter-style \
-         diagnostic) and three new `Reason` variants (`TestModuleSymbolMissing`, \
-         `BehaviourModuleMissing`, `HeaderFileMissing`). Additive on shapes \
-         already declared `#[non_exhaustive]`; older readers tolerate.",
+        "v7 makes `check batch` and `check multi` merge-aware: 2-parent merge SHAs \
+         evaluate as the first-parent diff with `pr_commits` populated, octopus merges \
+         evaluate first-parent with `pr_commits: null`. `BatchResult` gains \
+         `parent_count` (1 plain, 2 PR merge, 3+ octopus; null only from pre-v7 \
+         binaries). `SummaryRow` gains `series` and `parent_count`, and the summary \
+         formatters now emit one row per (commit, series) pair on batch and multi.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
+    let batch_payload =
+        serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
     let Value::Object(mut obj) = series else {
         unreachable!("envelope_with_payload always returns a Value::Object")
     };
     obj.insert("summary_row".into(), summary_row);
-    obj.insert("schema_version".into(), json!(5));
-    obj.insert("title".into(), json!("backhopper envelope v5"));
-    Value::Object(obj)
-}
-
-fn combined_v3() -> Value {
-    let series = envelope_with_payload::<SeriesEvaluation>(
-        3,
-        "check",
-        "v3 captures the SummaryRow shape consumed by --formatter summary and \
-         --formatter text-summary, alongside the v2 SeriesEvaluation surface.",
-    );
-    let summary_row =
-        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
-    let Value::Object(mut obj) = series else {
-        unreachable!("envelope_with_payload always returns a Value::Object")
-    };
-    obj.insert("summary_row".into(), summary_row);
-    obj.insert("schema_version".into(), json!(3));
-    obj.insert("title".into(), json!("backhopper envelope v3"));
+    obj.insert("batch_payload".into(), batch_payload);
+    obj.insert("schema_version".into(), json!(7));
+    obj.insert("title".into(), json!("backhopper envelope v7"));
     Value::Object(obj)
 }
 

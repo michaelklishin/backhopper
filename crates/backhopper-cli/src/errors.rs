@@ -11,8 +11,9 @@ use bel7_cli::{ExitCode, ExitCodeProvider, codes};
 use thiserror::Error;
 
 use backhopper_core::Error as CoreError;
-use backhopper_core::errors::{ConfigError, GitError, StoreError};
+use backhopper_core::errors::{ConfigError, StoreError};
 use backhopper_core::model::pin::Pin;
+use backhopper_git::{GitError, PatchInputError};
 
 pub type CliResult<T> = Result<T, CliError>;
 
@@ -20,6 +21,9 @@ pub type CliResult<T> = Result<T, CliError>;
 pub enum CliError {
     #[error(transparent)]
     Core(#[from] CoreError),
+
+    #[error("git error: {0}")]
+    Git(#[from] GitError),
 
     #[error("io error: {0}")]
     Io(#[from] io::Error),
@@ -54,6 +58,7 @@ impl ExitCodeProvider for CliError {
     fn exit_code(&self) -> ExitCode {
         match self {
             Self::Core(e) => map_core(e),
+            Self::Git(_) => codes::IO_ERR,
             Self::Io(_) => codes::IO_ERR,
             Self::ConfigNotFound { .. } => codes::NO_INPUT,
             Self::OutputError(_) => codes::IO_ERR,
@@ -98,7 +103,7 @@ impl CliError {
                     "run `backhopper snapshots generate --project {project}` so the pattern has tags to resolve against"
                 ))
             }
-            Self::Core(CoreError::Git(g)) => git_hint(g),
+            Self::Git(g) => git_hint(g),
             Self::Core(CoreError::Patch(_)) => Some(
                 "ensure the input is a unified diff (e.g. `git format-patch -1 --stdout`)".into(),
             ),
@@ -119,6 +124,15 @@ impl CliError {
                 Some(out)
             }
             _ => None,
+        }
+    }
+}
+
+impl From<PatchInputError> for CliError {
+    fn from(e: PatchInputError) -> Self {
+        match e {
+            PatchInputError::Git(g) => Self::Git(g),
+            other => Self::InvalidInput(other.to_string()),
         }
     }
 }
@@ -178,7 +192,7 @@ fn map_core(e: &CoreError) -> ExitCode {
             ConfigError::NotFound(_) => codes::NO_INPUT,
             _ => codes::DATA_ERR,
         },
-        CoreError::Git(_) | CoreError::Io(_) => codes::IO_ERR,
+        CoreError::Io(_) => codes::IO_ERR,
         CoreError::Patch(_) => codes::DATA_ERR,
         CoreError::Name(_) => codes::USAGE,
     }

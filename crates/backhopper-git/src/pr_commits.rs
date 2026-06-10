@@ -19,10 +19,11 @@ use gix::bstr::ByteSlice;
 use regex::RegexSet;
 use time::OffsetDateTime;
 
+use backhopper_core::model::names::{CommitSha, RelativePath};
+use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
+
 use crate::errors::GitError;
-use crate::git::GitRepo;
-use crate::model::names::{CommitSha, RelativePath};
-use crate::model::pr_commit::{PrCommit, PrCommitKind};
+use crate::repo::GitRepo;
 
 fn gix_err<E: Display>(e: E) -> GitError {
     GitError::Gix(e.to_string())
@@ -114,7 +115,7 @@ fn walk_pr_branch(
     Ok(commits)
 }
 
-pub(super) fn commit_subject(commit: &gix::Commit<'_>) -> Result<String, GitError> {
+pub(crate) fn commit_subject(commit: &gix::Commit<'_>) -> Result<String, GitError> {
     let message = commit.message().map_err(gix_err)?;
     let raw = message.title.to_str_lossy();
     Ok(raw.trim_end_matches(['\n', '\r']).to_owned())
@@ -152,7 +153,7 @@ fn files_touched_relative_to_first_parent(
             opts.track_rewrites(None);
         })
         .for_each_to_obtain_tree(&new_tree, |change| -> Result<_, GitError> {
-            if let Ok(rel) = RelativePath::try_from(change.location()) {
+            if let Ok(rel) = RelativePath::from_bytes(change.location()) {
                 out.insert(rel);
             }
             Ok(ControlFlow::Continue(()))
@@ -164,7 +165,7 @@ fn files_touched_relative_to_first_parent(
 /// Catalog of subjects that suggest a bookkeeping role plus the
 /// `PrCommitKind` each entry maps to.
 const CATALOG: &[(&str, PrCommitKind)] = &[
-    // git-generated merge subjects — conflict resolution by convention
+    // git-generated merge subjects: conflict resolution by convention
     (
         r"(?i)^Merge branch '[^']+' (into|of) \S+$",
         PrCommitKind::ConflictResolution,

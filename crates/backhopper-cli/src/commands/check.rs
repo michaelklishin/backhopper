@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::mem;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
@@ -23,14 +24,14 @@ use backhopper_core::compat::scope::{PinScope, parse_module_names};
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
-use backhopper_core::errors::GitError;
-use backhopper_core::git::{GitRepo, pr_commits_for};
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 use backhopper_core::model::names::{
     CommitSha, CommitShaPrefix, ModuleName, ProjectName, SeriesName, TagName,
 };
 use backhopper_core::model::pin::{self, Pin, PinSpec};
+use backhopper_core::model::pr_commit::PrCommit;
 use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict,
@@ -38,19 +39,24 @@ use backhopper_core::model::verdict::{
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
+use backhopper_git::{GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput};
+
 use crate::cli::check::TargetRepoArgs;
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
 };
+use crate::commands::batch_plan::BatchPlan;
 use crate::commands::context::{load_config, open_store_read};
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
-use crate::commands::sha_prefix::{expand_prefix, expand_prefix_with};
+use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
 use crate::commands::snapshot_cache::SnapshotCache;
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
-use crate::commands::summary::{SummaryFormatter, emit_rows, to_summary_row};
+use crate::commands::summary::{
+    SummaryFormatter, batch_result_to_summary_row, emit_rows, to_summary_row,
+};
 use crate::commands::target_repo;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
@@ -64,6 +70,10 @@ struct CompatPayload {
     diagnostics: Diagnostics,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     project_suggestions: Vec<ProjectSuggestion>,
+    /// Inner PR-branch commits for 2-parent merge inputs, `None` for
+    /// everything else. The `None` vs `Some(vec![])` distinction is
+    /// wire-load-bearing, so no `skip_serializing_if`.
+    pr_commits: Option<Vec<PrCommit>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,6 +81,54 @@ struct CompatPayload {
 enum QueriedAgainst {
     Pin { project: String, tag: String },
     Series { name: String, pins: Vec<PinPayload> },
+}
+
+/// Commit identity carried into `run_check_patch` for summary rows
+/// and the `pr_commits` payload. Absent for patch, range, and PR
+/// inputs, which have no single commit identity.
+#[derive(Debug)]
+struct PatchProvenance {
+    sha: CommitSha,
+    parent_count: NonZeroU32,
+    pr_commits: Option<Vec<PrCommit>>,
+}
+
+/// Everything the per-commit check arms need: patch bytes, the macro
+/// file map at the diff base, and the provenance for the summary row.
+#[derive(Debug)]
+struct ResolvedForCheck {
+    bytes: Vec<u8>,
+    source_files: FileMap,
+    provenance: PatchProvenance,
+}
+
+fn resolve_commit_input(
+    repo_dir_path: &Path,
+    prefix: &CommitShaPrefix,
+    merges: MergePolicy,
+    pr: PrCommitPolicy,
+) -> CliResult<ResolvedForCheck> {
+    let repo = GitRepo::open(repo_dir_path.to_path_buf()).map_err(CliError::Git)?;
+    let sha =
+        expand_prefix_with(&repo, prefix).map_err(|e| enrich_with_repo_path(e, repo_dir_path))?;
+    let input = ResolvedPatchInput::for_commit(&repo, &sha, merges, pr)?;
+    let source_files = input.load_source_files(&repo).map_err(CliError::Git)?;
+    let parent_count = input.source.parent_count();
+    let ResolvedPatchInput {
+        sha,
+        bytes,
+        pr_commits,
+        ..
+    } = input;
+    Ok(ResolvedForCheck {
+        bytes,
+        source_files,
+        provenance: PatchProvenance {
+            sha,
+            parent_count,
+            pr_commits,
+        },
+    })
 }
 
 pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
@@ -113,22 +171,25 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             diagnostics,
             commit,
         } => {
-            let commit = expand_prefix(&repo_dir_path, &commit)?;
-            let bytes = commit_patch_bytes(&repo_dir_path, &commit)?;
-            let source_files = load_source_files_at_parent(&repo_dir_path, &commit)?;
+            let resolved = resolve_commit_input(
+                &repo_dir_path,
+                &commit,
+                MergePolicy::Refuse,
+                PrCommitPolicy::Skip,
+            )?;
             run_check_patch(
                 args,
                 &cfg,
-                &bytes,
+                &resolved.bytes,
                 project,
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &source_files,
+                &resolved.source_files,
                 &source,
                 &target,
                 diagnostics,
-                None,
+                Some(resolved.provenance),
             )
         }
         CheckCmd::Range {
@@ -142,26 +203,45 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             target,
             diagnostics,
         } => {
-            let merge_commit = merge_commit
-                .map(|p| expand_prefix(&repo_dir_path, &p))
-                .transpose()?;
-            let bytes = range_patch_bytes(&repo_dir_path, range.as_deref(), merge_commit.as_ref())?;
-            let source_files =
-                range_source_files(&repo_dir_path, range.as_deref(), merge_commit.as_ref())?;
-            run_check_patch(
-                args,
-                &cfg,
-                &bytes,
-                project,
-                tag,
-                series,
-                Some(&repo_dir_path),
-                &source_files,
-                &source,
-                &target,
-                diagnostics,
-                None,
-            )
+            if let Some(prefix) = merge_commit {
+                let resolved = resolve_commit_input(
+                    &repo_dir_path,
+                    &prefix,
+                    MergePolicy::RequireMerge,
+                    PrCommitPolicy::Collect,
+                )?;
+                run_check_patch(
+                    args,
+                    &cfg,
+                    &resolved.bytes,
+                    project,
+                    tag,
+                    series,
+                    Some(&repo_dir_path),
+                    &resolved.source_files,
+                    &source,
+                    &target,
+                    diagnostics,
+                    Some(resolved.provenance),
+                )
+            } else {
+                let bytes = range_patch_bytes(&repo_dir_path, range.as_deref())?;
+                let source_files = range_source_files(&repo_dir_path, range.as_deref())?;
+                run_check_patch(
+                    args,
+                    &cfg,
+                    &bytes,
+                    project,
+                    tag,
+                    series,
+                    Some(&repo_dir_path),
+                    &source_files,
+                    &source,
+                    &target,
+                    diagnostics,
+                    None,
+                )
+            }
         }
         CheckCmd::Merge {
             project,
@@ -173,22 +253,25 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             diagnostics,
             merge_sha,
         } => {
-            let merge_sha = expand_prefix(&repo_dir_path, &merge_sha)?;
-            let bytes = range_patch_bytes(&repo_dir_path, None, Some(&merge_sha))?;
-            let source_files = range_source_files(&repo_dir_path, None, Some(&merge_sha))?;
+            let resolved = resolve_commit_input(
+                &repo_dir_path,
+                &merge_sha,
+                MergePolicy::RequireMerge,
+                PrCommitPolicy::Collect,
+            )?;
             run_check_patch(
                 args,
                 &cfg,
-                &bytes,
+                &resolved.bytes,
                 project,
                 tag,
                 series,
                 Some(&repo_dir_path),
-                &source_files,
+                &resolved.source_files,
                 &source,
                 &target,
                 diagnostics,
-                Some(&merge_sha),
+                Some(resolved.provenance),
             )
         }
         CheckCmd::Pr {
@@ -224,18 +307,15 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             target: _,
             diagnostics,
             commit,
-        } => {
-            let commit = expand_prefix(&repo_dir_path, &commit)?;
-            run_multi(
-                args,
-                &cfg,
-                &series,
-                &repo_dir_path,
-                &commit,
-                &source,
-                diagnostics,
-            )
-        }
+        } => run_multi(
+            args,
+            &cfg,
+            &series,
+            &repo_dir_path,
+            &commit,
+            &source,
+            diagnostics,
+        ),
         CheckCmd::Batch {
             series,
             repo_dir_path,
@@ -381,17 +461,15 @@ fn build_pin_files(
         // pin.tag for self-pins is the resolved commit SHA.
         let commit = CommitSha::new(pin.tag.as_str())
             .map_err(|e| CliError::Other(format!("self-pin tag is not a SHA: {e}")))?;
-        let repo = GitRepo::open(repo_path).map_err(|e| CliError::Core(e.into()))?;
+        let repo = GitRepo::open(repo_path).map_err(CliError::Git)?;
         (repo, commit)
     } else {
         let git_url = project
             .require_git_url()
             .map_err(|e| CliError::Core(e.into()))?
             .to_path_buf();
-        let repo = GitRepo::open(git_url).map_err(|e| CliError::Core(e.into()))?;
-        let commit = repo
-            .resolve_tag(&pin.tag)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let repo = GitRepo::open(git_url).map_err(CliError::Git)?;
+        let commit = repo.resolve_tag(&pin.tag).map_err(CliError::Git)?;
         (repo, commit)
     };
     let needed: BTreeSet<String> = in_scope
@@ -400,7 +478,7 @@ fn build_pin_files(
         .collect();
     let blobs = repo
         .read_paths_at_commit(&commit, |p| needed.contains(p))
-        .map_err(|e| CliError::Core(e.into()))?;
+        .map_err(CliError::Git)?;
     let mut present: BTreeMap<String, Vec<u8>> = blobs
         .into_iter()
         .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
@@ -525,118 +603,79 @@ fn resolve_rev_with_hint(g: &GitRepo, repo: &Path, rev: &str) -> CliResult<Commi
             "commit {rev} not found in repository {}: did you forget to `git fetch`?",
             repo.display()
         )),
-        other => CliError::Core(other.into()),
+        other => CliError::Git(other),
     })
 }
 
-fn load_source_files_at_parent(repo: &Path, commit: &CommitSha) -> CliResult<FileMap> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let parent = g
-        .parent_commit(commit)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let Some(parent) = parent else {
-        return Ok(FileMap::new());
+fn range_source_files(repo: &Path, range: Option<&str>) -> CliResult<FileMap> {
+    let g = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let Some(r) = range else {
+        return Err(CliError::InvalidInput(
+            "specify either --range BASE..HEAD or --merge-commit SHA".into(),
+        ));
     };
-    load_files_at(&g, &parent)
-}
-
-fn range_source_files(
-    repo: &Path,
-    range: Option<&str>,
-    merge: Option<&CommitSha>,
-) -> CliResult<FileMap> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let from = match (range, merge) {
-        (Some(r), None) => {
-            let (a, _) = r
-                .split_once("..")
-                .ok_or_else(|| CliError::InvalidInput("--range expects BASE..HEAD".into()))?;
-            resolve_rev_with_hint(&g, repo, a)?
-        }
-        (None, Some(merge_sha)) => {
-            let parents = g.parents(merge_sha).map_err(|e| CliError::Core(e.into()))?;
-            if parents.is_empty() {
-                return Ok(FileMap::new());
-            }
-            parents[0].clone()
-        }
-        _ => return Ok(FileMap::new()),
-    };
-    load_files_at(&g, &from)
-}
-
-fn load_files_at(g: &GitRepo, commit: &CommitSha) -> CliResult<FileMap> {
+    let (a, _) = r
+        .split_once("..")
+        .ok_or_else(|| CliError::InvalidInput("--range expects BASE..HEAD".into()))?;
+    let from = resolve_rev_with_hint(&g, repo, a)?;
     let blobs = g
-        .read_paths_at_commit(commit, |p| p.ends_with(".erl") || p.ends_with(".hrl"))
-        .map_err(|e| CliError::Core(e.into()))?;
+        .read_paths_at_commit(&from, |p| p.ends_with(".erl") || p.ends_with(".hrl"))
+        .map_err(CliError::Git)?;
     let mut map = FileMap::new();
     for blob in blobs {
-        if let Ok(text) = str::from_utf8(&blob.bytes) {
-            map.insert(blob.path, text.to_owned());
+        if let Ok(text) = String::from_utf8(blob.bytes) {
+            map.insert(blob.path, text);
         }
     }
     Ok(map)
 }
 
-pub fn commit_patch_bytes(repo: &Path, commit: &CommitSha) -> CliResult<Vec<u8>> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let parents = g.parents(commit).map_err(|e| CliError::Core(e.into()))?;
-    if parents.len() >= 2 {
-        return Err(CliError::InvalidInput(format!(
-            "{commit} is a merge commit ({} parents); use 'backhopper check merge {commit}' instead",
-            parents.len()
-        )));
-    }
-    let from = parents
-        .into_iter()
-        .next()
-        .ok_or_else(|| CliError::InvalidInput(format!("commit {commit} has no parent")))?;
-    let text = g
-        .diff_commits_unified(&from, commit, |p| {
-            p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
-        })
-        .map_err(|e| CliError::Core(e.into()))?;
-    Ok(text.into_bytes())
-}
-
-fn range_patch_bytes(
-    repo: &Path,
-    range: Option<&str>,
-    merge: Option<&CommitSha>,
-) -> CliResult<Vec<u8>> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let (from, to) = match (range, merge) {
-        (Some(r), None) => {
-            let (a, b) = r
-                .split_once("..")
-                .ok_or_else(|| CliError::InvalidInput(format!("invalid range {r:?}")))?;
-            (
-                resolve_rev_with_hint(&g, repo, a)?,
-                resolve_rev_with_hint(&g, repo, b)?,
-            )
-        }
-        (None, Some(merge_sha)) => {
-            let parents = g.parents(merge_sha).map_err(|e| CliError::Core(e.into()))?;
-            if parents.len() < 2 {
-                return Err(CliError::InvalidInput(format!(
-                    "{merge_sha} is not a merge commit (parents: {})",
-                    parents.len()
-                )));
-            }
-            (parents[0].clone(), merge_sha.clone())
-        }
-        _ => {
-            return Err(CliError::InvalidInput(
-                "specify either --range BASE..HEAD or --merge-commit SHA".into(),
-            ));
-        }
+fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
+    let g = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let Some(r) = range else {
+        return Err(CliError::InvalidInput(
+            "specify either --range BASE..HEAD or --merge-commit SHA".into(),
+        ));
     };
+    let (a, b) = r
+        .split_once("..")
+        .ok_or_else(|| CliError::InvalidInput(format!("invalid range {r:?}")))?;
+    let (from, to) = (
+        resolve_rev_with_hint(&g, repo, a)?,
+        resolve_rev_with_hint(&g, repo, b)?,
+    );
     let text = g
         .diff_commits_unified(&from, &to, |p| {
             p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
         })
-        .map_err(|e| CliError::Core(e.into()))?;
+        .map_err(CliError::Git)?;
     Ok(text.into_bytes())
+}
+
+fn apply_target_context(
+    cfg: &Config,
+    target_ctx: &target_repo::TargetContext,
+    bytes: &[u8],
+    evaluation: &mut SeriesEvaluation,
+) -> CliResult<()> {
+    let parsed = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
+    let touched: Vec<target_repo::TouchedPath<'_>> = parsed
+        .files
+        .iter()
+        .filter_map(|f| {
+            let path = f.new_path.as_deref().or(f.old_path.as_deref())?;
+            let is_deletion =
+                f.new_path.is_none() || f.new_path.as_deref() == Some(Path::new("/dev/null"));
+            Some(target_repo::TouchedPath { path, is_deletion })
+        })
+        .collect();
+    let summary = target_repo::classify_touched_paths(&touched, target_ctx);
+    target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
+    let search_globs = target_repo::collect_search_path_globs(cfg);
+    let findings =
+        target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
+    target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -652,7 +691,7 @@ fn run_check_patch(
     source: &SourcePinArgs,
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
-    merge_sha: Option<&CommitSha>,
+    provenance: Option<PatchProvenance>,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let pin_specs: Vec<PinSpec> = match (&project, &tag, &series) {
@@ -705,33 +744,13 @@ fn run_check_patch(
         repo_dir_path,
         diagnostics.suggest_prereqs,
     );
-    if let (Some(repo_path), Some(sha)) = (repo_dir_path, merge_sha) {
-        let repo = GitRepo::open(repo_path).map_err(|e| CliError::Core(e.into()))?;
-        evaluation.pr_commits = pr_commits_for(&repo, sha).map_err(|e| CliError::Core(e.into()))?;
+    if let Some(p) = &provenance {
+        evaluation.pr_commits.clone_from(&p.pr_commits);
     }
     if let Some(target_ctx) =
         target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?
     {
-        let parsed = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
-        let touched: Vec<target_repo::TouchedPath<'_>> = parsed
-            .files
-            .iter()
-            .filter_map(|f| {
-                let path = f.new_path.as_deref().or(f.old_path.as_deref())?;
-                let is_deletion =
-                    f.new_path.is_none() || f.new_path.as_deref() == Some(Path::new("/dev/null"));
-                Some(target_repo::TouchedPath { path, is_deletion })
-            })
-            .collect();
-        let summary = target_repo::classify_touched_paths(&touched, &target_ctx);
-        target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
-        let search_globs = target_repo::collect_search_path_globs(cfg);
-        let findings = target_repo::collect_added_file_findings(
-            &parsed.files,
-            &target_ctx.index,
-            &search_globs,
-        );
-        target_repo::merge_added_file_findings_into_evaluation(findings, &mut evaluation);
+        apply_target_context(cfg, &target_ctx, bytes, &mut evaluation)?;
     }
     let queried = match (&project, &tag, &series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
@@ -757,6 +776,7 @@ fn run_check_patch(
         queried_against: queried,
         results: evaluation.verdict.clone(),
         diagnostics: evaluation.diagnostics.clone(),
+        pr_commits: evaluation.pr_commits.clone(),
         project_suggestions: project_suggestions.clone(),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
@@ -765,15 +785,20 @@ fn run_check_patch(
         return render_terse(&evaluation, exit);
     }
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
-        let sha = match merge_sha {
-            Some(s) => s.clone(),
-            None => placeholder_zero_sha(),
+        let (sha, subject) = match &provenance {
+            Some(p) => (
+                p.sha.clone(),
+                lookup_commit_subject(&p.sha, repo_dir_path).unwrap_or_default(),
+            ),
+            None => (placeholder_zero_sha(), String::new()),
         };
-        let subject = match merge_sha {
-            Some(sha) => lookup_commit_subject(sha, repo_dir_path).unwrap_or_default(),
-            None => String::new(),
-        };
-        let row = to_summary_row(&evaluation, sha, subject);
+        let row = to_summary_row(
+            &evaluation,
+            sha,
+            subject,
+            series.clone(),
+            provenance.as_ref().map(|p| p.parent_count),
+        );
         emit_rows(summary_fmt, &[row])?;
         return Ok(exit);
     }
@@ -1262,7 +1287,7 @@ fn format_annotation(kind: &str, hint: &str) -> String {
     }
 }
 
-fn read_commits_file(path: &Path) -> CliResult<Vec<CommitShaPrefix>> {
+fn read_commits_file(path: &Path) -> CliResult<Vec<(usize, CommitShaPrefix)>> {
     let raw = if path == Path::new("-") {
         let mut s = String::new();
         io::stdin().read_to_string(&mut s).map_err(CliError::Io)?;
@@ -1287,7 +1312,7 @@ fn read_commits_file(path: &Path) -> CliResult<Vec<CommitShaPrefix>> {
             continue;
         }
         match token.parse::<CommitShaPrefix>() {
-            Ok(prefix) => out.push(prefix),
+            Ok(prefix) => out.push((line_no, prefix)),
             Err(e) => errors.push(format!("line {line_no}: {e}")),
         }
     }
@@ -1596,94 +1621,80 @@ fn run_batch(
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
 ) -> CliResult<i32> {
+    reject_terse(diagnostics, "check batch")?;
     let store = open_store_read(args, cfg)?;
-    let prefixes = read_commits_file(commits_file_path)?;
+    let entries = read_commits_file(commits_file_path)?;
     let target_ctx = target_repo::build_context(target, &cfg.path_translations, Some(repo))?;
-    if prefixes.is_empty() {
+    if entries.is_empty() {
         return Err(CliError::InvalidInput(
             "no commits supplied (empty file or stdin)".into(),
         ));
     }
-    let git_repo = GitRepo::open(repo.to_path_buf()).map_err(|e| CliError::Core(e.into()))?;
-    let resolved_commits: Vec<CommitSha> = prefixes
-        .iter()
-        .map(|p| expand_prefix_with(&git_repo, p))
-        .collect::<CliResult<_>>()?;
-    let mut resolved_series: Vec<(SeriesName, Vec<Pin>, Vec<PinSpec>)> =
-        Vec::with_capacity(series_names.len());
-    for name in series_names {
-        let s = cfg
-            .series_by_name_with_coverage_check(name)
-            .map_err(|e| CliError::Core(e.into()))?;
-        let pins = resolve_all_pin_specs(args, cfg, &store, &s.pins, Some(repo))?;
-        warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
-        ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
-        resolved_series.push((name.clone(), pins, s.pins.clone()));
-    }
-    let queried: Vec<BatchQuery> = resolved_series
-        .iter()
-        .map(|(name, pins, _)| BatchQuery {
-            series: name.clone(),
-            pins: pins.iter().map(PinPayload::from).collect(),
-        })
-        .collect();
-    let pair_count = resolved_commits.len() * resolved_series.len();
+    let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let plan = BatchPlan::resolve(&git_repo, repo, &entries)?;
+    let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
+    let queried = batch_queries(&resolved_series);
+    let pair_count = plan.len() * resolved_series.len();
     let mut reporter = select_batch_reporter(args);
     reporter.start(pair_count, "evaluating commits");
     let mut results: Vec<BatchResult> = Vec::with_capacity(pair_count);
     let mut worst_exit: i32 = 0;
     let mut current: usize = 0;
     let cache = SnapshotCache::new(&store);
-    for commit_sha in &resolved_commits {
-        let bytes = commit_patch_bytes(repo, commit_sha)?;
-        let source_files = load_source_files_at_parent(repo, commit_sha)?;
-        for (name, pins, pin_specs) in &resolved_series {
-            let item_label = format!("{commit_sha} @ {name}");
-            let source_pins =
-                resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
+    // Source pins depend only on the series, never on the commit.
+    let mut source_pins_by_series = Vec::with_capacity(resolved_series.len());
+    for series in &resolved_series {
+        source_pins_by_series.push(resolve_source_pins(
+            cfg,
+            &store,
+            &series.pins,
+            None,
+            None,
+            Some(&series.name),
+            source,
+        )?);
+    }
+    for planned in plan.commits() {
+        let input = ResolvedPatchInput::from_parents(
+            &git_repo,
+            &planned.sha,
+            &planned.parents,
+            MergePolicy::FirstParentDiff,
+            PrCommitPolicy::Collect,
+        )?;
+        let source_files = input.load_source_files(&git_repo).map_err(CliError::Git)?;
+        let merge_marker = if input.source.is_merge() {
+            " (merge)"
+        } else {
+            ""
+        };
+        for (series, source_pins) in resolved_series.iter().zip(&source_pins_by_series) {
+            let item_label = format!("{} @ {}{merge_marker}", input.sha, series.name);
             let mut evaluation = evaluate_one(
                 cfg,
                 &cache,
-                &bytes,
-                pins,
-                pin_specs,
-                &source_pins,
+                &input.bytes,
+                &series.pins,
+                &series.pin_specs,
+                source_pins,
                 &source_files,
                 Some(repo),
             )?;
             if let Some(target_ctx) = &target_ctx {
-                let parsed = Patch::parse(&bytes).map_err(|e| CliError::Core(e.into()))?;
-                let touched: Vec<target_repo::TouchedPath<'_>> = parsed
-                    .files
-                    .iter()
-                    .filter_map(|f| {
-                        let path = f.new_path.as_deref().or(f.old_path.as_deref())?;
-                        let is_deletion = f.new_path.is_none()
-                            || f.new_path.as_deref() == Some(Path::new("/dev/null"));
-                        Some(target_repo::TouchedPath { path, is_deletion })
-                    })
-                    .collect();
-                let summary = target_repo::classify_touched_paths(&touched, target_ctx);
-                target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
-                let search_globs = target_repo::collect_search_path_globs(cfg);
-                let findings = target_repo::collect_added_file_findings(
-                    &parsed.files,
-                    &target_ctx.index,
-                    &search_globs,
-                );
-                target_repo::merge_added_file_findings_into_evaluation(findings, &mut evaluation);
+                apply_target_context(cfg, target_ctx, &input.bytes, &mut evaluation)?;
             }
             current += 1;
             reporter.progress(current, pair_count, &item_label);
             worst_exit = worst_exit.max(evaluation.worst_exit_code());
             results.push(BatchResult {
-                commit: commit_sha.clone(),
-                series: name.clone(),
-                verdict: evaluation.verdict.clone(),
-                diagnostics: evaluation.diagnostics.clone(),
-                patch_facts: evaluation.patch_facts.clone(),
-                touched_paths: evaluation.touched_paths.clone(),
-                pr_commits: evaluation.pr_commits.clone(),
+                commit: input.sha.clone(),
+                series: series.name.clone(),
+                verdict: evaluation.verdict,
+                diagnostics: evaluation.diagnostics,
+                patch_facts: evaluation.patch_facts,
+                touched_paths: evaluation.touched_paths,
+                pr_commits: input.pr_commits.clone(),
+                parent_count: Some(input.source.parent_count()),
             });
         }
     }
@@ -1692,10 +1703,83 @@ fn run_batch(
         queried_against: queried,
         results,
     };
+    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
+        let rows = batch_summary_rows(&git_repo, &payload.results);
+        emit_rows(summary_fmt, &rows)?;
+        return Ok(worst_exit);
+    }
     let ctx = OutputContext::new(args.formatter, "check batch");
     render_with_exit(&ctx, &payload, worst_exit, |w| {
         render_batch_text(w, &payload.results, diagnostics)
     })
+}
+
+/// One requested series with its resolved pins and original specs.
+struct ResolvedSeries {
+    name: SeriesName,
+    pins: Vec<Pin>,
+    pin_specs: Vec<PinSpec>,
+}
+
+/// Resolve and snapshot-check every requested series once, up front.
+fn resolve_series_set(
+    args: &GlobalArgs,
+    cfg: &Config,
+    store: &SnapshotStore<ReadOnly>,
+    series_names: &[SeriesName],
+    repo: &Path,
+    diagnostics: CheckFlags,
+) -> CliResult<Vec<ResolvedSeries>> {
+    let mut resolved = Vec::with_capacity(series_names.len());
+    for name in series_names {
+        let s = cfg
+            .series_by_name_with_coverage_check(name)
+            .map_err(|e| CliError::Core(e.into()))?;
+        let pins = resolve_all_pin_specs(args, cfg, store, &s.pins, Some(repo))?;
+        warn_on_stale_extractors(&coverage_report(cfg, store, &pins));
+        ensure_pin_snapshots_present(args, cfg, store, &pins, diagnostics.auto_generate)?;
+        resolved.push(ResolvedSeries {
+            name: name.clone(),
+            pins,
+            pin_specs: s.pins.clone(),
+        });
+    }
+    Ok(resolved)
+}
+
+fn batch_queries(resolved_series: &[ResolvedSeries]) -> Vec<BatchQuery> {
+    resolved_series
+        .iter()
+        .map(|s| BatchQuery {
+            series: s.name.clone(),
+            pins: s.pins.iter().map(PinPayload::from).collect(),
+        })
+        .collect()
+}
+
+/// One summary row per `(commit, series)` pair, with the commit
+/// subject looked up once per distinct commit.
+fn batch_summary_rows(repo: &GitRepo, results: &[BatchResult]) -> Vec<SummaryRow> {
+    let mut subjects: BTreeMap<String, String> = BTreeMap::new();
+    results
+        .iter()
+        .map(|r| {
+            let subject = subjects
+                .entry(r.commit.to_string())
+                .or_insert_with(|| repo.commit_subject(&r.commit).unwrap_or_default())
+                .clone();
+            batch_result_to_summary_row(r, subject)
+        })
+        .collect()
+}
+
+fn reject_terse(diagnostics: CheckFlags, verb: &str) -> CliResult<()> {
+    if diagnostics.terse {
+        return Err(CliError::InvalidInput(format!(
+            "--terse is not supported on `{verb}`; use `--formatter summary` for one JSON row per (commit, series) pair"
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -1711,42 +1795,43 @@ fn run_multi(
     cfg: &Config,
     series_names: &[SeriesName],
     repo: &Path,
-    commit: &CommitSha,
+    commit: &CommitShaPrefix,
     source: &SourcePinArgs,
     diagnostics: CheckFlags,
 ) -> CliResult<i32> {
+    reject_terse(diagnostics, "check multi")?;
     let store = open_store_read(args, cfg)?;
-    let bytes = commit_patch_bytes(repo, commit)?;
-    let source_files = load_source_files_at_parent(repo, commit)?;
-    let mut resolved_series: Vec<(SeriesName, Vec<Pin>, Vec<PinSpec>)> =
-        Vec::with_capacity(series_names.len());
-    for name in series_names {
-        let s = cfg
-            .series_by_name_with_coverage_check(name)
-            .map_err(|e| CliError::Core(e.into()))?;
-        let pins = resolve_all_pin_specs(args, cfg, &store, &s.pins, Some(repo))?;
-        warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
-        ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
-        resolved_series.push((name.clone(), pins, s.pins.clone()));
-    }
-    let queried: Vec<BatchQuery> = resolved_series
-        .iter()
-        .map(|(name, pins, _)| BatchQuery {
-            series: name.clone(),
-            pins: pins.iter().map(PinPayload::from).collect(),
-        })
-        .collect();
+    let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let commit =
+        &expand_prefix_with(&git_repo, commit).map_err(|e| enrich_with_repo_path(e, repo))?;
+    let input = ResolvedPatchInput::for_commit(
+        &git_repo,
+        commit,
+        MergePolicy::FirstParentDiff,
+        PrCommitPolicy::Collect,
+    )?;
+    let source_files = input.load_source_files(&git_repo).map_err(CliError::Git)?;
+    let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
+    let queried = batch_queries(&resolved_series);
     let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
     let mut worst_exit: i32 = 0;
     let cache = SnapshotCache::new(&store);
-    for (name, pins, pin_specs) in &resolved_series {
-        let source_pins = resolve_source_pins(cfg, &store, pins, None, None, Some(name), source)?;
+    for series in &resolved_series {
+        let source_pins = resolve_source_pins(
+            cfg,
+            &store,
+            &series.pins,
+            None,
+            None,
+            Some(&series.name),
+            source,
+        )?;
         let evaluation = evaluate_one(
             cfg,
             &cache,
-            &bytes,
-            pins,
-            pin_specs,
+            &input.bytes,
+            &series.pins,
+            &series.pin_specs,
             &source_pins,
             &source_files,
             Some(repo),
@@ -1754,12 +1839,13 @@ fn run_multi(
         worst_exit = worst_exit.max(evaluation.worst_exit_code());
         results.push(BatchResult {
             commit: commit.clone(),
-            series: name.clone(),
-            verdict: evaluation.verdict.clone(),
-            diagnostics: evaluation.diagnostics.clone(),
-            patch_facts: evaluation.patch_facts.clone(),
-            touched_paths: evaluation.touched_paths.clone(),
-            pr_commits: evaluation.pr_commits.clone(),
+            series: series.name.clone(),
+            verdict: evaluation.verdict,
+            diagnostics: evaluation.diagnostics,
+            patch_facts: evaluation.patch_facts,
+            touched_paths: evaluation.touched_paths,
+            pr_commits: input.pr_commits.clone(),
+            parent_count: Some(input.source.parent_count()),
         });
     }
     let payload = MultiPayload {
@@ -1767,6 +1853,11 @@ fn run_multi(
         queried_against: queried,
         results,
     };
+    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
+        let rows = batch_summary_rows(&git_repo, &payload.results);
+        emit_rows(summary_fmt, &rows)?;
+        return Ok(worst_exit);
+    }
     let ctx = OutputContext::new(args.formatter, "check multi");
     render_with_exit(&ctx, &payload, worst_exit, |w| {
         render_batch_text(w, &payload.results, diagnostics)

@@ -4,7 +4,7 @@
 
 use std::cmp::Ordering;
 
-use backhopper_core::git::version_cmp;
+use backhopper_core::versions::version_cmp;
 
 #[test]
 fn newer_compares_less_so_sort_yields_descending() {

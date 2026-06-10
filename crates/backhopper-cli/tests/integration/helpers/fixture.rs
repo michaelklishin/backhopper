@@ -64,6 +64,51 @@ impl FixtureRepo {
     // Only consumed by `end_to_end_target_repo_integration_tests`, which is
     // `#![cfg(unix)]`. Gate to match so Windows CI doesn't flag dead code.
     #[cfg(unix)]
+    pub(crate) fn checkout_new_branch(&self, name: &str) {
+        run(self.dir.path(), &["git", "checkout", "-q", "-b", name]);
+    }
+
+    pub(crate) fn checkout(&self, name: &str) {
+        run(self.dir.path(), &["git", "checkout", "-q", name]);
+    }
+
+    pub(crate) fn merge_ours(&self, branch: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "merge",
+                "-s",
+                "ours",
+                "-m",
+                message,
+                branch,
+            ],
+        );
+    }
+
+    pub(crate) fn merge_no_ff(&self, branch: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "merge",
+                "--no-ff",
+                "-m",
+                message,
+                branch,
+            ],
+        );
+    }
+
     pub(crate) fn head_sha(&self) -> String {
         let out = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])

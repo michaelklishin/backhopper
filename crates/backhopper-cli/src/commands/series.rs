@@ -13,9 +13,9 @@ use serde::Serialize;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value, value};
 
 use backhopper_core::config::{Config, Project};
-use backhopper_core::git::{GitRepo, unified_diff_body};
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
+use backhopper_git::{GitRepo, unified_diff_body};
 
 use crate::cli::series::default_branches;
 use crate::cli::{GlobalArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
@@ -268,7 +268,7 @@ fn resolved_series_name(common: &SyncCommon) -> CliResult<SeriesName> {
 
 fn build_payload(cfg: &Config, common: &SyncCommon) -> CliResult<SyncOutput> {
     let series_name = resolved_series_name(common)?;
-    let repo = GitRepo::open(&common.repo_dir_path).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(&common.repo_dir_path).map_err(CliError::Git)?;
     let text = read_components_mk_at(&repo, &common.from_branch)?;
     Ok(build_sync_output_for_branch(
         &text,
@@ -283,7 +283,7 @@ fn read_components_mk_at(repo: &GitRepo, branch: &str) -> CliResult<String> {
         .map_err(|e| CliError::InvalidInput(format!("could not resolve {branch:?}: {e}")))?;
     let blobs = repo
         .read_paths_at_commit(&commit, |p| p == COMPONENTS_MK_PATH)
-        .map_err(|e| CliError::Core(e.into()))?;
+        .map_err(CliError::Git)?;
     let Some(blob) = blobs.into_iter().next() else {
         return Err(CliError::InvalidInput(format!(
             "{COMPONENTS_MK_PATH} not found at {branch} ({commit})"
@@ -319,7 +319,7 @@ pub fn resolve_branch(repo: &GitRepo, branch: &str) -> Result<CommitSha, String>
 fn sync_preview(args: &GlobalArgs, cfg: &Config, preview: PreviewArgs) -> CliResult<i32> {
     let targets = preview_targets(&preview)?;
     let multi_branch = targets.len() > 1;
-    let repo = GitRepo::open(&preview.repo_dir_path).map_err(|e| CliError::Core(e.into()))?;
+    let repo = GitRepo::open(&preview.repo_dir_path).map_err(CliError::Git)?;
     let mut series_outputs: Vec<SyncOutput> = Vec::new();
     for branch in &targets {
         let series_name = preview_series_name(&preview, branch, targets.len())?;

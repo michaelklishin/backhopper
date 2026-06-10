@@ -61,6 +61,73 @@ impl FakeRepo {
         run(self.dir.path(), &["git", "tag", name]);
     }
 
+    pub(crate) fn checkout_new_branch(&self, name: &str) {
+        run(self.dir.path(), &["git", "checkout", "-q", "-b", name]);
+    }
+
+    pub(crate) fn checkout(&self, name: &str) {
+        run(self.dir.path(), &["git", "checkout", "-q", name]);
+    }
+
+    /// Merge with `--no-ff` so a 2-parent merge object always exists.
+    pub(crate) fn merge_no_ff(&self, branch: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "merge",
+                "--no-ff",
+                "-m",
+                message,
+                branch,
+            ],
+        );
+    }
+
+    /// Merge that keeps the current tree (`-s ours`): a 2-parent merge
+    /// whose first-parent diff is empty.
+    pub(crate) fn merge_ours(&self, branch: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "merge",
+                "-s",
+                "ours",
+                "-m",
+                message,
+                branch,
+            ],
+        );
+    }
+
+    /// Octopus merge of two branches: a 3-parent commit.
+    pub(crate) fn merge_octopus(&self, first: &str, second: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "merge",
+                "-m",
+                message,
+                first,
+                second,
+            ],
+        );
+    }
+
     pub(crate) fn annotated_tag(&self, name: &str, message: &str) {
         run(
             self.dir.path(),
