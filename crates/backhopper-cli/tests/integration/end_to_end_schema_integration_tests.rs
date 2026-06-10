@@ -79,6 +79,23 @@ fn diff_same_version_reports_no_differences() {
     );
 }
 
+/// Golden pin for the 023 slice: v8 adds exactly the siblings doctor
+/// payload on top of v7, nothing else moves.
+#[test]
+fn diff_v7_to_v8_adds_exactly_the_siblings_doctor_payload() {
+    let a = run_succeeds(["--formatter", "json", "schema", "diff", "7", "8"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json");
+    let data = v.get("data").expect("data");
+    let added: Vec<&str> = data["added_paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert_eq!(added, ["/siblings_doctor_payload"]);
+    assert!(data["removed_paths"].as_array().unwrap().is_empty());
+}
+
 #[test]
 fn diff_unknown_version_fails_cleanly() {
     let a = run_fails(["schema", "diff", "1", "99"]);

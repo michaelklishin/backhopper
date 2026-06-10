@@ -41,6 +41,12 @@ impl FakeRepo {
         run(self.dir.path(), &["git", "add", rel]);
     }
 
+    /// Stage everything, deletions included. `write_file` only adds
+    /// the written path, so tests that remove files call this.
+    pub(crate) fn stage_all(&self) {
+        run(self.dir.path(), &["git", "add", "-A"]);
+    }
+
     pub(crate) fn commit(&self, message: &str) {
         run(
             self.dir.path(),
@@ -53,6 +59,43 @@ impl FakeRepo {
                 "commit",
                 "-m",
                 message,
+            ],
+        );
+    }
+
+    /// Commit with explicit author and committer dates, for tests
+    /// that exercise time-bounded walks.
+    pub(crate) fn commit_dated(&self, message: &str, date: &str) {
+        run_with_dates(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "commit",
+                "-m",
+                message,
+            ],
+            date,
+        );
+    }
+
+    /// `git cherry-pick -x <sha>`: records the source SHA trailer the
+    /// suppression filter keys on.
+    pub(crate) fn cherry_pick_x(&self, sha: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "cherry-pick",
+                "-x",
+                sha,
             ],
         );
     }
@@ -158,6 +201,17 @@ impl FakeRepo {
 fn run(cwd: &Path, argv: &[&str]) {
     let status = Command::new(argv[0])
         .args(&argv[1..])
+        .current_dir(cwd)
+        .status()
+        .expect("git");
+    assert!(status.success(), "{argv:?} failed");
+}
+
+fn run_with_dates(cwd: &Path, argv: &[&str], date: &str) {
+    let status = Command::new(argv[0])
+        .args(&argv[1..])
+        .env("GIT_AUTHOR_DATE", date)
+        .env("GIT_COMMITTER_DATE", date)
         .current_dir(cwd)
         .status()
         .expect("git");

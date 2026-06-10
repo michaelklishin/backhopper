@@ -16,6 +16,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+backhopper-cache       = { workspace = true }
 backhopper-core        = { workspace = true, features = ["schemars"] }
 backhopper-git         = { workspace = true }
 backhopper-driver      = { workspace = true, features = ["schemars"] }

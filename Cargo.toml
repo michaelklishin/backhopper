@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/backhopper-core",
+    "crates/backhopper-cache",
     "crates/backhopper-git",
     "crates/backhopper-erlang",
     "crates/backhopper-elixir",
@@ -26,6 +27,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 backhopper-core        = { path = "crates/backhopper-core",        version = "0.13.0" }
+backhopper-cache       = { path = "crates/backhopper-cache",       version = "0.13.0" }
 backhopper-git         = { path = "crates/backhopper-git",         version = "0.13.0" }
 backhopper-erlang      = { path = "crates/backhopper-erlang",      version = "0.13.0" }
 backhopper-elixir      = { path = "crates/backhopper-elixir",      version = "0.13.0" }
@@ -37,6 +39,7 @@ backhopper-driver      = { path = "crates/backhopper-driver",      version = "0.
 
 anyhow             = "1.0.102"
 bel7-cli           = { version = "0.13.0", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
+blake3             = "1.8.5"
 clap               = { version = "4.6.1", features = ["cargo", "derive", "env", "wrap_help"] }
 gix                = { version = "=0.84.0" }
 imara-diff         = "0.2.0"
@@ -88,6 +91,7 @@ while_let_loop          = "allow"
 cast_sign_loss          = "allow"
 cast_possible_truncation = "allow"
 cast_possible_wrap      = "allow"
+cast_precision_loss     = "allow"
 unreadable_literal      = "allow"
 too_many_lines          = "allow"
 doc_markdown            = "allow"

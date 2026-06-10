@@ -17,6 +17,7 @@ mod preimage_check_proptests;
 mod relative_path_proptests;
 mod schema_diff_proptests;
 mod scope_filter_proptests;
+mod sibling_drift_proptests;
 mod snapshot_round_trip_proptests;
 mod sort_idempotent_proptests;
 mod spec_normalizer_proptests;

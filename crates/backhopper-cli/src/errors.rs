@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use backhopper_core::Error as CoreError;
 use backhopper_core::errors::{ConfigError, StoreError};
+use backhopper_core::model::names::SeriesName;
 use backhopper_core::model::pin::Pin;
 use backhopper_git::{GitError, PatchInputError};
 
@@ -50,6 +51,19 @@ pub enum CliError {
         root: PathBuf,
     },
 
+    #[error("series {series} has no self-pin to derive the target branch from")]
+    SeriesHasNoSelfPin { series: SeriesName },
+
+    #[error(
+        "no release tag{} is reachable from {target_branch}; cannot derive a default --since",
+        pattern.as_deref().map(|p| format!(" matching {p:?}")).unwrap_or_default()
+    )]
+    NoReachableSinceTag {
+        target_branch: String,
+        pattern: Option<String>,
+        shallow: bool,
+    },
+
     #[error("{0}")]
     Other(String),
 }
@@ -65,6 +79,8 @@ impl ExitCodeProvider for CliError {
             Self::InvalidInput(_) => codes::USAGE,
             Self::MissingSnapshots { .. } => codes::NO_INPUT,
             Self::SnapshotDirEscape { .. } => codes::USAGE,
+            Self::SeriesHasNoSelfPin { .. } => codes::USAGE,
+            Self::NoReachableSinceTag { .. } => codes::USAGE,
             Self::Other(_) => codes::SOFTWARE,
         }
     }
@@ -108,6 +124,15 @@ impl CliError {
                 "ensure the input is a unified diff (e.g. `git format-patch -1 --stdout`)".into(),
             ),
             Self::MissingSnapshots { remediation, .. } => Some(remediation.clone()),
+            Self::SeriesHasNoSelfPin { .. } => Some(
+                "pass `--target-branch <REF>`, or add a self-pin (`branch = \"...\"`) to the series"
+                    .into(),
+            ),
+            Self::NoReachableSinceTag { shallow, .. } => Some(if *shallow {
+                "pass `--since <SHA|TAG>` to bound the walk; this clone is shallow, so `git fetch --unshallow` may also restore tag reachability".into()
+            } else {
+                "pass `--since <SHA|TAG>` to bound the walk explicitly".into()
+            }),
             _ => None,
         }
     }

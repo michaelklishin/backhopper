@@ -6,6 +6,7 @@ pub mod batch;
 pub mod names;
 pub mod pin;
 pub mod pr_commit;
+pub mod sibling_drift;
 pub mod snapshot;
 pub mod spec_ast;
 pub mod spec_parser;

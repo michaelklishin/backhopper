@@ -21,6 +21,7 @@ use serde_json::Value;
 
 use crate::backend::{Backend, Invocation, OutputPolicy, RawOutcome};
 use crate::builder::check::{Check, SeriesEvaluation};
+use crate::builder::siblings::Siblings;
 use crate::envelope::{Envelope, EnvelopeWarning, ExecutedInvocation, SchemaVersion};
 use crate::error::DriverError;
 use crate::exit::ExitClass;
@@ -104,7 +105,7 @@ impl<B: Backend> Backhopper<B> {
         }
         let env =
             self.invoke::<Value, &OsStr>(VerbId::Known(Verb::Version), &[], StdinPayload::None)?;
-        let info = parse_version_info(env.data());
+        let info = parse_version_info(env.schema_version(), env.data());
         let _ = self.cached_version.set(info);
         Ok(self.cached_version.get().expect("just set"))
     }
@@ -112,6 +113,11 @@ impl<B: Backend> Backhopper<B> {
     /// Reach into the `check` verb group.
     pub fn check(&self) -> Check<'_, B> {
         Check { driver: self }
+    }
+
+    /// Reach into the `siblings` verb group.
+    pub fn siblings(&self) -> Siblings<'_, B> {
+        Siblings { driver: self }
     }
 
     /// Run an arbitrary verb and return the raw outcome. Use this
@@ -278,9 +284,22 @@ pub struct VersionInfo {
     pub schema_version: SchemaVersion,
     /// `git describe`, when reported.
     pub git_describe: Option<String>,
+    /// Capability list: every verb the binary ships, as
+    /// space-separated paths (`"check batch"`, `"siblings doctor"`).
+    /// Empty for binaries that predate the list.
+    pub verbs: Vec<String>,
 }
 
-fn parse_version_info(data: &Value) -> VersionInfo {
+impl VersionInfo {
+    /// True when the binary advertises `verb` (e.g.
+    /// `"siblings doctor"`) in its capability list.
+    #[must_use]
+    pub fn has_verb(&self, verb: &str) -> bool {
+        self.verbs.iter().any(|v| v == verb)
+    }
+}
+
+fn parse_version_info(schema: SchemaVersion, data: &Value) -> VersionInfo {
     let version = data
         .get("version")
         .and_then(Value::as_str)
@@ -290,10 +309,22 @@ fn parse_version_info(data: &Value) -> VersionInfo {
         .get("git_describe")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let verbs = data
+        .get("verbs")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
     VersionInfo {
         version,
-        schema_version: SchemaVersion::new(1),
+        schema_version: schema,
         git_describe,
+        verbs,
     }
 }
 

@@ -52,6 +52,7 @@ mod schema_suite_suggestions_unit_tests;
 mod scope_unit_tests;
 mod self_project_config_unit_tests;
 mod series_evaluation_v2_unit_tests;
+mod sibling_drift_unit_tests;
 mod snapshot_apps_scanned_unit_tests;
 mod snapshot_lookup_unit_tests;
 mod snapshot_record_continuation_unit_tests;

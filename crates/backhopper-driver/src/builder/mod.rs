@@ -5,9 +5,11 @@
 //! Type-state builders for the verbs the driver wraps.
 
 pub mod check;
+pub mod siblings;
 pub mod state;
 
 pub use check::{
     Check, CheckCommitBuilder, CheckMergeBuilder, CheckPatchBuilder, CheckRangeBuilder,
     ExplainFormat, PatchSource, SeriesEvaluation,
 };
+pub use siblings::{Siblings, SiblingsDoctorBuilder};

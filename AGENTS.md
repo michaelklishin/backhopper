@@ -41,11 +41,18 @@ The repo is a Cargo workspace with multiple crates:
 
  * `crates/backhopper-core/`: model types, snapshot I/O, store, config,
    compatibility analysis. No `clap`, no `gix`. No I/O policy decisions
+ * `crates/backhopper-cache/`: on-disk cache plumbing — `CacheDir`
+   (content-addressed entries: BLAKE3 over canonical JSON, freshness
+   documents, atomic writes) and `CacheMode` (the `--no-cache` /
+   `BACKHOPPER_NO_CACHE` / `BACKHOPPER_FORCE_CACHE` / debug-bypass
+   policy). No backhopper-specific types; the CLI's cached verbs
+   build on it
  * `crates/backhopper-git/`: the gix-backed git layer — `GitRepo`,
    PR-commit enumeration, `ResolvedPatchInput` (shared patch resolution
-   with `MergePolicy` and `PrCommitPolicy`), and the `TargetTreeIndex`
-   builder. Depends on `backhopper-core` for newtypes; nothing depends
-   on it except the CLI
+   with `MergePolicy` and `PrCommitPolicy`), first-parent window walks
+   plus cherry-pick suppression primitives (`walk.rs`), and the
+   `TargetTreeIndex` builder. Depends on `backhopper-core` for
+   newtypes; nothing depends on it except the CLI
  * `crates/backhopper-erlang/`: Erlang source surface extractor —
    tokenizer, attribute parser, spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
@@ -89,6 +96,10 @@ depends only on its own crate.
    (`Unsorted` and `Canonical`)
  * `src/model/verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
    Incompatible | Inapplicable }` and `Reason` enums
+ * `src/model/sibling_drift.rs`: `siblings doctor` types — the
+   `SiblingCandidate<Unscored|Scored>` pipeline, `Confidence`,
+   `Vocabulary`, and the pure scorer the labeled-corpus F1 gate
+   exercises
  * `src/snapshot/format.rs`: canonical writer
  * `src/snapshot/parser.rs`: canonical reader (rejects non-canonical
    input)
@@ -154,8 +165,9 @@ depends only on its own crate.
  * `src/main.rs`: entry point
  * `src/cli/mod.rs`: `clap` derive parser. Top-level groups:
    `projects`, `series`, `snapshots`, `check`, `config`, `shell`,
-   `xref`, `suites`, `rabbitmq`, `version`. `infer_subcommands = true`
-   so `backhopper sn li` resolves to `backhopper snapshots list`
+   `xref`, `suites`, `siblings`, `rabbitmq`, `version`.
+   `infer_subcommands = true` so `backhopper sn li` resolves to
+   `backhopper snapshots list`
  * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,tree_source}.rs`:
    per-group argument shapes. Multi-word verbs use per-variant
    `#[command(name = "list_callers")]` to render in snake_case
@@ -194,6 +206,8 @@ depends only on its own crate.
  * `clap` (`derive`, `env`): CLI parsing. Newtypes implement `FromStr`
    so command arguments parse directly into the right type
  * `serde`, `serde_json`, `toml`: serialization, config
+ * `blake3`: content hashing for cache keys (`backhopper-cache`) and
+   patch identity (`backhopper-git::walk::patch_id`)
  * `thiserror`: error enums in library crates; `anyhow` only at
    `backhopper-cli`'s `main` boundary
  * `tracing`, `tracing-subscriber` (`env-filter`): logging. ANSI is

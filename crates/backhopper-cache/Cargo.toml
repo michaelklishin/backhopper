@@ -1,0 +1,36 @@
+[package]
+name        = "backhopper-cache"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "On-disk cache plumbing for backhopper: content-addressed entries, freshness keys, atomic writes"
+
+[lints]
+workspace = true
+
+[dependencies]
+blake3      = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+time        = { workspace = true }
+tracing     = { workspace = true }
+
+[dev-dependencies]
+proptest    = { workspace = true }
+tempfile    = { workspace = true }
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "proptests"
+path = "tests/proptests/main.rs"

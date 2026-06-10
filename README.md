@@ -335,6 +335,26 @@ backhopper check pr --series stable-3.x \
 ```
 
 
+### Finding Fixes That Should Have Cascaded
+
+`siblings doctor` walks a source branch (default: `main`) and ranks
+commits that look like they should have been cherry-picked to a series'
+branch but never were: small test-infrastructure fixes whose subjects
+match a per-family vocabulary. Fixes that already cascaded are
+suppressed via their `git cherry-pick -x` trailers and patch-id
+equivalence, so the list stays quiet on a healthy branch:
+
+```shell
+backhopper siblings doctor --series stable-4.x \
+                           --repo-dir-path /path/to/your_repo.git
+```
+
+The window starts at the last release tag reachable from the target
+branch (`--since <SHA|TAG>` overrides it). The exit code is `0` for no
+candidates and `3` when at least one surfaced; `--explain` adds the
+per-factor score breakdown to every row.
+
+
 ### Bisecting Across a Project's Tags
 
 `bisect commit` walks every stored tag of a project and reports the

@@ -33,6 +33,7 @@ pub use builder::check::{
     PatchSource, PinDescriptor, QueriedAgainst, SeriesEvaluation, TestModuleSymbolMissingFinding,
     VerdictKind, VersionedMachineSnapshotMissingFinding, WireConstantBindingsMissingFinding,
 };
+pub use builder::siblings::{Siblings, SiblingsDoctorBuilder};
 pub use builder::state::{InputState, NoInput, NoTarget, TargetState, WithInput, WithTarget};
 pub use cancellation::{Aborter, CancellationToken};
 pub use driver::{Backhopper, VersionInfo};
@@ -53,7 +54,7 @@ pub use backhopper_core::envelope_version::{
 /// Range of envelope schema versions this driver release understands.
 pub const SUPPORTED_SCHEMA: SchemaVersionRange = SchemaVersionRange {
     min: SchemaVersion::new(1),
-    max: SchemaVersion::new(7),
+    max: SchemaVersion::new(8),
 };
 
 /// Inclusive range of envelope schema versions.

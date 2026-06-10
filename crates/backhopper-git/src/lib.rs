@@ -11,6 +11,7 @@ pub mod patch_input;
 pub mod pr_commits;
 pub mod repo;
 pub mod target_tree;
+pub mod walk;
 
 pub use errors::GitError;
 pub use patch_input::{
@@ -22,3 +23,4 @@ pub use repo::{
     unified_diff_body,
 };
 pub use target_tree::build_target_tree_index;
+pub use walk::{PatchId, WalkedCommit, cherry_pick_trailers, first_parent_walk_since, patch_id};

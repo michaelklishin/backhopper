@@ -20,6 +20,7 @@ pub mod self_snapshot;
 pub mod series;
 pub mod sha_prefix;
 pub mod shell;
+pub mod siblings;
 pub mod snapshot_cache;
 pub mod snapshots;
 pub mod suggest;
@@ -49,6 +50,7 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Suites { cmd } => suites::handle(&cli.global, cmd),
         Group::Schema { cmd } => schema::handle(&cli.global, cmd),
         Group::Rev { cmd } => rev::handle(&cli.global, cmd),
+        Group::Siblings { cmd } => siblings::handle(&cli.global, cmd),
         Group::Version => version::handle(&cli.global),
     }
 }

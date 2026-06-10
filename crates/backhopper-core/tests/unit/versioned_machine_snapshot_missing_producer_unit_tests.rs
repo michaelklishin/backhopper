@@ -100,6 +100,7 @@ fn rabbitmq_defaults() -> FamilyDefaults {
             allow_state_flag_gating: true,
         }],
         test_helper_search_paths: Vec::new(),
+        sibling_drift_vocabulary: Vec::new(),
     }
 }
 
@@ -112,6 +113,7 @@ fn ra_defaults() -> FamilyDefaults {
         versioned_machines: Vec::new(),
         versioned_machine_impls: Vec::new(),
         test_helper_search_paths: Vec::new(),
+        sibling_drift_vocabulary: Vec::new(),
     }
 }
 

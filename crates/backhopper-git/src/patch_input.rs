@@ -172,7 +172,11 @@ impl ResolvedPatchInput {
     }
 }
 
-fn diff_bytes(repo: &GitRepo, from: &CommitSha, to: &CommitSha) -> Result<Vec<u8>, GitError> {
+pub(crate) fn diff_bytes(
+    repo: &GitRepo,
+    from: &CommitSha,
+    to: &CommitSha,
+) -> Result<Vec<u8>, GitError> {
     let text = repo.diff_commits_unified(from, to, |p| {
         p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
     })?;

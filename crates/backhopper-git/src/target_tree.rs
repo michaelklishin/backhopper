@@ -14,16 +14,19 @@ use backhopper_core::model::names::GitRef;
 use crate::errors::GitError;
 use crate::repo::GitRepo;
 
-/// Build a `TargetTreeIndex` by reading every blob path at
-/// `target_ref` in `repo`. Refuses an empty tree: an index with no
-/// paths would classify every touched path as missing.
+/// Build a `TargetTreeIndex` by listing every blob path at
+/// `target_ref` in `repo` (paths only; no blob contents are read).
+/// Refuses an empty tree: an index with no paths would classify
+/// every touched path as missing.
 pub fn build_target_tree_index(
     repo: &GitRepo,
     target_ref: &GitRef,
 ) -> Result<TargetTreeIndex, GitError> {
     let resolved_commit = repo.resolve_rev(target_ref.as_str())?;
-    let blobs = repo.read_paths_at_commit(&resolved_commit, |_| true)?;
-    let present_paths: BTreeSet<PathBuf> = blobs.into_iter().map(|b| b.path).collect();
+    let present_paths: BTreeSet<PathBuf> = repo
+        .list_paths_at_commit(&resolved_commit)?
+        .into_iter()
+        .collect();
     if present_paths.is_empty() {
         return Err(GitError::Gix(format!(
             "target repo {} resolves to a commit with no blobs at {}; refusing to build empty index",

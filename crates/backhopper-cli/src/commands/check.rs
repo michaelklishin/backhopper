@@ -1760,12 +1760,12 @@ fn batch_queries(resolved_series: &[ResolvedSeries]) -> Vec<BatchQuery> {
 /// One summary row per `(commit, series)` pair, with the commit
 /// subject looked up once per distinct commit.
 fn batch_summary_rows(repo: &GitRepo, results: &[BatchResult]) -> Vec<SummaryRow> {
-    let mut subjects: BTreeMap<String, String> = BTreeMap::new();
+    let mut subjects: BTreeMap<&CommitSha, String> = BTreeMap::new();
     results
         .iter()
         .map(|r| {
             let subject = subjects
-                .entry(r.commit.to_string())
+                .entry(&r.commit)
                 .or_insert_with(|| repo.commit_subject(&r.commit).unwrap_or_default())
                 .clone();
             batch_result_to_summary_row(r, subject)

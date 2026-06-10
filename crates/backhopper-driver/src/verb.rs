@@ -71,6 +71,8 @@ pub enum Verb {
     CheckTree,
     /// `backhopper check batch`.
     CheckBatch,
+    /// `backhopper siblings doctor`.
+    SiblingsDoctor,
     /// `backhopper schema show`.
     SchemaShow,
     /// `backhopper schema diff`.
@@ -105,6 +107,7 @@ impl Verb {
             Self::CheckMerge => &["check", "merge"],
             Self::CheckTree => &["check", "tree"],
             Self::CheckBatch => &["check", "batch"],
+            Self::SiblingsDoctor => &["siblings", "doctor"],
             Self::SchemaShow => &["schema", "show"],
             Self::SchemaDiff => &["schema", "diff"],
         }
@@ -169,6 +172,7 @@ impl Verb {
         Self::CheckMerge,
         Self::CheckTree,
         Self::CheckBatch,
+        Self::SiblingsDoctor,
         Self::SchemaShow,
         Self::SchemaDiff,
     ];

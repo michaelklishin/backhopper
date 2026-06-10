@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::model::batch::BatchPayload;
+use crate::model::sibling_drift::SiblingDoctorReport;
 use crate::model::summary::SummaryRow;
 use crate::model::verdict::SeriesEvaluation;
 
@@ -65,6 +66,7 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         5 => Ok(serde_json::from_str(SCHEMA_V5_FROZEN).expect("frozen v5 snapshot is valid JSON")),
         6 => Ok(combined_v6()),
         7 => Ok(combined_v7()),
+        8 => Ok(combined_v8()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -134,6 +136,34 @@ fn combined_v7() -> Value {
     obj.insert("batch_payload".into(), batch_payload);
     obj.insert("schema_version".into(), json!(7));
     obj.insert("title".into(), json!("backhopper envelope v7"));
+    Value::Object(obj)
+}
+
+fn combined_v8() -> Value {
+    let series = envelope_with_payload::<SeriesEvaluation>(
+        8,
+        "check",
+        "v8 adds the `siblings doctor` verb: a ranked report of sibling-branch commits \
+         that look like they should have cascaded to a series but never did \
+         (`siblings_doctor_payload`), with `-x` trailer plus patch-id suppression of \
+         already-cascaded fixes and a typed `since` derivation. The `version` payload \
+         gains a `verbs` capability list so drivers probe verb presence by name instead \
+         of inferring it from the schema number.",
+    );
+    let summary_row =
+        serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
+    let batch_payload =
+        serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
+    let siblings_doctor_payload = serde_json::to_value(schema_for!(SiblingDoctorReport))
+        .expect("SiblingDoctorReport schema serialises");
+    let Value::Object(mut obj) = series else {
+        unreachable!("envelope_with_payload always returns a Value::Object")
+    };
+    obj.insert("summary_row".into(), summary_row);
+    obj.insert("batch_payload".into(), batch_payload);
+    obj.insert("siblings_doctor_payload".into(), siblings_doctor_payload);
+    obj.insert("schema_version".into(), json!(8));
+    obj.insert("title".into(), json!("backhopper envelope v8"));
     Value::Object(obj)
 }
 

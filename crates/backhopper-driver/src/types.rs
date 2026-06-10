@@ -12,11 +12,15 @@
 pub use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 pub use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
-    DependencyName, DependencyVersion, FieldName, FunctionName, MacroName, Mfa, ModuleName,
+    DependencyName, DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName,
     ProjectName, RecordName, SeriesName, TagGlob, TagName, TypeName,
 };
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
+pub use backhopper_core::model::sibling_drift::{
+    CandidateFeatures, Confidence, ScoreComponents, Scored, SiblingCandidate, SiblingDoctorReport,
+    SiblingDriftAction, SinceDerivation, VocabularySource,
+};
 pub use backhopper_core::model::snapshot::{
     FORMAT_VERSION, HrlFile, Module, Provenance, SUPPORTED_FORMAT_VERSIONS, Snapshot,
     SnapshotHeader, VendoredDep, VendoredDepSource, VersionedMachineVersion, WireConstantBinding,
