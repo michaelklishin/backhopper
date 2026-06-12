@@ -43,3 +43,13 @@ fn is_verdict_is_strictly_the_zero_two_three_four_set() {
     assert!(ExitClass::VerdictOutcome.is_verdict());
     assert!(!ExitClass::SuccessShapedQuery.is_verdict());
 }
+
+// neighbors of every documented code stay unknown: a new exit code
+// must be classified here deliberately, not absorbed by accident
+#[test]
+fn boundary_neighbors_of_documented_codes_are_unknown() {
+    for code in [5, 63, 67, 73, 75, 143] {
+        assert_eq!(ExitClass::from_code(code), ExitClass::Unknown(code));
+        assert!(!ExitClass::from_code(code).is_success_shaped());
+    }
+}

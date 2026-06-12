@@ -172,16 +172,16 @@ depends only on its own crate.
 
  * `src/main.rs`: entry point
  * `src/cli/mod.rs`: `clap` derive parser. Top-level groups:
-   `projects`, `series`, `snapshots`, `check`, `bisect`, `cache`,
-   `config`, `shell`, `xref`, `suites`, `siblings`, `rabbitmq`,
-   `version`. `infer_subcommands = true` so `backhopper sn li`
-   resolves to `backhopper snapshots list`
+   `doctor`, `init`, `projects`, `series`, `snapshots`, `check`,
+   `bisect`, `cache`, `config`, `shell`, `xref`, `suites`, `schema`,
+   `rev`, `siblings`, `version`. `infer_subcommands = true` so
+   `backhopper sn li` resolves to `backhopper snapshots list`
  * `src/commands/verdict_cache.rs`: the per-run `CacheSession` — key
    construction with memos, bypass policy, the hit and miss
    counters, and the one-line summary. `src/commands/macro_env.rs`
    mirrors `FileMap`'s include resolution over gix to hash the
    patch-reachable macro slice for the content key
- * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,tree_source}.rs`:
+ * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,tree_source}.rs`:
    per-group argument shapes. Multi-word verbs use per-variant
    `#[command(name = "list_callers")]` to render in snake_case
    (e.g. `xref list_callers`, `snapshots list_tags`,
@@ -191,7 +191,7 @@ depends only on its own crate.
    `#[command(rename_all = "snake_case")]`: it also rewrites the long
    names of inline-defined args in each variant, silently turning
    `--repo-dir-path` into `--repo_dir_path`
- * `src/commands/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq,rabbitmq_components,version,tree_source}.rs`:
+ * `src/commands/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq_components,version,tree_source}.rs`:
    command handlers. `rabbitmq_components` is the RabbitMQ
    `rabbitmq-components.mk` parser (CLI-local, never in `backhopper-core`)
  * `src/commands/mod.rs`: dispatcher (matches `Group::*` to handlers)

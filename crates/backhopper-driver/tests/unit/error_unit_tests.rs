@@ -59,6 +59,13 @@ fn kind_round_trip_for_every_variant() {
             ErrorKind::SchemaVersionMismatch,
         ),
         (
+            DriverError::ReaderPanicked {
+                verb: known_verb_id(Verb::CheckPatch),
+                channel: OutputChannel::Stdout,
+            },
+            ErrorKind::ReaderPanicked,
+        ),
+        (
             DriverError::OutputTooLarge {
                 verb: known_verb_id(Verb::CheckBatch),
                 channel: OutputChannel::Stdout,
@@ -82,6 +89,7 @@ fn kind_round_trip_for_every_variant() {
 fn error_kind_display_uses_snake_case() {
     assert_eq!(ErrorKind::BinaryNotFound.to_string(), "binary_not_found");
     assert_eq!(ErrorKind::ToolError.to_string(), "tool_error");
+    assert_eq!(ErrorKind::ReaderPanicked.to_string(), "reader_panicked");
     assert_eq!(
         ErrorKind::SchemaVersionMismatch.to_string(),
         "schema_version_mismatch"

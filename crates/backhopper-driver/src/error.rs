@@ -107,6 +107,16 @@ pub enum DriverError {
         source: serde_json::Error,
     },
 
+    /// A capture thread panicked; the channel's output is lost and
+    /// must not read as empty.
+    #[error("backhopper output reader thread panicked on {channel:?}: {verb}")]
+    ReaderPanicked {
+        /// Verb whose output was being captured.
+        verb: VerbId<'static>,
+        /// Which channel's reader died.
+        channel: OutputChannel,
+    },
+
     /// Captured output exceeded the policy cap.
     #[error("backhopper produced more than {limit} bytes on {channel:?}: {verb}")]
     OutputTooLarge {
@@ -143,6 +153,7 @@ impl DriverError {
             Self::ToolError { .. } => ErrorKind::ToolError,
             Self::SchemaVersionMismatch { .. } => ErrorKind::SchemaVersionMismatch,
             Self::UnparseableOutput { .. } => ErrorKind::UnparseableOutput,
+            Self::ReaderPanicked { .. } => ErrorKind::ReaderPanicked,
             Self::OutputTooLarge { .. } => ErrorKind::OutputTooLarge,
             Self::Transport { .. } => ErrorKind::Transport,
         }
@@ -167,6 +178,8 @@ pub enum ErrorKind {
     SchemaVersionMismatch,
     /// Variant `DriverError::UnparseableOutput`.
     UnparseableOutput,
+    /// Variant `DriverError::ReaderPanicked`.
+    ReaderPanicked,
     /// Variant `DriverError::OutputTooLarge`.
     OutputTooLarge,
     /// Variant `DriverError::Transport`.
@@ -183,6 +196,7 @@ impl Display for ErrorKind {
             Self::ToolError => "tool_error",
             Self::SchemaVersionMismatch => "schema_version_mismatch",
             Self::UnparseableOutput => "unparseable_output",
+            Self::ReaderPanicked => "reader_panicked",
             Self::OutputTooLarge => "output_too_large",
             Self::Transport => "transport",
         })

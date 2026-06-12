@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 
 use bel7_cli::{
     InteractiveReporter, NonInteractiveReporter, ProgressReporter, QuietReporter, TableStyle,
@@ -1935,15 +1936,14 @@ fn evaluate_one(
             self_repo,
             pin_self_override,
         )?;
-        let snap = (*snap_arc).clone();
-        let mut ctx = EvaluationContext::new(pin.clone(), snap, scope)
+        let mut ctx = EvaluationContext::new(pin.clone(), Arc::clone(&snap_arc), scope)
             .with_files(files)
             .with_family_defaults(project.family.defaults());
         if let Some(Some(source_pin)) = source_pins.get(idx) {
             let source_snap_arc = cache
                 .get(&source_pin.project, &source_pin.tag)
                 .map_err(|e| CliError::Core(e.into()))?;
-            ctx = ctx.with_source_snapshot((*source_snap_arc).clone());
+            ctx = ctx.with_source_snapshot(source_snap_arc);
         }
         contexts.push(ctx);
     }

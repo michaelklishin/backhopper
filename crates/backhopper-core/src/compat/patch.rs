@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::compat::arg_shape::ArgShape;
 use crate::compat::call_sites::{
@@ -337,17 +338,19 @@ pub use evaluation_state::{Pinned, Scoped, Sourced};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvaluationContext<S = Scoped> {
     pin: Pin,
-    snapshot: Snapshot<state::Canonical>,
-    source_snapshot: Option<Snapshot<state::Canonical>>,
+    // Arc: batch evaluation reuses one parsed snapshot across
+    // hundreds of (commit, series) pairs without deep clones
+    snapshot: Arc<Snapshot<state::Canonical>>,
+    source_snapshot: Option<Arc<Snapshot<state::Canonical>>>,
     family_defaults: Option<FamilyDefaults>,
     extras: S,
 }
 
 impl EvaluationContext<Pinned> {
-    pub fn for_pin(pin: Pin, snapshot: Snapshot<state::Canonical>) -> Self {
+    pub fn for_pin(pin: Pin, snapshot: impl Into<Arc<Snapshot<state::Canonical>>>) -> Self {
         Self {
             pin,
-            snapshot,
+            snapshot: snapshot.into(),
             source_snapshot: None,
             family_defaults: None,
             extras: Pinned,
@@ -368,7 +371,11 @@ impl EvaluationContext<Pinned> {
 
 impl EvaluationContext<Scoped> {
     /// Shortcut for `EvaluationContext::for_pin(pin, snap).with_scope(scope)`.
-    pub fn new(pin: Pin, snapshot: Snapshot<state::Canonical>, scope: PinScope) -> Self {
+    pub fn new(
+        pin: Pin,
+        snapshot: impl Into<Arc<Snapshot<state::Canonical>>>,
+        scope: PinScope,
+    ) -> Self {
         EvaluationContext::for_pin(pin, snapshot).with_scope(scope)
     }
 
@@ -389,8 +396,11 @@ impl EvaluationContext<Scoped> {
 
 impl<S> EvaluationContext<S> {
     #[must_use]
-    pub fn with_source_snapshot(mut self, source: Snapshot<state::Canonical>) -> Self {
-        self.source_snapshot = Some(source);
+    pub fn with_source_snapshot(
+        mut self,
+        source: impl Into<Arc<Snapshot<state::Canonical>>>,
+    ) -> Self {
+        self.source_snapshot = Some(source.into());
         self
     }
 
@@ -428,7 +438,7 @@ impl EvaluationInput for EvaluationContext<Scoped> {
         None
     }
     fn source_snapshot(&self) -> Option<&Snapshot<state::Canonical>> {
-        self.source_snapshot.as_ref()
+        self.source_snapshot.as_deref()
     }
     fn family_defaults(&self) -> Option<&FamilyDefaults> {
         self.family_defaults.as_ref()
@@ -449,7 +459,7 @@ impl EvaluationInput for EvaluationContext<Sourced> {
         Some(&self.extras.files)
     }
     fn source_snapshot(&self) -> Option<&Snapshot<state::Canonical>> {
-        self.source_snapshot.as_ref()
+        self.source_snapshot.as_deref()
     }
     fn family_defaults(&self) -> Option<&FamilyDefaults> {
         self.family_defaults.as_ref()

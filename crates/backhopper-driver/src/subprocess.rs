@@ -180,12 +180,8 @@ fn run_invocation(
         &invocation.verb,
     )?;
 
-    let stdout = stdout_thread
-        .map(|t| t.join().unwrap_or_default())
-        .unwrap_or_default();
-    let stderr = stderr_thread
-        .map(|t| t.join().unwrap_or_default())
-        .unwrap_or_default();
+    let stdout = join_reader(stdout_thread, &invocation.verb, OutputChannel::Stdout)?;
+    let stderr = join_reader(stderr_thread, &invocation.verb, OutputChannel::Stderr)?;
 
     if stdout_overflow.load(Ordering::Acquire) {
         return Err(DriverError::OutputTooLarge {
@@ -212,6 +208,21 @@ fn run_invocation(
         duration: started.elapsed(),
         argv,
     })
+}
+
+// a panicked capture thread must not read as empty output
+fn join_reader(
+    thread: Option<JoinHandle<Vec<u8>>>,
+    verb: &VerbId<'_>,
+    channel: OutputChannel,
+) -> Result<Vec<u8>, DriverError> {
+    match thread {
+        None => Ok(Vec::new()),
+        Some(t) => t.join().map_err(|_| DriverError::ReaderPanicked {
+            verb: verb.clone().into_owned(),
+            channel,
+        }),
+    }
 }
 
 fn write_stdin(handle: Option<&mut ChildStdin>, payload: StdinPayload<'_>) -> io::Result<()> {

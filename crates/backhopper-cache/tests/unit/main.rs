@@ -3,5 +3,6 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod canonical_json_unit_tests;
+mod inspect_unit_tests;
 mod policy_unit_tests;
 mod target_key_inputs_unit_tests;

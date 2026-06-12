@@ -531,6 +531,21 @@ Diagnostics live under `data.diagnostics`, kept separate from
 `data.results` so a JSON consumer cannot mistake them for actionable
 verdicts.
 
+### Envelope Introspection
+
+Every JSON envelope carries a `schema_version`. When a consumer (the
+`backhopper-driver` crate, a script, an agent) reports a version
+mismatch, the `schema` group answers it without bisecting:
+
+```shell
+# what can this binary emit?
+backhopper schema supported_envelope_versions
+
+# the embedded JSON schema for one version, and what changed between two
+backhopper schema show 11
+backhopper schema diff 10 11
+```
+
 
 ## Snapshot Staleness in CI
 
