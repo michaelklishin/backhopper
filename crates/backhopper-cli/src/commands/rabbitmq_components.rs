@@ -17,15 +17,45 @@
 //! `backhopper-core` library has no business knowing about a particular
 //! project's makefile conventions.
 
+use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::OnceLock;
 
+use backhopper_core::compat::patch::{HunkLine, PatchedFile};
+use backhopper_core::model::names::DependencyName;
+use backhopper_core::model::verdict::PinBump;
 use regex::Regex;
+
+pub use backhopper_git::COMPONENTS_MK_PATH;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DepPin {
     pub name: String,
     pub version: String,
     pub source: DepSource,
+}
+
+impl DepPin {
+    /// The envelope display form, e.g. `hex 2.17.1`.
+    pub fn display(&self) -> String {
+        format!("{} {}", self.source.label(), self.version)
+    }
+
+    /// Inverse of `display`, for reading the form back out of an envelope.
+    pub fn parse_display(name: &str, s: &str) -> Option<Self> {
+        let (label, version) = s.split_once(' ')?;
+        let source = match label {
+            "hex" => DepSource::Hex,
+            "git" => DepSource::Git,
+            "git_rmq" => DepSource::GitRmq,
+            _ => return None,
+        };
+        Some(Self {
+            name: name.to_owned(),
+            version: version.to_owned(),
+            source,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,46 +82,88 @@ fn dep_re() -> &'static Regex {
     })
 }
 
+/// Parse a single makefile line into a dep pin.
+pub fn parse_pin_line(line: &str) -> Option<DepPin> {
+    if line.trim_start().starts_with('#') {
+        return None;
+    }
+    let caps = dep_re().captures(line)?;
+    let name = caps[1].to_owned();
+    if name.ends_with("_commit") || name.ends_with("_branch") || name.ends_with("_repo") {
+        return None;
+    }
+    let source_label = &caps[2];
+    let rest = caps[3].trim();
+    let (source, version) = match source_label {
+        "hex" => (
+            DepSource::Hex,
+            rest.split_whitespace().next().unwrap_or("").to_owned(),
+        ),
+        "git" => (DepSource::Git, parse_git_url_tag(rest)?),
+        "git_rmq" => (DepSource::GitRmq, parse_git_rmq(rest)?),
+        _ => return None,
+    };
+    if version.is_empty() {
+        return None;
+    }
+    Some(DepPin {
+        name,
+        version,
+        source,
+    })
+}
+
 pub fn parse_components_mk(text: &str) -> Vec<DepPin> {
-    let mut out = Vec::new();
-    for line in text.lines() {
-        if line.trim_start().starts_with('#') {
+    text.lines().filter_map(parse_pin_line).collect()
+}
+
+/// Pins the patch itself changes or introduces in the root
+/// `rabbitmq-components.mk`. Pure function of the patch: cacheable;
+/// `status` stays `None` here and is assessed against the store later.
+pub fn detect_pin_bumps(files: &[PatchedFile]) -> Vec<PinBump> {
+    let mut removed: BTreeMap<String, DepPin> = BTreeMap::new();
+    let mut added: BTreeMap<String, DepPin> = BTreeMap::new();
+    for file in files {
+        let path = file.new_path.as_deref().or(file.old_path.as_deref());
+        if path != Some(Path::new(COMPONENTS_MK_PATH)) {
             continue;
         }
-        let Some(caps) = dep_re().captures(line) else {
+        for hunk in &file.hunks {
+            for line in &hunk.lines {
+                match line {
+                    HunkLine::Added(text) => {
+                        if let Some(pin) = parse_pin_line(text) {
+                            added.insert(pin.name.clone(), pin);
+                        }
+                    }
+                    HunkLine::Removed(text) => {
+                        if let Some(pin) = parse_pin_line(text) {
+                            removed.insert(pin.name.clone(), pin);
+                        }
+                    }
+                    HunkLine::Context(_) => {}
+                }
+            }
+        }
+    }
+    let mut bumps = Vec::new();
+    // removed-only pins need no vetting; added and changed ones do
+    for (name, to) in added {
+        let from = removed.get(&name);
+        if from.is_some_and(|f| f.version == to.version && f.source == to.source) {
+            continue;
+        }
+        let Ok(dep) = DependencyName::new(name) else {
             continue;
         };
-        let name = caps[1].to_owned();
-        if name.ends_with("_commit") || name.ends_with("_branch") || name.ends_with("_repo") {
-            continue;
-        }
-        let source_label = &caps[2];
-        let rest = caps[3].trim();
-        let (source, version) = match source_label {
-            "hex" => (
-                DepSource::Hex,
-                rest.split_whitespace().next().unwrap_or("").to_owned(),
-            ),
-            "git" => match parse_git_url_tag(rest) {
-                Some(v) => (DepSource::Git, v),
-                None => continue,
-            },
-            "git_rmq" => match parse_git_rmq(rest) {
-                Some(v) => (DepSource::GitRmq, v),
-                None => continue,
-            },
-            _ => continue,
-        };
-        if version.is_empty() {
-            continue;
-        }
-        out.push(DepPin {
-            name,
-            version,
-            source,
+        bumps.push(PinBump {
+            dep,
+            from: from.map(DepPin::display),
+            to: to.display(),
+            status: None,
         });
     }
-    out
+    bumps
 }
 
 fn parse_git_url_tag(rest: &str) -> Option<String> {

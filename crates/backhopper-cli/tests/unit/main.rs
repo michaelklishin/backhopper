@@ -3,7 +3,6 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod added_file_synthesis_unit_tests;
-mod apply_path_routing_unit_tests;
 mod auto_generate_unit_tests;
 mod bel7_cli_integration_unit_tests;
 mod check_markdown_render_unit_tests;
@@ -17,6 +16,7 @@ mod json_envelope_unit_tests;
 mod merge_added_file_findings_unit_tests;
 mod multi_app_match_unit_tests;
 mod partial_success_exit_codes_unit_tests;
+mod pin_bump_detection_unit_tests;
 mod rabbitmq_components_unit_tests;
 mod self_repo_override_unit_tests;
 mod series_sync_diff_unit_tests;

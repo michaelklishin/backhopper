@@ -38,6 +38,14 @@ pub enum SymbolKind {
     Function {
         mfa: Mfa,
     },
+    /// A function reference whose arity could not be determined from
+    /// the source line (the call's closing paren sits on a later
+    /// line). Resolves against a snapshot when *any* export carries
+    /// the name; never produces an arity mismatch.
+    FunctionAnyArity {
+        module: ModuleName,
+        function: FunctionName,
+    },
     Macro {
         name: String,
     },
@@ -51,29 +59,66 @@ pub enum SymbolKind {
     },
 }
 
+/// Which side of the hunk a reference was extracted from. `Added`
+/// lines are requirements the patch introduces; `Context` lines are
+/// pre-existing facts about the target and never drive verdicts.
+/// `Added` orders first so a kind-level dedup keeps the stronger
+/// origin.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RefOrigin {
+    #[default]
+    Added,
+    Context,
+}
+
+impl RefOrigin {
+    // `&self` is required by serde's `skip_serializing_if` predicate shape.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    #[must_use]
+    pub fn is_added(&self) -> bool {
+        matches!(self, Self::Added)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SymbolRef {
     #[serde(flatten)]
     pub kind: SymbolKind,
+    #[serde(default, skip_serializing_if = "RefOrigin::is_added")]
+    pub origin: RefOrigin,
 }
 
 impl SymbolRef {
     pub fn function(mfa: Mfa) -> Self {
         Self {
             kind: SymbolKind::Function { mfa },
+            origin: RefOrigin::Added,
+        }
+    }
+
+    pub fn function_any_arity(module: ModuleName, function: FunctionName) -> Self {
+        Self {
+            kind: SymbolKind::FunctionAnyArity { module, function },
+            origin: RefOrigin::Added,
         }
     }
 
     pub fn record(name: RecordName) -> Self {
         Self {
             kind: SymbolKind::Record { name },
+            origin: RefOrigin::Added,
         }
     }
 
     pub fn macro_use(name: impl Into<String>) -> Self {
         Self {
             kind: SymbolKind::Macro { name: name.into() },
+            origin: RefOrigin::Added,
         }
     }
 
@@ -84,7 +129,14 @@ impl SymbolRef {
                 name,
                 arity,
             },
+            origin: RefOrigin::Added,
         }
+    }
+
+    #[must_use]
+    pub fn with_origin(mut self, origin: RefOrigin) -> Self {
+        self.origin = origin;
+        self
     }
 }
 

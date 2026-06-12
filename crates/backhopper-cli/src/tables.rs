@@ -140,19 +140,38 @@ fn reason_kind(r: &Reason) -> &'static str {
 
 fn reason_detail(r: &Reason) -> String {
     match r {
-        Reason::MissingSymbol { symbol, .. } => format_symbol(&symbol.kind),
+        Reason::MissingSymbol {
+            symbol,
+            first_seen_at_tag,
+            ..
+        } => match first_seen_at_tag {
+            Some(tag) => format!(
+                "{}; first appears at {tag}: land the dep pin bump first",
+                format_symbol(&symbol.kind)
+            ),
+            None => format_symbol(&symbol.kind),
+        },
         Reason::ArityChanged {
             module,
             function,
             expected,
             found,
+            expected_available_at,
+            ..
         } => {
             let found_str = found
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{module}:{function} expected /{expected}, snapshot has /{found_str}")
+            let base =
+                format!("{module}:{function} expected /{expected}, snapshot has /{found_str}");
+            match expected_available_at {
+                Some(tag) => {
+                    format!("{base}; /{expected} appears at {tag}: land the dep pin bump first")
+                }
+                None => base,
+            }
         }
         Reason::SignatureChanged {
             module,
@@ -387,6 +406,7 @@ fn format_arg_shape(a: &ArgShape) -> String {
 fn format_symbol(kind: &SymbolKind) -> String {
     match kind {
         SymbolKind::Function { mfa } => mfa.to_string(),
+        SymbolKind::FunctionAnyArity { module, function } => format!("{module}:{function}/?"),
         SymbolKind::Type {
             module,
             name,

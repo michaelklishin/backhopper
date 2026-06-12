@@ -1,0 +1,29 @@
+{
+  "pin": {
+    "project": "cowlib",
+    "tag": "2.13.0"
+  },
+  "verdict": {
+    "verdict": "requires_adaptation",
+    "reasons": [
+      {
+        "kind": "missing_symbol",
+        "symbol": {
+          "kind": "function",
+          "mfa": {
+            "module": "cow_http",
+            "function": "ensure_token",
+            "arity": 1
+          }
+        },
+        "first_seen_at_tag": "2.17.0",
+        "needs_pin_at_least": {
+          "project": "cowlib",
+          "tag": "2.17.0"
+        },
+        "suggested_replacement": null
+      }
+    ]
+  },
+  "tracked_refs": 1
+}

@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod app_src_robustness_proptests;
+mod arg_scanner_proptests;
 mod arg_shape_proptests;
 mod commit_sha_prefix_proptests;
 mod compat_apply_family_proptests;

@@ -19,7 +19,7 @@ use crate::model::names::{GitRef, ProjectName, TagGlob, TagName};
 use crate::store::SnapshotStore;
 use crate::versions::version_cmp;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Pin {
     pub project: ProjectName,

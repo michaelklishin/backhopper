@@ -4,16 +4,19 @@
 
 use std::path::PathBuf;
 
+use std::str::FromStr;
+
 use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, RecordName, TagName,
+    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, RecordName, TagName,
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
     FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
 };
+use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
     Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, Verdict,
 };
@@ -307,4 +310,49 @@ diff --git a/x.erl b/x.erl
             "ascii table should be 7-bit clean, got `{ch}`",
         );
     }
+}
+
+// The bump-first remedy rides both reason families: a populated
+// `first_seen_at_tag` or `expected_available_at` names the tag and
+// the action.
+#[test]
+fn table_renders_the_bump_first_remedy_for_both_reason_families() {
+    let mut pv = PinVerdict::new(
+        pin_for("cowlib"),
+        Verdict::RequiresAdaptation {
+            reasons: vec![
+                Reason::MissingSymbol {
+                    symbol: SymbolRef::function(Mfa::from_str("cow_http:ensure_token/1").unwrap()),
+                    first_seen_at_tag: Some(TagName::new("2.17.0").unwrap()),
+                    needs_pin_at_least: None,
+                    suggested_replacement: None,
+                },
+                Reason::ArityChanged {
+                    module: ModuleName::new("cowboy_req").unwrap(),
+                    function: FunctionName::new("match_qs").unwrap(),
+                    expected: Arity::new(4),
+                    found: vec![Arity::new(2)],
+                    expected_available_at: Some(TagName::new("2.16.0").unwrap()),
+                    needs_pin_at_least: None,
+                },
+            ],
+        },
+    );
+    pv.tracked_refs = 2;
+    let eval = SeriesEvaluation {
+        verdict: SeriesVerdict::from_results(vec![pv]),
+        diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
+    };
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
+    assert!(
+        text.contains("first appears at 2.17.0: land the dep pin bump first"),
+        "table: {text}"
+    );
+    assert!(
+        text.contains("/4 appears at 2.16.0: land the dep pin bump first"),
+        "table: {text}"
+    );
 }

@@ -11,8 +11,9 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{
-    AlreadyPresent, AlreadyPresentSkipped, ContentPresence, DepPinDivergence, Diagnostics,
-    HunkTally, PinVerdict, Reason, SeriesVerdict, TargetMatch, TargetMatchKind, Verdict, exit,
+    AlreadyPresent, AlreadyPresentSkipped, BumpStatus, ContentPresence, DepPinDivergence,
+    Diagnostics, HunkTally, PinBump, PinVerdict, Reason, SeriesVerdict, TargetMatch,
+    TargetMatchKind, Verdict, exit,
 };
 
 #[test]
@@ -64,6 +65,7 @@ fn missing_symbol_blocks() {
     let r = Reason::MissingSymbol {
         symbol: SymbolRef::macro_use("X"),
         first_seen_at_tag: None,
+        needs_pin_at_least: None,
         suggested_replacement: None,
     };
     assert!(r.is_blocking());
@@ -109,6 +111,8 @@ fn series_verdict_summarizes_results() {
                 function: FunctionName::new("bar").unwrap(),
                 expected: Arity::new(2),
                 found: vec![Arity::new(3)],
+                expected_available_at: None,
+                needs_pin_at_least: None,
             }],
         },
     );
@@ -138,6 +142,43 @@ fn diagnostics_with_only_a_skip_note_is_not_empty() {
     let mut d = Diagnostics::default();
     d.already_present_skipped = Some(AlreadyPresentSkipped::NoMergeBase);
     assert!(!d.is_empty());
+}
+
+#[test]
+fn diagnostics_with_only_a_pin_bump_is_not_empty() {
+    let mut d = Diagnostics::default();
+    d.pin_bumps.push(PinBump {
+        dep: DependencyName::new("cowlib".to_owned()).unwrap(),
+        from: Some("hex 2.16.0".to_owned()),
+        to: "hex 2.17.1".to_owned(),
+        status: None,
+    });
+    assert!(!d.is_empty());
+}
+
+// The verdict cache persists detection with no status; every status
+// state must survive serde for the post-cache fill to be the only
+// writer.
+#[test]
+fn pin_bump_statuses_round_trip_through_serde() {
+    for status in [
+        None,
+        Some(BumpStatus::Untracked),
+        Some(BumpStatus::SnapshotMissing {
+            note: "run: backhopper snapshots generate --project cowlib --since 2.17.1".to_owned(),
+        }),
+        Some(BumpStatus::SnapshotPresent),
+    ] {
+        let bump = PinBump {
+            dep: DependencyName::new("cowlib".to_owned()).unwrap(),
+            from: None,
+            to: "hex 2.17.1".to_owned(),
+            status,
+        };
+        let json = serde_json::to_string(&bump).unwrap();
+        let back: PinBump = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, bump);
+    }
 }
 
 // The verdict cache persists these via serde; a round-trip failure

@@ -14,10 +14,14 @@ use serde::Serialize;
 
 use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::model::names::{
-    Arity, FunctionName, ModuleName, ProjectName, RecordName, TagName,
+    Arity, DependencyName, FunctionName, Mfa, ModuleName, ProjectName, RecordName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::{Diagnostics, PinVerdict, Reason, Unanalyzed, Verdict};
+use backhopper_core::model::symbol::SymbolRef;
+use backhopper_core::model::verdict::{
+    BumpStatus, Diagnostics, NeedsPin, PinBump, PinVerdict, Reason, Unanalyzed, Verdict,
+};
+use std::str::FromStr;
 
 fn fixture_path(name: &str) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -70,6 +74,8 @@ fn pin_verdict_with_reasons_matches_fixture() {
                     function: FunctionName::new("start").unwrap(),
                     expected: Arity::new(2),
                     found: vec![Arity::new(0)],
+                    expected_available_at: None,
+                    needs_pin_at_least: None,
                 },
                 Reason::NowHidden {
                     module: ModuleName::new("ra_internal").unwrap(),
@@ -164,4 +170,64 @@ fn pin_verdict_with_unsupported_file_type_matches_fixture() {
         },
     );
     assert_matches_fixture(&pv, "verdict_with_unsupported_file_type.json");
+}
+
+// Locks the bump-first wire shape: a populated `first_seen_at_tag`
+// plus `needs_pin_at_least` on a requires_adaptation reason.
+#[test]
+fn pin_verdict_with_bump_first_reason_matches_fixture() {
+    let pv = PinVerdict::new(
+        Pin::new(
+            ProjectName::new("cowlib").unwrap(),
+            TagName::new("2.13.0").unwrap(),
+        ),
+        Verdict::RequiresAdaptation {
+            reasons: vec![Reason::MissingSymbol {
+                symbol: SymbolRef::function(Mfa::from_str("cow_http:ensure_token/1").unwrap()),
+                first_seen_at_tag: Some(TagName::new("2.17.0").unwrap()),
+                needs_pin_at_least: Some(NeedsPin {
+                    project: ProjectName::new("cowlib").unwrap(),
+                    tag: TagName::new("2.17.0").unwrap(),
+                }),
+                suggested_replacement: None,
+            }],
+        },
+    )
+    .with_tracked_refs(1);
+    assert_matches_fixture(&pv, "verdict_with_bump_first_reason.json");
+}
+
+// pins the wire shape of every `BumpStatus` state plus the cached
+// (`status` absent) and introduced-pin (`from` absent) forms
+#[test]
+fn diagnostics_with_pin_bumps_matches_fixture() {
+    let bump = |dep: &str, from: Option<&str>, to: &str, status: Option<BumpStatus>| PinBump {
+        dep: DependencyName::new(dep.to_owned()).unwrap(),
+        from: from.map(str::to_owned),
+        to: to.to_owned(),
+        status,
+    };
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![
+            bump(
+                "cowlib",
+                Some("hex 2.16.0"),
+                "hex 2.17.1",
+                Some(BumpStatus::SnapshotMissing {
+                    note: "run: backhopper snapshots generate --project cowlib --since 2.17.1"
+                        .into(),
+                }),
+            ),
+            bump("emqtt", None, "git v1.14.0", Some(BumpStatus::Untracked)),
+            bump(
+                "ra",
+                Some("hex 3.1.5"),
+                "hex 3.1.6",
+                Some(BumpStatus::SnapshotPresent),
+            ),
+            bump("osiris", Some("hex 1.9.0"), "hex 1.9.1", None),
+        ],
+        ..Diagnostics::default()
+    };
+    assert_matches_fixture(&diagnostics, "diagnostics_with_pin_bumps.json");
 }

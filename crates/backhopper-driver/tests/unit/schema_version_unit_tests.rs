@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_driver::{SUPPORTED_SCHEMA, SchemaVersion, SchemaVersionRange};
+use backhopper_driver::{
+    CURRENT_ENVELOPE_VERSION, SUPPORTED_SCHEMA, SchemaVersion, SchemaVersionRange,
+};
 
 #[test]
 fn get_returns_underlying_integer() {
@@ -50,8 +52,8 @@ fn supported_schema_covers_version_one() {
 }
 
 #[test]
-fn supported_schema_covers_current_release_versions() {
-    for v in 1..=4 {
+fn supported_schema_covers_every_embedded_version() {
+    for v in 1..=CURRENT_ENVELOPE_VERSION {
         assert!(
             SUPPORTED_SCHEMA.contains(SchemaVersion::new(v)),
             "v{v} must be inside SUPPORTED_SCHEMA: {SUPPORTED_SCHEMA}",
@@ -59,8 +61,15 @@ fn supported_schema_covers_current_release_versions() {
     }
 }
 
+// guards against a refactor back to a hand-maintained literal
 #[test]
-fn supported_schema_rejects_a_future_version() {
+fn supported_schema_ceiling_is_the_core_current_version() {
+    assert_eq!(SUPPORTED_SCHEMA.max.get(), CURRENT_ENVELOPE_VERSION);
+}
+
+#[test]
+fn supported_schema_rejects_the_next_version_and_beyond() {
+    assert!(!SUPPORTED_SCHEMA.contains(SchemaVersion::new(CURRENT_ENVELOPE_VERSION + 1)));
     assert!(!SUPPORTED_SCHEMA.contains(SchemaVersion::new(999)));
 }
 

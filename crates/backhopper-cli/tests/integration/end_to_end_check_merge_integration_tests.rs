@@ -144,11 +144,8 @@ fn check_merge_evaluates_the_merge_diff() {
     let output = assert.get_output();
     let code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // No Incompatible reasons; either Compatible (0) or Inapplicable (4) depending on TouchedKinds.
-    assert!(
-        code == 0 || code == 4,
-        "expected exit 0 or 4, got {code}. stdout: {stdout}"
-    );
+    // Compatible and Inapplicable both exit 0; only needs-attention exits 3.
+    assert_eq!(code, 0, "stdout: {stdout}");
     assert!(
         !stdout.contains("incompatible: 1"),
         "merge diff should not be Incompatible. stdout: {stdout}"
@@ -180,7 +177,7 @@ fn check_merge_accepts_short_sha_prefix() {
         ])
         .assert();
     let code = assert.get_output().status.code().unwrap_or(-1);
-    assert!(code == 0 || code == 4, "got unexpected exit {code}");
+    assert_eq!(code, 0, "got unexpected exit {code}");
 }
 
 #[test]
@@ -209,5 +206,5 @@ fn check_range_merge_commit_accepts_short_sha_prefix() {
         ])
         .assert();
     let code = assert.get_output().status.code().unwrap_or(-1);
-    assert!(code == 0 || code == 4, "got unexpected exit {code}");
+    assert_eq!(code, 0, "got unexpected exit {code}");
 }

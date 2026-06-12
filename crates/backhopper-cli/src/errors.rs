@@ -189,7 +189,8 @@ fn git_hint(e: &GitError) -> Option<String> {
             "check that `git_url` points at a valid git directory (bare or working tree)".into(),
         ),
         GitError::NotAGitRepository(_) => Some(
-            "pass `--repo-dir-path <PATH>` pointing at a git directory (bare or working tree)"
+            "pass `--repo-dir-path <PATH>` pointing at a git directory (bare or working tree), \
+                  or set BACKHOPPER_REPO_DIR_PATH when invoking from outside the repository"
                 .into(),
         ),
         GitError::AmbiguousSha { .. } => {

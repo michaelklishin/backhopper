@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
@@ -12,7 +12,7 @@ use tabled::{Table, Tabled};
 
 use backhopper_cache::{WorkspaceCaches, stats};
 use backhopper_core::config::{Config, Project, Series};
-use backhopper_core::model::names::{ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 use backhopper_core::versions::version_cmp;
@@ -20,6 +20,7 @@ use backhopper_core::versions::version_cmp;
 use backhopper_git::GitRepo;
 
 use crate::cli::{DoctorCmd, GlobalArgs};
+use crate::commands::auto_generate::snapshot_generate_command;
 use crate::commands::context::{load_config, open_store_read, snapshot_dir};
 use crate::commands::snapshots::filter_tags_for_project;
 use crate::errors::{CliError, CliResult};
@@ -32,7 +33,17 @@ struct DoctorPayload {
     series: Vec<SeriesRow>,
     totals: Totals,
     unpinned_projects: Vec<String>,
+    /// Tracked projects a series carries no pin for: the symbol
+    /// lookup cannot miss against a pin that is not there, so the
+    /// verdict silently reverts to vacuous. Advisory only.
+    series_pin_gaps: Vec<SeriesPinGap>,
     cache: CacheRow,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SeriesPinGap {
+    series: SeriesName,
+    project: ProjectName,
 }
 
 /// One informational row about the workspace caches: never affects
@@ -66,6 +77,9 @@ struct PinRow {
     pin: PinDisplay,
     resolved_tag: Option<TagName>,
     snapshot_present: bool,
+    /// Newest store tag for the project by version order. `None` for
+    /// self pins, which resolve against a git ref rather than a tag.
+    store_newest_tag: Option<TagName>,
     upstream_tags_ahead: Option<usize>,
     note: Option<String>,
 }
@@ -107,13 +121,15 @@ fn build_payload(
         missing: 0,
     };
     let mut series_rows: Vec<SeriesRow> = Vec::new();
+    // one store listing per project, however many series pin it
+    let mut store_tags: BTreeMap<ProjectName, Vec<TagName>> = BTreeMap::new();
     for series in &cfg.series {
         if let Some(filter) = &cmd.series
             && !series.name.as_str().contains(filter.as_str())
         {
             continue;
         }
-        let row = build_series_row(cfg, store, series, cmd.check_remote)?;
+        let row = build_series_row(cfg, store, series, cmd.check_remote, &mut store_tags)?;
         for pin in &row.pins {
             totals.pins += 1;
             if pin.snapshot_present {
@@ -132,6 +148,7 @@ fn build_payload(
         series: series_rows,
         totals,
         unpinned_projects: unpinned_projects(cfg),
+        series_pin_gaps: series_pin_gaps(cfg, cmd.series.as_deref()),
         cache: CacheRow {
             entries: cache_stats.by_input.entries
                 + cache_stats.by_content.entries
@@ -146,10 +163,11 @@ fn build_series_row(
     store: &SnapshotStore<ReadOnly>,
     series: &Series,
     check_remote: bool,
+    store_tags: &mut BTreeMap<ProjectName, Vec<TagName>>,
 ) -> CliResult<SeriesRow> {
     let mut rows: Vec<PinRow> = Vec::new();
     for spec in &series.pins {
-        rows.push(build_pin_row(cfg, store, spec, check_remote)?);
+        rows.push(build_pin_row(cfg, store, spec, check_remote, store_tags)?);
     }
     Ok(SeriesRow {
         name: series.name.to_string(),
@@ -162,6 +180,7 @@ fn build_pin_row(
     store: &SnapshotStore<ReadOnly>,
     spec: &PinSpec,
     check_remote: bool,
+    store_tags: &mut BTreeMap<ProjectName, Vec<TagName>>,
 ) -> CliResult<PinRow> {
     let project = cfg
         .project(spec.project())
@@ -170,20 +189,54 @@ fn build_pin_row(
     let snapshot_present = resolved
         .as_ref()
         .is_some_and(|p| store.has(&p.project, &p.tag));
+    let store_newest_tag = match spec {
+        PinSpec::SelfRef { .. } => None,
+        _ => {
+            let tags = store_tags
+                .entry(spec.project().clone())
+                .or_insert_with(|| store.list_tags(spec.project()).unwrap_or_default());
+            PinSelect::Latest.pick(tags.iter()).cloned()
+        }
+    };
     let upstream_tags_ahead = if check_remote {
         upstream_lead(project, resolved.as_ref().map(|p| &p.tag)).ok()
     } else {
         None
     };
-    let note = build_note(spec, resolved.as_ref(), snapshot_present);
+    let note = build_note(spec, resolved.as_ref(), snapshot_present)
+        .or_else(|| staleness_note(spec, resolved.as_ref(), store_newest_tag.as_ref()));
     Ok(PinRow {
         project: spec.project().clone(),
         pin: pin_display(spec),
         resolved_tag: resolved.map(|p| p.tag),
         snapshot_present,
+        store_newest_tag,
         upstream_tags_ahead,
         note,
     })
+}
+
+/// The store knowing a newer tag than the pin resolves to is the
+/// post-cascade window between a landed bump and `series sync`.
+pub fn staleness_note(
+    spec: &PinSpec,
+    resolved: Option<&Pin>,
+    newest: Option<&TagName>,
+) -> Option<String> {
+    let resolved = resolved?;
+    let newest = newest?;
+    if version_cmp(newest.as_str(), resolved.tag.as_str()) != Ordering::Less {
+        return None;
+    }
+    match spec {
+        PinSpec::Literal { .. } => Some(format!(
+            "store has a newer snapshot ({newest}): if the series branch landed a pin bump, run `backhopper series sync diff`"
+        )),
+        // Latest-pattern pins resolve to the newest *matching* tag, so
+        // a newer overall tag means the glob is what excludes it
+        PinSpec::Pattern { .. } => Some(format!("pin pattern excludes newer tag {newest}")),
+        PinSpec::SelfRef { .. } => None,
+    }
 }
 
 fn pin_display(spec: &PinSpec) -> PinDisplay {
@@ -211,9 +264,9 @@ fn pin_display(spec: &PinSpec) -> PinDisplay {
 
 fn build_note(spec: &PinSpec, resolved: Option<&Pin>, present: bool) -> Option<String> {
     match (spec, resolved, present) {
-        (PinSpec::Literal { project, tag }, _, false) => Some(format!(
-            "run: backhopper snapshots generate --project {project} --since {tag}"
-        )),
+        (PinSpec::Literal { project, tag }, _, false) => {
+            Some(format!("run: {}", snapshot_generate_command(project, tag)))
+        }
         (PinSpec::Pattern { project, .. }, None, _) => Some(format!(
             "pattern matched no snapshot tag: run `backhopper snapshots generate --project {project}`",
         )),
@@ -257,6 +310,30 @@ pub fn count_newer_tags(filtered: &[TagName], resolved: Option<&TagName>) -> usi
         .count()
 }
 
+/// Per-series coverage: every tracked project either pins in the
+/// series or sits on the series' `untracked_projects` opt-out.
+fn series_pin_gaps(cfg: &Config, filter: Option<&str>) -> Vec<SeriesPinGap> {
+    let mut gaps = Vec::new();
+    for series in &cfg.series {
+        if let Some(filter) = filter
+            && !series.name.as_str().contains(filter)
+        {
+            continue;
+        }
+        let pinned: BTreeSet<&ProjectName> = series.pins.iter().map(|p| p.project()).collect();
+        for project in &cfg.projects {
+            if pinned.contains(&project.name) || series.untracked_projects.contains(&project.name) {
+                continue;
+            }
+            gaps.push(SeriesPinGap {
+                series: series.name.clone(),
+                project: project.name.clone(),
+            });
+        }
+    }
+    gaps
+}
+
 fn unpinned_projects(cfg: &Config) -> Vec<String> {
     let mut pinned: BTreeSet<&str> = BTreeSet::new();
     for s in &cfg.series {
@@ -281,6 +358,7 @@ struct DoctorRow {
     pin: String,
     resolved: String,
     snapshot: String,
+    newest: String,
     upstream: String,
     note: String,
 }
@@ -325,6 +403,16 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
         writeln!(w)?;
         writeln!(w, "{table}")?;
     }
+    if !payload.series_pin_gaps.is_empty() {
+        writeln!(w)?;
+        for gap in &payload.series_pin_gaps {
+            writeln!(
+                w,
+                "series {}: no pin for tracked project {} (adopt via series sync merge --series-name {}, or list it under untracked_projects)",
+                gap.series, gap.project, gap.series
+            )?;
+        }
+    }
     if !payload.unpinned_projects.is_empty() {
         writeln!(w)?;
         writeln!(
@@ -359,6 +447,11 @@ fn doctor_row(series: &SeriesRow, pin: &PinRow) -> DoctorRow {
     } else {
         "MISSING"
     };
+    let newest = pin
+        .store_newest_tag
+        .as_ref()
+        .map(TagName::to_string)
+        .unwrap_or_else(|| "-".into());
     let upstream = pin
         .upstream_tags_ahead
         .map(|n| {
@@ -376,6 +469,7 @@ fn doctor_row(series: &SeriesRow, pin: &PinRow) -> DoctorRow {
         pin: pin_label,
         resolved,
         snapshot: snapshot.into(),
+        newest,
         upstream,
         note,
     }

@@ -9,7 +9,7 @@
 /// The most recent envelope schema version this build knows about.
 /// Bumps on every wire-format change; a fresh `vN.json` is regenerated
 /// in lockstep via `cargo xtask gen-schema --bless`.
-pub const CURRENT_SCHEMA_VERSION: u32 = 10;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 
 /// Lowest version this build embeds. Old versions stay embedded so
 /// `schema show <N>` can answer for any version the binary ever

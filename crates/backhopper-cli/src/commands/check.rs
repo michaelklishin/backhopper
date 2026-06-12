@@ -22,7 +22,9 @@ use backhopper_core::Error as CoreError;
 use backhopper_core::app_src::{AppSrcSpec, application_of_path, parse as app_src_parse};
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
-use backhopper_core::compat::routing::{PathRouting, classify_paths_for_pin};
+use backhopper_core::compat::routing::{
+    PathRouting, RoutedPinVerdict, classify_paths_for_pin, project_owns_path, route_pin_verdict,
+};
 use backhopper_core::compat::scope::{PinScope, parse_module_names};
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
@@ -38,7 +40,7 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    AlreadyPresentSkipped, DepPinDivergence, Diagnostics, InapplicableReason, PinVerdict, Reason,
+    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, PinBump, PinVerdict, Reason,
     SeriesEvaluation, SeriesVerdict, SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds,
     TranslationSource, Verdict,
 };
@@ -46,8 +48,8 @@ use backhopper_core::store::{ReadOnly, SnapshotStore};
 
 use backhopper_git::{
     CandidateIdentity, GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput,
-    TargetWalkIndex, cherry_pick_trailers, load_files_at, normalized_patch_hash,
-    trailer_origin_on_target,
+    TargetWalkIndex, analyzable_diff_path, cherry_pick_trailers, load_files_at,
+    normalized_patch_hash, trailer_origin_on_target,
 };
 
 use crate::cli::check::TargetRepoArgs;
@@ -55,10 +57,14 @@ use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
 };
+use crate::commands::availability::AvailabilityProbe;
 use crate::commands::batch_plan::BatchPlan;
 use crate::commands::context::{load_config, open_store_read};
 use crate::commands::macro_env::macro_environment_hash;
-use crate::commands::rabbitmq_components::{DepPin, parse_components_mk};
+use crate::commands::pin_bump::{BumpSnapshotGenerator, PinBumpAssessor};
+use crate::commands::rabbitmq_components::{
+    COMPONENTS_MK_PATH, DepPin, detect_pin_bumps, parse_components_mk,
+};
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
 use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
 use crate::commands::snapshot_cache::SnapshotCache;
@@ -66,7 +72,7 @@ use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
 };
 use crate::commands::summary::{
-    SummaryFormatter, batch_result_to_summary_row, emit_rows, to_summary_row,
+    SummaryFormatter, batch_result_to_summary_row, emit_rows, self_project_names, to_summary_row,
 };
 use crate::commands::target_repo;
 use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
@@ -211,12 +217,13 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             project,
             tag,
             series,
-            repo_dir_path,
+            repo,
             source,
             target,
             diagnostics,
             commit,
         } => {
+            let repo_dir_path = repo.repo_dir_path;
             let resolved = resolve_commit_input(
                 &repo_dir_path,
                 &commit,
@@ -245,13 +252,14 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             project,
             tag,
             series,
-            repo_dir_path,
+            repo,
             range,
             merge_commit,
             source,
             target,
             diagnostics,
         } => {
+            let repo_dir_path = repo.repo_dir_path;
             if let Some(prefix) = merge_commit {
                 let resolved = resolve_commit_input(
                     &repo_dir_path,
@@ -299,12 +307,13 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             project,
             tag,
             series,
-            repo_dir_path,
+            repo,
             source,
             target,
             diagnostics,
             merge_sha,
         } => {
+            let repo_dir_path = repo.repo_dir_path;
             let resolved = resolve_commit_input(
                 &repo_dir_path,
                 &merge_sha,
@@ -333,12 +342,13 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             project,
             tag,
             series,
-            repo_dir_path,
+            repo,
             source,
             target,
             diagnostics,
             pr_url,
         } => {
+            let repo_dir_path = repo.repo_dir_path;
             let bytes = pr_patch_bytes(&pr_url)?;
             run_check_patch(
                 args,
@@ -357,7 +367,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
         }
         CheckCmd::Multi {
             series,
-            repo_dir_path,
+            repo,
             source,
             target: _,
             diagnostics,
@@ -366,14 +376,14 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             args,
             &cfg,
             &series,
-            &repo_dir_path,
+            &repo.repo_dir_path,
             &commit,
             &source,
             diagnostics,
         ),
         CheckCmd::Batch {
             series,
-            repo_dir_path,
+            repo,
             commits_file_path,
             source,
             target,
@@ -382,7 +392,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             args,
             &cfg,
             &series,
-            &repo_dir_path,
+            &repo.repo_dir_path,
             &commits_file_path,
             &source,
             &target,
@@ -700,9 +710,7 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
         resolve_rev_with_hint(&g, repo, b)?,
     );
     let text = g
-        .diff_commits_unified(&from, &to, |p| {
-            p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
-        })
+        .diff_commits_unified(&from, &to, analyzable_diff_path)
         .map_err(CliError::Git)?;
     Ok(text.into_bytes())
 }
@@ -962,8 +970,8 @@ impl DepPinProbe {
             };
             divergent.push(DepPinDivergence {
                 dep,
-                source: format!("{} {}", pin.source.label(), pin.version),
-                target: format!("{} {}", target_pin.source.label(), target_pin.version),
+                source: pin.display(),
+                target: target_pin.display(),
             });
         }
         if divergent.is_empty() {
@@ -1037,7 +1045,7 @@ fn reachable_app_names(
 
 fn read_components_mk_blob(repo: &GitRepo, commit: &CommitSha) -> Option<String> {
     let blobs = repo
-        .read_paths_at_commit(commit, |p| p == "rabbitmq-components.mk")
+        .read_paths_at_commit(commit, |p| p == COMPONENTS_MK_PATH)
         .ok()?;
     let blob = blobs.into_iter().next()?;
     String::from_utf8(blob.bytes).ok()
@@ -1168,6 +1176,14 @@ fn run_check_patch(
         }
     };
     session.report();
+    // Availability runs post-cache: the project's tag set is not a
+    // cache-key input, so cached values stay unclassified on disk.
+    AvailabilityProbe::new(cfg, &store, &cache).apply(&mut evaluation);
+    // same contract for bump assessment: store state is not in the key
+    if diagnostics.auto_generate {
+        BumpSnapshotGenerator::new(args, cfg).apply(&store, &evaluation);
+    }
+    PinBumpAssessor::new(cfg, &store).apply(&mut evaluation);
     // prereq promotion stays out of the cached value so batch rows
     // and check rows share entries; it commutes with the target merge
     // (it only rewrites MissingSymbol reasons)
@@ -1220,6 +1236,7 @@ fn run_check_patch(
         };
         let row = to_summary_row(
             &evaluation,
+            &self_project_names(cfg),
             sha,
             subject,
             series.clone(),
@@ -1245,7 +1262,27 @@ fn run_check_patch(
     )
 }
 
+fn pin_bump_label(b: &PinBump) -> String {
+    let change = match &b.from {
+        Some(from) => format!("{} {} -> {}", b.dep, from, b.to),
+        None => format!("{} introduced at {}", b.dep, b.to),
+    };
+    let status = match &b.status {
+        Some(BumpStatus::Untracked) => "untracked dep".to_owned(),
+        Some(BumpStatus::SnapshotMissing { note }) => format!("snapshot: absent; {note}"),
+        Some(BumpStatus::SnapshotPresent) => "snapshot: present".to_owned(),
+        None => "unassessed".to_owned(),
+    };
+    format!("{change} ({status})")
+}
+
 pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
+    for b in &evaluation.diagnostics.pin_bumps {
+        writeln!(w, "**Pin bump:** {}", pin_bump_label(b))?;
+    }
+    if !evaluation.diagnostics.pin_bumps.is_empty() {
+        writeln!(w)?;
+    }
     writeln!(w, "| Pin | Verdict | Tracked refs | Notes |")?;
     writeln!(w, "| --- | --- | --- | --- |")?;
     for pv in &evaluation.verdict.results {
@@ -1282,6 +1319,7 @@ fn reason_md_label(r: &Reason) -> String {
     let sym = |k: &SymbolKind| -> String {
         match k {
             SymbolKind::Function { mfa } => mfa.to_string(),
+            SymbolKind::FunctionAnyArity { module, function } => format!("{module}:{function}/?"),
             SymbolKind::Type {
                 module,
                 name,
@@ -1571,9 +1609,13 @@ fn render_text(
             d.dep, d.source, d.target
         )?;
     }
+    for b in &evaluation.diagnostics.pin_bumps {
+        writeln!(w, "pin bump: {}", pin_bump_label(b))?;
+    }
     if flags.explain {
         render_explain_section(w, &evaluation.verdict.results)?;
     }
+    render_unattributed_paths(w, &evaluation.diagnostics)?;
     let show_section = flags.show_untracked_calls || flags.show_otp_calls;
     if show_section && !evaluation.diagnostics.is_empty() {
         render_untracked_section(
@@ -1582,6 +1624,22 @@ fn render_text(
             known_projects,
             flags.show_otp_calls,
         )?;
+    }
+    Ok(())
+}
+
+/// Always on: this is the breadcrumb behind an
+/// `inapplicable { untracked }` verdict, wanted exactly when the
+/// operator wonders why nothing was analyzed.
+fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
+    if diagnostics.unattributed_paths.is_empty() {
+        return Ok(());
+    }
+    writeln!(w)?;
+    writeln!(w, "Untracked paths (no configured project owns them):")?;
+    for (prefix, count) in &diagnostics.unattributed_paths {
+        let plural = if *count == 1 { "" } else { "s" };
+        writeln!(w, "  {prefix:<40} {count} path{plural}")?;
     }
     Ok(())
 }
@@ -1723,6 +1781,17 @@ fn render_untracked_section(
             writeln!(w, "  #{record:<39} {count} reference{plural}")?;
         }
     }
+    if !diagnostics.context_refs_missing.is_empty() {
+        writeln!(w)?;
+        writeln!(
+            w,
+            "Unresolved context-line references (pre-existing target facts, not a verdict input):"
+        )?;
+        for (module, count) in &diagnostics.context_refs_missing {
+            let plural = if *count == 1 { "" } else { "s" };
+            writeln!(w, "  {module:<40} {count} reference{plural}")?;
+        }
+    }
     if !diagnostics.unanalyzed.is_empty() {
         writeln!(w)?;
         writeln!(
@@ -1825,6 +1894,8 @@ fn evaluate_one(
     self_repo: Option<&Path>,
 ) -> CliResult<SeriesEvaluation> {
     let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
+    // patch-pure, so it may join the cached evaluation; assessed post-cache
+    let pin_bumps = detect_pin_bumps(&patch.files);
     let touched_paths: Vec<PathBuf> = patch
         .files
         .iter()
@@ -1880,37 +1951,32 @@ fn evaluate_one(
     if touched_kinds.erl > 0 || touched_kinds.hrl > 0 {
         touched_kinds.only_self_surface = is_self_only_evaluation(cfg, &eval.verdict.results);
     }
-    let rewritten: Vec<PinVerdict> = eval
+    let routed: Vec<RoutedPinVerdict> = eval
         .verdict
         .results
         .into_iter()
         .zip(routings)
-        .map(|(pv, routing)| {
-            let pv = pv.with_touched(touched_kinds);
-            apply_path_routing(pv, &routing)
-        })
+        .map(|(pv, routing)| route_pin_verdict(pv.with_touched(touched_kinds), &routing))
         .collect();
-    eval.verdict = SeriesVerdict::from_results(rewritten).promote_inapplicable();
+    eval.verdict = SeriesVerdict::from_routed(routed).promote_inapplicable();
+    eval.diagnostics.unattributed_paths =
+        tally_unattributed_paths(&touched_paths, &sibling_projects);
+    eval.diagnostics.pin_bumps = pin_bumps;
     Ok(eval)
 }
 
-// Rewrites the verdict to Inapplicable when no touched path is in this pin's scope
-pub fn apply_path_routing(pv: PinVerdict, routing: &PathRouting) -> PinVerdict {
-    if routing.any_in_scope || !routing.has_any_attribution() {
-        return pv;
-    }
-    let reason = pv.touched.inapplicable_reason().unwrap_or_else(|| {
-        match routing.first_out_of_scope_owner() {
-            Some(name) => InapplicableReason::OutOfScopeFor {
-                project: name.clone(),
-            },
-            None => InapplicableReason::Untracked,
+/// Touched paths no configured project owns, keyed by their first two
+/// path components. The breadcrumb behind `Inapplicable { Untracked }`.
+fn tally_unattributed_paths(touched: &[PathBuf], projects: &[&Project]) -> BTreeMap<String, usize> {
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    for path in touched {
+        if projects.iter().any(|p| project_owns_path(p, path)) {
+            continue;
         }
-    });
-    PinVerdict {
-        verdict: Verdict::Inapplicable { reason },
-        ..pv
+        let prefix: Vec<_> = path.iter().take(2).map(|c| c.to_string_lossy()).collect();
+        *out.entry(prefix.join("/")).or_insert(0) += 1;
     }
+    out
 }
 
 /// True when there's at least one self-pin in the series and every
@@ -2130,6 +2196,9 @@ fn run_batch(
     let mut worst_exit: i32 = 0;
     let mut current: usize = 0;
     let cache = SnapshotCache::new(&store);
+    let mut availability = AvailabilityProbe::new(cfg, &store, &cache);
+    let bump_assessor = PinBumpAssessor::new(cfg, &store);
+    let mut bump_generator = BumpSnapshotGenerator::new(args, cfg);
     let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
     // Source pins depend only on the series, never on the commit.
     let mut source_pins_by_series = Vec::with_capacity(resolved_series.len());
@@ -2206,7 +2275,7 @@ fn run_batch(
                 }
                 Ok(evaluation)
             };
-            let evaluation = match lookup {
+            let mut evaluation = match lookup {
                 SessionLookup::Hit(evaluation) => *evaluation,
                 SessionLookup::Bypassed => evaluate(&mut source_files)?,
                 SessionLookup::Miss(miss) => {
@@ -2229,6 +2298,11 @@ fn run_batch(
                     }
                 }
             };
+            availability.apply(&mut evaluation);
+            if diagnostics.auto_generate {
+                bump_generator.apply(&store, &evaluation);
+            }
+            bump_assessor.apply(&mut evaluation);
             current += 1;
             reporter.progress(current, pair_count, &item_label);
             worst_exit = worst_exit.max(evaluation.worst_exit_code());
@@ -2251,7 +2325,7 @@ fn run_batch(
         results,
     };
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
-        let rows = batch_summary_rows(&git_repo, &payload.results);
+        let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
         emit_rows(summary_fmt, &rows)?;
         return Ok(worst_exit);
     }
@@ -2306,7 +2380,8 @@ fn batch_queries(resolved_series: &[ResolvedSeries]) -> Vec<BatchQuery> {
 
 /// One summary row per `(commit, series)` pair, with the commit
 /// subject looked up once per distinct commit.
-fn batch_summary_rows(repo: &GitRepo, results: &[BatchResult]) -> Vec<SummaryRow> {
+fn batch_summary_rows(cfg: &Config, repo: &GitRepo, results: &[BatchResult]) -> Vec<SummaryRow> {
+    let self_projects = self_project_names(cfg);
     let mut subjects: BTreeMap<&CommitSha, String> = BTreeMap::new();
     results
         .iter()
@@ -2315,7 +2390,7 @@ fn batch_summary_rows(repo: &GitRepo, results: &[BatchResult]) -> Vec<SummaryRow
                 .entry(&r.commit)
                 .or_insert_with(|| repo.commit_subject(&r.commit).unwrap_or_default())
                 .clone();
-            batch_result_to_summary_row(r, subject)
+            batch_result_to_summary_row(r, &self_projects, subject)
         })
         .collect()
 }
@@ -2357,6 +2432,9 @@ fn run_multi(
     let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
     let mut worst_exit: i32 = 0;
     let cache = SnapshotCache::new(&store);
+    let mut availability = AvailabilityProbe::new(cfg, &store, &cache);
+    let bump_assessor = PinBumpAssessor::new(cfg, &store);
+    let mut bump_generator = BumpSnapshotGenerator::new(args, cfg);
     let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
     // resolved lazily: only a miss pays for the diff, the macro
     // environment, or the file map
@@ -2412,7 +2490,7 @@ fn run_multi(
             evaluation.pr_commits.clone_from(&input.pr_commits);
             Ok(evaluation)
         };
-        let evaluation = match lookup {
+        let mut evaluation = match lookup {
             SessionLookup::Hit(evaluation) => *evaluation,
             SessionLookup::Bypassed => evaluate(&mut source_files)?,
             SessionLookup::Miss(miss) => {
@@ -2435,6 +2513,11 @@ fn run_multi(
                 }
             }
         };
+        availability.apply(&mut evaluation);
+        if diagnostics.auto_generate {
+            bump_generator.apply(&store, &evaluation);
+        }
+        bump_assessor.apply(&mut evaluation);
         worst_exit = worst_exit.max(evaluation.worst_exit_code());
         results.push(BatchResult {
             commit: commit.clone(),
@@ -2454,7 +2537,7 @@ fn run_multi(
         results,
     };
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
-        let rows = batch_summary_rows(&git_repo, &payload.results);
+        let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
         emit_rows(summary_fmt, &rows)?;
         return Ok(worst_exit);
     }
@@ -2524,6 +2607,9 @@ fn render_batch_text(
             r.verdict.summary.incompatible,
             r.verdict.summary.inapplicable,
         )?;
+        for b in &r.diagnostics.pin_bumps {
+            writeln!(w, "  pin bump: {}", pin_bump_label(b))?;
+        }
         if flags.explain {
             render_explain_section(w, &r.verdict.results)?;
         }

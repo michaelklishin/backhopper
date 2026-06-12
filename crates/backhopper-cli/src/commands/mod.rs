@@ -5,6 +5,7 @@
 //! Command dispatch.
 
 pub mod auto_generate;
+pub mod availability;
 pub mod batch_plan;
 pub mod bisect;
 pub mod cache;
@@ -14,6 +15,7 @@ pub mod context;
 pub mod doctor;
 pub mod init;
 pub mod macro_env;
+pub mod pin_bump;
 pub mod projects;
 pub mod rabbitmq_components;
 pub mod rev;

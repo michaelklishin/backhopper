@@ -17,8 +17,8 @@ pub mod walk;
 pub use already_present::{CandidateIdentity, TargetWalkIndex, trailer_origin_on_target};
 pub use errors::GitError;
 pub use patch_input::{
-    CommitDiffSource, MergePolicy, PatchInputError, PrCommitPolicy, ResolvedPatchInput,
-    load_files_at,
+    COMPONENTS_MK_PATH, CommitDiffSource, MergePolicy, PatchInputError, PrCommitPolicy,
+    ResolvedPatchInput, analyzable_diff_path, load_files_at,
 };
 pub use pr_commits::{classify, pr_commits_for};
 pub use repo::{

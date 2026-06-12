@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use crate::compat::arg_shape::ArgShape;
 use crate::compat::call_sites::{
     AttrCtxScanner, DynamicCall, extract_call_args_into, extract_definitions_into,
-    extract_dynamic_into, extract_into_with_macros, extract_type_refs_into,
+    extract_dynamic_into, extract_into_with_macros, extract_type_refs_into, strip_line_comment,
 };
 use crate::compat::diff;
 use crate::compat::evaluate::{PostimageTally, evaluate_pin};
@@ -29,7 +29,7 @@ use crate::errors::PatchError;
 use crate::model::names::{Mfa, ModuleName, ProjectName, RecordName, RelativePath};
 use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
-use crate::model::symbol::{RefContext, SymbolKind, SymbolRef};
+use crate::model::symbol::{RefContext, RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     AlreadyPresent, ContentPresence, Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict,
     Unanalyzed,
@@ -189,25 +189,33 @@ impl Patch<Raw> {
                     for hunk in &file.hunks {
                         let mut scanner = AttrCtxScanner::new();
                         for line in &hunk.lines {
-                            match line {
-                                HunkLine::Added(text) | HunkLine::Context(text) => {
-                                    match scanner.classify(text) {
-                                        RefContext::TypeAttribute => {
-                                            extract_type_refs_into(text, &mut referenced);
-                                        }
-                                        RefContext::Body => {
-                                            extract_into_with_macros(
-                                                text,
-                                                file_macros,
-                                                &mut referenced,
-                                            );
-                                            extract_definitions_into(text, &mut defined);
-                                            extract_dynamic_into(text, &mut dynamic_calls);
-                                            extract_call_args_into(text, &mut call_args);
-                                        }
+                            let (text, origin) = match line {
+                                HunkLine::Added(text) => (text, RefOrigin::Added),
+                                HunkLine::Context(text) => (text, RefOrigin::Context),
+                                HunkLine::Removed(_) => continue,
+                            };
+                            // Strip once; the extractors' own strips no-op on
+                            // an already-stripped line.
+                            let text = strip_line_comment(text);
+                            let mut line_refs: Vec<SymbolRef> = Vec::new();
+                            match scanner.classify(text) {
+                                RefContext::TypeAttribute => {
+                                    extract_type_refs_into(text, &mut line_refs);
+                                }
+                                RefContext::Body => {
+                                    extract_into_with_macros(text, file_macros, &mut line_refs);
+                                    extract_definitions_into(text, &mut defined);
+                                    extract_dynamic_into(text, &mut dynamic_calls);
+                                    // Context-line call shapes are pre-existing
+                                    // target facts; only added calls feed the
+                                    // clause-mismatch comparison.
+                                    if origin == RefOrigin::Added {
+                                        extract_call_args_into(text, &mut call_args);
                                     }
                                 }
-                                HunkLine::Removed(_) => {}
+                            }
+                            for r in line_refs {
+                                referenced.push(r.with_origin(origin));
                             }
                         }
                     }
@@ -215,8 +223,15 @@ impl Patch<Raw> {
                 Language::CuttlefishSchema => {
                     for hunk in &file.hunks {
                         for line in &hunk.lines {
-                            if let HunkLine::Added(text) | HunkLine::Context(text) = line {
-                                extract_into_with_macros(text, file_macros, &mut referenced);
+                            let (text, origin) = match line {
+                                HunkLine::Added(text) => (text, RefOrigin::Added),
+                                HunkLine::Context(text) => (text, RefOrigin::Context),
+                                HunkLine::Removed(_) => continue,
+                            };
+                            let mut line_refs: Vec<SymbolRef> = Vec::new();
+                            extract_into_with_macros(text, file_macros, &mut line_refs);
+                            for r in line_refs {
+                                referenced.push(r.with_origin(origin));
                             }
                         }
                     }
@@ -230,7 +245,9 @@ impl Patch<Raw> {
             }
         }
         referenced.sort();
-        referenced.dedup();
+        // `Added` sorts before `Context` within a kind, so a kind-level
+        // dedup keeps the strongest origin.
+        referenced.dedup_by(|a, b| a.kind == b.kind);
         defined.sort();
         defined.dedup();
         unsupported_files.sort();
@@ -543,14 +560,17 @@ impl Patch<Analyzed> {
             .collect();
         let mut untracked_calls = UntrackedTally::default();
         let mut untracked_records: BTreeMap<RecordName, usize> = BTreeMap::new();
-        let defined_index: HashSet<&SymbolRef> = self.defined.iter().collect();
+        let defined_index: HashSet<&SymbolKind> = self.defined.iter().map(|d| &d.kind).collect();
         for r in &self.referenced {
-            if defined_index.contains(r) {
+            if defined_index.contains(&r.kind) {
                 continue;
             }
             match &r.kind {
                 SymbolKind::Function { mfa } if !series_modules.contains(&mfa.module) => {
                     untracked_calls.record(mfa.module.clone());
+                }
+                SymbolKind::FunctionAnyArity { module, .. } if !series_modules.contains(module) => {
+                    untracked_calls.record(module.clone());
                 }
                 SymbolKind::Record { name } if !series_records.contains(name) => {
                     *untracked_records.entry(name.clone()).or_insert(0) += 1;
@@ -559,6 +579,7 @@ impl Patch<Analyzed> {
             }
         }
         let mut results = Vec::with_capacity(contexts.len());
+        let mut context_refs_missing: BTreeMap<ModuleName, usize> = BTreeMap::new();
         // One pin's tally becomes the series-level content-presence
         // diagnostic: the one that considered the most hunks, which
         // in cross-branch mode is the self pin carrying target bytes.
@@ -587,6 +608,11 @@ impl Patch<Analyzed> {
                     ));
                 }
             }
+            // Pin scopes are disjoint per project, so summing per-pin
+            // tallies does not double count a module.
+            for (module, count) in r.context_missing {
+                *context_refs_missing.entry(module).or_insert(0) += count;
+            }
             results.push(
                 PinVerdict::new(ctx.pin().clone(), r.verdict)
                     .with_tracked_ref_details(r.tracked_refs)
@@ -609,12 +635,15 @@ impl Patch<Analyzed> {
             diagnostics: Diagnostics {
                 untracked_calls: untracked_calls.into_map(),
                 untracked_records,
+                context_refs_missing,
+                unattributed_paths: BTreeMap::new(),
                 unanalyzed,
                 suggested_suites: suggest_suites(&self.files),
                 missing_test_modules: BTreeMap::new(),
                 already_present,
                 already_present_skipped: None,
                 dep_pin_divergence: Vec::new(),
+                pin_bumps: Vec::new(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),

@@ -80,6 +80,7 @@ fn promote_inapplicable_leaves_incompatible_alone() {
                     Arity::new(1),
                 )),
                 first_seen_at_tag: None,
+                needs_pin_at_least: None,
                 suggested_replacement: None,
             }],
         },

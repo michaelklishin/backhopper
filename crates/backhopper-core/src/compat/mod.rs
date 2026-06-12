@@ -23,6 +23,8 @@ pub use patch::{
     Analyzed, EvaluationContext, EvaluationFiles, EvaluationInput, Language, Patch, Pinned, Raw,
     Scoped, Sourced, Verdicted, evaluation_state, patch_state,
 };
-pub use routing::{PathRouting, classify_paths_for_pin, project_owns_path};
+pub use routing::{
+    PathRouting, RoutedPinVerdict, classify_paths_for_pin, project_owns_path, route_pin_verdict,
+};
 pub use scope::{PinScope, UntrackedTally};
 pub use target_tree::{TargetPathClassification, TouchedPathQuery, classify_path, normalise};

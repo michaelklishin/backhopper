@@ -1,0 +1,33 @@
+{
+  "pin_bumps": [
+    {
+      "dep": "cowlib",
+      "from": "hex 2.16.0",
+      "to": "hex 2.17.1",
+      "status": {
+        "state": "snapshot_missing",
+        "note": "run: backhopper snapshots generate --project cowlib --since 2.17.1"
+      }
+    },
+    {
+      "dep": "emqtt",
+      "to": "git v1.14.0",
+      "status": {
+        "state": "untracked"
+      }
+    },
+    {
+      "dep": "ra",
+      "from": "hex 3.1.5",
+      "to": "hex 3.1.6",
+      "status": {
+        "state": "snapshot_present"
+      }
+    },
+    {
+      "dep": "osiris",
+      "from": "hex 1.9.0",
+      "to": "hex 1.9.1"
+    }
+  ]
+}

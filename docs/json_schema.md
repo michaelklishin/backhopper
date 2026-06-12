@@ -123,8 +123,10 @@ or:
 ```
 
 `results.results[].verdict.verdict` is one of `"compatible"`,
-`"requires_adaptation"`, or `"incompatible"`. When non-`Compatible`,
-`reasons` is present:
+`"requires_adaptation"`, `"incompatible"`, or `"inapplicable"`.
+`requires_adaptation` and `incompatible` carry `reasons`;
+`inapplicable` carries a single `reason` naming why nothing was
+analyzable:
 
 ```json
 {
@@ -140,14 +142,21 @@ or:
 }
 ```
 
+`first_seen_at_tag` (and `arity_changed`'s `expected_available_at`)
+name the earliest snapshot tag strictly later than the pin where the
+symbol exists; when populated the reason is non-blocking and the
+verdict reads `requires_adaptation` (land the dep pin bump first).
+`needs_pin_at_least` is the same fact as a typed
+`{ project, tag }` payload for workflow tools.
+
 ### `Reason` variants
 
 Tagged with `"kind"` (snake_case):
 
 | `kind` | shape |
 |---|---|
-| `missing_symbol` | `{ symbol, first_seen_at_tag, suggested_replacement }` |
-| `arity_changed` | `{ module, function, expected, found }` |
+| `missing_symbol` | `{ symbol, first_seen_at_tag, needs_pin_at_least?, suggested_replacement }` |
+| `arity_changed` | `{ module, function, expected, found, expected_available_at?, needs_pin_at_least? }` |
 | `signature_changed` | `{ module, function, arity, expected_spec, found_spec }` |
 | `file_absent` | `{ path }` |
 | `context_drift` | `{ path, hunk_index }` |
@@ -181,11 +190,44 @@ prove a position-by-position mismatch.
 {
   "untracked_calls": { "lists": 2, "io": 1 },
   "untracked_records": {},
+  "context_refs_missing": { "cow_http": 1 },
+  "unattributed_paths": { "deps/myapp": 3 },
   "unanalyzed": { "apply": 0, "variable_dispatch": 0 }
 }
 ```
 
-All three fields are omitted when empty (`is_empty` skip).
+Every field is omitted when empty (`is_empty` skip).
+`context_refs_missing` counts in-scope references on *context* hunk
+lines that do not resolve at some pin: pre-existing target facts,
+never verdict reasons. `unattributed_paths` tallies touched paths no
+configured project owns, keyed by their first two path components:
+the breadcrumb behind an `inapplicable { untracked }` verdict.
+
+`pin_bumps` lists the dep pins the patch itself changes or
+introduces in the root `rabbitmq-components.mk`:
+
+```json
+{
+  "pin_bumps": [
+    {
+      "dep": "cowlib",
+      "from": "hex 2.16.0",
+      "to": "hex 2.17.1",
+      "status": {
+        "state": "snapshot_missing",
+        "note": "run: backhopper snapshots generate --project cowlib --since 2.17.1"
+      }
+    }
+  ]
+}
+```
+
+`from` is absent when the commit introduces the pin. `status.state`
+is one of `untracked`, `snapshot_missing` (with a remedy `note`), and
+`snapshot_present`; it is absent only on bumps whose strings could
+not resolve to a pin. The status is assessed against the snapshot
+store after every cache lookup (cached entries store no status), so
+a cache hit still reports current store state.
 
 ### `data` for `check batch`
 
@@ -721,9 +763,10 @@ The unit-test suite under
 serializes representative `Verdict` and `Diagnostics` payloads against
 checked-in JSON fixtures under
 `crates/backhopper-cli/tests/fixtures/json/`. Coverage today:
-`verdict_compatible`, `verdict_with_reasons`, `verdict_with_clause_mismatch`,
+`verdict_compatible`, `verdict_with_reasons`, `verdict_with_bump_first_reason`,
+`verdict_with_clause_mismatch`,
 `verdict_with_untracked_module_missing`, `verdict_with_unsupported_file_type`,
-`diagnostics_populated`. The drift guard locks the `Verdict` and
+`diagnostics_populated`, `diagnostics_with_pin_bumps`. The drift guard locks the `Verdict` and
 `Diagnostics` types and the `Reason` and `ArgShape` enums; it does
 not lock the full per-command envelope. Any divergence between the
 Rust types and these fixtures fails CI; the fixtures must be

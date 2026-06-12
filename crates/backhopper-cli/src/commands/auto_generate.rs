@@ -45,7 +45,7 @@ pub fn ensure_pin_snapshots_present(
     Ok(())
 }
 
-fn generate_one_pin(cfg: &Config, store: &SnapshotStore<Mutable>, pin: &Pin) -> CliResult<()> {
+pub fn generate_one_pin(cfg: &Config, store: &SnapshotStore<Mutable>, pin: &Pin) -> CliResult<()> {
     let project = cfg
         .project(&pin.project)
         .map_err(|e| CliError::Core(e.into()))?;
@@ -72,9 +72,7 @@ pub fn missing_snapshots_error(missing: &[Pin]) -> CliError {
     for (project, tags) in &by_project {
         let oldest =
             oldest_version(tags).expect("by_project entries are non-empty by construction");
-        commands.push(format!(
-            "backhopper snapshots generate --project {project} --since {oldest}"
-        ));
+        commands.push(snapshot_generate_command(project, oldest));
     }
     let remediation = if commands.len() == 1 {
         format!("run: {}", commands[0])
@@ -88,6 +86,12 @@ pub fn missing_snapshots_error(missing: &[Pin]) -> CliError {
         missing: missing.to_vec(),
         remediation,
     }
+}
+
+/// The one remedy phrasing for a missing snapshot, shared by check
+/// errors, pin-bump notes, and doctor so it cannot drift.
+pub fn snapshot_generate_command(project: &ProjectName, since: &TagName) -> String {
+    format!("backhopper snapshots generate --project {project} --since {since}")
 }
 
 // pick the version-oldest tag: `version_cmp` is reversed, so `max_by` returns the smallest version

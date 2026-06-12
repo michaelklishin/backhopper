@@ -172,14 +172,28 @@ impl ResolvedPatchInput {
     }
 }
 
+/// The root dep-pin manifest, the only pin file backhopper reads:
+/// the monorepo carries copies under `deps/*/`, which are vendored
+/// noise.
+pub const COMPONENTS_MK_PATH: &str = "rabbitmq-components.mk";
+
+/// Paths worth carrying in analysis diffs: Erlang and Elixir sources
+/// plus the root dep-pin manifest, so commit-shaped inputs classify
+/// and detect pin bumps the same way patch-file inputs do.
+pub fn analyzable_diff_path(p: &str) -> bool {
+    p.ends_with(".erl")
+        || p.ends_with(".hrl")
+        || p.ends_with(".ex")
+        || p.ends_with(".exs")
+        || p == COMPONENTS_MK_PATH
+}
+
 pub(crate) fn diff_bytes(
     repo: &GitRepo,
     from: &CommitSha,
     to: &CommitSha,
 ) -> Result<Vec<u8>, GitError> {
-    let text = repo.diff_commits_unified(from, to, |p| {
-        p.ends_with(".erl") || p.ends_with(".hrl") || p.ends_with(".ex") || p.ends_with(".exs")
-    })?;
+    let text = repo.diff_commits_unified(from, to, analyzable_diff_path)?;
     Ok(text.into_bytes())
 }
 

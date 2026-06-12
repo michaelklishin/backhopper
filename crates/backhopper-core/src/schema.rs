@@ -43,6 +43,7 @@ const SCHEMA_V2_FROZEN: &str = include_str!("schema_v2_snapshot.json");
 const SCHEMA_V7_FROZEN: &str = include_str!("schema_v7_snapshot.json");
 const SCHEMA_V8_FROZEN: &str = include_str!("schema_v8_snapshot.json");
 const SCHEMA_V9_FROZEN: &str = include_str!("schema_v9_snapshot.json");
+const SCHEMA_V10_FROZEN: &str = include_str!("schema_v10_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -73,7 +74,10 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         7 => Ok(serde_json::from_str(SCHEMA_V7_FROZEN).expect("frozen v7 snapshot is valid JSON")),
         8 => Ok(serde_json::from_str(SCHEMA_V8_FROZEN).expect("frozen v8 snapshot is valid JSON")),
         9 => Ok(serde_json::from_str(SCHEMA_V9_FROZEN).expect("frozen v9 snapshot is valid JSON")),
-        10 => Ok(combined_v10()),
+        10 => {
+            Ok(serde_json::from_str(SCHEMA_V10_FROZEN).expect("frozen v10 snapshot is valid JSON"))
+        }
+        11 => Ok(combined_v11()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -121,18 +125,19 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v10() -> Value {
+fn combined_v11() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
-        10,
+        11,
         "check",
-        "v10 adds the already-present and dep-pin advisory surface: `Diagnostics` gains \
-         `already_present` (tier-1 `identical: TargetMatch` from trailer or patch-hash \
-         matching against the target branch, tier-2 `content: ContentPresence` hunk \
-         tallies), `already_present_skipped`, and `dep_pin_divergence`. `suites plan` \
-         output gains `uncovered: Vec<UncoveredApplication>` and `unattributed_paths` \
-         (`suite_plan_payload`). New `series pins` verb reads a branch's \
-         `rabbitmq-components.mk`; `--target-walk-limit` and `--skip-already-present` \
-         join the verdict-cache key.",
+        "v11 connects tracked-dep snapshots to self-project call sites: path routing \
+         becomes reason-granular (reference-level evidence survives for pins that own \
+         no touched file), `Reason::MissingSymbol` gains `needs_pin_at_least` and a \
+         populated `first_seen_at_tag`, `Reason::ArityChanged` gains \
+         `expected_available_at` and `needs_pin_at_least` (both reclassify the reason \
+         as adaptable: land the dep pin bump first), `SymbolRef` gains an `origin` \
+         (`added` vs `context` hunk line) and the `function_any_arity` kind for calls \
+         whose arity wraps to the next line, and `Diagnostics` gains \
+         `context_refs_missing` plus `unattributed_paths`.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
@@ -161,8 +166,8 @@ fn combined_v10() -> Value {
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
     obj.insert("suite_plan_payload".into(), suite_plan_payload);
-    obj.insert("schema_version".into(), json!(10));
-    obj.insert("title".into(), json!("backhopper envelope v10"));
+    obj.insert("schema_version".into(), json!(11));
+    obj.insert("title".into(), json!("backhopper envelope v11"));
     Value::Object(obj)
 }
 

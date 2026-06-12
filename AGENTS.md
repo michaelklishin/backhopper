@@ -117,7 +117,9 @@ depends only on its own crate.
  * `src/compat/patch.rs`: unified-diff parser, `Patch<S>` type-state
    pipeline (`Raw` → `Analyzed` → `Verdicted`)
  * `src/compat/call_sites.rs`: extractor for `mod:fun(...)`,
-   `?MACRO`, `#record{}`
+   `fun mod:fun/N`, `?MACRO`, `#record{}`; one argument scanner
+   (`scan_top_level_args`) backs arity counting, arg splitting, and
+   shape classification
 
 ### `backhopper-erlang`
 

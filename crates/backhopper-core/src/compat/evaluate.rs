@@ -19,7 +19,7 @@ use crate::model::names::{
 use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
-use crate::model::symbol::{SymbolKind, SymbolRef};
+use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     ArtifactKind, ConflictMarker, HunkTally, Reason, SnapshotSide, SourceDelta, Verdict,
 };
@@ -49,11 +49,18 @@ pub(crate) fn evaluate_pin(
     if let Some(fd) = family_defaults {
         check_versioned_machine_data(files, snapshot, source_snapshot, fd, &mut reasons);
     }
-    let defined_index: HashSet<&SymbolRef> = defined.iter().collect();
+    let defined_index: HashSet<&SymbolKind> = defined.iter().map(|d| &d.kind).collect();
     let mut tracked_refs: Vec<SymbolRef> = Vec::new();
+    let mut context_missing: BTreeMap<ModuleName, usize> = BTreeMap::new();
     let mut source_deltas: Vec<SourceDelta> = Vec::new();
     for r in referenced {
-        if defined_index.contains(r) {
+        if defined_index.contains(&r.kind) {
+            continue;
+        }
+        // Context-line references are pre-existing target facts: an
+        // unresolved one is surfaced as a diagnostic, never a reason.
+        if r.origin == RefOrigin::Context {
+            tally_context_miss(r, snapshot, scope, &mut context_missing);
             continue;
         }
         match &r.kind {
@@ -69,16 +76,27 @@ pub(crate) fn evaluate_pin(
                     record_source_delta(mfa, snapshot, src, &mut source_deltas);
                 }
             }
+            SymbolKind::FunctionAnyArity { module, function } => {
+                if let Some(s) = scope
+                    && !s.contains_module(module)
+                {
+                    continue;
+                }
+                tracked_refs.push(r.clone());
+                analyze_any_arity_reference(r, module, function, snapshot, &mut reasons);
+            }
             SymbolKind::Record { name } => {
                 if let Some(s) = scope
                     && !s.contains_record(name)
                 {
                     continue;
                 }
+                tracked_refs.push(r.clone());
                 if !record_present(snapshot, name) {
                     reasons.push(Reason::MissingSymbol {
                         symbol: r.clone(),
                         first_seen_at_tag: None,
+                        needs_pin_at_least: None,
                         suggested_replacement: None,
                     });
                     continue;
@@ -95,6 +113,7 @@ pub(crate) fn evaluate_pin(
                 {
                     continue;
                 }
+                tracked_refs.push(r.clone());
                 if !type_exported(snapshot, module, name, *arity) {
                     reasons.push(Reason::MissingType {
                         module: module.clone(),
@@ -117,6 +136,7 @@ pub(crate) fn evaluate_pin(
     EvaluationResult {
         verdict: Verdict::from_reasons(reasons),
         tracked_refs,
+        context_missing,
         source_deltas,
         postimage,
     }
@@ -125,10 +145,113 @@ pub(crate) fn evaluate_pin(
 pub(crate) struct EvaluationResult {
     pub verdict: Verdict,
     pub tracked_refs: Vec<SymbolRef>,
+    /// In-scope context-line references that do not resolve at this
+    /// pin, tallied per module. Diagnostic only.
+    pub context_missing: BTreeMap<ModuleName, usize>,
     pub source_deltas: Vec<SourceDelta>,
     /// Content-presence tally over the pin's files, when any hunk
     /// added lines and the pin had file bytes to compare against.
     pub postimage: Option<PostimageTally>,
+}
+
+/// One unresolved in-scope context reference: tallied under its
+/// module so the operator can see what the surrounding target code
+/// relies on without it gating the verdict.
+fn tally_context_miss(
+    r: &SymbolRef,
+    snapshot: &Snapshot<state::Canonical>,
+    scope: Option<&PinScope>,
+    out: &mut BTreeMap<ModuleName, usize>,
+) {
+    let module = match &r.kind {
+        SymbolKind::Function { mfa } => &mfa.module,
+        SymbolKind::FunctionAnyArity { module, .. } | SymbolKind::Type { module, .. } => module,
+        _ => return,
+    };
+    if let Some(s) = scope
+        && !s.contains_module(module)
+    {
+        return;
+    }
+    let resolved = match &r.kind {
+        SymbolKind::Function { mfa } => {
+            function_exported(snapshot, &mfa.module, &mfa.function, mfa.arity)
+        }
+        SymbolKind::FunctionAnyArity { module, function } => {
+            function_exported_any_arity(snapshot, module, function)
+        }
+        SymbolKind::Type {
+            module,
+            name,
+            arity,
+        } => type_exported(snapshot, module, name, *arity),
+        _ => unreachable!("filtered above"),
+    };
+    if !resolved {
+        *out.entry(module.clone()).or_insert(0) += 1;
+    }
+}
+
+fn function_exported(
+    snapshot: &Snapshot<state::Canonical>,
+    module: &ModuleName,
+    function: &FunctionName,
+    arity: Arity,
+) -> bool {
+    let Some(m) = snapshot.module_named(module) else {
+        return false;
+    };
+    let target = FunArity {
+        name: function.clone(),
+        arity,
+    };
+    m.exports.binary_search(&target).is_ok()
+}
+
+fn function_exported_any_arity(
+    snapshot: &Snapshot<state::Canonical>,
+    module: &ModuleName,
+    function: &FunctionName,
+) -> bool {
+    snapshot
+        .module_named(module)
+        .is_some_and(|m| m.exports.iter().any(|fa| &fa.name == function))
+}
+
+/// Lookup for a reference whose arity the extractor could not pin
+/// down: any export with the name resolves it; an arity mismatch can
+/// never fire from a guess.
+fn analyze_any_arity_reference(
+    r: &SymbolRef,
+    module: &ModuleName,
+    function: &FunctionName,
+    snapshot: &Snapshot<state::Canonical>,
+    reasons: &mut Vec<Reason>,
+) {
+    let Some(m) = snapshot.module_named(module) else {
+        reasons.push(Reason::MissingSymbol {
+            symbol: r.clone(),
+            first_seen_at_tag: None,
+            needs_pin_at_least: None,
+            suggested_replacement: None,
+        });
+        return;
+    };
+    if m.visibility == Visibility::Hidden {
+        reasons.push(Reason::NowHidden {
+            module: module.clone(),
+        });
+        return;
+    }
+    if m.exports.iter().any(|fa| &fa.name == function) {
+        return;
+    }
+    reasons.push(Reason::MissingSymbol {
+        symbol: r.clone(),
+        first_seen_at_tag: None,
+        needs_pin_at_least: None,
+        suggested_replacement: None,
+    });
 }
 
 /// Per-pin counters for the tier-2 content-presence check; the
@@ -607,6 +730,7 @@ fn analyze_function_reference(
         reasons.push(Reason::MissingSymbol {
             symbol: r.clone(),
             first_seen_at_tag: None,
+            needs_pin_at_least: None,
             suggested_replacement: None,
         });
         return;
@@ -634,6 +758,7 @@ fn analyze_function_reference(
             reasons.push(Reason::MissingSymbol {
                 symbol: r.clone(),
                 first_seen_at_tag: None,
+                needs_pin_at_least: None,
                 suggested_replacement: None,
             });
         } else {
@@ -642,6 +767,8 @@ fn analyze_function_reference(
                 function: mfa.function.clone(),
                 expected: mfa.arity,
                 found: alt_arities,
+                expected_available_at: None,
+                needs_pin_at_least: None,
             });
         }
         return;
@@ -795,6 +922,10 @@ fn check_return_shapes(
 ) {
     let mut seen: HashSet<(ModuleName, FunctionName, Arity)> = HashSet::new();
     for r in referenced {
+        // Context-line references never drive verdicts.
+        if r.origin == RefOrigin::Context {
+            continue;
+        }
         let SymbolKind::Function { mfa } = &r.kind else {
             continue;
         };

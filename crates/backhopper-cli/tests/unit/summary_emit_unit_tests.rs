@@ -5,6 +5,8 @@
 use backhopper_cli::cli::Formatter;
 use std::num::NonZeroU32;
 
+use std::collections::BTreeSet;
+
 use backhopper_cli::commands::summary::{
     SummaryFormatter, batch_result_to_summary_row, emit_rows, to_summary_row,
 };
@@ -34,7 +36,14 @@ fn rollup_prefers_incompatible_over_other_kinds() {
     compat.tracked_refs = 3;
     incompat.tracked_refs = 5;
     let eval = series_eval_with(vec![compat, incompat]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
+    let row = to_summary_row(
+        &eval,
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
     assert_eq!(row.verdict, VerdictKind::Incompatible);
     assert_eq!(row.tracked, 8);
 }
@@ -48,7 +57,14 @@ fn rollup_promotes_requires_adaptation_over_compatible() {
             Verdict::RequiresAdaptation { reasons: vec![] },
         ),
     ]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
+    let row = to_summary_row(
+        &eval,
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
     assert_eq!(row.verdict, VerdictKind::RequiresAdaptation);
 }
 
@@ -60,7 +76,14 @@ fn rollup_substantive_kind_when_all_inapplicable() {
             reason: InapplicableReason::Untracked,
         },
     )]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
+    let row = to_summary_row(
+        &eval,
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
     assert_eq!(row.verdict, VerdictKind::Inapplicable);
 }
 
@@ -69,7 +92,14 @@ fn tracked_saturates_at_u32_max_on_huge_sums() {
     let mut pin = PinVerdict::new(fixture_pin("a"), Verdict::Compatible);
     pin.tracked_refs = usize::MAX;
     let eval = series_eval_with(vec![pin]);
-    let row = to_summary_row(&eval, fixture_sha(), "hi".into(), None, None);
+    let row = to_summary_row(
+        &eval,
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
     assert_eq!(row.tracked, u32::MAX);
 }
 
@@ -135,10 +165,62 @@ fn batch_row_projection_carries_series_and_parent_count() {
         pr_commits: None,
         parent_count: NonZeroU32::new(2),
     };
-    let row = batch_result_to_summary_row(&result, "merge subject".into());
+    let row = batch_result_to_summary_row(&result, &BTreeSet::new(), "merge subject".into());
     assert_eq!(row.sha, fixture_sha());
     assert_eq!(row.verdict, VerdictKind::RequiresAdaptation);
     assert_eq!(row.series, Some("stable".parse().unwrap()));
     assert_eq!(row.parent_count, NonZeroU32::new(2));
     assert_eq!(row.subject, "merge subject");
+}
+
+// A self pin's scope spans the whole self project; summing it in
+// would make every self-heavy commit read as harness-verified.
+#[test]
+fn tracked_sums_non_self_pins_only() {
+    let mut self_pin = PinVerdict::new(fixture_pin("rabbit"), Verdict::Compatible);
+    let mut dep_pin = PinVerdict::new(fixture_pin("cowlib"), Verdict::Compatible);
+    self_pin.tracked_refs = 40;
+    dep_pin.tracked_refs = 2;
+    let eval = series_eval_with(vec![self_pin, dep_pin]);
+    let mut self_projects = BTreeSet::new();
+    self_projects.insert(ProjectName::new("rabbit").unwrap());
+    let row = to_summary_row(
+        &eval,
+        &self_projects,
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
+    assert_eq!(row.tracked, 2);
+}
+
+// The trust-signal pair: a vacuous compatible row and a verified one
+// must be distinguishable from the count alone.
+#[test]
+fn vacuous_and_verified_compatible_rows_differ_in_tracked() {
+    let mut verified = PinVerdict::new(fixture_pin("cowlib"), Verdict::Compatible);
+    verified.tracked_refs = 3;
+    let verified_row = to_summary_row(
+        &series_eval_with(vec![verified]),
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
+    let vacuous_row = to_summary_row(
+        &series_eval_with(vec![PinVerdict::new(
+            fixture_pin("cowlib"),
+            Verdict::Compatible,
+        )]),
+        &BTreeSet::new(),
+        fixture_sha(),
+        "hi".into(),
+        None,
+        None,
+    );
+    assert_eq!(verified_row.verdict, vacuous_row.verdict);
+    assert_eq!(verified_row.tracked, 3);
+    assert_eq!(vacuous_row.tracked, 0);
 }

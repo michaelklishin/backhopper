@@ -31,8 +31,8 @@ pub use backhopper_core::model::snapshot::{
     WireValue, state as snapshot_state,
 };
 pub use backhopper_core::model::summary::{SummaryRow, VerdictKind};
-pub use backhopper_core::model::symbol::{Reference, SymbolKind, SymbolRef};
+pub use backhopper_core::model::symbol::{RefOrigin, Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
-    FileKind, InapplicableReason, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TouchedKinds,
-    Verdict,
+    FileKind, InapplicableReason, NeedsPin, PinVerdict, Reason, SeriesVerdict, SnapshotSide,
+    TouchedKinds, Verdict,
 };

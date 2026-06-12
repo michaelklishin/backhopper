@@ -172,6 +172,7 @@ fn run_invocation(
 
     let status = wait_with_policy(
         &mut guard,
+        &binary_path,
         invocation.timeout,
         invocation.cancellation,
         poll_interval,
@@ -261,6 +262,7 @@ fn spawn_reader(
 
 fn wait_with_policy(
     guard: &mut ChildGuard,
+    binary_path: &Path,
     timeout: Option<Duration>,
     cancellation: Option<&CancellationToken>,
     poll_interval: Duration,
@@ -292,7 +294,7 @@ fn wait_with_policy(
             Ok(None) => thread::sleep(poll_interval),
             Err(source) => {
                 return Err(DriverError::Spawn {
-                    binary_path: PathBuf::new(),
+                    binary_path: binary_path.to_path_buf(),
                     source,
                 });
             }

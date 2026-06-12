@@ -112,6 +112,19 @@ pub struct SourcePinArgs {
     pub source_series: Option<SeriesName>,
 }
 
+/// The repository commit-shaped inputs are read from. One definition
+/// so the default and the env override cannot drift across verbs.
+#[derive(Debug, Args, Clone)]
+pub struct RepoDirPathArg {
+    #[arg(
+        long,
+        default_value = ".",
+        env = "BACKHOPPER_REPO_DIR_PATH",
+        help = "Repository the commits are read from"
+    )]
+    pub repo_dir_path: PathBuf,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum CheckCmd {
     /// Check a unified-diff patch. The patch comes from a file or stdin.
@@ -125,6 +138,7 @@ pub enum CheckCmd {
         #[arg(
             long,
             default_value = ".",
+            env = "BACKHOPPER_REPO_DIR_PATH",
             help = "Target checkout for resolving untracked modules. Used when `--resolve-untracked-modules` is set"
         )]
         repo_dir_path: PathBuf,
@@ -145,8 +159,8 @@ pub enum CheckCmd {
         tag: Option<TagName>,
         #[arg(long)]
         series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -167,8 +181,8 @@ pub enum CheckCmd {
         tag: Option<TagName>,
         #[arg(long)]
         series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         #[arg(long, conflicts_with = "merge_commit")]
         range: Option<String>,
         #[arg(
@@ -193,8 +207,8 @@ pub enum CheckCmd {
         tag: Option<TagName>,
         #[arg(long)]
         series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -215,8 +229,8 @@ pub enum CheckCmd {
         tag: Option<TagName>,
         #[arg(long)]
         series: Option<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -235,8 +249,8 @@ pub enum CheckCmd {
         /// comma-separated list.
         #[arg(long, required = true, value_delimiter = ',')]
         series: Vec<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         #[command(flatten)]
         source: SourcePinArgs,
         #[command(flatten)]
@@ -259,8 +273,8 @@ pub enum CheckCmd {
         /// comma-separated list.
         #[arg(long, required = true, value_delimiter = ',')]
         series: Vec<SeriesName>,
-        #[arg(long, default_value = ".")]
-        repo_dir_path: PathBuf,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
         /// File of one commit SHA prefix per line (7 to 40 hex characters;
         /// trailing `# annotation` ignored); `-` reads stdin.
         #[arg(long, required = true)]

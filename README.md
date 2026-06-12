@@ -80,10 +80,12 @@ backhopper snapshots generate    # fill in the missing snapshots
 commented-out `[[project]]` example to crib from.
 
 `doctor` is the "is everything ready?" view: it lists each series, the
-pin it expects, whether a snapshot is on disk, and, if anything is
-missing, the exact command you'd run to fix it. Pass `--check-remote`
-and it also tells you how many new tags each project has upstream past
-the latest one you've captured.
+pin it expects, whether a snapshot is on disk, the newest tag the
+snapshot store knows for that project, and, if anything is missing or
+a pin trails the store (a landed pin bump waiting on `series sync`),
+the exact command you'd run to fix it. Pass `--check-remote` and it
+also tells you how many new tags each project has upstream past the
+latest one you've captured.
 
 Once you have a project or two in `backhopper.toml`, the day-to-day
 loop is mostly `backhopper check ...` (covered below) — and when a
@@ -112,6 +114,10 @@ A handful of flags apply to every subcommand:
 * `--verbose` (`-v`): bump log verbosity. `-v` is info, `-vv` is debug, `-vvv` is trace. `RUST_LOG` wins if set
 * `--non-interactive` (env `BACKHOPPER_NON_INTERACTIVE_MODE`): turn off progress spinners and anything that would otherwise prompt; the CI-friendly default
 * `--table-style modern|ascii|markdown|psql`: pick the look of text-mode tables
+
+The `check` subcommands additionally honor `BACKHOPPER_REPO_DIR_PATH`
+as the env form of `--repo-dir-path`, for invocations from outside
+the repository; the flag wins when both are set.
 
 ### Configuration
 
@@ -422,14 +428,24 @@ the worst across the series:
 | Verdict | Exit | Meaning |
 |---|---:|---|
 | `Compatible` | `0` | The patch's tracked references all resolve at the pinned tag |
-| `RequiresAdaptation` | `3` | Non-blocking findings: deprecated usage, context drift, unsupported file types |
-| `Incompatible` | `2` | Blocking findings: missing symbol, arity change, hidden module, missing prereq |
-| `Inapplicable` | `4` | The diff touched no analyzable Erlang surface at this pin (docs-only, schema-only, test-only) |
+| `RequiresAdaptation` | `3` | Non-blocking findings: deprecated usage, context drift, or a missing symbol that a later snapshot tag provides (land the dep pin bump first) |
+| `Incompatible` | `3` | Blocking findings: missing symbol (at every known tag), arity change, hidden module, missing prereq |
+| `Inapplicable` | `0` | The diff touched no analyzable Erlang surface at this pin (docs-only, schema-only, test-only) |
 
-`Inapplicable` is distinct from `Compatible (0 tracked symbols referenced)`:
-the latter says "we checked and found nothing of yours referenced", the
-former says "there was nothing to check". Agents and scripts can branch
-on the exit code to route to a different verification step.
+The process exit code is two-valued: `0` when every pin is clean or
+has nothing to check, `3` when any pin needs attention. The four-way
+verdict split lives in the JSON envelope (`verdict.verdict` per pin
+and the `summary` counters); branch on that, not the exit code, to
+tell `Inapplicable` from `Compatible (0 tracked symbols referenced)`:
+the latter says "we checked and found nothing of yours referenced",
+the former says "there was nothing to check".
+
+One `Inapplicable` case still carries evidence: a commit whose diff
+changes a dep pin in the root `rabbitmq-components.mk` reports the
+bump in `diagnostics.pin_bumps` — which pin moved, from and to what,
+and whether the bumped-to version has a snapshot, with the exact
+`snapshots generate` command when it does not (or pass
+`--auto-generate` to write it inline).
 
 `--terse` produces one JSON line for shell consumption:
 
@@ -441,7 +457,7 @@ backhopper check commit --series stable-3.x --terse 1a2b3c4d
 
 ### Explaining a Non-Zero Count
 
-The verdict table reports metrics suc has `tracked symbols referenced: N` but not
+The verdict table reports metrics such as `tracked symbols referenced: N` but not
 which call sites contributed. Adding `--explain` will report the details per pinned
 dependency:
 

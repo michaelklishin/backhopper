@@ -6,6 +6,7 @@
 //!
 //! Given a hunk line of source text, finds references to:
 //!   * `mod:fun(args)` calls
+//!   * `fun mod:fun/N` remote fun references
 //!   * `?MACRO_USE`
 //!   * `#record_use{}`
 //! and definitions:
@@ -136,27 +137,42 @@ fn line_opens_type_attr(line: &str) -> bool {
 }
 
 fn line_closes_attribute(line: &str) -> bool {
-    let stripped = strip_trailing_comment(line);
+    let stripped = strip_line_comment(line);
     stripped.trim_end().ends_with('.')
 }
 
-fn strip_trailing_comment(line: &str) -> &str {
+/// Cuts an unquoted `%` comment off a source line. Strings, quoted
+/// atoms, escapes, and `$c` char literals (`$%`, `$"`) stay intact.
+pub fn strip_line_comment(line: &str) -> &str {
     let bytes = line.as_bytes();
     let mut in_str = false;
     let mut in_atom = false;
-    let mut prev_backslash = false;
-    for (i, &b) in bytes.iter().enumerate() {
-        if prev_backslash {
-            prev_backslash = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_str || in_atom {
+            match b {
+                b'\\' => i += 1,
+                b'"' if in_str => in_str = false,
+                b'\'' if in_atom => in_atom = false,
+                _ => {}
+            }
+            i += 1;
             continue;
         }
         match b {
-            b'\\' if in_str || in_atom => prev_backslash = true,
-            b'"' if !in_atom => in_str = !in_str,
-            b'\'' if !in_str => in_atom = !in_atom,
-            b'%' if !in_str && !in_atom => return &line[..i],
+            b'"' => in_str = true,
+            b'\'' => in_atom = true,
+            b'$' => {
+                i += 1;
+                if bytes.get(i) == Some(&b'\\') {
+                    i += 1;
+                }
+            }
+            b'%' => return &line[..i],
             _ => {}
         }
+        i += 1;
     }
     line
 }
@@ -172,11 +188,16 @@ fn strip_trailing_comment(line: &str) -> &str {
 /// type, but the macro tables today carry value-to-atom bindings
 /// only, with no type-side equivalent.
 pub fn extract_type_refs_into(line: &str, out: &mut Vec<SymbolRef>) {
+    let line = strip_line_comment(line);
     for caps in call_re().captures_iter(line) {
         let module = &caps[1];
         let ident = &caps[2];
         let after = &line[caps.get(0).expect("capture").end()..];
-        let arity = approximate_arity(after);
+        // A type ref whose arg list wraps to the next line has no
+        // trustworthy arity on this one: skip rather than guess.
+        let ScanArity::Exact(arity) = scan_arity(after) else {
+            continue;
+        };
         if let (Ok(m), Ok(t)) = (ModuleName::from_str(module), TypeName::from_str(ident)) {
             out.push(SymbolRef::type_ref(m, t, Arity::new(arity)));
         }
@@ -198,18 +219,27 @@ fn empty_macros() -> &'static MacroTable {
 /// BIFs whose `M`, `F`, and arg-list slots are literals also resolve
 /// into the matching `Mfa` and land in `out` as normal function refs.
 pub fn extract_into_with_macros(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
+    let line = strip_line_comment(line);
     for caps in call_re().captures_iter(line) {
         let module = &caps[1];
         let function = &caps[2];
         let after = &line[caps.get(0).expect("capture").end()..];
-        let arity = approximate_arity(after);
-        if let (Ok(m), Ok(f)) = (
+        let (Ok(m), Ok(f)) = (
             ModuleName::from_str(module),
             FunctionName::from_str(function),
-        ) {
-            out.push(SymbolRef::function(Mfa::new(m, f, Arity::new(arity))));
+        ) else {
+            continue;
+        };
+        match scan_arity(after) {
+            ScanArity::Exact(arity) => {
+                out.push(SymbolRef::function(Mfa::new(m, f, Arity::new(arity))));
+            }
+            ScanArity::Unterminated => {
+                out.push(SymbolRef::function_any_arity(m, f));
+            }
         }
     }
+    extract_fun_refs_into(line, macros, out);
     for caps in record_re().captures_iter(line) {
         if let Ok(name) = RecordName::from_str(&caps[1]) {
             out.push(SymbolRef::record(name));
@@ -225,14 +255,68 @@ pub fn extract_into_with_macros(line: &str, macros: &MacroTable, out: &mut Vec<S
     extract_apply_family_into(line, macros, out);
 }
 
+fn fun_ref_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(
+            r"\bfun\s+(\??[A-Za-z_][a-zA-Z0-9_@]*)\s*:\s*([A-Za-z_][a-zA-Z0-9_@]*)\s*/\s*([0-9]+|[A-Za-z_][a-zA-Z0-9_@]*)",
+        )
+        .expect("regex")
+    })
+}
+
+/// `fun M:F/A` remote fun references. The arity is written in the
+/// source, so these land at full precision. Variable-shaped slots are
+/// `extract_dynamic_into`'s business.
+fn extract_fun_refs_into(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
+    for caps in fun_ref_re().captures_iter(line) {
+        let module_raw = &caps[1];
+        let function_raw = &caps[2];
+        let arity_raw = &caps[3];
+        let Ok(arity) = arity_raw.parse::<u8>() else {
+            continue;
+        };
+        if !function_raw.starts_with(|c: char| c.is_ascii_lowercase()) {
+            continue;
+        }
+        let module = if let Some(macro_name) = module_raw.strip_prefix('?') {
+            let Some(expanded) = expand_value_macro_to_atom(macros, macro_name) else {
+                continue;
+            };
+            let Ok(m) = ModuleName::from_str(&expanded) else {
+                continue;
+            };
+            m
+        } else if module_raw.starts_with(|c: char| c.is_ascii_lowercase()) {
+            let Ok(m) = ModuleName::from_str(module_raw) else {
+                continue;
+            };
+            m
+        } else {
+            continue;
+        };
+        let Ok(f) = FunctionName::from_str(function_raw) else {
+            continue;
+        };
+        out.push(SymbolRef::function(Mfa::new(module, f, Arity::new(arity))));
+    }
+}
+
 fn try_resolve_macro_call(name: &str, tail: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
     let trimmed = tail.trim_start();
     if let Some(rest) = trimmed.strip_prefix('(') {
-        let (args, _) = extract_arg_shapes(rest);
-        if let Some((m, f)) = expand_value_macro_to_mf(macros, name) {
-            if let (Ok(mn), Ok(fn_)) = (ModuleName::from_str(&m), FunctionName::from_str(&f)) {
-                let arity = u8::try_from(args.len()).unwrap_or(u8::MAX);
+        let Some((m, f)) = expand_value_macro_to_mf(macros, name) else {
+            return;
+        };
+        let (Ok(mn), Ok(fn_)) = (ModuleName::from_str(&m), FunctionName::from_str(&f)) else {
+            return;
+        };
+        match scan_arity(rest) {
+            ScanArity::Exact(arity) => {
                 out.push(SymbolRef::function(Mfa::new(mn, fn_, Arity::new(arity))));
+            }
+            ScanArity::Unterminated => {
+                out.push(SymbolRef::function_any_arity(mn, fn_));
             }
         }
         return;
@@ -250,8 +334,14 @@ fn try_resolve_macro_call(name: &str, tail: &str, macros: &MacroTable, out: &mut
                     ModuleName::from_str(&m),
                     FunctionName::from_str(function_str),
                 ) {
-                    let arity = approximate_arity(after_open);
-                    out.push(SymbolRef::function(Mfa::new(mn, fn_, Arity::new(arity))));
+                    match scan_arity(after_open) {
+                        ScanArity::Exact(arity) => {
+                            out.push(SymbolRef::function(Mfa::new(mn, fn_, Arity::new(arity))));
+                        }
+                        ScanArity::Unterminated => {
+                            out.push(SymbolRef::function_any_arity(mn, fn_));
+                        }
+                    }
                 }
             }
         }
@@ -273,8 +363,12 @@ fn extract_apply_family_into(line: &str, macros: &MacroTable, out: &mut Vec<Symb
         let name = &caps[1];
         let head_end = caps.get(0).expect("capture").end();
         let after_open = &line[head_end..];
-        let raw_args = split_top_level_args(after_open);
-        if let Some(mfa) = resolve_apply_family(name, &raw_args, macros) {
+        // A wrapped apply-family call has an incomplete arg list here;
+        // resolving from a partial slot set would fabricate an Mfa.
+        let ScannedArgs::Terminated { args, .. } = scan_top_level_args(after_open) else {
+            continue;
+        };
+        if let Some(mfa) = resolve_apply_family(name, &args, macros) {
             out.push(SymbolRef::function(mfa));
         }
     }
@@ -355,43 +449,79 @@ fn looks_like_lowercase_atom(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
 }
 
-/// Splits the source between an already-consumed opening `(` and its
-/// matching `)` into top-level argument source slices. Tracks nested
-/// parens, brackets, braces, strings, and quoted atoms.
-pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
-    let mut out: Vec<&str> = Vec::new();
+/// Result of scanning one call's argument list on a single line.
+/// `Unterminated` means the closing paren sits on a later line, so
+/// any arg count derived from this line would be a guess.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScannedArgs<'a> {
+    Terminated { args: Vec<&'a str>, consumed: usize },
+    Unterminated { args: Vec<&'a str> },
+}
+
+/// Arity evidence for one extracted call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanArity {
+    Exact(u8),
+    Unterminated,
+}
+
+/// The one argument-list scanner. Tracks nested `()` `[]` `{}` and
+/// `<<>>`, strings, quoted atoms, backslash escapes, and `$c` char
+/// literals (so `$,` `$(` `$"` stay inert).
+pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
+    let bytes = after_open_paren.as_bytes();
+    let mut args: Vec<&str> = Vec::new();
     let mut depth = 1i32;
     let mut in_str = false;
     let mut in_atom = false;
-    let mut prev_backslash = false;
     let mut start = 0usize;
-    let bytes = after_open_paren.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
         let c = bytes[i];
-        if prev_backslash {
-            prev_backslash = false;
+        if in_str || in_atom {
+            match c {
+                b'\\' => i += 1,
+                b'"' if in_str => in_str = false,
+                b'\'' if in_atom => in_atom = false,
+                _ => {}
+            }
             i += 1;
             continue;
         }
         match c {
-            b'\\' if in_str || in_atom => prev_backslash = true,
-            b'"' if !in_atom => in_str = !in_str,
-            b'\'' if !in_str => in_atom = !in_atom,
-            b'(' | b'[' | b'{' if !in_str && !in_atom => depth += 1,
-            b')' if !in_str && !in_atom => {
+            b'"' => in_str = true,
+            b'\'' => in_atom = true,
+            b'$' => {
+                i += 1;
+                if bytes.get(i) == Some(&b'\\') {
+                    i += 1;
+                }
+            }
+            b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                depth += 1;
+                i += 1;
+            }
+            b'>' if bytes.get(i + 1) == Some(&b'>') && depth > 1 => {
+                depth -= 1;
+                i += 1;
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b']' | b'}' => depth -= 1,
+            b')' => {
                 depth -= 1;
                 if depth == 0 {
                     let slice = &after_open_paren[start..i];
-                    if !slice.trim().is_empty() || !out.is_empty() {
-                        out.push(slice);
+                    if !slice.trim().is_empty() || !args.is_empty() {
+                        args.push(slice);
                     }
-                    return out;
+                    return ScannedArgs::Terminated {
+                        args,
+                        consumed: i + 1,
+                    };
                 }
             }
-            b']' | b'}' if !in_str && !in_atom => depth -= 1,
-            b',' if !in_str && !in_atom && depth == 1 => {
-                out.push(&after_open_paren[start..i]);
+            b',' if depth == 1 => {
+                args.push(&after_open_paren[start..i]);
                 start = i + 1;
             }
             _ => {}
@@ -401,10 +531,29 @@ pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
     if start < bytes.len() {
         let slice = &after_open_paren[start..];
         if !slice.trim().is_empty() {
-            out.push(slice);
+            args.push(slice);
         }
     }
-    out
+    ScannedArgs::Unterminated { args }
+}
+
+fn scan_arity(after_open_paren: &str) -> ScanArity {
+    match scan_top_level_args(after_open_paren) {
+        ScannedArgs::Terminated { args, .. } => {
+            ScanArity::Exact(u8::try_from(args.len()).unwrap_or(u8::MAX))
+        }
+        ScannedArgs::Unterminated { .. } => ScanArity::Unterminated,
+    }
+}
+
+/// Splits the source between an already-consumed opening `(` and its
+/// matching `)` into top-level argument source slices. Lenient about
+/// a missing close paren: callers that must distinguish use
+/// `scan_top_level_args` directly.
+pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
+    match scan_top_level_args(after_open_paren) {
+        ScannedArgs::Terminated { args, .. } | ScannedArgs::Unterminated { args } => args,
+    }
 }
 
 /// Collects per-call argument shapes from one source line. Mirrors
@@ -412,12 +561,17 @@ pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
 /// into an `ArgShape` so the analyzer can match against pin-side
 /// clause-head patterns.
 pub fn extract_call_args_into(line: &str, out: &mut Vec<(Mfa, Vec<ArgShape>)>) {
+    let line = strip_line_comment(line);
     for caps in call_re().captures_iter(line) {
         let module = &caps[1];
         let function = &caps[2];
         let head_end = caps.get(0).expect("capture").end();
         let after = &line[head_end..];
-        let (args, _consumed) = extract_arg_shapes(after);
+        // A wrapped call has no complete arg list on this line, and a
+        // partial shape list would feed `ClauseMismatch` garbage.
+        let Some((args, _consumed)) = extract_arg_shapes(after) else {
+            continue;
+        };
         let arity = u8::try_from(args.len()).unwrap_or(u8::MAX);
         if let (Ok(m), Ok(f)) = (
             ModuleName::from_str(module),
@@ -428,61 +582,13 @@ pub fn extract_call_args_into(line: &str, out: &mut Vec<(Mfa, Vec<ArgShape>)>) {
     }
 }
 
-fn extract_arg_shapes(after_open_paren: &str) -> (Vec<ArgShape>, usize) {
-    let mut args: Vec<ArgShape> = Vec::new();
-    let mut current_start: Option<usize> = None;
-    let mut depth = 1i32;
-    let mut in_str = false;
-    let mut in_atom_quote = false;
-    let mut prev_backslash = false;
-    let mut i = 0usize;
-    let bytes = after_open_paren.as_bytes();
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
-        if prev_backslash {
-            prev_backslash = false;
-            i += 1;
-            continue;
+fn extract_arg_shapes(after_open_paren: &str) -> Option<(Vec<ArgShape>, usize)> {
+    match scan_top_level_args(after_open_paren) {
+        ScannedArgs::Terminated { args, consumed } => {
+            Some((args.iter().map(|a| classify_arg(a)).collect(), consumed))
         }
-        let in_quote = in_str || in_atom_quote;
-        let starts_token = !in_quote
-            && depth >= 1
-            && current_start.is_none()
-            && !ch.is_whitespace()
-            && !matches!(ch, ',' | ')' | ']' | '}');
-        if starts_token {
-            current_start = Some(i);
-        }
-        match ch {
-            '\\' if in_quote => {
-                prev_backslash = true;
-            }
-            '"' if !in_atom_quote => in_str = !in_str,
-            '\'' if !in_str => in_atom_quote = !in_atom_quote,
-            '(' | '[' | '{' if !in_quote => {
-                depth += 1;
-            }
-            ')' if !in_quote => {
-                depth -= 1;
-                if depth == 0 {
-                    if let Some(start) = current_start {
-                        args.push(classify_arg(&after_open_paren[start..i]));
-                    }
-                    return (args, i + 1);
-                }
-            }
-            ']' | '}' if !in_quote => depth -= 1,
-            ',' if !in_quote && depth == 1 => {
-                if let Some(start) = current_start {
-                    args.push(classify_arg(&after_open_paren[start..i]));
-                }
-                current_start = None;
-            }
-            _ => {}
-        }
-        i += 1;
+        ScannedArgs::Unterminated { .. } => None,
     }
-    (args, bytes.len())
 }
 
 pub fn classify_arg(raw: &str) -> ArgShape {
@@ -556,27 +662,9 @@ fn count_top_level_items(s: &str, open: char, close: char) -> usize {
     if body.trim().is_empty() {
         return 0;
     }
-    let mut depth = 0i32;
-    let mut count = 1usize;
-    let mut in_str = false;
-    let mut in_atom_quote = false;
-    let mut prev_backslash = false;
-    for ch in body.chars() {
-        if prev_backslash {
-            prev_backslash = false;
-            continue;
-        }
-        match ch {
-            '\\' if in_str || in_atom_quote => prev_backslash = true,
-            '"' if !in_atom_quote => in_str = !in_str,
-            '\'' if !in_str => in_atom_quote = !in_atom_quote,
-            '(' | '[' | '{' if !in_str && !in_atom_quote => depth += 1,
-            ')' | ']' | '}' if !in_str && !in_atom_quote => depth -= 1,
-            ',' if !in_str && !in_atom_quote && depth == 0 => count += 1,
-            _ => {}
-        }
+    match scan_top_level_args(body) {
+        ScannedArgs::Terminated { args, .. } | ScannedArgs::Unterminated { args } => args.len(),
     }
-    count
 }
 
 fn is_bare_identifier(s: &str) -> bool {
@@ -585,6 +673,7 @@ fn is_bare_identifier(s: &str) -> bool {
 }
 
 pub fn extract_dynamic_into(line: &str, out: &mut Vec<DynamicCall>) {
+    let line = strip_line_comment(line);
     for _ in apply_bif_re().captures_iter(line) {
         out.push(DynamicCall::Apply);
     }
@@ -594,9 +683,18 @@ pub fn extract_dynamic_into(line: &str, out: &mut Vec<DynamicCall>) {
     for _ in var_function_call_re().find_iter(line) {
         out.push(DynamicCall::VariableDispatch);
     }
+    for caps in fun_ref_re().captures_iter(line) {
+        let variable_slot = |s: &str| s.starts_with(|c: char| c.is_ascii_uppercase() || c == '_');
+        let arity_raw = &caps[3];
+        let variable_arity = !arity_raw.bytes().all(|b| b.is_ascii_digit());
+        if variable_slot(&caps[1]) || variable_slot(&caps[2]) || variable_arity {
+            out.push(DynamicCall::VariableDispatch);
+        }
+    }
 }
 
 pub fn extract_definitions_into(line: &str, out: &mut Vec<SymbolRef>) {
+    let line = strip_line_comment(line);
     if !line.starts_with(|c: char| c.is_ascii_lowercase()) {
         return;
     }
@@ -605,54 +703,27 @@ pub fn extract_definitions_into(line: &str, out: &mut Vec<SymbolRef>) {
     };
     let head_end = caps.get(0).expect("capture").end();
     let after = &line[head_end..];
-    let arity = approximate_arity(after);
-    if let Ok(f) = FunctionName::from_str(&caps[1]) {
-        out.push(SymbolRef::function(Mfa::new(
-            local_placeholder_module().clone(),
-            f,
-            Arity::new(arity),
-        )));
+    let Ok(f) = FunctionName::from_str(&caps[1]) else {
+        return;
+    };
+    match scan_arity(after) {
+        ScanArity::Exact(arity) => {
+            out.push(SymbolRef::function(Mfa::new(
+                local_placeholder_module().clone(),
+                f,
+                Arity::new(arity),
+            )));
+        }
+        ScanArity::Unterminated => {
+            out.push(SymbolRef::function_any_arity(
+                local_placeholder_module().clone(),
+                f,
+            ));
+        }
     }
 }
 
 fn local_placeholder_module() -> &'static ModuleName {
     static M: OnceLock<ModuleName> = OnceLock::new();
     M.get_or_init(|| ModuleName::from_str("_local").expect("valid"))
-}
-
-fn approximate_arity(after_open_paren: &str) -> u8 {
-    let mut depth = 1i32;
-    let mut count = 0u8;
-    let mut saw_arg = false;
-    let mut in_str = false;
-    let mut in_atom_quote = false;
-    let mut prev_backslash = false;
-    for ch in after_open_paren.chars() {
-        if prev_backslash {
-            prev_backslash = false;
-            continue;
-        }
-        match ch {
-            '\\' if in_str || in_atom_quote => prev_backslash = true,
-            '"' if !in_atom_quote => in_str = !in_str,
-            '\'' if !in_str => in_atom_quote = !in_atom_quote,
-            '(' if !in_str && !in_atom_quote => depth += 1,
-            ')' if !in_str && !in_atom_quote => {
-                depth -= 1;
-                if depth == 0 {
-                    if saw_arg {
-                        count = count.saturating_add(1);
-                    }
-                    return count;
-                }
-            }
-            ',' if !in_str && !in_atom_quote && depth == 1 => {
-                count = count.saturating_add(1);
-                saw_arg = false;
-            }
-            c if !c.is_whitespace() && depth >= 1 => saw_arg = true,
-            _ => {}
-        }
-    }
-    count
 }

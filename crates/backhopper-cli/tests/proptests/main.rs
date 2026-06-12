@@ -4,6 +4,7 @@
 
 mod arg_parsing_proptests;
 mod bel7_cli_proptests;
+mod pin_bump_detection_proptests;
 mod prerelease_filter_proptests;
 mod rabbitmq_components_proptests;
 mod series_sync_build_proptests;

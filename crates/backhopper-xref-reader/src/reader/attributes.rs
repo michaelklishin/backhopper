@@ -314,5 +314,5 @@ pub(super) fn count_top_level_args(s: &str) -> u8 {
         return 0;
     }
     let parts = split_top_level_commas(s);
-    u8::try_from(parts.len()).unwrap_or(0)
+    u8::try_from(parts.len()).unwrap_or(u8::MAX)
 }

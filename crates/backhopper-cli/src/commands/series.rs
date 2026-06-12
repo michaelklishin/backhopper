@@ -21,12 +21,10 @@ use crate::cli::series::default_branches;
 use crate::cli::{GlobalArgs, PinsArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 use crate::commands::context::load_config;
 use crate::commands::rabbitmq_components::{
-    DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
+    COMPONENTS_MK_PATH, DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
 };
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
-
-const COMPONENTS_MK_PATH: &str = "rabbitmq-components.mk";
 
 #[derive(Debug, Serialize)]
 struct SeriesListEntry {

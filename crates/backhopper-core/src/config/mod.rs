@@ -440,6 +440,11 @@ pub struct VersionedMachineImplDecl {
 pub struct SeriesRaw {
     pub name: String,
     pub pins: Vec<PinRaw>,
+    /// Tracked projects deliberately not pinned by this series (an
+    /// EOL branch predating the dep). Silences the doctor's
+    /// series-pin coverage warning for the named pairs.
+    #[serde(default)]
+    pub untracked_projects: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -661,6 +666,9 @@ fn glob_directory_prefix(pattern: &str) -> &str {
 pub struct Series {
     pub name: SeriesName,
     pub pins: Vec<PinSpec>,
+    /// Tracked projects this series deliberately does not pin.
+    #[serde(default)]
+    pub untracked_projects: Vec<ProjectName>,
 }
 
 impl Series {
@@ -748,9 +756,21 @@ impl Config {
                 }
                 pins.push(spec);
             }
+            let mut untracked_projects = Vec::with_capacity(s.untracked_projects.len());
+            for name in s.untracked_projects {
+                let project = ProjectName::new(name).map_err(ConfigError::Name)?;
+                if !project_kinds.contains_key(&project) {
+                    return Err(ConfigError::SeriesPinsUnknownProject {
+                        series: s.name.clone(),
+                        project: project.to_string(),
+                    });
+                }
+                untracked_projects.push(project);
+            }
             series.push(Series {
                 name: SeriesName::new(s.name).map_err(ConfigError::Name)?,
                 pins,
+                untracked_projects,
             });
         }
         let mut suite_rules = Vec::with_capacity(raw.suite_rules.len());

@@ -5,7 +5,8 @@
 use std::collections::BTreeMap;
 
 use backhopper_cli::commands::rabbitmq_components::{
-    DepPin, DepSource, dep_to_tag, parse_components_mk, series_name_for_branch, version_to_tag,
+    DepPin, DepSource, dep_to_tag, parse_components_mk, parse_pin_line, series_name_for_branch,
+    version_to_tag,
 };
 
 const SAMPLE: &str = r#"
@@ -108,4 +109,50 @@ fn dep_to_tag_uses_prefix_for_hex_and_verbatim_for_git() {
         version: "2.13.0".into(),
     };
     assert_eq!(dep_to_tag(&git_rmq, "v"), "2.13.0");
+}
+
+#[test]
+fn parse_pin_line_accepts_each_source_form() {
+    assert_eq!(
+        parse_pin_line("dep_ra = hex 3.1.6").unwrap().source,
+        DepSource::Hex
+    );
+    assert_eq!(
+        parse_pin_line("dep_osiris = git https://github.com/rabbitmq/osiris v1.13.1")
+            .unwrap()
+            .version,
+        "v1.13.1"
+    );
+    assert_eq!(
+        parse_pin_line("dep_cowboy = git_rmq cowboy 2.13.0")
+            .unwrap()
+            .version,
+        "2.13.0"
+    );
+}
+
+#[test]
+fn parse_pin_line_rejects_comments_and_noise() {
+    assert_eq!(parse_pin_line("# dep_ra = hex 3.1.6"), None);
+    assert_eq!(parse_pin_line("PROJECT = rabbit"), None);
+    assert_eq!(parse_pin_line("dep_ra_commit = abcdef"), None);
+    assert_eq!(
+        parse_pin_line("dep_lvc = $(call community_dep,rabbitmq-lvc-exchange)"),
+        None
+    );
+}
+
+#[test]
+fn display_and_parse_display_round_trip() {
+    for pin in parse_components_mk(SAMPLE) {
+        let displayed = pin.display();
+        let back = DepPin::parse_display(&pin.name, &displayed).unwrap();
+        assert_eq!(back, pin);
+    }
+}
+
+#[test]
+fn parse_display_rejects_unknown_source_labels() {
+    assert_eq!(DepPin::parse_display("ra", "cargo 1.0.0"), None);
+    assert_eq!(DepPin::parse_display("ra", "3.1.6"), None);
 }

@@ -7,10 +7,25 @@
 //! `Untracked` instead of firing a misleading `FileAbsent` row.
 
 use std::collections::BTreeSet;
+use std::mem;
 use std::path::{Path, PathBuf};
 
 use crate::config::Project;
 use crate::model::names::ProjectName;
+use crate::model::verdict::{InapplicableReason, PinVerdict, SeriesVerdict, Verdict};
+
+impl SeriesVerdict {
+    /// The only way to assemble a series verdict from routed pins:
+    /// an unrouted `PinVerdict` cannot reach the envelope.
+    pub fn from_routed(results: Vec<RoutedPinVerdict>) -> Self {
+        Self::from_results(
+            results
+                .into_iter()
+                .map(RoutedPinVerdict::into_inner)
+                .collect(),
+        )
+    }
+}
 
 /// Path-routing summary for one pin's evaluation.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -74,4 +89,65 @@ pub fn classify_paths_for_pin(
         }
     }
     routing
+}
+
+/// A pin verdict that has been through path routing exactly once.
+/// `SeriesVerdict::from_routed` is the only consumer, so an unrouted
+/// verdict cannot reach the envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutedPinVerdict(PinVerdict);
+
+impl RoutedPinVerdict {
+    #[must_use]
+    pub fn into_inner(self) -> PinVerdict {
+        self.0
+    }
+}
+
+/// Path routing, reason-granular. File ownership gates only the
+/// path-scoped reason family; reference-level evidence survives no
+/// matter which file the call site lives in. A pin with no owned
+/// paths and no evidence rewrites to `Inapplicable`.
+#[must_use]
+pub fn route_pin_verdict(mut pv: PinVerdict, routing: &PathRouting) -> RoutedPinVerdict {
+    if routing.any_in_scope || !routing.has_any_attribution() {
+        return RoutedPinVerdict(pv);
+    }
+    let inapplicable_reason = |pv: &PinVerdict| {
+        pv.touched.inapplicable_reason().unwrap_or_else(|| {
+            match routing.first_out_of_scope_owner() {
+                Some(name) => InapplicableReason::OutOfScopeFor {
+                    project: name.clone(),
+                },
+                None => InapplicableReason::Untracked,
+            }
+        })
+    };
+    let verdict = mem::replace(&mut pv.verdict, Verdict::Compatible);
+    pv.verdict = match verdict {
+        Verdict::Inapplicable { .. } => verdict,
+        Verdict::Compatible => {
+            if pv.tracked_refs > 0 {
+                Verdict::Compatible
+            } else {
+                Verdict::Inapplicable {
+                    reason: inapplicable_reason(&pv),
+                }
+            }
+        }
+        Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
+            let surviving: Vec<_> = reasons
+                .into_iter()
+                .filter(|r| !r.is_path_scoped())
+                .collect();
+            if surviving.is_empty() && pv.tracked_refs == 0 {
+                Verdict::Inapplicable {
+                    reason: inapplicable_reason(&pv),
+                }
+            } else {
+                Verdict::from_reasons(surviving)
+            }
+        }
+    };
+    RoutedPinVerdict(pv)
 }

@@ -6,36 +6,63 @@
 //! of the `--formatter summary` (JSONL) and `--formatter text-summary`
 //! (tab-separated text) outputs.
 
+use std::collections::BTreeSet;
 use std::io::{self, BufWriter, Write};
 use std::num::NonZeroU32;
 
+use backhopper_core::config::Config;
 use backhopper_core::model::batch::BatchResult;
-use backhopper_core::model::names::{CommitSha, SeriesName};
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 use backhopper_core::model::verdict::{SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict};
 
 use crate::cli::Formatter;
 use crate::errors::{CliError, CliResult};
 
+/// The projects whose pins do not count as tracked-dep evidence: a
+/// self pin's scope spans the whole self project, so summing it in
+/// would make every self-heavy commit read as harness-verified.
+#[must_use]
+pub fn self_project_names(cfg: &Config) -> BTreeSet<ProjectName> {
+    cfg.projects
+        .iter()
+        .filter(|p| p.is_self())
+        .map(|p| p.name.clone())
+        .collect()
+}
+
 /// Roll a `SeriesEvaluation` up into one summary row. `tracked` is
-/// the saturating sum of per-pin `tracked_refs`.
+/// the saturating sum of non-self pins' `tracked_refs`.
 #[must_use]
 pub fn to_summary_row(
     eval: &SeriesEvaluation,
+    self_projects: &BTreeSet<ProjectName>,
     sha: CommitSha,
     subject: String,
     series: Option<SeriesName>,
     parent_count: Option<NonZeroU32>,
 ) -> SummaryRow {
-    summary_row(&eval.verdict, sha, subject, series, parent_count)
+    summary_row(
+        &eval.verdict,
+        self_projects,
+        sha,
+        subject,
+        series,
+        parent_count,
+    )
 }
 
 /// Roll one batch row up into one summary row. Batch rows carry the
 /// commit, series, and parent count already.
 #[must_use]
-pub fn batch_result_to_summary_row(result: &BatchResult, subject: String) -> SummaryRow {
+pub fn batch_result_to_summary_row(
+    result: &BatchResult,
+    self_projects: &BTreeSet<ProjectName>,
+    subject: String,
+) -> SummaryRow {
     summary_row(
         &result.verdict,
+        self_projects,
         result.commit.clone(),
         subject,
         Some(result.series.clone()),
@@ -45,15 +72,20 @@ pub fn batch_result_to_summary_row(result: &BatchResult, subject: String) -> Sum
 
 fn summary_row(
     verdict: &SeriesVerdict,
+    self_projects: &BTreeSet<ProjectName>,
     sha: CommitSha,
     subject: String,
     series: Option<SeriesName>,
     parent_count: Option<NonZeroU32>,
 ) -> SummaryRow {
-    let tracked: u32 = verdict.results.iter().fold(0u32, |acc, pin| {
-        let v = u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX);
-        acc.saturating_add(v)
-    });
+    let tracked: u32 = verdict
+        .results
+        .iter()
+        .filter(|pin| !self_projects.contains(&pin.pin.project))
+        .fold(0u32, |acc, pin| {
+            let v = u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX);
+            acc.saturating_add(v)
+        });
     SummaryRow {
         sha,
         verdict: rollup_verdict_kind(verdict),

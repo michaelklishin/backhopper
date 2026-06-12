@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,7 @@ use crate::model::names::{
 };
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
-use crate::model::symbol::SymbolRef;
+use crate::model::symbol::{SymbolKind, SymbolRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -124,7 +125,12 @@ impl Verdict {
 pub enum Reason {
     MissingSymbol {
         symbol: SymbolRef,
+        /// Earliest snapshot tag strictly later than the pin where the
+        /// symbol appears. `Some` reclassifies the reason as
+        /// adaptable: land the dep pin bump first.
         first_seen_at_tag: Option<TagName>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        needs_pin_at_least: Option<NeedsPin>,
         suggested_replacement: Option<SymbolRef>,
     },
     ArityChanged {
@@ -132,6 +138,13 @@ pub enum Reason {
         function: FunctionName,
         expected: Arity,
         found: Vec<Arity>,
+        /// Earliest snapshot tag strictly later than the pin exporting
+        /// the expected arity. Same bump-first semantics as
+        /// `MissingSymbol::first_seen_at_tag`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_available_at: Option<TagName>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        needs_pin_at_least: Option<NeedsPin>,
     },
     SignatureChanged {
         module: ModuleName,
@@ -460,28 +473,102 @@ impl ConflictMarker {
 }
 
 impl Reason {
+    // Wildcard-free on purpose: a new variant fails compilation here
+    // until it is classified.
     pub fn is_blocking(&self) -> bool {
-        matches!(
-            self,
+        match self {
+            // A symbol that exists at a later tag is adaptable: land
+            // the dep pin bump first.
+            Self::MissingSymbol {
+                first_seen_at_tag: Some(_),
+                ..
+            } => false,
+            Self::ArityChanged {
+                expected_available_at: Some(_),
+                ..
+            } => false,
             Self::MissingSymbol { .. }
-                | Self::ArityChanged { .. }
-                | Self::SignatureChanged { .. }
-                | Self::FileAbsent { .. }
-                | Self::NowHidden { .. }
-                | Self::RecordFieldsChanged { .. }
-                | Self::UntrackedModuleMissing { .. }
-                | Self::ClauseMismatch { .. }
-                | Self::MissingPrereq { .. }
-                | Self::SyntacticArtifact { .. }
-                | Self::BehaviourCallbackSignatureChanged { .. }
-                | Self::BehaviourCallbackRemoved { .. }
-                | Self::BehaviourCallbackAdded { .. }
-                | Self::WireConstantChanged { .. }
-                | Self::HistoricalImplementationMissing { .. }
-                | Self::WireContractRegression { .. }
-                | Self::ReturnShapeMismatch { .. }
-        )
+            | Self::ArityChanged { .. }
+            | Self::SignatureChanged { .. }
+            | Self::FileAbsent { .. }
+            | Self::NowHidden { .. }
+            | Self::RecordFieldsChanged { .. }
+            | Self::UntrackedModuleMissing { .. }
+            | Self::ClauseMismatch { .. }
+            | Self::MissingPrereq { .. }
+            | Self::SyntacticArtifact { .. }
+            | Self::BehaviourCallbackSignatureChanged { .. }
+            | Self::BehaviourCallbackRemoved { .. }
+            | Self::BehaviourCallbackAdded { .. }
+            | Self::WireConstantChanged { .. }
+            | Self::HistoricalImplementationMissing { .. }
+            | Self::WireContractRegression { .. }
+            | Self::ReturnShapeMismatch { .. } => true,
+            Self::ContextDrift { .. }
+            | Self::PreimageDrifted { .. }
+            | Self::PreimageMissing { .. }
+            | Self::DeprecatedUsage { .. }
+            | Self::UnsupportedFileType { .. }
+            | Self::ModuleRelocated { .. }
+            | Self::WireContractBodyDrift { .. }
+            | Self::MissingType { .. }
+            | Self::PathRename { .. }
+            | Self::TestModuleSymbolMissing { .. }
+            | Self::BehaviourModuleMissing { .. }
+            | Self::HeaderFileMissing { .. }
+            | Self::VersionedMachineSnapshotMissing { .. }
+            | Self::WireConstantBindingsMissing { .. } => false,
+        }
     }
+
+    /// True for reasons that are facts about *files* rather than the
+    /// pin's API surface. These are the only reasons path routing may
+    /// drop for a pin that owns none of the touched paths.
+    /// Wildcard-free on purpose, like `is_blocking`.
+    pub fn is_path_scoped(&self) -> bool {
+        match self {
+            Self::FileAbsent { .. }
+            | Self::ModuleRelocated { .. }
+            | Self::PreimageDrifted { .. }
+            | Self::PreimageMissing { .. }
+            | Self::ContextDrift { .. }
+            | Self::PathRename { .. }
+            | Self::UnsupportedFileType { .. }
+            | Self::SyntacticArtifact { .. } => true,
+            Self::MissingSymbol { .. }
+            | Self::ArityChanged { .. }
+            | Self::SignatureChanged { .. }
+            | Self::DeprecatedUsage { .. }
+            | Self::NowHidden { .. }
+            | Self::RecordFieldsChanged { .. }
+            | Self::UntrackedModuleMissing { .. }
+            | Self::ClauseMismatch { .. }
+            | Self::MissingPrereq { .. }
+            | Self::BehaviourCallbackSignatureChanged { .. }
+            | Self::BehaviourCallbackRemoved { .. }
+            | Self::BehaviourCallbackAdded { .. }
+            | Self::WireConstantChanged { .. }
+            | Self::HistoricalImplementationMissing { .. }
+            | Self::WireContractBodyDrift { .. }
+            | Self::WireContractRegression { .. }
+            | Self::ReturnShapeMismatch { .. }
+            | Self::MissingType { .. }
+            | Self::TestModuleSymbolMissing { .. }
+            | Self::BehaviourModuleMissing { .. }
+            | Self::HeaderFileMissing { .. }
+            | Self::VersionedMachineSnapshotMissing { .. }
+            | Self::WireConstantBindingsMissing { .. } => false,
+        }
+    }
+}
+
+/// The minimum pin that satisfies a missing-symbol reason: the typed
+/// ordering payload q-port turns into a "bump must land first" edge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct NeedsPin {
+    pub project: ProjectName,
+    pub tag: TagName,
 }
 
 /// Per-pin tally of file kinds the patch touched. Lets `promote_inapplicable`
@@ -832,16 +919,14 @@ pub mod exit {
 
 impl SeriesVerdict {
     pub fn from_results(results: Vec<PinVerdict>) -> Self {
-        let mut summary = SeriesSummary::default();
-        for r in &results {
-            match r.verdict {
-                Verdict::Compatible => summary.compatible += 1,
-                Verdict::RequiresAdaptation { .. } => summary.requires_adaptation += 1,
-                Verdict::Incompatible { .. } => summary.incompatible += 1,
-                Verdict::Inapplicable { .. } => summary.inapplicable += 1,
-            }
-        }
+        let summary = summary_of(&results);
         Self { results, summary }
+    }
+
+    /// Re-derives the summary after per-pin verdicts were mutated in
+    /// place (path routing, availability reclassification).
+    pub fn recompute_summary(&mut self) {
+        self.summary = summary_of(&self.results);
     }
 
     /// Promote each `Compatible`-with-zero-refs pin to `Inapplicable` when its
@@ -885,6 +970,15 @@ pub struct Diagnostics {
     pub untracked_calls: BTreeMap<ModuleName, usize>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub untracked_records: BTreeMap<RecordName, usize>,
+    /// In-scope references on *context* lines that do not resolve at
+    /// some pin, per module. Pre-existing target facts: never reasons.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub context_refs_missing: BTreeMap<ModuleName, usize>,
+    /// Touched paths no configured project owns, tallied by their
+    /// first two path components. The breadcrumb behind an
+    /// `Inapplicable { Untracked }` verdict.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unattributed_paths: BTreeMap<String, usize>,
     #[serde(default, skip_serializing_if = "Unanalyzed::is_empty")]
     pub unanalyzed: Unanalyzed,
     /// SUITE names worth running for the patch, derived from touched paths.
@@ -914,18 +1008,39 @@ pub struct Diagnostics {
     /// reachable from the apps this patch touches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dep_pin_divergence: Vec<DepPinDivergence>,
+    /// Dep pins this patch itself changes or introduces in the root
+    /// `rabbitmq-components.mk`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pin_bumps: Vec<PinBump>,
 }
 
 impl Diagnostics {
     pub fn is_empty(&self) -> bool {
-        self.untracked_calls.is_empty()
-            && self.untracked_records.is_empty()
-            && self.unanalyzed.is_empty()
-            && self.suggested_suites.is_empty()
-            && self.missing_test_modules.is_empty()
-            && self.already_present.is_none()
-            && self.already_present_skipped.is_none()
-            && self.dep_pin_divergence.is_empty()
+        // Destructure so adding a field forces this method to be updated.
+        let Self {
+            untracked_calls,
+            untracked_records,
+            context_refs_missing,
+            unattributed_paths,
+            unanalyzed,
+            suggested_suites,
+            missing_test_modules,
+            already_present,
+            already_present_skipped,
+            dep_pin_divergence,
+            pin_bumps,
+        } = self;
+        untracked_calls.is_empty()
+            && untracked_records.is_empty()
+            && context_refs_missing.is_empty()
+            && unattributed_paths.is_empty()
+            && unanalyzed.is_empty()
+            && suggested_suites.is_empty()
+            && missing_test_modules.is_empty()
+            && already_present.is_none()
+            && already_present_skipped.is_none()
+            && dep_pin_divergence.is_empty()
+            && pin_bumps.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -1032,6 +1147,41 @@ pub struct DepPinDivergence {
     pub target: String,
 }
 
+/// A dep pin the candidate commit itself changes or introduces in the
+/// root `rabbitmq-components.mk`. Advisory only: the verdict on a
+/// bump-only diff stays `Inapplicable`, this is the evidence behind it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct PinBump {
+    pub dep: DependencyName,
+    /// Pin before the commit, e.g. `hex 2.16.0`; `None` when the
+    /// commit introduces the pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// Pin after the commit, e.g. `hex 2.17.1`.
+    pub to: String,
+    /// Snapshot-store assessment of the bumped-to version. Detection
+    /// is a pure function of the patch and may be cached; the store's
+    /// contents are not a cache-key input, so this field is filled
+    /// post-cache and cached values carry `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<BumpStatus>,
+}
+
+/// What the snapshot store knows about a bumped-to pin version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum BumpStatus {
+    /// The bumped dep is not a tracked project; nothing to vet.
+    Untracked,
+    /// No snapshot for the bumped-to version; `note` carries the remedy.
+    SnapshotMissing {
+        note: String,
+    },
+    SnapshotPresent,
+}
+
 /// Why already-present detection could not run. Emitted instead of
 /// silence: an invisible skip would read as "not present".
 #[non_exhaustive]
@@ -1065,6 +1215,56 @@ impl Unanalyzed {
     }
 }
 
+fn summary_of(results: &[PinVerdict]) -> SeriesSummary {
+    let mut summary = SeriesSummary::default();
+    for r in results {
+        match r.verdict {
+            Verdict::Compatible => summary.compatible += 1,
+            Verdict::RequiresAdaptation { .. } => summary.requires_adaptation += 1,
+            Verdict::Incompatible { .. } => summary.incompatible += 1,
+            Verdict::Inapplicable { .. } => summary.inapplicable += 1,
+        }
+    }
+    summary
+}
+
+/// One symbol-availability question the post-cache probe answers:
+/// "at which snapshot tag strictly later than this pin does the
+/// symbol first appear?"
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AvailabilityQuery {
+    ExactArity {
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+    },
+    AnyArity {
+        module: ModuleName,
+        function: FunctionName,
+    },
+    Record {
+        name: RecordName,
+    },
+}
+
+impl AvailabilityQuery {
+    fn for_symbol(symbol: &SymbolRef) -> Option<Self> {
+        match &symbol.kind {
+            SymbolKind::Function { mfa } => Some(Self::ExactArity {
+                module: mfa.module.clone(),
+                function: mfa.function.clone(),
+                arity: mfa.arity,
+            }),
+            SymbolKind::FunctionAnyArity { module, function } => Some(Self::AnyArity {
+                module: module.clone(),
+                function: function.clone(),
+            }),
+            SymbolKind::Record { name } => Some(Self::Record { name: name.clone() }),
+            _ => None,
+        }
+    }
+}
+
 /// The output of `Patch::evaluate_series`: verdicts plus diagnostics plus
 /// `PatchFacts` (source classifiers that drive downstream policy without
 /// being verdict reasons).
@@ -1093,6 +1293,83 @@ pub struct SeriesEvaluation {
 impl SeriesEvaluation {
     pub fn worst_exit_code(&self) -> i32 {
         self.verdict.worst_exit_code()
+    }
+
+    /// Populates symbol-availability fields on missing-symbol and
+    /// arity-changed reasons, then reclassifies the affected pin
+    /// verdicts (`is_blocking` is field-sensitive). `lookup` answers
+    /// "earliest snapshot tag strictly later than this pin where the
+    /// queried symbol exists", or `None` (including for self pins).
+    /// Runs post-cache: the project's tag set is not a cache-key
+    /// input, so cached values must stay unclassified.
+    pub fn apply_symbol_availability<F>(&mut self, mut lookup: F)
+    where
+        F: FnMut(&Pin, &AvailabilityQuery) -> Option<TagName>,
+    {
+        let mut any_changed = false;
+        for pv in &mut self.verdict.results {
+            let pin = pv.pin.clone();
+            let reasons = match &mut pv.verdict {
+                Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
+                    reasons
+                }
+                Verdict::Compatible | Verdict::Inapplicable { .. } => continue,
+            };
+            let mut changed = false;
+            for reason in reasons.iter_mut() {
+                match reason {
+                    Reason::MissingSymbol {
+                        symbol,
+                        first_seen_at_tag: first_seen @ None,
+                        needs_pin_at_least,
+                        ..
+                    } => {
+                        let Some(query) = AvailabilityQuery::for_symbol(symbol) else {
+                            continue;
+                        };
+                        if let Some(tag) = lookup(&pin, &query) {
+                            *first_seen = Some(tag.clone());
+                            *needs_pin_at_least = Some(NeedsPin {
+                                project: pin.project.clone(),
+                                tag,
+                            });
+                            changed = true;
+                        }
+                    }
+                    Reason::ArityChanged {
+                        module,
+                        function,
+                        expected,
+                        expected_available_at: available @ None,
+                        needs_pin_at_least,
+                        ..
+                    } => {
+                        let query = AvailabilityQuery::ExactArity {
+                            module: module.clone(),
+                            function: function.clone(),
+                            arity: *expected,
+                        };
+                        if let Some(tag) = lookup(&pin, &query) {
+                            *available = Some(tag.clone());
+                            *needs_pin_at_least = Some(NeedsPin {
+                                project: pin.project.clone(),
+                                tag,
+                            });
+                            changed = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if changed {
+                let taken = mem::take(reasons);
+                pv.verdict = Verdict::from_reasons(taken);
+                any_changed = true;
+            }
+        }
+        if any_changed {
+            self.verdict.recompute_summary();
+        }
     }
 }
 

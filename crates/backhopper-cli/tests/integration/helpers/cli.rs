@@ -45,6 +45,20 @@ where
         .assert()
 }
 
+/// Run with extra environment variables set (e.g. forcing the verdict
+/// cache on in debug builds).
+pub(crate) fn run_with_env<I, S>(args: I, env: &[(&str, &str)]) -> Assert
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut cmd = base_command();
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    cmd.args(args).assert()
+}
+
 /// Run and assert exit code 0.
 pub(crate) fn run_succeeds<I, S>(args: I) -> Assert
 where

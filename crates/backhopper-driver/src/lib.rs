@@ -51,10 +51,13 @@ pub use backhopper_core::envelope_version::{
     embedded_versions as supported_envelope_versions,
 };
 
+use backhopper_core::envelope_version::MIN_EMBEDDED_VERSION;
+
 /// Range of envelope schema versions this driver release understands.
+/// Derived from the linked core: the driver parses exactly what core emits
 pub const SUPPORTED_SCHEMA: SchemaVersionRange = SchemaVersionRange {
-    min: SchemaVersion::new(1),
-    max: SchemaVersion::new(10),
+    min: SchemaVersion::new(MIN_EMBEDDED_VERSION),
+    max: SchemaVersion::new(CURRENT_ENVELOPE_VERSION),
 };
 
 /// Inclusive range of envelope schema versions.
