@@ -30,9 +30,16 @@ pub use backhopper_core::model::snapshot::{
     SnapshotHeader, VendoredDep, VendoredDepSource, VersionedMachineVersion, WireConstantBinding,
     WireValue, state as snapshot_state,
 };
+pub use backhopper_core::model::snapshot_diff::{
+    CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,
+    VersionedMachineVersionChange, WireConstantChange,
+};
 pub use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 pub use backhopper_core::model::symbol::{RefOrigin, Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
     FileKind, InapplicableReason, NeedsPin, PinVerdict, Reason, SeriesVerdict, SnapshotSide,
     TouchedKinds, Verdict,
+};
+pub use backhopper_core::suites::{
+    SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef, UncoveredApplication,
 };

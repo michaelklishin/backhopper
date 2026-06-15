@@ -332,19 +332,51 @@ fn needs_continuation(acc: &str, next: &str) -> bool {
     false
 }
 
+fn is_elixir_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+// In Elixir ?x is the codepoint of x, but ? is also the suffix of predicate
+// names like valid?: treat it as a char literal only when it does not follow
+// an identifier byte. Returns the byte length to skip, or None otherwise.
+fn elixir_char_literal_len(bytes: &[u8], at: usize) -> Option<usize> {
+    if at > 0 && is_elixir_ident_byte(bytes[at - 1]) {
+        return None;
+    }
+    let next = at + 1;
+    if next >= bytes.len() {
+        return None;
+    }
+    if bytes[next] == b'\\' {
+        return Some(3.min(bytes.len() - at));
+    }
+    Some(2)
+}
+
 fn is_balanced(s: &str) -> bool {
+    let bytes = s.as_bytes();
     let mut paren = 0i32;
     let mut brace = 0i32;
     let mut brack = 0i32;
     let mut in_str = false;
     let mut in_atom_quote = false;
     let mut prev_back = false;
-    for ch in s.chars() {
+    let mut i = 0usize;
+    while i < bytes.len() {
         if prev_back {
             prev_back = false;
+            i += 1;
             continue;
         }
-        match ch {
+        if bytes[i] == b'?'
+            && !in_str
+            && !in_atom_quote
+            && let Some(len) = elixir_char_literal_len(bytes, i)
+        {
+            i += len;
+            continue;
+        }
+        match bytes[i] as char {
             '\\' if in_str || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_str = !in_str,
             '\'' if !in_str => in_atom_quote = !in_atom_quote,
@@ -356,6 +388,7 @@ fn is_balanced(s: &str) -> bool {
             ']' if !in_str && !in_atom_quote => brack -= 1,
             _ => {}
         }
+        i += 1;
     }
     paren <= 0 && brace <= 0 && brack <= 0 && !in_str && !in_atom_quote
 }
@@ -369,13 +402,22 @@ fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
     let mut in_atom_quote = false;
     let mut prev_back = false;
     let bytes = s.as_bytes();
-    for (i, &b) in bytes.iter().enumerate() {
-        let ch = b as char;
+    let mut i = 0usize;
+    while i < bytes.len() {
         if prev_back {
             prev_back = false;
+            i += 1;
             continue;
         }
-        match ch {
+        if bytes[i] == b'?'
+            && !in_str
+            && !in_atom_quote
+            && let Some(len) = elixir_char_literal_len(bytes, i)
+        {
+            i += len;
+            continue;
+        }
+        match bytes[i] as char {
             '\\' if in_str || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_str = !in_str,
             '\'' if !in_str => in_atom_quote = !in_atom_quote,
@@ -388,11 +430,13 @@ fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
             }
             _ => {}
         }
+        i += 1;
     }
     None
 }
 
 fn count_top_level_commas(s: &str) -> usize {
+    let bytes = s.as_bytes();
     let mut depth_paren = 0i32;
     let mut depth_brace = 0i32;
     let mut depth_brack = 0i32;
@@ -400,12 +444,22 @@ fn count_top_level_commas(s: &str) -> usize {
     let mut in_atom_quote = false;
     let mut prev_back = false;
     let mut count = 0usize;
-    for ch in s.chars() {
+    let mut i = 0usize;
+    while i < bytes.len() {
         if prev_back {
             prev_back = false;
+            i += 1;
             continue;
         }
-        match ch {
+        if bytes[i] == b'?'
+            && !in_str
+            && !in_atom_quote
+            && let Some(len) = elixir_char_literal_len(bytes, i)
+        {
+            i += len;
+            continue;
+        }
+        match bytes[i] as char {
             '\\' if in_str || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_str = !in_str,
             '\'' if !in_str => in_atom_quote = !in_atom_quote,
@@ -425,6 +479,7 @@ fn count_top_level_commas(s: &str) -> usize {
             }
             _ => {}
         }
+        i += 1;
     }
     count
 }
@@ -486,12 +541,23 @@ fn strip_comments(source: &str) -> String {
         let mut in_atom_quote = false;
         let mut prev_back = false;
         let mut cut = line.len();
-        for (i, ch) in line.char_indices() {
+        let lb = line.as_bytes();
+        let mut i = 0usize;
+        while i < lb.len() {
             if prev_back {
                 prev_back = false;
+                i += 1;
                 continue;
             }
-            match ch {
+            if lb[i] == b'?'
+                && !in_str
+                && !in_atom_quote
+                && let Some(len) = elixir_char_literal_len(lb, i)
+            {
+                i += len;
+                continue;
+            }
+            match lb[i] as char {
                 '\\' if in_str || in_atom_quote => prev_back = true,
                 '"' if !in_atom_quote => in_str = !in_str,
                 '\'' if !in_str => in_atom_quote = !in_atom_quote,
@@ -501,6 +567,7 @@ fn strip_comments(source: &str) -> String {
                 }
                 _ => {}
             }
+            i += 1;
         }
         out.push_str(&line[..cut]);
         out.push('\n');

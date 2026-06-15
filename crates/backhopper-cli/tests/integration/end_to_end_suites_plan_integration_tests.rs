@@ -182,3 +182,53 @@ fn suites_plan_errors_when_no_modified_input_supplied() {
         "expected hint about --modified-path, got: {err}"
     );
 }
+
+#[test]
+fn suites_plan_extra_rules_file_rule_fires() {
+    let dir = TempDir::new().unwrap();
+    build_fixture(&dir);
+    let root = dir.path().to_string_lossy().to_string();
+    let rules = dir.path().join("rules.toml");
+    fs::write(
+        &rules,
+        "[[suite_rule]]\nname = \"db-rule\"\nwhen_modified_path_matches = \"rabbit_db\"\ninclude_suite = [\"vhost_SUITE\"]\n",
+    )
+    .unwrap();
+    let rules_path = rules.to_string_lossy().into_owned();
+    let a = run_succeeds([
+        "--formatter",
+        "json",
+        "suites",
+        "plan",
+        "--repo-dir-path",
+        root.as_str(),
+        "--extra-rules-file-path",
+        rules_path.as_str(),
+        "--modified-path",
+        "deps/rabbit/src/rabbit_db.erl",
+    ]);
+    let out = stdout(&a);
+    assert!(out.contains("configured_rule"), "{out}");
+    assert!(out.contains("db-rule"), "{out}");
+}
+
+#[test]
+fn suites_plan_rejects_malformed_extra_rules_file() {
+    let dir = TempDir::new().unwrap();
+    build_fixture(&dir);
+    let root = dir.path().to_string_lossy().to_string();
+    let rules = dir.path().join("bad.toml");
+    // missing the required `when_modified_path_matches`
+    fs::write(&rules, "[[suite_rule]]\nname = \"x\"\n").unwrap();
+    let rules_path = rules.to_string_lossy().into_owned();
+    run_fails([
+        "suites",
+        "plan",
+        "--repo-dir-path",
+        root.as_str(),
+        "--extra-rules-file-path",
+        rules_path.as_str(),
+        "--modified-path",
+        "deps/rabbit/src/rabbit_db.erl",
+    ]);
+}

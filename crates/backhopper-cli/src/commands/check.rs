@@ -366,22 +366,6 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 None,
             )
         }
-        CheckCmd::Multi {
-            series,
-            repo,
-            source,
-            target: _,
-            diagnostics,
-            commit,
-        } => run_multi(
-            args,
-            &cfg,
-            &series,
-            &repo.repo_dir_path,
-            &commit,
-            &source,
-            diagnostics,
-        ),
         CheckCmd::Batch {
             series,
             repo,
@@ -420,7 +404,6 @@ fn warn_on_deprecated_summary_only(cmd: &CheckCmd) {
         | CheckCmd::Range { diagnostics, .. }
         | CheckCmd::Merge { diagnostics, .. }
         | CheckCmd::Pr { diagnostics, .. }
-        | CheckCmd::Multi { diagnostics, .. }
         | CheckCmd::Batch { diagnostics, .. } => diagnostics,
     };
     if diagnostics.summary_only {
@@ -2402,149 +2385,6 @@ fn reject_terse(diagnostics: CheckFlags, verb: &str) -> CliResult<()> {
         )));
     }
     Ok(())
-}
-
-#[derive(Debug, Serialize)]
-struct MultiPayload {
-    commit: CommitSha,
-    queried_against: Vec<BatchQuery>,
-    results: Vec<BatchResult>,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_multi(
-    args: &GlobalArgs,
-    cfg: &Config,
-    series_names: &[SeriesName],
-    repo: &Path,
-    commit: &CommitShaPrefix,
-    source: &SourcePinArgs,
-    diagnostics: CheckFlags,
-) -> CliResult<i32> {
-    reject_terse(diagnostics, "check multi")?;
-    let store = open_store_read(args, cfg)?;
-    let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
-    let commit =
-        &expand_prefix_with(&git_repo, commit).map_err(|e| enrich_with_repo_path(e, repo))?;
-    let parents = git_repo.parents(commit).map_err(CliError::Git)?;
-    let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
-    let queried = batch_queries(&resolved_series);
-    let mut results: Vec<BatchResult> = Vec::with_capacity(resolved_series.len());
-    let mut worst_exit: i32 = 0;
-    let cache = SnapshotCache::new(&store);
-    let mut availability = AvailabilityProbe::new(cfg, &store, &cache);
-    let bump_assessor = PinBumpAssessor::new(cfg, &store);
-    let mut bump_generator = BumpSnapshotGenerator::new(args, cfg);
-    let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
-    // resolved lazily: only a miss pays for the diff, the macro
-    // environment, or the file map
-    let mut input: Option<ResolvedPatchInput> = None;
-    let mut source_files: Option<FileMap> = None;
-    let mut macro_env: Option<MacroEnv> = None;
-    for series in &resolved_series {
-        let source_pins = resolve_source_pins(
-            cfg,
-            &store,
-            &series.pins,
-            None,
-            None,
-            Some(&series.name),
-            source,
-        )?;
-        let key = session.check_key(
-            cfg,
-            &store,
-            commit,
-            Some(&series.name),
-            &series.pins,
-            &series.pin_specs,
-            &source_pins,
-            None,
-        );
-        let lookup = session.lookup(key);
-        if !matches!(lookup, SessionLookup::Hit(_)) && input.is_none() {
-            input = Some(ResolvedPatchInput::from_parents(
-                &git_repo,
-                commit,
-                &parents,
-                MergePolicy::FirstParentDiff,
-                PrCommitPolicy::Collect,
-            )?);
-        }
-        let evaluate = |source_files: &mut Option<FileMap>| -> CliResult<SeriesEvaluation> {
-            let input = input.as_ref().expect("resolved before any evaluation");
-            if source_files.is_none() {
-                *source_files = Some(input.load_source_files(&git_repo).map_err(CliError::Git)?);
-            }
-            let files = source_files.as_ref().expect("loaded above");
-            let mut evaluation = evaluate_one(
-                cfg,
-                &cache,
-                &input.bytes,
-                &series.pins,
-                &series.pin_specs,
-                &source_pins,
-                files,
-                Some(repo),
-            )?;
-            evaluation.pr_commits.clone_from(&input.pr_commits);
-            Ok(evaluation)
-        };
-        let mut evaluation = match lookup {
-            SessionLookup::Hit(evaluation) => *evaluation,
-            SessionLookup::Bypassed => evaluate(&mut source_files)?,
-            SessionLookup::Miss(miss) => {
-                let resolved = input.as_ref().expect("resolved on the miss path");
-                if macro_env.is_none() {
-                    macro_env = Some(commit_macro_env(
-                        repo,
-                        &resolved.diff_base,
-                        &resolved.bytes,
-                    )?);
-                }
-                let env = macro_env.as_ref().expect("computed above");
-                match session.consult_content(*miss, patch_hash_for_key(&resolved.bytes), env) {
-                    CacheLookupOutcome::Hit(evaluation) => *evaluation,
-                    CacheLookupOutcome::Miss(slot) => {
-                        let evaluation = evaluate(&mut source_files)?;
-                        slot.store(&evaluation);
-                        evaluation
-                    }
-                }
-            }
-        };
-        availability.apply(&mut evaluation);
-        if diagnostics.auto_generate {
-            bump_generator.apply(&store, &evaluation);
-        }
-        bump_assessor.apply(&mut evaluation);
-        worst_exit = worst_exit.max(evaluation.worst_exit_code());
-        results.push(BatchResult {
-            commit: commit.clone(),
-            series: series.name.clone(),
-            pr_commits: evaluation.pr_commits.clone(),
-            verdict: evaluation.verdict,
-            diagnostics: evaluation.diagnostics,
-            patch_facts: evaluation.patch_facts,
-            touched_paths: evaluation.touched_paths,
-            parent_count: NonZeroU32::new(parents.len() as u32),
-        });
-    }
-    session.report();
-    let payload = MultiPayload {
-        commit: commit.clone(),
-        queried_against: queried,
-        results,
-    };
-    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
-        let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
-        emit_rows(summary_fmt, &rows)?;
-        return Ok(worst_exit);
-    }
-    let ctx = OutputContext::new(args.formatter, "check multi");
-    render_with_exit(&ctx, &payload, worst_exit, |w| {
-        render_batch_text(w, &payload.results, diagnostics)
-    })
 }
 
 fn select_batch_reporter(args: &GlobalArgs) -> Box<dyn ProgressReporter> {

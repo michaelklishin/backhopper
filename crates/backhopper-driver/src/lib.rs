@@ -27,16 +27,23 @@ pub mod verb;
 pub mod mock;
 
 pub use backend::{Backend, Invocation, OutputChannel, OutputPolicy, RawOutcome};
+pub use backhopper_core::model::evaluation::{
+    AggregateVerdict, BehaviourModuleMissingFinding, HeaderFileMissingFinding,
+    SeriesEvaluationView, TestModuleSymbolMissingFinding, VersionedMachineSnapshotMissingFinding,
+    WireConstantBindingsMissingFinding,
+};
+pub use backhopper_core::model::summary::VerdictKind;
 pub use builder::check::{
-    AggregateVerdict, BehaviourModuleMissingFinding, Check, CheckCommitBuilder, CheckMergeBuilder,
-    CheckOptions, CheckPatchBuilder, CheckRangeBuilder, ExplainFormat, HeaderFileMissingFinding,
-    PatchSource, PinDescriptor, QueriedAgainst, SeriesEvaluation, TestModuleSymbolMissingFinding,
-    VerdictKind, VersionedMachineSnapshotMissingFinding, WireConstantBindingsMissingFinding,
+    Check, CheckBatchBuilder, CheckCommitBuilder, CheckMergeBuilder, CheckOptions,
+    CheckPatchBuilder, CheckRangeBuilder, ExplainFormat, PatchSource, PinDescriptor,
+    QueriedAgainst, SeriesEvaluation,
 };
 pub use builder::siblings::{Siblings, SiblingsDoctorBuilder};
+pub use builder::snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
 pub use builder::state::{InputState, NoInput, NoTarget, TargetState, WithInput, WithTarget};
+pub use builder::suites::{Suites, SuitesPlanBuilder};
 pub use cancellation::{Aborter, CancellationToken};
-pub use driver::{Backhopper, VersionInfo};
+pub use driver::{Backhopper, Compatibility, VersionInfo};
 pub use envelope::{Envelope, EnvelopeWarning, ExecutedInvocation, SchemaVersion};
 pub use error::{DriverError, ErrorKind, Result};
 pub use exit::ExitClass;

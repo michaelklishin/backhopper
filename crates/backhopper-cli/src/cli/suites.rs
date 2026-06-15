@@ -58,6 +58,11 @@ pub struct SuitesPlanArgs {
     #[arg(long)]
     pub modified_path: Vec<PathBuf>,
 
+    /// TOML file of extra `[[suite_rule]]` entries, unioned with the
+    /// rules in the loaded config. Same shape and validation.
+    #[arg(long)]
+    pub extra_rules_file_path: Option<PathBuf>,
+
     /// Library applications: modules under these apps trigger
     /// cross-application suite inclusion. Comma-separated.
     #[arg(long, value_delimiter = ',')]

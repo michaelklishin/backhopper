@@ -124,19 +124,24 @@ pub enum SnapshotsCmd {
         #[arg(long)]
         module: String,
     },
-    /// Diff two snapshots of the same project, or two whole series.
-    Diff {
-        #[arg(long, requires_all = ["from", "to"], conflicts_with_all = ["from_series", "to_series"])]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        from: Option<TagName>,
-        #[arg(long, requires = "project")]
-        to: Option<TagName>,
+    /// Diff one project's API between two tags.
+    #[command(name = "project_diff")]
+    ProjectDiff {
+        #[arg(long)]
+        project: ProjectName,
+        #[arg(long)]
+        from: TagName,
+        #[arg(long)]
+        to: TagName,
+    },
+    /// Diff the dependency pins of two series.
+    #[command(name = "series_diff")]
+    SeriesDiff {
         /// Series whose pins act as the `from` side.
-        #[arg(long, requires = "to_series")]
-        from_series: Option<SeriesName>,
+        #[arg(long)]
+        from_series: SeriesName,
         /// Series whose pins act as the `to` side.
-        #[arg(long, requires = "from_series")]
-        to_series: Option<SeriesName>,
+        #[arg(long)]
+        to_series: SeriesName,
     },
 }

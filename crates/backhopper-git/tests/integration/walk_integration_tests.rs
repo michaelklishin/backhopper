@@ -38,6 +38,28 @@ fn same_branch_window_is_pure_ancestry_newest_first() {
     assert_eq!(shas, vec![second.as_str(), first.as_str()]);
 }
 
+// On the same branch the window is pure ancestry: an intermediate commit
+// dated before `since` (and even before the committer-time cutoff) must still
+// appear, since the cutoff only bounds the cross-branch case.
+#[test]
+fn same_branch_walk_keeps_intermediate_commit_dated_before_the_since_point() {
+    let fake = FakeRepo::new();
+    fake.write_file("src/a.erl", "a1\n");
+    fake.commit_dated("base", "2025-01-01T10:00:00Z");
+    let since = fake.head_sha();
+    fake.write_file("src/a.erl", "a2\n");
+    fake.commit_dated("old intermediate", "2020-01-01T10:00:00Z");
+    let mid = fake.head_sha();
+    fake.write_file("src/a.erl", "a3\n");
+    fake.commit_dated("tip", "2025-06-10T10:00:00Z");
+    let tip = fake.head_sha();
+
+    let repo = open(&fake);
+    let window = first_parent_walk_since(&repo, &sha(&tip), &sha(&since)).unwrap();
+    let shas: Vec<&str> = window.iter().map(|c| c.sha.as_str()).collect();
+    assert_eq!(shas, vec![tip.as_str(), mid.as_str()]);
+}
+
 #[test]
 fn since_equal_to_tip_gives_an_empty_window() {
     let fake = FakeRepo::new();

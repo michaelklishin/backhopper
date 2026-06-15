@@ -171,6 +171,24 @@ fn tool_error_response_surfaces_as_tool_error() {
         .run()
         .expect_err("66 is not success-shaped");
     assert_eq!(err.kind(), ErrorKind::ToolError);
+    // the failure path carries the same exact-rerun argv as success
+    match &err {
+        DriverError::ToolError {
+            exit_code,
+            stderr,
+            executed,
+            ..
+        } => {
+            assert_eq!(*exit_code, 66);
+            assert_eq!(stderr, "config missing");
+            assert!(executed.argv.iter().any(|a| a == "check"));
+            assert!(executed.argv.iter().any(|a| a == "patch"));
+        }
+        other => panic!("expected ToolError, got {other:?}"),
+    }
+    let shown = err.to_string();
+    assert!(shown.contains("check patch"));
+    assert!(shown.contains("config missing"));
 }
 
 #[test]
@@ -229,6 +247,7 @@ fn mock_response_error_is_propagated_verbatim() {
         .respond_with(MockMatcher::Verb(Verb::Version), |_inv| {
             MockResponse::Error(DriverError::Cancelled {
                 verb: VerbId::Known(Verb::Version),
+                argv: Vec::new(),
             })
         })
         .build();

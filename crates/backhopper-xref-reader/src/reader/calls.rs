@@ -100,6 +100,19 @@ pub(super) fn arity_from_parenthesised_args(sc: &mut Scanner<'_>) -> u8 {
                 depth -= 1;
                 sc.advance();
             }
+            // << and >> are binary delimiters: nest like brackets so the commas
+            // inside a binary literal are not counted as arguments.
+            b'<' if sc.peek_at(1) == Some(b'<') => {
+                depth += 1;
+                had_content = true;
+                sc.advance();
+                sc.advance();
+            }
+            b'>' if sc.peek_at(1) == Some(b'>') => {
+                depth -= 1;
+                sc.advance();
+                sc.advance();
+            }
             b',' if depth == 1 => {
                 commas += 1;
                 sc.advance();
@@ -160,6 +173,19 @@ fn scan_args_for_calls(sc: &mut Scanner<'_>, caller: &FunctionSig, b: &mut Modul
             }
             b']' | b'}' => {
                 depth -= 1;
+                sc.advance();
+            }
+            // << and >> are binary delimiters: nest like brackets so the commas
+            // inside a binary literal are not counted as arguments.
+            b'<' if sc.peek_at(1) == Some(b'<') => {
+                depth += 1;
+                had_content = true;
+                sc.advance();
+                sc.advance();
+            }
+            b'>' if sc.peek_at(1) == Some(b'>') => {
+                depth -= 1;
+                sc.advance();
                 sc.advance();
             }
             b',' if depth == 1 => {
@@ -426,6 +452,19 @@ fn peek_arg_count(sc: &Scanner<'_>) -> Option<u8> {
                 depth -= 1;
                 cur.advance();
             }
+            // << and >> are binary delimiters: nest like brackets so the commas
+            // inside a binary literal are not counted as arguments.
+            b'<' if cur.peek_at(1) == Some(b'<') => {
+                depth += 1;
+                had_content = true;
+                cur.advance();
+                cur.advance();
+            }
+            b'>' if cur.peek_at(1) == Some(b'>') => {
+                depth -= 1;
+                cur.advance();
+                cur.advance();
+            }
             b',' if depth == 1 => {
                 commas += 1;
                 cur.advance();
@@ -602,6 +641,18 @@ fn parse_literal_args(
                 depth -= 1;
                 sc.advance();
             }
+            // << and >> are binary delimiters: nest like brackets so a binary
+            // literal is not split into separate arguments.
+            b'<' if sc.peek_at(1) == Some(b'<') => {
+                depth += 1;
+                sc.advance();
+                sc.advance();
+            }
+            b'>' if sc.peek_at(1) == Some(b'>') => {
+                depth -= 1;
+                sc.advance();
+                sc.advance();
+            }
             b',' if depth == 1 => {
                 let end = sc.pos().byte_offset as usize;
                 let slice = sc.src_slice(arg_start, end);
@@ -680,6 +731,16 @@ fn count_top_level_commas(s: &str) -> u32 {
             b'\'' if !in_str => in_atom = !in_atom,
             b'(' | b'[' | b'{' if !in_str && !in_atom => depth += 1,
             b')' | b']' | b'}' if !in_str && !in_atom => depth -= 1,
+            // << and >> are binary delimiters: nest like brackets and consume
+            // the second byte so interior commas are not counted.
+            b'<' if !in_str && !in_atom && bytes.get(i + 1) == Some(&b'<') => {
+                depth += 1;
+                i += 1;
+            }
+            b'>' if !in_str && !in_atom && bytes.get(i + 1) == Some(&b'>') => {
+                depth -= 1;
+                i += 1;
+            }
             b',' if depth == 0 && !in_str && !in_atom => commas += 1,
             _ => {}
         }

@@ -47,8 +47,10 @@ pub enum Verb {
     SnapshotsList,
     /// `backhopper snapshots show`.
     SnapshotsShow,
-    /// `backhopper snapshots diff`.
-    SnapshotsDiff,
+    /// `backhopper snapshots project_diff`.
+    SnapshotsProjectDiff,
+    /// `backhopper snapshots series_diff`.
+    SnapshotsSeriesDiff,
     /// `backhopper snapshots verify`.
     SnapshotsVerify,
     /// `backhopper snapshots generate`.
@@ -73,6 +75,8 @@ pub enum Verb {
     CheckBatch,
     /// `backhopper siblings doctor`.
     SiblingsDoctor,
+    /// `backhopper suites plan`.
+    SuitesPlan,
     /// `backhopper cache stats`.
     CacheStats,
     /// `backhopper cache list`.
@@ -92,6 +96,22 @@ pub enum Verb {
 }
 
 impl Verb {
+    /// True for verbs whose source repository must come from the
+    /// driver-global `--repo-dir-path`: without it the CLI silently
+    /// defaults to the current directory and resolves commits against
+    /// the wrong tree.
+    #[must_use]
+    pub const fn requires_global_repo_dir(self) -> bool {
+        matches!(
+            self,
+            Self::CheckCommit
+                | Self::CheckRange
+                | Self::CheckMerge
+                | Self::CheckBatch
+                | Self::SuitesPlan
+        )
+    }
+
     /// The argv prefix the CLI expects, e.g. `["check", "patch"]`.
     #[must_use]
     pub const fn cli_path(self) -> &'static [&'static str] {
@@ -107,7 +127,8 @@ impl Verb {
             Self::SeriesShow => &["series", "show"],
             Self::SnapshotsList => &["snapshots", "list"],
             Self::SnapshotsShow => &["snapshots", "show"],
-            Self::SnapshotsDiff => &["snapshots", "diff"],
+            Self::SnapshotsProjectDiff => &["snapshots", "project_diff"],
+            Self::SnapshotsSeriesDiff => &["snapshots", "series_diff"],
             Self::SnapshotsVerify => &["snapshots", "verify"],
             Self::SnapshotsGenerate => &["snapshots", "generate"],
             Self::SnapshotsRebuild => &["snapshots", "rebuild"],
@@ -120,6 +141,7 @@ impl Verb {
             Self::CheckTree => &["check", "tree"],
             Self::CheckBatch => &["check", "batch"],
             Self::SiblingsDoctor => &["siblings", "doctor"],
+            Self::SuitesPlan => &["suites", "plan"],
             Self::CacheStats => &["cache", "stats"],
             Self::CacheList => &["cache", "list"],
             Self::CacheShow => &["cache", "show"],
@@ -178,7 +200,8 @@ impl Verb {
         Self::SeriesShow,
         Self::SnapshotsList,
         Self::SnapshotsShow,
-        Self::SnapshotsDiff,
+        Self::SnapshotsProjectDiff,
+        Self::SnapshotsSeriesDiff,
         Self::SnapshotsVerify,
         Self::SnapshotsGenerate,
         Self::SnapshotsRebuild,
@@ -191,6 +214,7 @@ impl Verb {
         Self::CheckTree,
         Self::CheckBatch,
         Self::SiblingsDoctor,
+        Self::SuitesPlan,
         Self::CacheStats,
         Self::CacheList,
         Self::CacheShow,

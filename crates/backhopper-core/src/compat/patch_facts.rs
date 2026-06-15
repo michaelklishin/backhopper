@@ -172,7 +172,8 @@ fn count_rabbit_log(text: &str) -> usize {
 fn contains_khepri_macro(text: &str) -> bool {
     let mut i = 0usize;
     let bytes = text.as_bytes();
-    while i + 8 < bytes.len() {
+    // Reading an 8-byte window is valid whenever `i + 8 <= len`.
+    while i + 8 <= bytes.len() {
         if &bytes[i..i + 8] == b"?khepri_" {
             return true;
         }

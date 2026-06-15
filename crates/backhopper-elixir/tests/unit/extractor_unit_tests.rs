@@ -132,6 +132,44 @@ fn def_with_no_args_yields_arity_zero() {
     );
 }
 
+fn exports_of(source: &str, module: &str) -> Vec<String> {
+    let ex = ElixirExtractor::default();
+    ex.extract_modules(source)
+        .iter()
+        .find(|m| m.name.as_str() == module)
+        .expect("module")
+        .exports
+        .iter()
+        .map(|fa| format!("{}/{}", fa.name, fa.arity))
+        .collect()
+}
+
+// A `?"` char literal in a default argument must not open a string and so
+// must not collapse the arity to zero.
+#[test]
+fn char_literal_quote_in_default_arg_keeps_arity() {
+    let source = "defmodule A do\n  def f(sep \\\\ ?\", b, c), do: :ok\nend\n";
+    let exports = exports_of(source, "A");
+    assert!(exports.iter().any(|e| e == "f/3"), "got {exports:?}");
+}
+
+// A `?,` char literal must not be counted as an argument separator.
+#[test]
+fn char_literal_comma_in_default_arg_does_not_inflate_arity() {
+    let source = "defmodule A do\n  def f(sep \\\\ ?,, b), do: :ok\nend\n";
+    let exports = exports_of(source, "A");
+    assert!(exports.iter().any(|e| e == "f/2"), "got {exports:?}");
+}
+
+// A predicate name like `valid?` ends in `?` but that is not a char literal:
+// the function must still be extracted with the correct arity.
+#[test]
+fn predicate_name_is_not_mistaken_for_a_char_literal() {
+    let source = "defmodule A do\n  def valid?(a, b), do: true\nend\n";
+    let exports = exports_of(source, "A");
+    assert!(exports.iter().any(|e| e == "valid?/2"), "got {exports:?}");
+}
+
 #[test]
 fn callback_with_complex_args_yields_correct_arity() {
     let source = r#"

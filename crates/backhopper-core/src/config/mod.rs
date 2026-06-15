@@ -850,6 +850,24 @@ impl Config {
     }
 }
 
+/// Parse a standalone TOML file of extra suite rules: the same
+/// `[[suite_rule]]` shape the config accepts, validated identically so
+/// the trailing-slash and unknown-placeholder footguns fail fast.
+pub fn parse_suite_rules_toml(text: &str) -> Result<Vec<ExtraRule>, ConfigError> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RulesDoc {
+        #[serde(default)]
+        suite_rule: Vec<SuiteRuleRaw>,
+    }
+    let doc: RulesDoc = toml::from_str(text)?;
+    doc.suite_rule
+        .into_iter()
+        .enumerate()
+        .map(|(idx, raw)| parse_suite_rule(idx, raw))
+        .collect()
+}
+
 fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigError> {
     let pattern = raw.when_modified_path_matches;
     let compiled = Regex::new(&pattern).map_err(|e| ConfigError::SuiteRuleRegex {

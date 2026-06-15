@@ -33,22 +33,16 @@ fn kind_round_trip_for_every_variant() {
             DriverError::Timeout {
                 verb: known_verb_id(Verb::CheckPatch),
                 after: Duration::from_secs(1),
+                argv: Vec::new(),
             },
             ErrorKind::Timeout,
         ),
         (
             DriverError::Cancelled {
                 verb: known_verb_id(Verb::CheckPatch),
+                argv: Vec::new(),
             },
             ErrorKind::Cancelled,
-        ),
-        (
-            DriverError::ToolError {
-                verb: known_verb_id(Verb::CheckPatch),
-                exit_code: 65,
-                stderr: "bad".into(),
-            },
-            ErrorKind::ToolError,
         ),
         (
             DriverError::SchemaVersionMismatch {
@@ -89,24 +83,12 @@ fn kind_round_trip_for_every_variant() {
 fn error_kind_display_uses_snake_case() {
     assert_eq!(ErrorKind::BinaryNotFound.to_string(), "binary_not_found");
     assert_eq!(ErrorKind::ToolError.to_string(), "tool_error");
+    assert_eq!(ErrorKind::MissingRepoDir.to_string(), "missing_repo_dir");
     assert_eq!(ErrorKind::ReaderPanicked.to_string(), "reader_panicked");
     assert_eq!(
         ErrorKind::SchemaVersionMismatch.to_string(),
         "schema_version_mismatch"
     );
-}
-
-#[test]
-fn tool_error_display_includes_verb_and_stderr() {
-    let err = DriverError::ToolError {
-        verb: known_verb_id(Verb::CheckMerge),
-        exit_code: 65,
-        stderr: "malformed".into(),
-    };
-    let s = format!("{err}");
-    assert!(s.contains("check merge"));
-    assert!(s.contains("65"));
-    assert!(s.contains("malformed"));
 }
 
 #[test]

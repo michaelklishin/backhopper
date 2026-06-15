@@ -25,6 +25,10 @@ use backhopper_core::model::pin::PinSpec;
 use backhopper_core::model::snapshot::{
     FunArity, Module, SnapshotHeader, Visibility, WireConstantBinding, WireValue, state,
 };
+use backhopper_core::model::snapshot_diff::{
+    CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,
+    VersionedMachineVersionChange, WireConstantChange,
+};
 use backhopper_core::snapshot::format;
 use backhopper_core::store::{Mutable, SnapshotStore};
 use backhopper_core::versions::version_cmp;
@@ -96,76 +100,8 @@ struct ModuleSummary {
     callbacks: usize,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct DiffPayload {
-    pub project: String,
-    pub from: String,
-    pub to: String,
-    pub modules_added: Vec<String>,
-    pub modules_removed: Vec<String>,
-    pub exports_added: Vec<QualifiedFunArity>,
-    pub exports_removed: Vec<QualifiedFunArity>,
-    pub types_added: Vec<QualifiedTypeArity>,
-    pub types_removed: Vec<QualifiedTypeArity>,
-    pub callbacks_added: Vec<QualifiedFunArity>,
-    pub callbacks_removed: Vec<QualifiedFunArity>,
-    pub headers_added: Vec<String>,
-    pub headers_removed: Vec<String>,
-    pub records_added: Vec<QualifiedRecord>,
-    pub records_removed: Vec<QualifiedRecord>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub versioned_machine_version_changes: Vec<VersionedMachineVersionChange>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub wire_constant_changes: Vec<WireConstantChange>,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum VersionedMachineVersionChange {
-    Missing {
-        module: String,
-        side: String,
-    },
-    Drift {
-        module: String,
-        from: Option<u64>,
-        to: Option<u64>,
-    },
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum WireConstantChange {
-    Missing {
-        module: String,
-        side: String,
-        macros: Vec<String>,
-    },
-    Drift {
-        module: String,
-        macro_name: String,
-        from: String,
-        to: String,
-    },
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-pub struct QualifiedFunArity {
-    pub module: String,
-    pub fun_arity: String,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-pub struct QualifiedTypeArity {
-    pub module: String,
-    pub type_arity: String,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-pub struct QualifiedRecord {
-    pub header: String,
-    pub record: String,
-}
+// `snapshots diff` payloads moved to `backhopper_core::model::snapshot_diff`
+// so the CLI emits and the driver parses one definition.
 
 pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
     let cfg = load_config(args)?;
@@ -218,13 +154,13 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             tag,
             module,
         } => exports(args, &cfg, project, tag, module),
-        SnapshotsCmd::Diff {
-            project,
-            from,
-            to,
+        SnapshotsCmd::ProjectDiff { project, from, to } => {
+            diff_single_project(args, &cfg, project, from, to)
+        }
+        SnapshotsCmd::SeriesDiff {
             from_series,
             to_series,
-        } => diff(args, &cfg, project, from, to, from_series, to_series),
+        } => diff_cross_series(args, &cfg, from_series, to_series),
     }
 }
 
@@ -1559,35 +1495,6 @@ fn exports(
     Ok(if m.is_some() { 0 } else { 1 })
 }
 
-#[derive(Debug, Serialize)]
-pub struct CrossSeriesDiffPayload {
-    pub from_series: String,
-    pub to_series: String,
-    pub projects: Vec<DiffPayload>,
-}
-
-fn diff(
-    args: &GlobalArgs,
-    cfg: &Config,
-    project: Option<ProjectName>,
-    from: Option<TagName>,
-    to: Option<TagName>,
-    from_series: Option<SeriesName>,
-    to_series: Option<SeriesName>,
-) -> CliResult<i32> {
-    match (project, from, to, from_series, to_series) {
-        (Some(project), Some(from), Some(to), None, None) => {
-            diff_single_project(args, cfg, project, from, to)
-        }
-        (None, None, None, Some(from_series), Some(to_series)) => {
-            diff_cross_series(args, cfg, from_series, to_series)
-        }
-        _ => Err(CliError::InvalidInput(
-            "pass either --project --from --to or --from-series --to-series".into(),
-        )),
-    }
-}
-
 fn diff_single_project(
     args: &GlobalArgs,
     cfg: &Config,
@@ -1603,7 +1510,7 @@ fn diff_single_project(
         .read(&project, &to)
         .map_err(|e| CliError::Core(e.into()))?;
     let result = compute_diff(&a, &b);
-    let ctx = OutputContext::new(args.formatter, "snapshots diff");
+    let ctx = OutputContext::new(args.formatter, "snapshots project_diff");
     render(&ctx, &result, |w| {
         render_diff_text(w, &result).map_err(CliError::from)
     })?;
@@ -1657,7 +1564,7 @@ fn diff_cross_series(
         to_series: to_series.to_string(),
         projects,
     };
-    let ctx = OutputContext::new(args.formatter, "snapshots diff");
+    let ctx = OutputContext::new(args.formatter, "snapshots series_diff");
     render(&ctx, &payload, |w| {
         let mut first = true;
         for d in &payload.projects {

@@ -42,10 +42,12 @@ impl Xref<Functions> {
             if defined.contains(tgt) || builtins.contains(tgt) {
                 continue;
             }
+            // The callee is undefined, so it has no definition site. Point at
+            // the caller's definition instead: that is the function to inspect.
             grouped
                 .entry((caller.clone(), callee.clone()))
                 .or_default()
-                .extend(self.graph().def_at(callee).cloned());
+                .extend(self.graph().def_at(caller).cloned());
         }
         let entries = grouped
             .into_iter()

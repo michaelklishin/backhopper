@@ -9,8 +9,9 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use backhopper_core::Error as CoreError;
 use backhopper_core::app_src::{AppSrcSpec, DiscoveryWarning, discover};
-use backhopper_core::config::Config;
+use backhopper_core::config::{Config, parse_suite_rules_toml};
 use backhopper_core::model::names::{ApplicationName, ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::PinSpec;
 use backhopper_core::suites::{
@@ -102,10 +103,16 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
             None
         }
     };
-    let extra_rules = cfg
+    let mut extra_rules = cfg
         .as_ref()
         .map(|c| c.suite_rules.clone())
         .unwrap_or_default();
+    // Rules from the file are unioned with the config's, validated the
+    // same way, so a rule can be passed per-invocation.
+    if let Some(path) = &args.extra_rules_file_path {
+        let text = fs::read_to_string(path)?;
+        extra_rules.extend(parse_suite_rules_toml(&text).map_err(CoreError::from)?);
+    }
     let dep_module_index = cfg
         .as_ref()
         .map(|c| build_dep_module_index(global, c, &extra_rules))

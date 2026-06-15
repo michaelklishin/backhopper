@@ -1003,12 +1003,13 @@ fn find_record_fields(
     snapshot: &Snapshot<state::Canonical>,
     name: &RecordName,
 ) -> Option<Vec<FieldName>> {
-    snapshot.headers().iter().find_map(|h| {
-        h.records
-            .iter()
-            .find(|r| &r.name == name)
-            .map(|r| r.fields.iter().map(|f| f.name.clone()).collect())
-    })
+    // Records live in headers (.hrl) and inline in modules (.erl): resolve both.
+    let header_records = snapshot.headers().iter().flat_map(|h| h.records.iter());
+    let module_records = snapshot.modules().iter().flat_map(|m| m.records.iter());
+    header_records
+        .chain(module_records)
+        .find(|r| &r.name == name)
+        .map(|r| r.fields.iter().map(|f| f.name.clone()).collect())
 }
 
 fn is_function_deprecated_in(module: &Module, function: &FunctionName, arity: Arity) -> bool {
@@ -1030,10 +1031,12 @@ fn is_function_deprecated_in(module: &Module, function: &FunctionName, arity: Ar
 }
 
 fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> bool {
-    snapshot
-        .headers()
-        .iter()
-        .any(|h| h.records.iter().any(|r| &r.name == name))
+    // Records live in headers (.hrl) and inline in modules (.erl).
+    let header_records = snapshot.headers().iter().flat_map(|h| h.records.iter());
+    let module_records = snapshot.modules().iter().flat_map(|m| m.records.iter());
+    header_records
+        .chain(module_records)
+        .any(|r| &r.name == name)
 }
 
 fn type_exported(

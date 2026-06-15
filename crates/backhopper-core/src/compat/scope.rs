@@ -32,10 +32,17 @@ impl PinScope {
         let mut modules: BTreeSet<ModuleName> =
             snapshot.modules().iter().map(|m| m.name.clone()).collect();
         modules.extend(extra_modules);
+        // Records live in headers (.hrl) and inline in modules (.erl): both scope.
         let records: BTreeSet<RecordName> = snapshot
             .headers()
             .iter()
             .flat_map(|h| h.records.iter().map(|r| r.name.clone()))
+            .chain(
+                snapshot
+                    .modules()
+                    .iter()
+                    .flat_map(|m| m.records.iter().map(|r| r.name.clone())),
+            )
             .collect();
         Self {
             modules,

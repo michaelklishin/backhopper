@@ -102,7 +102,8 @@ fn commit_builder_routes_to_check_commit_verb() {
         })
         .fallthrough(Fallthrough::Panic)
         .build();
-    let driver = Backhopper::with_backend(backend);
+    let mut driver = Backhopper::with_backend(backend);
+    driver.options_mut().repo_dir_path = Some("/repo".into());
     let _ = driver
         .check()
         .commit()
@@ -127,7 +128,8 @@ fn range_builder_appends_positional_range_argument() {
         })
         .fallthrough(Fallthrough::Panic)
         .build();
-    let driver = Backhopper::with_backend(backend);
+    let mut driver = Backhopper::with_backend(backend);
+    driver.options_mut().repo_dir_path = Some("/repo".into());
     let _ = driver
         .check()
         .range()
@@ -147,7 +149,8 @@ fn merge_builder_appends_positional_merge_sha() {
         })
         .fallthrough(Fallthrough::Panic)
         .build();
-    let driver = Backhopper::with_backend(backend);
+    let mut driver = Backhopper::with_backend(backend);
+    driver.options_mut().repo_dir_path = Some("/repo".into());
     let _ = driver
         .check()
         .merge()

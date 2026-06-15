@@ -55,7 +55,7 @@ fn api_diff_reports_added_export() {
             "--config-file-path",
             cfg.to_str().unwrap(),
             "snapshots",
-            "diff",
+            "project_diff",
             "--project",
             "demo",
             "--from",

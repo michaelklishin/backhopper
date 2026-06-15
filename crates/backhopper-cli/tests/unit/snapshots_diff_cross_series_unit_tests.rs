@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_cli::commands::snapshots::{CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity};
+use backhopper_core::model::snapshot_diff::{
+    CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity,
+};
 
 fn payload(project: &str, from: &str, to: &str, removed: &[(&str, &str)]) -> DiffPayload {
     DiffPayload {

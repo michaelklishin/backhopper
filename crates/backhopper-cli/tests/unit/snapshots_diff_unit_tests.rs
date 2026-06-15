@@ -14,8 +14,9 @@ use backhopper_core::model::snapshot::{
     SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding, WireValue,
 };
 
-use backhopper_cli::commands::snapshots::{
-    DiffPayload, VersionedMachineVersionChange, WireConstantChange, compute_diff, render_diff_text,
+use backhopper_cli::commands::snapshots::{compute_diff, render_diff_text};
+use backhopper_core::model::snapshot_diff::{
+    DiffPayload, VersionedMachineVersionChange, WireConstantChange,
 };
 
 fn header(project: &str, tag: &str) -> SnapshotHeader {

@@ -22,6 +22,8 @@ use serde_json::Value;
 use crate::backend::{Backend, Invocation, OutputPolicy, RawOutcome};
 use crate::builder::check::{Check, SeriesEvaluation};
 use crate::builder::siblings::Siblings;
+use crate::builder::snapshots::Snapshots;
+use crate::builder::suites::Suites;
 use crate::envelope::{Envelope, EnvelopeWarning, ExecutedInvocation, SchemaVersion};
 use crate::error::DriverError;
 use crate::exit::ExitClass;
@@ -110,6 +112,40 @@ impl<B: Backend> Backhopper<B> {
         Ok(self.cached_version.get().expect("just set"))
     }
 
+    /// Probe the binary's compatibility, returning a report rather than
+    /// failing on a mismatch.
+    ///
+    /// Reads the `version` envelope leniently: the strict path rejects
+    /// an out-of-range `schema_version`, which is the mismatch this
+    /// check exists to report cleanly. `required` names the verbs the
+    /// caller depends on.
+    pub fn compatibility(&self, required: &[&str]) -> Result<Compatibility, DriverError> {
+        // `invoke_raw` skips the envelope path, so it does not inject
+        // `--formatter json`; pass it so the version payload is JSON.
+        let outcome = self.invoke_raw(
+            VerbId::Known(Verb::Version),
+            [OsStr::new("--formatter"), OsStr::new("json")],
+            StdinPayload::None,
+        )?;
+        let value = serde_json::from_slice::<Value>(&outcome.stdout).ok();
+        let binary_schema = value
+            .as_ref()
+            .and_then(|v| v.get("schema_version"))
+            .and_then(Value::as_u64)
+            .map(|n| SchemaVersion::new(n as u32));
+        let data = value
+            .and_then(|v| v.get("data").cloned())
+            .unwrap_or(Value::Null);
+        let info = parse_version_info(binary_schema.unwrap_or(SchemaVersion::new(0)), &data);
+        let missing_verbs = info.missing_verbs(required);
+        Ok(Compatibility {
+            binary_version: info.version,
+            binary_schema,
+            supported: crate::SUPPORTED_SCHEMA,
+            missing_verbs,
+        })
+    }
+
     /// Reach into the `check` verb group.
     pub fn check(&self) -> Check<'_, B> {
         Check { driver: self }
@@ -118,6 +154,16 @@ impl<B: Backend> Backhopper<B> {
     /// Reach into the `siblings` verb group.
     pub fn siblings(&self) -> Siblings<'_, B> {
         Siblings { driver: self }
+    }
+
+    /// Reach into the `suites` verb group.
+    pub fn suites(&self) -> Suites<'_, B> {
+        Suites { driver: self }
+    }
+
+    /// Reach into the `snapshots` verb group.
+    pub fn snapshots(&self) -> Snapshots<'_, B> {
+        Snapshots { driver: self }
     }
 
     /// Run an arbitrary verb and return the raw outcome. Use this
@@ -168,15 +214,21 @@ impl<B: Backend> Backhopper<B> {
         self.dispatch_envelope(verb, assembled, stdin)
     }
 
-    /// Driver-internal dispatch path used by the check builders.
-    /// Consumes the owned arg vector so each `OsString` lands in
-    /// `Invocation::args` without an extra clone.
-    pub(crate) fn dispatch_check<'a>(
+    /// Shared typed-dispatch path: one `(T, ExecutedInvocation)` result
+    /// for every builder, with the args vector moved in without a clone.
+    pub(crate) fn dispatch_typed<'a, T: DeserializeOwned>(
         &'a self,
         verb: Verb,
         args: Vec<OsString>,
         stdin: StdinPayload<'a>,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+    ) -> Result<(T, ExecutedInvocation), DriverError> {
+        // Refuse a repo-operating verb with no repo dir before spawn,
+        // rather than let the CLI default to the current directory.
+        if verb.requires_global_repo_dir() && self.options.repo_dir_path.is_none() {
+            return Err(DriverError::MissingRepoDir {
+                verb: VerbId::Known(verb),
+            });
+        }
         let mut assembled: Vec<Cow<'a, OsStr>> = Vec::with_capacity(args.len() + 10);
         push_global_flags(&self.options, &mut assembled);
         assembled.push(Cow::Borrowed(OsStr::new("--formatter")));
@@ -184,10 +236,19 @@ impl<B: Backend> Backhopper<B> {
         for arg in args {
             assembled.push(Cow::Owned(arg));
         }
-        let env =
-            self.dispatch_envelope::<SeriesEvaluation>(VerbId::Known(verb), assembled, stdin)?;
+        let env = self.dispatch_envelope::<T>(VerbId::Known(verb), assembled, stdin)?;
         let (_, _, data, _, _, executed) = env.into_parts();
         Ok((data, executed))
+    }
+
+    /// `SeriesEvaluation`-typed dispatch for the `check` builders.
+    pub(crate) fn dispatch_check<'a>(
+        &'a self,
+        verb: Verb,
+        args: Vec<OsString>,
+        stdin: StdinPayload<'a>,
+    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+        self.dispatch_typed::<SeriesEvaluation>(verb, args, stdin)
     }
 
     fn dispatch_envelope<'a, T: DeserializeOwned>(
@@ -217,14 +278,8 @@ impl<B: Backend> Backhopper<B> {
         let mut outcome = self.backend.invoke(invocation)?;
 
         let exit_class = ExitClass::from_code(outcome.exit_code);
-        if !exit_class.is_success_shaped() {
-            return Err(DriverError::ToolError {
-                verb: owned_verb_for_record,
-                exit_code: outcome.exit_code,
-                stderr: String::from_utf8_lossy(&outcome.stderr).into_owned(),
-            });
-        }
-
+        // Snapshot before the success check: a failed run reports the
+        // same argv a success does.
         let executed = ExecutedInvocation {
             verb: owned_verb_for_record.clone(),
             argv: mem::take(&mut outcome.argv),
@@ -239,6 +294,15 @@ impl<B: Backend> Backhopper<B> {
             stderr_bytes: outcome.stderr.len(),
             started_at: started,
         };
+
+        if !exit_class.is_success_shaped() {
+            return Err(DriverError::ToolError {
+                verb: owned_verb_for_record,
+                exit_code: outcome.exit_code,
+                stderr: String::from_utf8_lossy(&outcome.stderr).into_owned(),
+                executed,
+            });
+        }
 
         parse_envelope::<T>(owned_verb_for_record, &outcome, executed)
     }
@@ -297,6 +361,48 @@ impl VersionInfo {
     pub fn has_verb(&self, verb: &str) -> bool {
         self.verbs.iter().any(|v| v == verb)
     }
+
+    /// The subset of `required` the binary does not advertise. Empty
+    /// when every required verb is present (or the binary predates the
+    /// list, in which case nothing can be asserted).
+    #[must_use]
+    pub fn missing_verbs(&self, required: &[&str]) -> Vec<String> {
+        required
+            .iter()
+            .filter(|r| !self.has_verb(r))
+            .map(|r| (*r).to_string())
+            .collect()
+    }
+}
+
+/// Compatibility of an installed binary with this driver, as a report
+/// the caller can display rather than a bare pass or fail.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Compatibility {
+    /// Version string the binary reported.
+    pub binary_version: String,
+    /// Schema version the binary's `version` envelope declared. `None`
+    /// when that envelope lacked `schema_version`: a binary that
+    /// predates the field is below the structural floor and treated as
+    /// incompatible.
+    pub binary_schema: Option<SchemaVersion>,
+    /// The schema-version range this driver understands.
+    pub supported: crate::SchemaVersionRange,
+    /// Required verbs the binary does not advertise.
+    pub missing_verbs: Vec<String>,
+}
+
+impl Compatibility {
+    /// True when the binary's schema is in range and every required
+    /// verb is present.
+    #[must_use]
+    pub fn is_compatible(&self) -> bool {
+        match self.binary_schema {
+            Some(schema) => self.supported.contains(schema) && self.missing_verbs.is_empty(),
+            None => false,
+        }
+    }
 }
 
 fn parse_version_info(schema: SchemaVersion, data: &Value) -> VersionInfo {
@@ -340,11 +446,37 @@ struct EnvelopeWire<T> {
     warnings: Vec<EnvelopeWarning>,
 }
 
+#[derive(serde::Deserialize)]
+struct SchemaProbe {
+    schema_version: u32,
+}
+
+// Read just `schema_version`, ignoring the typed payload, so a too-new
+// envelope reads as a mismatch instead of a payload parse error. `None`
+// when the bytes lack the field.
+fn read_schema_version(stdout: &[u8]) -> Option<u32> {
+    serde_json::from_slice::<SchemaProbe>(stdout)
+        .ok()
+        .map(|p| p.schema_version)
+}
+
 fn parse_envelope<T: DeserializeOwned>(
     verb: VerbId<'static>,
     outcome: &RawOutcome,
     executed: ExecutedInvocation,
 ) -> Result<Envelope<T>, DriverError> {
+    // Check the ceiling before the strict parse: a too-new envelope
+    // must read as a mismatch, not a `deny_unknown_fields` parse error.
+    if let Some(sv) = read_schema_version(&outcome.stdout) {
+        let schema = SchemaVersion::new(sv);
+        if !crate::SUPPORTED_SCHEMA.contains(schema) {
+            return Err(DriverError::SchemaVersionMismatch {
+                got: schema,
+                supported_min: crate::SUPPORTED_SCHEMA.min,
+                supported_max: crate::SUPPORTED_SCHEMA.max,
+            });
+        }
+    }
     let wire: EnvelopeWire<T> = serde_json::from_slice(&outcome.stdout).map_err(|source| {
         DriverError::UnparseableOutput {
             verb: verb.clone(),
@@ -355,13 +487,6 @@ fn parse_envelope<T: DeserializeOwned>(
         }
     })?;
     let schema = SchemaVersion::new(wire.schema_version);
-    if !crate::SUPPORTED_SCHEMA.contains(schema) {
-        return Err(DriverError::SchemaVersionMismatch {
-            got: schema,
-            supported_min: crate::SUPPORTED_SCHEMA.min,
-            supported_max: crate::SUPPORTED_SCHEMA.max,
-        });
-    }
     let command = wire
         .command
         .as_deref()

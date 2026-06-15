@@ -759,16 +759,16 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
                 });
             }
             "reason" => {
-                let remaining: Vec<&str> = tokens.collect();
-                if remaining.is_empty() {
-                    return Err("missing reason".into());
+                // The reason is the last field and the only quoted one, so it
+                // spans the first quote to the last quote of the original input.
+                // Decode from there, not from whitespace-split tokens, to keep
+                // internal spacing and unescape the quote and backslash escapes.
+                let open = rest.find('"').ok_or("reason must be a quoted string")?;
+                let close = rest.rfind('"').ok_or("reason must be a quoted string")?;
+                if close <= open {
+                    return Err("reason must be a quoted string".into());
                 }
-                let joined = remaining.join(" ");
-                let trimmed = joined
-                    .strip_prefix('"')
-                    .and_then(|s| s.strip_suffix('"'))
-                    .unwrap_or(&joined);
-                reason = Some(trimmed.to_owned());
+                reason = Some(unescape_reason(&rest[open + 1..close]));
                 break;
             }
             other => return Err(format!("unexpected deprecation token {other:?}")),
@@ -782,6 +782,32 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
         reason,
         module_wide: false,
     })
+}
+
+// Reverse the Rust debug quoting the writer applies to a deprecation reason.
+// Unknown escapes are kept verbatim so the decode never loses bytes.
+fn unescape_reason(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
 }
 
 fn check_fun_arity_order(

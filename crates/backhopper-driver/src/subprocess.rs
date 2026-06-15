@@ -172,12 +172,15 @@ fn run_invocation(
 
     let status = wait_with_policy(
         &mut guard,
-        &binary_path,
-        invocation.timeout,
-        invocation.cancellation,
-        poll_interval,
-        started,
-        &invocation.verb,
+        WaitPolicy {
+            binary_path: &binary_path,
+            timeout: invocation.timeout,
+            cancellation: invocation.cancellation,
+            poll_interval,
+            started,
+            verb: invocation.verb.clone().into_owned(),
+            argv: argv.clone(),
+        },
     )?;
 
     let stdout = join_reader(stdout_thread, &invocation.verb, OutputChannel::Stdout)?;
@@ -271,41 +274,51 @@ fn spawn_reader(
     })
 }
 
-fn wait_with_policy(
-    guard: &mut ChildGuard,
-    binary_path: &Path,
+// Read-only wait-loop inputs, bundled to keep the signature small.
+// `verb` and `argv` are owned so the error paths need not borrow the
+// argv the success path moves into `RawOutcome`.
+struct WaitPolicy<'a> {
+    binary_path: &'a Path,
     timeout: Option<Duration>,
-    cancellation: Option<&CancellationToken>,
+    cancellation: Option<&'a CancellationToken>,
     poll_interval: Duration,
     started: Instant,
-    verb: &VerbId<'_>,
+    verb: VerbId<'static>,
+    argv: Vec<OsString>,
+}
+
+fn wait_with_policy(
+    guard: &mut ChildGuard,
+    policy: WaitPolicy<'_>,
 ) -> Result<ExitStatus, DriverError> {
     loop {
-        if let Some(token) = cancellation {
+        if let Some(token) = policy.cancellation {
             if token.is_cancelled() {
                 guard.kill_now();
                 let _ = guard.child.wait();
                 return Err(DriverError::Cancelled {
-                    verb: verb.clone().into_owned(),
+                    verb: policy.verb.clone(),
+                    argv: policy.argv.clone(),
                 });
             }
         }
-        if let Some(limit) = timeout {
-            if started.elapsed() >= limit {
+        if let Some(limit) = policy.timeout {
+            if policy.started.elapsed() >= limit {
                 guard.kill_now();
                 let _ = guard.child.wait();
                 return Err(DriverError::Timeout {
-                    verb: verb.clone().into_owned(),
+                    verb: policy.verb.clone(),
                     after: limit,
+                    argv: policy.argv.clone(),
                 });
             }
         }
         match guard.child.try_wait() {
             Ok(Some(status)) => return Ok(status),
-            Ok(None) => thread::sleep(poll_interval),
+            Ok(None) => thread::sleep(policy.poll_interval),
             Err(source) => {
                 return Err(DriverError::Spawn {
-                    binary_path: binary_path.to_path_buf(),
+                    binary_path: policy.binary_path.to_path_buf(),
                     source,
                 });
             }

@@ -4,11 +4,13 @@
 
 pub mod batch;
 pub mod cache;
+pub mod evaluation;
 pub mod names;
 pub mod pin;
 pub mod pr_commit;
 pub mod sibling_drift;
 pub mod snapshot;
+pub mod snapshot_diff;
 pub mod spec_ast;
 pub mod spec_parser;
 pub mod summary;

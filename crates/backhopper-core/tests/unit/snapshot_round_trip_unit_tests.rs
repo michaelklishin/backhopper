@@ -9,8 +9,8 @@ use backhopper_core::model::names::{
     TypeName,
 };
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot, SnapshotHeader,
-    SpecSig, TypeDecl, Visibility,
+    ArityMatch, Deprecation, FORMAT_VERSION, FunArity, HrlFile, Module, RecordDecl, RecordField,
+    Snapshot, SnapshotHeader, SpecSig, TypeDecl, Visibility,
 };
 use backhopper_core::snapshot::{format, parser};
 
@@ -141,6 +141,35 @@ module ra
 ";
     let r = parser::parse(bad);
     assert!(r.is_err());
+}
+
+// A deprecation reason with quotes, a backslash, and a run of whitespace must
+// survive a write then parse unchanged.
+#[test]
+fn deprecation_reason_with_special_chars_round_trips() {
+    let mut m = Module::new(ModuleName::new("ra_server").unwrap());
+    m.exports.push(FunArity {
+        name: FunctionName::new("init").unwrap(),
+        arity: Arity::new(1),
+    });
+    let reason = r#"use "ra:new"  instead\not this"#.to_owned();
+    m.deprecations.push(Deprecation {
+        function: Some(FunctionName::new("init").unwrap()),
+        arity_match: ArityMatch::Exact {
+            arity: Arity::new(1),
+        },
+        since: None,
+        replacement: None,
+        reason: Some(reason.clone()),
+        module_wide: false,
+    });
+    let snap = Snapshot::from_extracted(header(), vec![m], vec![]).into_canonical();
+    let text = format::to_string(&snap).unwrap();
+    let back = parser::parse(&text).unwrap();
+    assert_eq!(
+        back.modules()[0].deprecations[0].reason.as_deref(),
+        Some(reason.as_str())
+    );
 }
 
 #[test]

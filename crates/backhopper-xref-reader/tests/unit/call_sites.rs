@@ -350,6 +350,36 @@ fn binary_construction_with_calls_inside_is_recorded() {
     assert!(names.contains(&"a:f".to_owned()));
 }
 
+// A binary literal carries its own top-level commas: they must not inflate
+// the arity of the enclosing call.
+#[test]
+fn binary_literal_argument_does_not_inflate_arity() {
+    let m = read(
+        "-module(m).\n\
+         -export([go/0]).\n\
+         go() -> callee:work(<<1, 2, 3>>).\n",
+    );
+    let CallTarget::External(FunctionRef::Concrete(mfa)) = &m.external_calls[0].callee else {
+        panic!("expected external concrete");
+    };
+    assert_eq!(mfa.function.as_str(), "work");
+    assert_eq!(mfa.arity.get(), 1);
+}
+
+#[test]
+fn binary_literal_among_other_arguments_keeps_arity() {
+    let m = read(
+        "-module(m).\n\
+         -export([go/1]).\n\
+         go(X) -> callee:work(<<\"a\", B/binary>>, X).\n",
+    );
+    let CallTarget::External(FunctionRef::Concrete(mfa)) = &m.external_calls[0].callee else {
+        panic!("expected external concrete");
+    };
+    assert_eq!(mfa.function.as_str(), "work");
+    assert_eq!(mfa.arity.get(), 2);
+}
+
 #[test]
 fn separated_top_level_calls_each_get_their_own_record() {
     let m = read(

@@ -35,6 +35,11 @@ fn undefined_function_calls_flags_missing_target() {
     let u = x.undefined_function_calls();
     assert_eq!(u.entries.len(), 1);
     assert_eq!(u.entries[0].caller, mfa("a", "go", 0));
+    // The entry points at the caller's definition, not an empty list.
+    assert!(
+        !u.entries[0].locations.is_empty(),
+        "undefined call should carry the caller's location"
+    );
 }
 
 #[test]

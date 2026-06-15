@@ -244,7 +244,7 @@ pub fn split_top_level_commas(s: &str) -> Vec<&str> {
     out.into_iter().filter(|x| !x.is_empty()).collect()
 }
 
-fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
+pub(crate) fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
     debug_assert_eq!(bytes[at], b'$');
     let next = at + 1;
     if next >= bytes.len() {

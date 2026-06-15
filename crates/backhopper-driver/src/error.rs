@@ -11,6 +11,7 @@
 //! transport-level errors from custom backends.
 
 use std::error::Error as StdError;
+use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::path::PathBuf;
@@ -19,7 +20,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::backend::OutputChannel;
-use crate::envelope::SchemaVersion;
+use crate::envelope::{ExecutedInvocation, SchemaVersion};
 use crate::verb::VerbId;
 
 /// Convenience alias.
@@ -57,6 +58,9 @@ pub enum DriverError {
         verb: VerbId<'static>,
         /// How long the backend waited.
         after: Duration,
+        /// The argv the timed-out process ran, so the caller can record
+        /// the exact command.
+        argv: Vec<OsString>,
     },
 
     /// Caller-supplied cancellation token was tripped.
@@ -64,10 +68,15 @@ pub enum DriverError {
     Cancelled {
         /// Which verb was cancelled.
         verb: VerbId<'static>,
+        /// The argv the cancelled process ran.
+        argv: Vec<OsString>,
     },
 
     /// The CLI exited with a code that is not success-shaped.
+    ///
+    /// `#[non_exhaustive]`: a later field never breaks a `..` match.
     #[error("backhopper exited with status {exit_code} on {verb}: {stderr}")]
+    #[non_exhaustive]
     ToolError {
         /// Verb that produced the failure.
         verb: VerbId<'static>,
@@ -76,6 +85,21 @@ pub enum DriverError {
         /// Captured stderr (possibly truncated when the output
         /// policy capped it).
         stderr: String,
+        /// The failed run's snapshot: the same exact-rerun command a
+        /// successful call returns.
+        executed: ExecutedInvocation,
+    },
+
+    /// A repo-operating verb was dispatched without a resolvable
+    /// repository, caught before spawn so it does not silently resolve
+    /// against the current directory.
+    ///
+    /// `#[non_exhaustive]`: a later field never breaks a `..` match.
+    #[error("verb {verb} requires a repository: set --repo-dir-path on the driver")]
+    #[non_exhaustive]
+    MissingRepoDir {
+        /// Verb that needs a repository.
+        verb: VerbId<'static>,
     },
 
     /// The CLI reported a schema version this driver does not support.
@@ -151,6 +175,7 @@ impl DriverError {
             Self::Timeout { .. } => ErrorKind::Timeout,
             Self::Cancelled { .. } => ErrorKind::Cancelled,
             Self::ToolError { .. } => ErrorKind::ToolError,
+            Self::MissingRepoDir { .. } => ErrorKind::MissingRepoDir,
             Self::SchemaVersionMismatch { .. } => ErrorKind::SchemaVersionMismatch,
             Self::UnparseableOutput { .. } => ErrorKind::UnparseableOutput,
             Self::ReaderPanicked { .. } => ErrorKind::ReaderPanicked,
@@ -174,6 +199,8 @@ pub enum ErrorKind {
     Cancelled,
     /// Variant `DriverError::ToolError`.
     ToolError,
+    /// Variant `DriverError::MissingRepoDir`.
+    MissingRepoDir,
     /// Variant `DriverError::SchemaVersionMismatch`.
     SchemaVersionMismatch,
     /// Variant `DriverError::UnparseableOutput`.
@@ -194,6 +221,7 @@ impl Display for ErrorKind {
             Self::Timeout => "timeout",
             Self::Cancelled => "cancelled",
             Self::ToolError => "tool_error",
+            Self::MissingRepoDir => "missing_repo_dir",
             Self::SchemaVersionMismatch => "schema_version_mismatch",
             Self::UnparseableOutput => "unparseable_output",
             Self::ReaderPanicked => "reader_panicked",

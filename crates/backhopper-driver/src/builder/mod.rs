@@ -6,10 +6,14 @@
 
 pub mod check;
 pub mod siblings;
+pub mod snapshots;
 pub mod state;
+pub mod suites;
 
 pub use check::{
-    Check, CheckCommitBuilder, CheckMergeBuilder, CheckPatchBuilder, CheckRangeBuilder,
-    ExplainFormat, PatchSource, SeriesEvaluation,
+    Check, CheckBatchBuilder, CheckCommitBuilder, CheckMergeBuilder, CheckPatchBuilder,
+    CheckRangeBuilder, ExplainFormat, PatchSource, SeriesEvaluation,
 };
 pub use siblings::{Siblings, SiblingsDoctorBuilder};
+pub use snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
+pub use suites::{Suites, SuitesPlanBuilder};

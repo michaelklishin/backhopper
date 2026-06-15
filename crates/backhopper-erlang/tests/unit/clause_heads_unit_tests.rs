@@ -144,3 +144,28 @@ fn exported_function_with_only_export_is_not_in_clause_heads() {
     let out = extract(src);
     assert!(!out.contains_key(&fa("missing", 1)));
 }
+
+// A `$"` char literal in a clause body must not open a string that runs to
+// end of file and swallows every later clause.
+#[test]
+fn char_literal_delimiter_in_body_does_not_eat_later_clauses() {
+    let src = "\
+-module(m).
+first(X) ->
+    Y = $\",
+    {X, Y};
+first(_) -> other.
+second(Z) -> Z.
+";
+    let out = extract(src);
+    assert!(out.contains_key(&fa("first", 1)));
+    assert!(out.contains_key(&fa("second", 1)));
+}
+
+// A `$(` char literal in a clause guard must not unbalance the head parens.
+#[test]
+fn char_literal_paren_in_guard_keeps_arity() {
+    let src = "-module(m).\nclassify(C) when C =:= $( -> open.\nclassify(_) -> other.\n";
+    let out = extract(src);
+    assert!(out.contains_key(&fa("classify", 1)));
+}

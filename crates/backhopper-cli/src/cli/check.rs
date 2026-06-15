@@ -241,28 +241,6 @@ pub enum CheckCmd {
         #[arg(value_name = "PR_URL")]
         pr_url: String,
     },
-    /// Evaluate ONE commit against multiple series. Produces a per-series
-    /// summary row plus a worst-case verdict across all series. Merge
-    /// SHAs evaluate as the first-parent diff, like `check merge`.
-    Multi {
-        /// Series to evaluate against. Repeat the flag or use a
-        /// comma-separated list.
-        #[arg(long, required = true, value_delimiter = ',')]
-        series: Vec<SeriesName>,
-        #[command(flatten)]
-        repo: RepoDirPathArg,
-        #[command(flatten)]
-        source: SourcePinArgs,
-        #[command(flatten)]
-        target: TargetRepoArgs,
-        #[command(flatten)]
-        diagnostics: CheckFlags,
-        #[arg(
-            value_name = "COMMIT_SHA",
-            long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"
-        )]
-        commit: CommitShaPrefix,
-    },
     /// Evaluate many commits against one or more series. One row per
     /// (commit, series) pair. Blank lines and `#` comments in the
     /// commits file are skipped. Merge SHAs evaluate as the

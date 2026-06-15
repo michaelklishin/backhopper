@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Merge-aware `check batch` and `check multi`: per-row parent
+//! Merge-aware `check batch`: per-row parent
 //! counts, verdict parity with `check merge`, summary projections,
 //! up-front line validation, and `--terse` rejection.
 
@@ -277,42 +277,6 @@ fn batch_rejects_terse_with_a_summary_hint() {
         "{err}"
     );
     assert!(err.contains("--formatter summary"), "{err}");
-}
-
-#[test]
-fn multi_accepts_merge_shas_and_rejects_terse() {
-    let fixture = merge_fixture();
-    let assert = run([
-        "--config-file-path",
-        fixture.cfg.to_str().unwrap(),
-        "--formatter",
-        "json",
-        "check",
-        "multi",
-        "--series",
-        "stable",
-        "--repo-dir-path",
-        fixture.repo.dir.path().to_str().unwrap(),
-        &fixture.merge_sha,
-    ]);
-    let env: Value = serde_json::from_str(&stdout(&assert)).expect("multi envelope is JSON");
-    let row = &env["data"]["results"][0];
-    assert_eq!(row["parent_count"], Value::from(2));
-    assert!(row["pr_commits"].is_array());
-
-    let assert = run_fails([
-        "--config-file-path",
-        fixture.cfg.to_str().unwrap(),
-        "check",
-        "multi",
-        "--series",
-        "stable",
-        "--repo-dir-path",
-        fixture.repo.dir.path().to_str().unwrap(),
-        "--terse",
-        &fixture.merge_sha,
-    ]);
-    assert!(stderr(&assert).contains("--terse is not supported on `check multi`"));
 }
 
 #[test]

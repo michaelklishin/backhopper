@@ -55,6 +55,11 @@ pub fn first_parent_walk_since(
 ) -> Result<Vec<WalkedCommit>, GitError> {
     let since_time = repo.commit_timestamp(since)?;
     let cutoff = since_time - WALK_TIME_SLACK;
+    // On the same branch the window is pure ancestry, so the committer-time
+    // cutoff must not apply: an intermediate commit dated before since (a
+    // backport or rebase) is still in the window. The cutoff only bounds the
+    // cross-branch walk, where since is unreachable.
+    let same_branch = repo.is_ancestor(since, tip)?;
     let mut out: Vec<WalkedCommit> = Vec::new();
     let mut found_since = false;
     let mut current = Some(tip.clone());
@@ -64,12 +69,15 @@ pub fn first_parent_walk_since(
             break;
         }
         let info = read_walked(repo, &sha)?;
-        if info.committed_at < cutoff {
+        if !same_branch && info.committed_at < cutoff {
             break;
         }
         current = info.parents.first().cloned();
         out.push(info);
     }
+    // Reaching here without since means it is not on the first-parent chain
+    // (cross-branch, or an ancestor only via a merge's second parent): fall
+    // back to the committer-time window.
     if !found_since {
         out.retain(|c| c.committed_at > since_time);
     }

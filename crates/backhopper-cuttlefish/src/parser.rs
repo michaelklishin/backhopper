@@ -184,8 +184,13 @@ fn locate_fun_body(span: &str) -> Option<(String, usize)> {
     let arrow = find_substring(span, "->", outer_fun)?;
     let body_start = arrow + 2;
     let end_of_end = balanced_end_offset(span, body_start)?;
-    let body = span[body_start..end_of_end].trim().to_owned();
-    Some((body, body_start))
+    let raw = &span[body_start..end_of_end];
+    // trim() drops leading whitespace, so the returned offset must skip it as
+    // well: otherwise a body beginning on the line after -> reports the arrow's
+    // line rather than the first content line.
+    let leading_ws = raw.len() - raw.trim_start().len();
+    let body = raw.trim().to_owned();
+    Some((body, body_start + leading_ws))
 }
 
 /// Find the byte offset of the outermost `fun` keyword that opens an

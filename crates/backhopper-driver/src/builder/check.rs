@@ -9,20 +9,24 @@
 //! `run` and `run_with_diagnostics`. Calling `run()` before both
 //! slots are filled is a compile-time error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use backhopper_core::model::batch::BatchPayload;
+use backhopper_core::model::evaluation::{
+    AggregateVerdict, BehaviourModuleMissingFinding, HeaderFileMissingFinding,
+    SeriesEvaluationView, TestModuleSymbolMissingFinding, VersionedMachineSnapshotMissingFinding,
+    WireConstantBindingsMissingFinding,
+};
 use backhopper_core::model::names::{
-    CommitSha, MacroName, ModuleName, ProjectName, RelativePath, SeriesName, TagName,
+    CommitSha, ModuleName, ProjectName, RelativePath, SeriesName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::verdict::{
-    Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TestCallSite,
-    Verdict,
-};
+use backhopper_core::model::summary::VerdictKind;
+use backhopper_core::model::verdict::{Diagnostics, PinVerdict, Reason, SeriesVerdict};
 use serde::Deserialize;
 
 use crate::backend::Backend;
@@ -84,6 +88,22 @@ impl<'a, B: Backend> Check<'a, B> {
             _state: PhantomData,
         }
     }
+
+    /// Build a `check batch` invocation.
+    ///
+    /// Batch is merge-aware, so a mixed commit set needs no merge versus
+    /// non-merge routing: feed every SHA through one call.
+    pub fn batch(&'a self) -> CheckBatchBuilder<'a, B, NoTarget, NoInput> {
+        CheckBatchBuilder {
+            api: self,
+            series: Vec::new(),
+            commits: None,
+            target_repo_dir_path: None,
+            target_ref: None,
+            options: CheckOptions::default(),
+            _state: PhantomData,
+        }
+    }
 }
 
 /// Knobs shared across every `check` verb. Defaults are off.
@@ -118,13 +138,11 @@ pub enum ExplainFormat {
 }
 
 impl ExplainFormat {
-    fn as_flag(self) -> Option<&'static str> {
-        match self {
-            Self::Off => None,
-            Self::Text => Some("text"),
-            Self::Markdown => Some("markdown"),
-            Self::Json => Some("json"),
-        }
+    // The CLI's `--explain` is a boolean: the format comes from the
+    // driver-forced `--formatter json`, so any non-Off value emits the
+    // bare flag.
+    fn is_on(self) -> bool {
+        !matches!(self, Self::Off)
     }
 }
 
@@ -567,6 +585,196 @@ impl<B: Backend> CheckMergeBuilder<'_, B, WithTarget, WithInput> {
     }
 }
 
+/// Where the batch's commit list comes from.
+#[derive(Debug, Clone)]
+enum CommitsSource {
+    // Newline-framed SHAs sent on stdin; the CLI reads `-`.
+    Bytes(Vec<u8>),
+    // A file of one SHA per line, passed as the flag value.
+    File(PathBuf),
+}
+
+/// `check batch` builder. Series-only (the verb takes no pin target)
+/// and merge-aware, so a mixed commit set needs no merge versus
+/// non-merge routing. See module docs for the type-state shape.
+#[must_use = "a builder has no effect until .run() is called"]
+pub struct CheckBatchBuilder<'a, B: Backend, T: TargetState, I: InputState> {
+    api: &'a Check<'a, B>,
+    series: Vec<SeriesName>,
+    commits: Option<CommitsSource>,
+    target_repo_dir_path: Option<PathBuf>,
+    target_ref: Option<String>,
+    options: CheckOptions,
+    _state: PhantomData<(T, I)>,
+}
+
+impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckBatchBuilder<'_, B, T, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CheckBatchBuilder")
+            .field("series", &self.series)
+            .field("target_repo_dir_path", &self.target_repo_dir_path)
+            .field("target_ref", &self.target_ref)
+            .field("options", &self.options)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<B: Backend, T: TargetState, I: InputState> CheckBatchBuilder<'_, B, T, I> {
+    /// Set `--explain`.
+    pub fn explain(mut self, explain: ExplainFormat) -> Self {
+        self.options.explain = explain;
+        self
+    }
+
+    /// Set `--terse`.
+    pub fn terse(mut self, on: bool) -> Self {
+        self.options.terse = on;
+        self
+    }
+
+    /// Set `--auto-generate`.
+    pub fn auto_generate_missing_snapshots(mut self, on: bool) -> Self {
+        self.options.auto_generate_missing_snapshots = on;
+        self
+    }
+
+    /// Replace the entire options struct.
+    pub fn with_options(mut self, options: CheckOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Set `--target-repo-dir-path`: the working clone of the branch
+    /// the commits are being backported to. Enables the cross-branch
+    /// analyser.
+    pub fn target_repo_dir_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.target_repo_dir_path = Some(path.into());
+        self
+    }
+
+    /// Set `--target-ref` (only meaningful with a target repo dir).
+    pub fn target_ref(mut self, git_ref: impl Into<String>) -> Self {
+        self.target_ref = Some(git_ref.into());
+        self
+    }
+}
+
+impl<'a, B: Backend, I: InputState> CheckBatchBuilder<'a, B, NoTarget, I> {
+    /// Evaluate against a single series.
+    pub fn series(self, name: impl Into<SeriesName>) -> CheckBatchBuilder<'a, B, WithTarget, I> {
+        self.series_scope([name.into()])
+    }
+
+    /// Evaluate against several series in one spawn. The payload's
+    /// per-row `series` distinguishes the results.
+    pub fn series_scope(
+        self,
+        names: impl IntoIterator<Item = impl Into<SeriesName>>,
+    ) -> CheckBatchBuilder<'a, B, WithTarget, I> {
+        CheckBatchBuilder {
+            api: self.api,
+            series: names.into_iter().map(Into::into).collect(),
+            commits: self.commits,
+            target_repo_dir_path: self.target_repo_dir_path,
+            target_ref: self.target_ref,
+            options: self.options,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<'a, B: Backend, T: TargetState> CheckBatchBuilder<'a, B, T, NoInput> {
+    /// Frame an iterator of commits as the stdin commit list. Distinct
+    /// commits only: duplicates collapse so the row-per-commit contract
+    /// holds.
+    pub fn commits(
+        self,
+        commits: impl IntoIterator<Item = impl Into<CommitSha>>,
+    ) -> CheckBatchBuilder<'a, B, T, WithInput> {
+        let mut seen: HashSet<CommitSha> = HashSet::new();
+        let mut buf = Vec::new();
+        for c in commits {
+            let sha = c.into();
+            if seen.insert(sha.clone()) {
+                buf.extend_from_slice(sha.to_string().as_bytes());
+                buf.push(b'\n');
+            }
+        }
+        self.with_commits(CommitsSource::Bytes(buf))
+    }
+
+    /// Pass a file of one SHA per line as `--commits-file-path`.
+    pub fn commits_file_path(
+        self,
+        path: impl Into<PathBuf>,
+    ) -> CheckBatchBuilder<'a, B, T, WithInput> {
+        self.with_commits(CommitsSource::File(path.into()))
+    }
+
+    /// Escape hatch: send pre-framed stdin bytes verbatim. The
+    /// row-per-commit contract is the caller's to keep here.
+    pub fn commits_bytes(
+        self,
+        bytes: impl Into<Vec<u8>>,
+    ) -> CheckBatchBuilder<'a, B, T, WithInput> {
+        self.with_commits(CommitsSource::Bytes(bytes.into()))
+    }
+
+    fn with_commits(self, commits: CommitsSource) -> CheckBatchBuilder<'a, B, T, WithInput> {
+        CheckBatchBuilder {
+            api: self.api,
+            series: self.series,
+            commits: Some(commits),
+            target_repo_dir_path: self.target_repo_dir_path,
+            target_ref: self.target_ref,
+            options: self.options,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<B: Backend> CheckBatchBuilder<'_, B, WithTarget, WithInput> {
+    /// Dispatch and return the parsed payload.
+    pub fn run(self) -> Result<BatchPayload, DriverError> {
+        self.run_with_diagnostics().map(|(payload, _)| payload)
+    }
+
+    /// Dispatch and return the parsed payload plus the diagnostic snapshot.
+    pub fn run_with_diagnostics(self) -> Result<(BatchPayload, ExecutedInvocation), DriverError> {
+        let commits = self.commits.as_ref().expect("input set");
+        let mut args = Vec::new();
+        for s in &self.series {
+            args.push(OsString::from("--series"));
+            args.push(OsString::from(s.to_string()));
+        }
+        push_options(&mut args, &self.options);
+        // The CLI's `--target-ref` requires `--target-repo-dir-path`, so
+        // a ref without a target dir is dropped rather than sent alone.
+        if let Some(dir) = &self.target_repo_dir_path {
+            args.push(OsString::from("--target-repo-dir-path"));
+            args.push(dir.as_os_str().to_owned());
+            if let Some(git_ref) = &self.target_ref {
+                args.push(OsString::from("--target-ref"));
+                args.push(OsString::from(git_ref));
+            }
+        }
+        args.push(OsString::from("--commits-file-path"));
+        let stdin = match commits {
+            CommitsSource::Bytes(b) => {
+                args.push(OsString::from("-"));
+                StdinPayload::Bytes(b.as_slice())
+            }
+            CommitsSource::File(p) => {
+                args.push(p.as_os_str().to_owned());
+                StdinPayload::None
+            }
+        };
+        self.api
+            .driver
+            .dispatch_typed::<BatchPayload>(Verb::CheckBatch, args, stdin)
+    }
+}
+
 fn push_target(args: &mut Vec<OsString>, target: &PinSelector) {
     match target {
         PinSelector::Series(s) => {
@@ -583,9 +791,8 @@ fn push_target(args: &mut Vec<OsString>, target: &PinSelector) {
 }
 
 fn push_options(args: &mut Vec<OsString>, options: &CheckOptions) {
-    if let Some(mode) = options.explain.as_flag() {
+    if options.explain.is_on() {
         args.push(OsString::from("--explain"));
-        args.push(OsString::from(mode));
     }
     if options.suggest_prereqs {
         args.push(OsString::from("--suggest-prereqs"));
@@ -617,262 +824,79 @@ pub struct SeriesEvaluation {
 }
 
 impl SeriesEvaluation {
-    /// Worst aggregate verdict across pins. `Empty` when the series
-    /// has no pins.
+    /// A borrowed view exposing every query and finding accessor. The same
+    /// view is reachable from a batch row via `BatchResult::evaluation`, so
+    /// both check paths read alike.
+    #[must_use]
+    pub fn view(&self) -> SeriesEvaluationView<'_> {
+        SeriesEvaluationView::new(&self.results, &self.diagnostics)
+    }
+
+    /// See [`SeriesEvaluationView::worst_verdict`].
     #[must_use]
     pub fn worst_verdict(&self) -> AggregateVerdict {
-        if self.results.results.is_empty() {
-            return AggregateVerdict::Empty;
-        }
-        let s = &self.results.summary;
-        if s.incompatible > 0 {
-            AggregateVerdict::Incompatible
-        } else if s.requires_adaptation > 0 {
-            AggregateVerdict::RequiresAdaptation
-        } else if s.compatible > 0 {
-            AggregateVerdict::Compatible
-        } else if s.inapplicable > 0 {
-            AggregateVerdict::Inapplicable
-        } else {
-            AggregateVerdict::Empty
-        }
+        self.view().worst_verdict()
     }
 
-    /// `true` if any pin carries a blocking reason.
+    /// See [`SeriesEvaluationView::has_blocking_reason`].
     #[must_use]
     pub fn has_blocking_reason(&self) -> bool {
-        self.results
-            .results
-            .iter()
-            .any(|p| matches!(&p.verdict, Verdict::Incompatible { .. }))
+        self.view().has_blocking_reason()
     }
 
-    /// Iterate over pin verdicts whose verdict matches `verdict`.
+    /// See [`SeriesEvaluationView::pins_in`].
     pub fn pins_in(&self, verdict: VerdictKind) -> impl Iterator<Item = &PinVerdict> {
-        self.results
-            .results
-            .iter()
-            .filter(move |p| VerdictKind::from_verdict(&p.verdict) == verdict)
+        self.view().pins_in(verdict)
     }
 
-    /// All [`Reason`] values attached to the pin matching `pin`.
+    /// See [`SeriesEvaluationView::reasons_for`].
     pub fn reasons_for(&self, pin: &Pin) -> impl Iterator<Item = &Reason> {
-        self.results
-            .results
-            .iter()
-            .filter(move |p| &p.pin == pin)
-            .flat_map(|p| match &p.verdict {
-                Verdict::Compatible | Verdict::Inapplicable { .. } => [].iter(),
-                Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
-                    reasons.iter()
-                }
-            })
+        self.view().reasons_for(pin)
     }
 
-    /// First pin whose project name matches `project`, if any.
+    /// See [`SeriesEvaluationView::pin_by_project`].
+    #[must_use]
     pub fn pin_by_project(&self, project: &ProjectName) -> Option<&PinVerdict> {
-        self.results
-            .results
-            .iter()
-            .find(|p| &p.pin.project == project)
+        self.view().pin_by_project(project)
     }
 
-    /// Always-on diagnostic counterpart of
-    /// `Reason::TestModuleSymbolMissing` from `018_ci_signal_gaps`:
-    /// per-`_SUITE.erl` map of `helper_module -> call_site_count`.
-    /// Empty when the patch did not touch a SUITE that references an
-    /// unresolved helper.
+    /// See [`SeriesEvaluationView::missing_test_modules`].
     #[must_use]
     pub fn missing_test_modules(&self) -> &BTreeMap<RelativePath, BTreeMap<ModuleName, usize>> {
-        &self.diagnostics.missing_test_modules
+        self.view().missing_test_modules()
     }
 
-    /// Iterate every `Reason::TestModuleSymbolMissing` flattened to
-    /// `(pin, suite_path, missing_module, call_sites)`. Convenience
-    /// for q-port-style consumers that walk all pins to surface the
-    /// signal without re-deriving from the `Reason` enum match.
+    /// See [`SeriesEvaluationView::test_module_symbol_missing`].
     pub fn test_module_symbol_missing(
         &self,
     ) -> impl Iterator<Item = TestModuleSymbolMissingFinding<'_>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::TestModuleSymbolMissing {
-                    suite_path,
-                    missing_module,
-                    call_sites,
-                } => Some(TestModuleSymbolMissingFinding {
-                    pin,
-                    suite_path,
-                    missing_module,
-                    call_sites: call_sites.as_slice(),
-                }),
-                _ => None,
-            })
+        self.view().test_module_symbol_missing()
     }
 
-    /// Iterate every `Reason::HeaderFileMissing` flattened to
-    /// `(pin, source_path, include_directive, attempted_paths)`.
+    /// See [`SeriesEvaluationView::header_file_missing`].
     pub fn header_file_missing(&self) -> impl Iterator<Item = HeaderFileMissingFinding<'_>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::HeaderFileMissing {
-                    source_path,
-                    include_directive,
-                    attempted_paths,
-                } => Some(HeaderFileMissingFinding {
-                    pin,
-                    source_path,
-                    include_directive,
-                    attempted_paths: attempted_paths.as_slice(),
-                }),
-                _ => None,
-            })
+        self.view().header_file_missing()
     }
 
-    /// Iterate every `Reason::BehaviourModuleMissing` flattened to
-    /// `(pin, source_path, behaviour)`.
+    /// See [`SeriesEvaluationView::behaviour_module_missing`].
     pub fn behaviour_module_missing(
         &self,
     ) -> impl Iterator<Item = BehaviourModuleMissingFinding<'_>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::BehaviourModuleMissing {
-                    source_path,
-                    behaviour,
-                } => Some(BehaviourModuleMissingFinding {
-                    pin,
-                    source_path,
-                    behaviour,
-                }),
-                _ => None,
-            })
+        self.view().behaviour_module_missing()
     }
 
-    /// Iterate every `Reason::VersionedMachineSnapshotMissing` flattened
-    /// to `(pin, module, side)`.
+    /// See [`SeriesEvaluationView::versioned_machine_snapshot_missing`].
     pub fn versioned_machine_snapshot_missing(
         &self,
     ) -> impl Iterator<Item = VersionedMachineSnapshotMissingFinding<'_>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::VersionedMachineSnapshotMissing { module, side } => {
-                    Some(VersionedMachineSnapshotMissingFinding {
-                        pin,
-                        module,
-                        side: *side,
-                    })
-                }
-                _ => None,
-            })
+        self.view().versioned_machine_snapshot_missing()
     }
 
-    /// Iterate every `Reason::WireConstantBindingsMissing` flattened to
-    /// `(pin, module, macros, side)`.
+    /// See [`SeriesEvaluationView::wire_constant_bindings_missing`].
     pub fn wire_constant_bindings_missing(
         &self,
     ) -> impl Iterator<Item = WireConstantBindingsMissingFinding<'_>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::WireConstantBindingsMissing {
-                    module,
-                    macros,
-                    side,
-                } => Some(WireConstantBindingsMissingFinding {
-                    pin,
-                    module,
-                    macros: macros.as_slice(),
-                    side: *side,
-                }),
-                _ => None,
-            })
-    }
-}
-
-/// Borrowed view of one `Reason::TestModuleSymbolMissing` with its
-/// owning pin.
-#[derive(Debug, Clone, Copy)]
-pub struct TestModuleSymbolMissingFinding<'a> {
-    /// The pin whose verdict carries this reason.
-    pub pin: &'a PinVerdict,
-    /// The `_SUITE.erl` path the suite is at on the source side.
-    pub suite_path: &'a RelativePath,
-    /// The unresolved helper module the suite references.
-    pub missing_module: &'a ModuleName,
-    /// Every call site inside the suite that reaches the missing helper.
-    pub call_sites: &'a [TestCallSite],
-}
-
-/// Borrowed view of one `Reason::HeaderFileMissing` with its owning pin.
-#[derive(Debug, Clone, Copy)]
-pub struct HeaderFileMissingFinding<'a> {
-    /// The pin whose verdict carries this reason.
-    pub pin: &'a PinVerdict,
-    /// The touched `.erl` or `.hrl` that declared the unresolved include.
-    pub source_path: &'a RelativePath,
-    /// The include directive verbatim.
-    pub include_directive: &'a IncludeDirective,
-    /// Target paths the resolver tried in order.
-    pub attempted_paths: &'a [RelativePath],
-}
-
-/// Borrowed view of one `Reason::BehaviourModuleMissing` with its owning pin.
-#[derive(Debug, Clone, Copy)]
-pub struct BehaviourModuleMissingFinding<'a> {
-    /// The pin whose verdict carries this reason.
-    pub pin: &'a PinVerdict,
-    /// The touched `.erl` that declared `-behaviour(behaviour)`.
-    pub source_path: &'a RelativePath,
-    /// The unresolved behaviour module name.
-    pub behaviour: &'a ModuleName,
-}
-
-/// Borrowed view of one `Reason::VersionedMachineSnapshotMissing` with
-/// its owning pin.
-#[derive(Debug, Clone, Copy)]
-pub struct VersionedMachineSnapshotMissingFinding<'a> {
-    /// The pin whose verdict carries this reason.
-    pub pin: &'a PinVerdict,
-    /// The declared versioned-machine module the data is missing for.
-    pub module: &'a ModuleName,
-    /// Which snapshot side lacks the data.
-    pub side: SnapshotSide,
-}
-
-/// Borrowed view of one `Reason::WireConstantBindingsMissing` with its
-/// owning pin.
-#[derive(Debug, Clone, Copy)]
-pub struct WireConstantBindingsMissingFinding<'a> {
-    /// The pin whose verdict carries this reason.
-    pub pin: &'a PinVerdict,
-    /// The declared module whose wire-constant bindings are missing.
-    pub module: &'a ModuleName,
-    /// The macros that lack a binding on `side`, sorted alphabetically.
-    pub macros: &'a [MacroName],
-    /// Which snapshot side lacks the bindings.
-    pub side: SnapshotSide,
-}
-
-fn pin_reasons(pin: &PinVerdict) -> impl Iterator<Item = &Reason> {
-    match &pin.verdict {
-        Verdict::Compatible | Verdict::Inapplicable { .. } => [].iter(),
-        Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
-            reasons.iter()
-        }
+        self.view().wire_constant_bindings_missing()
     }
 }
 
@@ -905,46 +929,4 @@ pub struct PinDescriptor {
     pub project: ProjectName,
     /// Pinned tag.
     pub tag: TagName,
-}
-
-/// Aggregate verdict across pins.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AggregateVerdict {
-    /// At least one pin compatible, none worse.
-    Compatible,
-    /// Some pin requires adaptation, none incompatible.
-    RequiresAdaptation,
-    /// At least one pin incompatible.
-    Incompatible,
-    /// All pins inapplicable.
-    Inapplicable,
-    /// The series has no pins.
-    Empty,
-}
-
-/// Per-pin verdict discriminant, used as a filter on
-/// [`SeriesEvaluation::pins_in`].
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum VerdictKind {
-    /// `Verdict::Compatible`.
-    Compatible,
-    /// `Verdict::RequiresAdaptation`.
-    RequiresAdaptation,
-    /// `Verdict::Incompatible`.
-    Incompatible,
-    /// `Verdict::Inapplicable`.
-    Inapplicable,
-}
-
-impl VerdictKind {
-    fn from_verdict(v: &Verdict) -> Self {
-        match v {
-            Verdict::Compatible => Self::Compatible,
-            Verdict::RequiresAdaptation { .. } => Self::RequiresAdaptation,
-            Verdict::Incompatible { .. } => Self::Incompatible,
-            Verdict::Inapplicable { .. } => Self::Inapplicable,
-        }
-    }
 }

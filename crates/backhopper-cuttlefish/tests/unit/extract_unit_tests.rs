@@ -29,8 +29,8 @@ fn extracts_mfa_reference_with_schema_source_location() {
         })
         .expect("MFA was extracted");
     assert_eq!(r.from_path, Path::new("oauth2.schema"));
-    // The body starts a couple of lines below the opening `{`.
-    assert!(r.line >= 1);
+    // The call sits on line 6 of the fixture, one line below `fun(Conf) ->`.
+    assert_eq!(r.line, 6);
 }
 
 #[test]

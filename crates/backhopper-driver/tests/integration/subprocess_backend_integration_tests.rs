@@ -15,8 +15,8 @@ use std::thread;
 use std::time::Duration;
 
 use backhopper_driver::{
-    Backend, Backhopper, CancellationToken, EnvOverlay, ErrorKind, Invocation, OutputPolicy,
-    SubprocessBackend, Verb, VerbId,
+    Backend, Backhopper, CancellationToken, DriverError, EnvOverlay, ErrorKind, Invocation,
+    OutputPolicy, SubprocessBackend, Verb, VerbId,
 };
 use tempfile::TempDir;
 
@@ -57,6 +57,12 @@ exit 66
     let driver = Backhopper::with_binary_path(stub);
     let err = driver.version().expect_err("66 is not success-shaped");
     assert_eq!(err.kind(), ErrorKind::ToolError);
+    match &err {
+        DriverError::ToolError { executed, .. } => {
+            assert!(executed.argv.iter().any(|a| a == "version"));
+        }
+        other => panic!("expected ToolError, got {other:?}"),
+    }
 }
 
 #[test]
@@ -67,6 +73,12 @@ fn timeout_kills_the_child() {
     driver.options_mut().timeout = Some(Duration::from_millis(200));
     let err = driver.version().expect_err("verb should time out");
     assert_eq!(err.kind(), ErrorKind::Timeout);
+    match &err {
+        DriverError::Timeout { argv, .. } => {
+            assert!(argv.iter().any(|a| a == "version"));
+        }
+        other => panic!("expected Timeout, got {other:?}"),
+    }
 }
 
 #[test]
@@ -82,6 +94,12 @@ fn cancellation_kills_the_child() {
     });
     let err = driver.version().expect_err("verb should be cancelled");
     assert_eq!(err.kind(), ErrorKind::Cancelled);
+    match &err {
+        DriverError::Cancelled { argv, .. } => {
+            assert!(argv.iter().any(|a| a == "version"));
+        }
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
 }
 
 #[test]
