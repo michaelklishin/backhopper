@@ -6,7 +6,7 @@
 //!
 //! Wraps a `CallGraph<M, Built>` plus a few memoised derived views.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use backhopper_xref_graph::{Built, CallGraph, Functions, Mode, Relation};
 use backhopper_xref_reader::ReadWarning;
@@ -16,6 +16,7 @@ pub struct Xref<M: Mode> {
     pub(crate) graph: Arc<CallGraph<M, Built>>,
     pub(crate) reverse_module_calls: Arc<Relation>,
     pub(crate) warnings: Arc<Vec<ReadWarning>>,
+    pub(crate) closure_memo: OnceLock<Arc<Relation>>,
 }
 
 impl<M: Mode> Xref<M> {
@@ -25,6 +26,7 @@ impl<M: Mode> Xref<M> {
             graph: Arc::new(graph),
             reverse_module_calls: Arc::new(reverse_module_calls),
             warnings: Arc::new(warnings),
+            closure_memo: OnceLock::new(),
         }
     }
 
@@ -44,5 +46,13 @@ impl<M: Mode> Xref<M> {
 impl Xref<Functions> {
     pub fn reverse_calls(&self) -> Relation {
         self.graph.all_calls().reversed()
+    }
+
+    /// Transitive closure of every function call, computed once and
+    /// reused: the closure is the dominant cost of reachability queries
+    /// and the graph is immutable
+    pub(crate) fn all_calls_closure(&self) -> &Relation {
+        self.closure_memo
+            .get_or_init(|| Arc::new(self.graph.all_calls().transitive_closure()))
     }
 }

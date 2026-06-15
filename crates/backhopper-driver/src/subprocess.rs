@@ -153,22 +153,25 @@ fn run_invocation(
     let stdout_handle = guard.child.stdout.take();
     let stderr_handle = guard.child.stderr.take();
 
+    let stdout_cap = capacity_for(invocation.stdout_policy);
+    let stderr_cap = capacity_for(invocation.stderr_policy);
+
+    let stdout_overflow = Arc::new(AtomicBool::new(false));
+    let stderr_overflow = Arc::new(AtomicBool::new(false));
+    // drain stdout and stderr before writing stdin: a child that fills its
+    // output pipe while we are still feeding a large stdin would otherwise
+    // deadlock, with both sides blocked on a full pipe
+    let stdout_thread =
+        stdout_handle.map(|h| spawn_reader(h, stdout_cap, Arc::clone(&stdout_overflow)));
+    let stderr_thread =
+        stderr_handle.map(|h| spawn_reader(h, stderr_cap, Arc::clone(&stderr_overflow)));
+
     let write_result = write_stdin(stdin_handle.as_mut(), invocation.stdin);
     drop(stdin_handle);
     write_result.map_err(|source| DriverError::Spawn {
         binary_path: binary_path.clone(),
         source,
     })?;
-
-    let stdout_cap = capacity_for(invocation.stdout_policy);
-    let stderr_cap = capacity_for(invocation.stderr_policy);
-
-    let stdout_overflow = Arc::new(AtomicBool::new(false));
-    let stderr_overflow = Arc::new(AtomicBool::new(false));
-    let stdout_thread =
-        stdout_handle.map(|h| spawn_reader(h, stdout_cap, Arc::clone(&stdout_overflow)));
-    let stderr_thread =
-        stderr_handle.map(|h| spawn_reader(h, stderr_cap, Arc::clone(&stderr_overflow)));
 
     let status = wait_with_policy(
         &mut guard,

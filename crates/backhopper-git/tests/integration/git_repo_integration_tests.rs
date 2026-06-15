@@ -100,6 +100,10 @@ fn diff_commits_unified_covers_added_modified_and_deleted_files() {
     assert!(diff.contains("+new().\n"));
     assert!(diff.contains("+-module(added)."));
     assert!(diff.contains("--module(gone)."));
+    // added and deleted files name /dev/null on the empty side so the
+    // core diff parser resolves them as additions and deletions
+    assert!(diff.contains("--- /dev/null\n+++ b/src/added.erl"));
+    assert!(diff.contains("--- a/src/gone.erl\n+++ /dev/null"));
     // unchanged files never appear
     assert!(!diff.contains("untouched"));
     // emission order: present-side files sorted first, deletions last

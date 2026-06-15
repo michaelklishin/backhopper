@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use bel7_cli::PARTIAL_SUCCESS_I32;
 use clap::crate_version;
@@ -1463,14 +1462,13 @@ fn exports(
     cfg: &Config,
     project: ProjectName,
     tag: TagName,
-    module: String,
+    module: ModuleName,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store
         .read(&project, &tag)
         .map_err(|e| CliError::Core(e.into()))?;
-    let mod_name = ModuleName::from_str(&module).map_err(|e| CliError::Core(CoreError::Name(e)))?;
-    let m: Option<&Module> = snapshot.module_named(&mod_name);
+    let m: Option<&Module> = snapshot.module_named(&module);
     let exports: Vec<String> = m
         .map(|m| {
             m.exports
@@ -1482,7 +1480,7 @@ fn exports(
     let payload = serde_json::json!({
         "project": project.to_string(),
         "tag":     tag.to_string(),
-        "module":  module,
+        "module":  module.to_string(),
         "exports": exports,
     });
     let ctx = OutputContext::new(args.formatter, "snapshots exports");
@@ -1492,7 +1490,7 @@ fn exports(
         }
         Ok(())
     })?;
-    Ok(if m.is_some() { 0 } else { 1 })
+    Ok(if m.is_some() { 0 } else { PARTIAL_SUCCESS_I32 })
 }
 
 fn diff_single_project(

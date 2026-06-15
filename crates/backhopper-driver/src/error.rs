@@ -189,27 +189,27 @@ impl DriverError {
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
-    /// Variant `DriverError::BinaryNotFound`.
+    /// The CLI binary was not found on any searched path.
     BinaryNotFound,
-    /// Variant `DriverError::Spawn`.
+    /// The child could not be spawned, or its stdin could not be written.
     Spawn,
-    /// Variant `DriverError::Timeout`.
+    /// The invocation outlived its timeout and was killed.
     Timeout,
-    /// Variant `DriverError::Cancelled`.
+    /// The caller's cancellation token fired before the child finished.
     Cancelled,
-    /// Variant `DriverError::ToolError`.
+    /// The CLI ran but exited with a non-zero status.
     ToolError,
-    /// Variant `DriverError::MissingRepoDir`.
+    /// A repo-requiring verb was dispatched without a `--repo-dir-path`.
     MissingRepoDir,
-    /// Variant `DriverError::SchemaVersionMismatch`.
+    /// The envelope schema version is outside the supported range.
     SchemaVersionMismatch,
-    /// Variant `DriverError::UnparseableOutput`.
+    /// The stdout could not be parsed into the expected envelope.
     UnparseableOutput,
-    /// Variant `DriverError::ReaderPanicked`.
+    /// A stdout or stderr reader thread panicked.
     ReaderPanicked,
-    /// Variant `DriverError::OutputTooLarge`.
+    /// The child wrote more than the capture limit on a channel.
     OutputTooLarge,
-    /// Variant `DriverError::Transport`.
+    /// An OS-level transport error moving bytes to or from the child.
     Transport,
 }
 

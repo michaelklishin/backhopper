@@ -448,7 +448,9 @@ pub struct SeriesRaw {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
+// deny_unknown_fields has no effect on an untagged enum: serde buffers
+// into a Content map first, so a typo'd pin key is not rejected here
+#[serde(untagged)]
 pub enum PinRaw {
     Literal {
         project: String,

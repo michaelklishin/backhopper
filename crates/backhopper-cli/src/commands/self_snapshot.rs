@@ -23,7 +23,7 @@ use crate::errors::{CliError, CliResult};
 
 /// Pick the repo path a self-pin should resolve against. The per-pin
 /// `repo_dir_path` on `PinSpec::SelfRef` wins; the CLI `--repo-dir-path`
-/// is the fallback. Both unset is the operator error this returns.
+/// is the fallback. Both unset is the user error this returns.
 pub fn effective_self_repo<'a>(
     spec: &'a PinSpec,
     cli_fallback: Option<&'a Path>,

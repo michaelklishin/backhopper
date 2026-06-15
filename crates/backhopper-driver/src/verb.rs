@@ -69,8 +69,6 @@ pub enum Verb {
     CheckRange,
     /// `backhopper check merge`.
     CheckMerge,
-    /// `backhopper check tree`.
-    CheckTree,
     /// `backhopper check batch`.
     CheckBatch,
     /// `backhopper siblings doctor`.
@@ -138,7 +136,6 @@ impl Verb {
             Self::CheckCommit => &["check", "commit"],
             Self::CheckRange => &["check", "range"],
             Self::CheckMerge => &["check", "merge"],
-            Self::CheckTree => &["check", "tree"],
             Self::CheckBatch => &["check", "batch"],
             Self::SiblingsDoctor => &["siblings", "doctor"],
             Self::SuitesPlan => &["suites", "plan"],
@@ -211,7 +208,6 @@ impl Verb {
         Self::CheckCommit,
         Self::CheckRange,
         Self::CheckMerge,
-        Self::CheckTree,
         Self::CheckBatch,
         Self::SiblingsDoctor,
         Self::SuitesPlan,

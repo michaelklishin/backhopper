@@ -127,6 +127,32 @@ fn transitive_closure_chain_extends_to_all_pairs() {
 }
 
 #[test]
+fn transitive_closure_merges_converging_paths_in_a_diamond() {
+    let r = rel(&[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")]);
+    let tc = r.transitive_closure();
+    assert!(tc.contains(&m("a"), &m("d")));
+    assert!(tc.contains(&m("b"), &m("d")));
+    assert!(tc.contains(&m("c"), &m("d")));
+    // a shared descendant reached by two paths appears once, acyclic
+    assert!(!tc.contains(&m("a"), &m("a")));
+    assert!(!tc.contains(&m("d"), &m("a")));
+}
+
+#[test]
+fn transitive_closure_keeps_two_disjoint_cycles_separate() {
+    let r = rel(&[("a", "b"), ("b", "a"), ("c", "d"), ("d", "c")]);
+    let tc = r.transitive_closure();
+    for v in ["a", "b", "c", "d"] {
+        assert!(tc.contains(&m(v), &m(v)), "{v} should reach itself");
+    }
+    assert!(tc.contains(&m("a"), &m("b")));
+    assert!(tc.contains(&m("c"), &m("d")));
+    // the two strongly connected components never reach each other
+    assert!(!tc.contains(&m("a"), &m("c")));
+    assert!(!tc.contains(&m("d"), &m("b")));
+}
+
+#[test]
 fn transitive_closure_is_idempotent() {
     let r = rel(&[("a", "b"), ("b", "c"), ("c", "d")]);
     let once = r.transitive_closure();

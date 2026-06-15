@@ -41,7 +41,7 @@ The repo is a Cargo workspace with multiple crates:
 
  * `crates/backhopper-core/`: model types, snapshot I/O, store, config,
    compatibility analysis. No `clap`, no `gix`. No I/O policy decisions
- * `crates/backhopper-cache/`: the on-disk caches — `CacheDir`
+ * `crates/backhopper-cache/`: the on-disk caches: `CacheDir`
    (content-addressed entries: BLAKE3 over canonical JSON, freshness
    documents, atomic writes, optional TTL), `VerdictCache` (the
    two-level content-keyed verdict cache with its type-state token
@@ -51,16 +51,16 @@ The repo is a Cargo workspace with multiple crates:
    the debug-build default), the scan, stats, evict, and prune
    surface behind the `cache` verbs, and the marker-gated daily
    sweep. Depends on `backhopper-core` for `SeriesEvaluation` and
-   newtypes; gix-free by design — the CLI computes git-derived key
+   newtypes; gix-free by design: the CLI computes git-derived key
    inputs and passes them in as values
- * `crates/backhopper-git/`: the gix-backed git layer — `GitRepo`,
+ * `crates/backhopper-git/`: the gix-backed git layer: `GitRepo`,
    PR-commit enumeration, `ResolvedPatchInput` (shared patch resolution
    with `MergePolicy` and `PrCommitPolicy`), first-parent window walks
    plus cherry-pick suppression primitives (`walk.rs`), and the
    `TargetTreeIndex` builder. Depends on `backhopper-core` for
    newtypes; nothing depends on it except the CLI
- * `crates/backhopper-erlang/`: Erlang source surface extractor —
-   tokenizer, attribute parser, spec normalizer
+ * `crates/backhopper-erlang/`: Erlang source surface extractor: a
+   tokenizer, an attribute parser, and a spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
    in earlier phases)
  * `crates/backhopper-cuttlefish/`: Cuttlefish `.schema` parser that
@@ -71,13 +71,13 @@ The repo is a Cargo workspace with multiple crates:
    knowledge
  * `crates/backhopper-xref-reader/`: Erlang source to call-graph
    reader; depends on `backhopper-erlang` and `backhopper-xref-graph`
- * `crates/backhopper-xref/`: cross-reference façade — predefined
+ * `crates/backhopper-xref/`: cross-reference façade: predefined
    analyses, `XrefDiff`, and the test-suite-selection adapter
  * `crates/backhopper-cli/`: the binary: a `clap`-based parser, command
    dispatch, output formatters
  * `crates/backhopper-driver/`: statically typed Rust driver that
    embeds or shells out to the `backhopper` CLI on a caller's behalf.
-   Owns the subprocess, parses the JSON envelope into deserialised
+   Owns the subprocess, parses the JSON envelope into deserialized
    payloads, and exposes a type-state builder so "required argument
    missing" is a compile-time error
  * `crates/xtask/`: workspace helper binary. `cargo xtask gen-schema`
@@ -96,36 +96,122 @@ depends only on its own crate.
 
  * `src/lib.rs`: crate root, re-exports
  * `src/errors.rs`: top-level error enum
- * `src/model/names.rs`: newtypes (`ProjectName`, `TagName`, `Mfa`,
-   `Arity`, `CommitSha`, etc.) — every domain primitive is its own type
- * `src/model/snapshot.rs`: `Snapshot<S>` with type-state
-   (`Unsorted` and `Canonical`)
- * `src/model/verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
-   Incompatible | Inapplicable }` and `Reason` enums
- * `src/model/sibling_drift.rs`: `siblings doctor` types — the
-   `SiblingCandidate` scoring pipeline (`Unscored`, then `Scored`),
-   `Confidence`, `Vocabulary`, and the pure scorer the
-   labeled-corpus F1 gate exercises
- * `src/snapshot/format.rs`: canonical writer
- * `src/snapshot/parser.rs`: canonical reader (rejects non-canonical
-   input)
- * `src/snapshot/sort.rs`: canonicalization
- * `src/snapshot/spec_normalize.rs`: `-spec` and `-callback` pretty-printer
- * `src/store/fs.rs`: `SnapshotStore<M>` (`ReadOnly` and `Mutable`)
- * `src/config/mod.rs`: `backhopper.toml` schema, `deny_unknown_fields`
+ * `src/app_src.rs`: `.app.src` and `.app` parsing (application
+   resource metadata)
+ * `src/envelope_version.rs`: JSON envelope `schema_version` type and
+   supported-version set
+ * `src/erlang_macros.rs`: macro-environment model shared by the
+   compatibility pipeline
+ * `src/schema.rs` (feature `schemars`), `src/schema_diff.rs`: snapshot
+   JSON-schema generation and cross-version diffing
  * `src/versions.rs`: `version_cmp` tag ordering
- * `src/compat/patch.rs`: unified-diff parser, `Patch<S>` type-state
-   pipeline (`Raw` → `Analyzed` → `Verdicted`)
- * `src/compat/call_sites.rs`: extractor for `mod:fun(...)`,
-   `fun mod:fun/N`, `?MACRO`, `#record{}`; one argument scanner
-   (`scan_top_level_args`) backs arity counting, arg splitting, and
-   shape classification
+
+Model (`src/model/`):
+
+ * `names.rs`: newtypes (`ProjectName`, `TagName`, `Mfa`, `Arity`,
+   `CommitSha`, etc.): every domain primitive is its own type
+ * `snapshot.rs`: `Snapshot<S>` with type-state (`Unsorted` and
+   `Canonical`); `snapshot_diff.rs`: snapshot-to-snapshot diff
+ * `verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
+   Incompatible | Inapplicable }` and `Reason` enums
+ * `pin.rs`: `Pin`, `PinSelect`, `PinSpec` (the config-vs-resolved
+   split enforced by the type-state rules below)
+ * `symbol.rs`: the tracked-symbol reference model (`SymbolRef`,
+   `SymbolKind`, `RefContext`, `RefOrigin`)
+ * `batch.rs`: `BatchPayload`, `BatchQuery`, `BatchResult` (the
+   `compatibility batch` surface)
+ * `evaluation.rs`: `SeriesEvaluation`, `AggregateVerdict`, and the
+   per-series finding views
+ * `spec_ast.rs`, `spec_parser.rs`: `-spec` AST and parser feeding the
+   normalizer
+ * `summary.rs`, `pr_commit.rs`, `cache.rs`: run-summary, PR-commit, and
+   cache-key model types
+ * `sibling_drift.rs`: the `siblings doctor` types, namely the
+   `SiblingCandidate` scoring pipeline (`Unscored`, then `Scored`),
+   `Confidence`, `Vocabulary`, and the pure scorer the labeled-corpus
+   F1 gate exercises
+
+Snapshot I/O and store (`src/snapshot/`, `src/store/`):
+
+ * `snapshot/format.rs`: canonical writer; `snapshot/parser.rs`:
+   canonical reader (rejects non-canonical input)
+ * `snapshot/sort.rs`: canonicalization
+ * `snapshot/spec_normalize.rs`: `-spec` and `-callback` pretty-printer
+ * `store/fs.rs`: `SnapshotStore<M>` (`ReadOnly` and `Mutable`)
+
+Config (`src/config/`):
+
+ * `config/mod.rs`: `backhopper.toml` schema, `deny_unknown_fields`
+ * `config/path_translation.rs`: maps configured paths across layouts
+
+Compatibility pipeline (`src/compat/`):
+
+ * `patch.rs`: unified-diff parser, `Patch<S>` type-state pipeline
+   (`Raw` → `Analyzed` → `Verdicted`)
+ * `evaluate.rs`: the analysis core that produces verdicts from analyzed
+   patches and snapshots
+ * `call_sites.rs`: extractor for `mod:fun(...)`, `fun mod:fun/N`,
+   `?MACRO`, `#record{}`; one argument scanner (`scan_top_level_args`)
+   backs arity counting, arg splitting, and shape classification
+ * `arg_shape.rs`: `ArgShape` classification and clause matching
+ * `routing.rs`: path-to-project ownership routing for a pin
+ * `scope.rs`: `PinScope`, module-name parsing, untracked-symbol tally
+ * `patch_facts.rs`: heuristics that infer plugin and logging facts
+   from a patch
+ * `diff.rs`, `added_file.rs`, `source_attributes.rs`,
+   `source_macros.rs`, `target_tree.rs`, `target_tree_index.rs`,
+   `otp.rs`, `test_suite.rs`: diff slicing, added-file handling,
+   source-side attribute and macro extraction, target-tree lookup, OTP
+   specifics, and test-suite facts
+
+Suites (`src/suites/`):
+
+ * suite-selection model and planner: `plan` and `plan_with_matcher`
+   (`plan.rs`), `SuiteMatcher` and `SubstringMatcher` (`matcher.rs`),
+   `rules.rs`, `library.rs` (`derive_library_apps`), `hints.rs`
+   (`BuildSystem`), `scan.rs`, `model.rs`. Note suite logic lives both
+   here (core model and planning) and in `backhopper-xref/suites.rs`
+   (call-graph-driven selection)
+
+### `backhopper-cache`
+
+ * `src/cache_io.rs`: content addressing: `canonical_json`,
+   `content_hash` (BLAKE3 over canonical JSON), `hash_file`, atomic
+   writes, entry-file naming
+ * `src/verdict.rs`: `VerdictCache` key model: `CacheKeyInputs`,
+   `ContentKeyInputs`, `TargetKeyInputs`, `EvaluationShape`, and L2 SHA
+   aliasing
+ * `src/policy.rs`: `CacheMode` (decides whether caching is on, from
+   `--no-cache`, `BACKHOPPER_NO_CACHE`, `BACKHOPPER_FORCE_CACHE`, and
+   the debug-build default)
+ * `src/inspect.rs`: backs the `cache` scan, stats, evict, and prune
+   verbs (`WorkspaceCaches`, `ScannedEntry`, `scan`)
+ * `src/sweep.rs`: the marker-gated daily TTL sweep (`maybe_daily_sweep`,
+   `sweep_dir`)
+
+### `backhopper-git`
+
+ * `src/repo.rs`: the gix-backed handle, with SHA and tag resolution
+   (`GitRepo`, `ResolvedSha`, `ObjectKind`, `TagListing`)
+ * `src/patch_input.rs`: shared patch resolution through
+   `ResolvedPatchInput`, with `MergePolicy`, `PrCommitPolicy`, and
+   `CommitDiffSource`
+ * `src/pr_commits.rs`: PR-commit enumeration and `classify`
+ * `src/walk.rs`: first-parent window walks (`first_parent_walk_since`),
+   `cherry_pick_trailers`, and `PatchId` (BLAKE3 patch identity)
+ * `src/already_present.rs`: cherry-pick suppression
+   (`CandidateIdentity`, `TargetWalkIndex`)
+ * `src/target_tree.rs`: `build_target_tree_index`
 
 ### `backhopper-erlang`
 
  * `src/tokenizer.rs`: line-oriented state machine, balances
    `()` `[]` `{}` `''` `""`
+ * `src/extractor.rs`: top-level assembly that drives the other modules
+   into the public-API surface
  * `src/attributes.rs`: `-module`, `-export`, `-behaviour`, and friends
+ * `src/clause_heads.rs`: function-clause head parsing for arity and
+   argument shapes
  * `src/specs.rs`: `-spec`, `-type`, and `-callback` normalizer
  * `src/records.rs`
  * `src/macros.rs`: narrow allowlist (`?MODULE`, `?LINE`,
@@ -153,6 +239,9 @@ depends only on its own crate.
    `-module`, `-export`, `-import`, `-behaviour`, `-callback`,
    `-deprecated`, and `-on_load`), and `calls` (call-site extraction:
    `m:f(args)`, `f(args)`, `?MODULE:f(args)`, and unresolved variants)
+ * `src/macros.rs`: macro expansion over the scanner's token stream
+ * `src/suite_matcher.rs`: matches scanned modules and call sites to
+   test suites
  * `src/application.rs`: `ProjectLayout`, `ApplicationAssignment`
  * `src/model.rs`: `ModuleData`, `CallSite`, `ReadOutput`
 
@@ -166,55 +255,136 @@ depends only on its own crate.
  * `src/diff.rs`: `XrefDiff` and `diff_xrefs`
  * `src/suites.rs`: `suites_referencing`, `suites_referencing_mfas`,
    `is_suite_module`
- * `src/result.rs`: typed result structs and `Display` impls
+ * `src/result.rs`: typed result structs; `src/display.rs`: their
+   `Display` impls
 
 ### `backhopper-cli`
 
  * `src/main.rs`: entry point
- * `src/cli/mod.rs`: `clap` derive parser. Top-level groups:
-   `doctor`, `init`, `projects`, `series`, `snapshots`, `check`,
-   `bisect`, `cache`, `config`, `shell`, `xref`, `suites`, `schema`,
-   `rev`, `siblings`, `version`. `infer_subcommands = true` so
-   `backhopper sn li` resolves to `backhopper snapshots list`
- * `src/commands/verdict_cache.rs`: the per-run `CacheSession` — key
-   construction with memos, bypass policy, the hit and miss
+ * `src/cli/mod.rs`: `clap` derive parser, the `Group` enum, and global
+   flags. The full group-and-verb tree is under CLI Command Surface below
+ * `src/commands/verdict_cache.rs`: the per-run `CacheSession`, holding
+   key construction with memos, bypass policy, the hit and miss
    counters, and the one-line summary. `src/commands/macro_env.rs`
    mirrors `FileMap`'s include resolution over gix to hash the
    patch-reachable macro slice for the content key
  * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,tree_source}.rs`:
-   per-group argument shapes. Multi-word verbs use per-variant
-   `#[command(name = "list_callers")]` to render in snake_case
-   (e.g. `xref list_callers`, `snapshots list_tags`,
-   `schema supported_envelope_versions`), matching `rabbitmqadmin`.
-   Long-form flags stay in clap's default kebab-case
-   (`--config-file-path`, `--from-series`). Do not use enum-level
-   `#[command(rename_all = "snake_case")]`: it also rewrites the long
-   names of inline-defined args in each variant, silently turning
-   `--repo-dir-path` into `--repo_dir_path`
- * `src/commands/{projects,series,snapshots,check,config,shell,xref,suites,rabbitmq_components,version,tree_source}.rs`:
-   command handlers. `rabbitmq_components` is the RabbitMQ
-   `rabbitmq-components.mk` parser (CLI-local, never in `backhopper-core`)
+   per-group argument shapes. Multi-word verbs render in snake_case via
+   per-variant `#[command(name = "...")]` (see the snake_case rule under
+   Style Guide for the enum-level pitfall)
+ * `src/commands/*.rs`: one handler module per group (`projects`,
+   `series`, `snapshots`, `check`, `cache`, `config`, `shell`, `xref`,
+   `suites`, `bisect`, `rev`, `siblings`, `schema`, `doctor`, `init`,
+   `version`) plus feature-specific helpers (`batch_plan`, `summary`,
+   `availability`, `suggest`, `auto_generate`, `self_snapshot`,
+   `pin_bump`, `sha_prefix`, `snapshot_cache`, `context`,
+   `target_repo`, `xref_backport_applicability`). `rabbitmq_components`
+   is the RabbitMQ `rabbitmq-components.mk` parser (CLI-local, never in
+   `backhopper-core`)
  * `src/commands/mod.rs`: dispatcher (matches `Group::*` to handlers)
  * `src/output.rs`: text and JSON formatter dispatch. JSON envelope is
    `{schema_version, command, data, exit_code}` for every command
  * `src/tables.rs`: `tabled`-based renderers
  * `src/errors.rs`: CLI error type, `ExitCodeProvider` impl
 
+### `backhopper-driver`
+
+ * `src/driver.rs`: `Backhopper<B>`, the typed entry point; per-verb
+   methods returning deserialized payloads
+ * `src/backend.rs`: the seam the subprocess and mock implement (the
+   `Backend` trait, `Invocation`, `OutputPolicy`)
+ * `src/subprocess.rs`: `SubprocessBackend`, which owns the child
+   process and argv assembly
+ * `src/mock.rs`: `MockBackend` family (`MockMatcher`, `MockResponse`,
+   `RecordedInvocation`) for testing without a binary
+ * `src/builder/`: type-state builders (`state.rs` markers `NoTarget`,
+   `WithTarget`; per-verb `check.rs`, `siblings.rs`, `snapshots.rs`,
+   `suites.rs`) so "required argument missing" is a compile-time error
+ * `src/envelope.rs`: JSON envelope parsing (`Envelope<T>`,
+   `SchemaVersion`, `EnvelopeWarning`)
+ * `src/selector.rs`: `PinSelector`; `src/options.rs`: global options;
+   `src/verb.rs`: verb enumeration
+ * `src/stdin.rs`, `src/cancellation.rs`, `src/exit.rs`, `src/types.rs`,
+   `src/error.rs`: stdin payloads, cancellation, exit-code mapping,
+   shared types, and the driver error enum
+
 ### Testing
 
  * `tests/unit/`: pure logic, no I/O
  * `tests/integration/`: drives the CLI binary or core crate end-to-end
-   against real git repos in `tempfile::TempDir` — no subprocess
+   against real git repos in `tempfile::TempDir`: no subprocess
    mocking, no trait fakes
  * `tests/proptests/`: `proptest`-based property tests
  * `tests/fixtures/`: ground-truth `*.erl` files paired with
    `*.expected.api.txt`; canned patches; canned snapshots
 
+## CLI Command Surface
+
+Every command lives under one of these top-level groups (`clap` has
+`infer_subcommands = true`, so `backhopper sn li` resolves to
+`snapshots list`). Multi-word verbs render in snake_case. Output is a
+`{schema_version, command, data, exit_code}` JSON envelope unless a text,
+Markdown, or summary format is requested.
+
+ * `doctor`: workspace health summary, one row per series-pin showing
+   whether the pinned tag has a snapshot on disk (`--check-remote`
+   adds an upstream `ls-remote` roundtrip)
+ * `init`: write a starter `backhopper.toml`; `--rabbitmq <checkout>`
+   infers one `[[series]]` block per branch from `rabbitmq-components.mk`
+ * `projects`: `list`, `show`: configured-project inspection
+ * `series`:
+   * `list`, `show`: configured series and their pins
+   * `pins`: read dep pins from a branch's `rabbitmq-components.mk`
+     (`--against-branch` reports pin divergence)
+   * `sync {preview, diff, merge, replace}`: build or update
+     `[[series]]` stanzas from a RabbitMQ checkout. `merge` is additive,
+     `replace` rewrites; `preview` and `diff` never write
+ * `snapshots`:
+   * `list_tags`: tags with no snapshot yet; `list`: existing
+     snapshots; `show`: canonical text (optionally one module)
+   * `generate`: build missing snapshots (`--from-series` fans out
+     across a series' pins); `rebuild`: regenerate from source;
+     `migrate`: re-emit every snapshot at the current `format-version`
+   * `verify`: check canonical-form invariants
+   * `lookup`: MFAs against one snapshot; `introduced`: first and last
+     tag an MFA appears at, with anchored SHAs; `modules`, `exports`:
+     coverage queries
+   * `project_diff`: one project's API between two tags; `series_diff`:
+     pin differences between two series
+ * `check` (the core verdict pipeline):
+   * `patch` (file or stdin), `commit`, `range`, `merge` (forces
+     `SHA^2..SHA^1`), `pr` (via `gh pr diff`)
+   * `batch`: many commits × one or more series, one row per pair;
+     reads a SHA-per-line file or stdin
+   * cross-branch flags (`--target-repo-dir-path`, path-translation,
+     already-present suppression) and source-pin flags (spec and
+     record-field drift) apply across these verbs
+ * `bisect commit`: newest tag where a commit is still `Compatible` and
+   the tag where it flips to `Incompatible`
+ * `cache`: `stats`, `list`, `show`, `evict`, `prune`, `clear` over the
+   two workspace caches
+ * `config`: `path`, `show` (canonical TOML), `validate`
+ * `shell completions`: print a completion script (shell auto-detected)
+ * `xref` (call-graph queries): `list_callers`, `list_callees`,
+   `list_undefined`, `list_unused_exports`, `list_unused_locals`,
+   `list_deprecated_calls`, `list_unresolved`, `list_module_deps`,
+   `list_behaviour_users`, `list_module_cycles`, and
+   `backport_applicability` (joins a test-export reference list against
+   a target snapshot's `test_only_exports`)
+ * `suites`: `list_for_modules`, `list_for_mfas`, `list_callers_of`, and
+   `plan` (which suites to run for a set of modified files)
+ * `schema`: `show` (embedded JSON schema for an envelope version),
+   `diff`, `supported_envelope_versions`
+ * `rev resolve`: expand a SHA prefix to the full 40-char commit SHA
+ * `siblings doctor`: rank sibling-branch commits that look like they
+   should have cascaded to a series but never did
+ * `version`: build and version info
+
 ## Key Dependencies
 
  * `gix`: pure-Rust git library. Version is exact-pinned (`gix = "=0.X"`,
    no `^`-style range). Bumps are deliberate, tracked in
-   `CHANGELOG.md`. We do not use `git2-rs` (libgit2) — the C dependency
+   `CHANGELOG.md`. We do not use `git2-rs` (libgit2): the C dependency
    would be a regression from a pure-Rust posture
  * `clap` (`derive`, `env`): CLI parsing. Newtypes implement `FromStr`
    so command arguments parse directly into the right type
@@ -231,14 +401,10 @@ depends only on its own crate.
    direct `Style::*` calls
  * `bel7-cli` (`tables`, `clap`, `completions`, `progress`, `errors`,
    `serde`): the single ecosystem-wide CLI toolkit. Provides exit-code
-   mapping (`ExitCodeProvider`, `ExitCodeExt`, `codes` constants,
-   `run_with_exit_code`), shell-completion generation
-   (`CompletionShell::detect`, `generate_completions`), table styling
-   (`TableStyle`), color decisions (`should_colorize`,
-   `should_colorize_stderr`, `print_error`), and progress reporting
-   (`InteractiveReporter`, `NonInteractiveReporter`, `QuietReporter`).
-   `sysexits` and the `clap_complete` and `clap_complete_nushell` crates
-   are pulled in transitively; do not depend on them directly
+   mapping, shell-completion generation, table styling, color
+   decisions, and progress reporting. `sysexits`, `clap_complete`, and
+   `clap_complete_nushell` come in transitively; do not depend on them
+   directly
  * `proptest`: property tests (dev-dependency only)
  * `assert_cmd`, `predicates`, `insta`, `tempfile`: CLI test
    harness (dev-dependencies in `backhopper-cli`)
@@ -380,8 +546,9 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
    // Wrong:
    "OTP-25.0",     // dropped by min_tag
    ```
- * Use `:` as the sentence connector inside `//` comments, never ` - `
-   or ` — `
+ * Use `:` as the connector for an explanation or clarification, the
+   way a person would, both in `//` comments and in Markdown prose:
+   never ` - ` or ` — `
  * No comments referencing the current task, fix number, or callers
 
 ## Git Instructions
@@ -464,11 +631,11 @@ Three workflows live under `.github/workflows/`:
    on Ubuntu, macOS, and Windows against stable and beta Rust; `cargo
    audit`; auto-merge for dependabot PRs
  * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
-   `NEXT_RELEASE_VERSION` repo variable, publishes every crate to
-   crates.io in dependency order via Trusted Publishing, builds binary
-   archives for eight targets, builds deb, rpm, and MSI packages, signs the
-   archives with `cosign`, generates SBOMs, generates Homebrew, AUR,
-   and Winget manifests, and creates the GitHub Release
+   `NEXT_RELEASE_VERSION` repo variable, then publishes every crate to
+   crates.io (dependency order, Trusted Publishing), builds and signs
+   binary archives for eight targets plus deb, rpm, and MSI packages,
+   generates SBOMs and the Homebrew, AUR, and Winget manifests, and
+   creates the GitHub Release
  * `verify-packages.yaml`: post-release smoke test of the Debian, RPM,
    and Windows artifacts against a matrix of distros
 

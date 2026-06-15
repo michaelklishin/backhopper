@@ -166,14 +166,21 @@ pub fn patch_id(
 /// cache's content key.
 #[must_use]
 pub fn normalized_patch_hash(diff: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(diff);
+    // hash raw bytes: a lossy UTF-8 decode would map distinct invalid
+    // byte runs to the same replacement char and collide two patches
+    if diff.is_empty() {
+        return None;
+    }
+    // match str::lines: a single trailing newline yields no empty tail line
+    let diff = diff.strip_suffix(b"\n").unwrap_or(diff);
     let mut hasher = blake3::Hasher::new();
     let mut hashed_any = false;
-    for line in text.lines() {
-        if line.starts_with("@@") {
+    for line in diff.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.starts_with(b"@@") {
             continue;
         }
-        hasher.update(line.as_bytes());
+        hasher.update(line);
         hasher.update(b"\n");
         hashed_any = true;
     }

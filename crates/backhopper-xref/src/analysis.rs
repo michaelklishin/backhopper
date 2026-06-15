@@ -13,7 +13,7 @@ use std::iter;
 use backhopper_core::{ApplicationName, BehaviourName, Mfa, ModuleName};
 use backhopper_xref_graph::{
     CallKind, Deprecation, FunctionRef, FunctionSig, Functions, Loc, Mode, PathId, Position,
-    Vertex, VertexSet,
+    Relation, Vertex, VertexSet,
 };
 
 use crate::result::{
@@ -190,10 +190,12 @@ impl Xref<Functions> {
     /// under the transitive closure of the call relation.
     pub fn called_by(&self, target: &Mfa, transitive: bool) -> CallersOf {
         let target_set: VertexSet = iter::once(Vertex::Function(target.clone())).collect();
-        let relation = if transitive {
-            self.graph().all_calls().transitive_closure()
+        let direct;
+        let relation: &Relation = if transitive {
+            self.all_calls_closure()
         } else {
-            self.graph().all_calls()
+            direct = self.graph().all_calls();
+            &direct
         };
         let sources = relation.preimage(&target_set);
         let entries = sources
@@ -219,10 +221,12 @@ impl Xref<Functions> {
     /// Functions that `source` calls.
     pub fn calls_from(&self, source: &Mfa, transitive: bool) -> CalleesOf {
         let src_set: VertexSet = iter::once(Vertex::Function(source.clone())).collect();
-        let relation = if transitive {
-            self.graph().all_calls().transitive_closure()
+        let direct;
+        let relation: &Relation = if transitive {
+            self.all_calls_closure()
         } else {
-            self.graph().all_calls()
+            direct = self.graph().all_calls();
+            &direct
         };
         let targets = relation.image(&src_set);
         let entries = targets
@@ -254,7 +258,7 @@ impl Xref<Functions> {
 
     /// Functions that appear in their own transitive call set.
     pub fn recursive_functions(&self) -> BTreeSet<Mfa> {
-        let closure = self.graph().all_calls().transitive_closure();
+        let closure = self.all_calls_closure();
         let mut out = BTreeSet::new();
         for (s, t) in closure.iter() {
             if s == t {

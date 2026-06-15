@@ -70,9 +70,9 @@ fn parse_unified_diff(text: &str) -> Result<Vec<PatchedFile>, PatchError> {
                 let header = parse_hunk_header(rest, lineno)?;
                 current_hunk = Some(header);
             }
-        } else if line.starts_with('+') && !line.starts_with("+++") {
+        } else if line.starts_with('+') {
             push_line(&mut current_hunk, HunkLine::Added(line[1..].to_owned()));
-        } else if line.starts_with('-') && !line.starts_with("---") {
+        } else if line.starts_with('-') {
             push_line(&mut current_hunk, HunkLine::Removed(line[1..].to_owned()));
         } else if line.starts_with(' ') {
             push_line(&mut current_hunk, HunkLine::Context(line[1..].to_owned()));

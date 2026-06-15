@@ -244,7 +244,7 @@ fn is_erl_or_hrl(path: &Path) -> bool {
 
 /// Union of every configured project family's
 /// `test_helper_search_paths`. The 018 resolvers cast a wide net by
-/// design: the operator can pass the same patch through different
+/// design: the user can pass the same patch through different
 /// projects without re-declaring globs per call.
 pub fn collect_search_path_globs(cfg: &Config) -> Vec<String> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
@@ -278,7 +278,7 @@ pub fn collect_added_file_findings(
 /// Merge `findings` into every pin's verdict and the series-level
 /// diagnostics. Non-blocking reasons promote `Compatible` to
 /// `RequiresAdaptation` and append to existing reason vectors;
-/// `Inapplicable` rows are left alone (the operator's reason for
+/// `Inapplicable` rows are left alone (the user's reason for
 /// "this pin has nothing to say" already trumps a new advisory).
 pub fn merge_added_file_findings_into_evaluation(
     findings: AddedFileFindings,

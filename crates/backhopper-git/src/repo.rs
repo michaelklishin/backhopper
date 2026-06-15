@@ -741,8 +741,18 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
         return;
     }
     let _ = writeln!(out, "diff --git a/{display} b/{display}");
-    let _ = writeln!(out, "--- a/{display}");
-    let _ = writeln!(out, "+++ b/{display}");
+    // an empty side is an added or deleted file: git names it /dev/null,
+    // and the core diff parser keys added-file detection on that token
+    if old.is_empty() {
+        let _ = writeln!(out, "--- /dev/null");
+    } else {
+        let _ = writeln!(out, "--- a/{display}");
+    }
+    if new.is_empty() {
+        let _ = writeln!(out, "+++ /dev/null");
+    } else {
+        let _ = writeln!(out, "+++ b/{display}");
+    }
     out.push_str(&body);
     if !body.ends_with('\n') {
         out.push('\n');

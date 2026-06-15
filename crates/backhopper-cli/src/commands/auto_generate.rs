@@ -153,7 +153,7 @@ pub fn coverage_report(
             }
             Err(_) => {
                 // a read failure of an on-disk file is treated as missing for
-                // pre-flight purposes: the operator must regenerate
+                // pre-flight purposes: the user must regenerate
                 out.push(PinCoverage {
                     pin: pin.clone(),
                     status: PinCoverageStatus::Missing,

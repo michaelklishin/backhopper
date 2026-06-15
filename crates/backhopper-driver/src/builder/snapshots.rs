@@ -7,7 +7,8 @@
 //! The two diff modes are split into separate builders rather than one
 //! flag-overloaded call: `project_diff` diffs one project across two
 //! tags, `series_diff` diffs the pins of two series. Both are
-//! repo-free and dispatch to `snapshots diff` today.
+//! repo-free and dispatch to `snapshots project_diff` and
+//! `snapshots series_diff` respectively.
 
 use std::ffi::OsString;
 
@@ -57,7 +58,7 @@ impl<'a, B: Backend> Snapshots<'a, B> {
     }
 }
 
-/// `snapshots diff --project ... --from ... --to ...` builder.
+/// `snapshots project_diff --project ... --from ... --to ...` builder.
 #[derive(Debug)]
 #[must_use = "a builder has no effect until .run() is called"]
 pub struct ProjectDiffBuilder<'a, B: Backend> {
@@ -91,7 +92,7 @@ impl<B: Backend> ProjectDiffBuilder<'_, B> {
     }
 }
 
-/// `snapshots diff --from-series ... --to-series ...` builder.
+/// `snapshots series_diff --from-series ... --to-series ...` builder.
 #[derive(Debug)]
 #[must_use = "a builder has no effect until .run() is called"]
 pub struct SeriesDiffBuilder<'a, B: Backend> {

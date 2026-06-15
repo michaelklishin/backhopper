@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::compat::patch::{Language, Patch};
+use backhopper_core::compat::patch::{HunkLine, Language, Patch};
 use backhopper_core::errors::PatchError;
 
 const SIMPLE_DIFF: &str = "\
@@ -69,4 +69,51 @@ fn rejects_invalid_utf8_with_offset() {
         }
         other => panic!("expected InvalidUtf8, got {other:?}"),
     }
+}
+
+#[test]
+fn captures_hunk_lines_whose_content_starts_with_dashes_or_pluses() {
+    let body = "\
+diff --git a/src/m.erl b/src/m.erl
+--- a/src/m.erl
++++ b/src/m.erl
+@@ -1,2 +1,2 @@
+-    R = A -- B,
++    R = A ++ B,
+";
+    let p = Patch::parse(body.as_bytes()).unwrap();
+    let lines = &p.files[0].hunks[0].lines;
+    let removed: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Removed(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    let added: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Added(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(removed, vec!["    R = A -- B,"]);
+    assert_eq!(added, vec!["    R = A ++ B,"]);
+}
+
+#[test]
+fn dev_null_old_path_marks_an_added_file() {
+    let body = "\
+diff --git a/src/new.erl b/src/new.erl
+--- /dev/null
++++ b/src/new.erl
+@@ -0,0 +1,1 @@
++new_fun() -> ok.
+";
+    let p = Patch::parse(body.as_bytes()).unwrap();
+    assert_eq!(p.files[0].old_path, None);
+    assert_eq!(
+        p.files[0].new_path.as_deref(),
+        Some(std::path::Path::new("src/new.erl"))
+    );
 }

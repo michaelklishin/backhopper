@@ -134,6 +134,65 @@ fn api_lookup_reports_found_and_missing() {
 }
 
 #[test]
+fn snapshots_exports_exit_code_tracks_module_presence() {
+    let (repo, work) = build_demo_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "generate",
+            "--project",
+            "demo",
+        ])
+        .assert()
+        .success();
+    let present = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "exports",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            "--module",
+            "demo_mod",
+            "--formatter",
+            "text",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(present.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("greet/1"), "got {stdout}");
+    // a module absent from the snapshot is PartialSuccess (3), not an
+    // internal error: run() rejects any other non-zero code
+    Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "exports",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            "--module",
+            "no_such_mod",
+            "--formatter",
+            "text",
+        ])
+        .assert()
+        .code(3);
+}
+
+#[test]
 fn snapshots_show_pretty_prints_canonical_text() {
     let (repo, work) = build_demo_repo();
     let snap = work.path().join("snapshots");

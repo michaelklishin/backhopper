@@ -122,7 +122,7 @@ pub enum SnapshotsCmd {
         #[arg(long)]
         tag: TagName,
         #[arg(long)]
-        module: String,
+        module: ModuleName,
     },
     /// Diff one project's API between two tags.
     #[command(name = "project_diff")]

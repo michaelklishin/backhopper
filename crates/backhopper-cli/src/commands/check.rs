@@ -1614,7 +1614,7 @@ fn render_text(
 
 /// Always on: this is the breadcrumb behind an
 /// `inapplicable { untracked }` verdict, wanted exactly when the
-/// operator wonders why nothing was analyzed.
+/// user wonders why nothing was analyzed.
 fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
     if diagnostics.unattributed_paths.is_empty() {
         return Ok(());
@@ -1629,7 +1629,7 @@ fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> Cl
 }
 
 /// Always-on advisory lines: an already-present patch changes what
-/// the operator does next, so it never hides behind a flag.
+/// the user does next, so it never hides behind a flag.
 fn render_already_present(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
     if let Some(ap) = &diagnostics.already_present {
         if let Some(m) = &ap.identical {

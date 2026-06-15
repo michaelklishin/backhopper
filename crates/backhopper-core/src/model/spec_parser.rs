@@ -70,7 +70,7 @@ fn strip_when_guard(rest: &str) -> &str {
     let mut in_string = false;
     let mut in_atom_quote = false;
     let mut i = 0usize;
-    while i + 4 < bytes.len() {
+    while i + 4 <= bytes.len() {
         let ch = bytes[i] as char;
         match ch {
             '"' if !in_atom_quote => in_string = !in_string,

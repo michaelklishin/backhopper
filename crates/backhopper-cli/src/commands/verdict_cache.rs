@@ -33,7 +33,7 @@ use crate::cli::GlobalArgs;
 use crate::commands::context::snapshot_dir;
 use crate::commands::target_repo::TargetContext;
 
-// a self-pin tag is already a resolved SHA, never operator input
+// a self-pin tag is already a resolved SHA, never user input
 #[allow(clippy::disallowed_methods)]
 fn self_pin_sha(pin: &Pin) -> Option<CommitSha> {
     CommitSha::new(pin.tag.as_str()).ok()
