@@ -33,7 +33,7 @@ fn head_sha(repo: &FixtureRepo) -> String {
 struct Fixture {
     _dep: FixtureRepo,
     user: FixtureRepo,
-    _work: TempDir,
+    work: TempDir,
     cfg: PathBuf,
     snapshots: PathBuf,
     bump_sha: String,
@@ -101,7 +101,7 @@ pins = [{{ project = "dep", tag = "v1.0.0" }}]
     Fixture {
         _dep: dep,
         user,
-        _work: work,
+        work,
         cfg,
         snapshots,
         bump_sha,
@@ -304,7 +304,7 @@ fn doctor_reports_the_store_newest_tag_and_the_sync_nag() {
 #[test]
 fn batch_text_rows_carry_the_bump_line() {
     let f = build_fixture();
-    let commits = f._work.path().join("commits.txt");
+    let commits = f.work.path().join("commits.txt");
     fs::write(&commits, format!("{}\n", f.bump_sha)).unwrap();
     let out = stdout(&run([
         "--config-file-path",
@@ -331,7 +331,7 @@ fn batch_text_rows_carry_the_bump_line() {
 #[test]
 fn patch_file_input_detects_the_bump_without_a_repo() {
     let f = build_fixture();
-    let patch = f._work.path().join("bump.patch");
+    let patch = f.work.path().join("bump.patch");
     fs::write(
         &patch,
         "diff --git a/rabbitmq-components.mk b/rabbitmq-components.mk\n\

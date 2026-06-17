@@ -24,14 +24,15 @@ fn version() -> impl Strategy<Value = String> {
     ("[0-9]{1,2}", "[0-9]{1,2}", "[0-9]{1,2}").prop_map(|(a, b, c)| format!("{a}.{b}.{c}"))
 }
 
+// a base pin set, a parallel edit decision per name, and the expected bumps
+type Scenario = (
+    BTreeMap<String, String>,
+    BTreeMap<String, Option<Edit>>,
+    Vec<(String, String)>,
+);
+
 // distinct dep names with a version each; a parallel edit decision per name
-fn scenario() -> impl Strategy<
-    Value = (
-        BTreeMap<String, String>,
-        BTreeMap<String, Option<Edit>>,
-        Vec<(String, String)>,
-    ),
-> {
+fn scenario() -> impl Strategy<Value = Scenario> {
     let base = proptest::collection::btree_map("[a-z]{1,8}", version(), 0..6);
     base.prop_flat_map(|base| {
         let names: Vec<String> = base.keys().cloned().collect();

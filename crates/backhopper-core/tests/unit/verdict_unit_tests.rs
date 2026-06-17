@@ -139,20 +139,24 @@ fn diagnostics_with_only_already_present_is_not_empty() {
 
 #[test]
 fn diagnostics_with_only_a_skip_note_is_not_empty() {
-    let mut d = Diagnostics::default();
-    d.already_present_skipped = Some(AlreadyPresentSkipped::NoMergeBase);
+    let d = Diagnostics {
+        already_present_skipped: Some(AlreadyPresentSkipped::NoMergeBase),
+        ..Default::default()
+    };
     assert!(!d.is_empty());
 }
 
 #[test]
 fn diagnostics_with_only_a_pin_bump_is_not_empty() {
-    let mut d = Diagnostics::default();
-    d.pin_bumps.push(PinBump {
-        dep: DependencyName::new("cowlib".to_owned()).unwrap(),
-        from: Some("hex 2.16.0".to_owned()),
-        to: "hex 2.17.1".to_owned(),
-        status: None,
-    });
+    let d = Diagnostics {
+        pin_bumps: vec![PinBump {
+            dep: DependencyName::new("cowlib".to_owned()).unwrap(),
+            from: Some("hex 2.16.0".to_owned()),
+            to: "hex 2.17.1".to_owned(),
+            status: None,
+        }],
+        ..Default::default()
+    };
     assert!(!d.is_empty());
 }
 
@@ -185,38 +189,40 @@ fn pin_bump_statuses_round_trip_through_serde() {
 // would corrupt cached envelopes silently.
 #[test]
 fn new_diagnostics_fields_round_trip_through_serde() {
-    let mut d = Diagnostics::default();
-    d.already_present = Some(AlreadyPresent {
-        identical: Some(TargetMatch {
-            commit: CommitSha::new("b".repeat(40)).unwrap(),
-            via: TargetMatchKind::PatchId,
-            subject: "the fix".to_owned(),
+    let d = Diagnostics {
+        already_present: Some(AlreadyPresent {
+            identical: Some(TargetMatch {
+                commit: CommitSha::new("b".repeat(40)).unwrap(),
+                via: TargetMatchKind::PatchId,
+                subject: "the fix".to_owned(),
+            }),
+            content: Some(ContentPresence {
+                pin: ProjectName::new("demo").unwrap(),
+                hunks_already_applied: 2,
+                hunks_considered: 3,
+                hunks_ambiguous: 1,
+                hunks_low_confidence: 0,
+                per_file: BTreeMap::from([(
+                    "src/demo.erl".parse().unwrap(),
+                    HunkTally {
+                        applied: 2,
+                        considered: 3,
+                        ambiguous: 1,
+                        low_confidence: 0,
+                    },
+                )]),
+            }),
         }),
-        content: Some(ContentPresence {
-            pin: ProjectName::new("demo").unwrap(),
-            hunks_already_applied: 2,
-            hunks_considered: 3,
-            hunks_ambiguous: 1,
-            hunks_low_confidence: 0,
-            per_file: BTreeMap::from([(
-                "src/demo.erl".parse().unwrap(),
-                HunkTally {
-                    applied: 2,
-                    considered: 3,
-                    ambiguous: 1,
-                    low_confidence: 0,
-                },
-            )]),
+        already_present_skipped: Some(AlreadyPresentSkipped::CandidateMissingFromTargetOdb {
+            sha: CommitSha::new("c".repeat(40)).unwrap(),
         }),
-    });
-    d.already_present_skipped = Some(AlreadyPresentSkipped::CandidateMissingFromTargetOdb {
-        sha: CommitSha::new("c".repeat(40)).unwrap(),
-    });
-    d.dep_pin_divergence = vec![DepPinDivergence {
-        dep: DependencyName::new("cowboy").unwrap(),
-        source: "hex 2.16.0".to_owned(),
-        target: "hex 2.13.0".to_owned(),
-    }];
+        dep_pin_divergence: vec![DepPinDivergence {
+            dep: DependencyName::new("cowboy").unwrap(),
+            source: "hex 2.16.0".to_owned(),
+            target: "hex 2.13.0".to_owned(),
+        }],
+        ..Default::default()
+    };
     let json = serde_json::to_string(&d).unwrap();
     let back: Diagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back, d);
@@ -234,11 +240,13 @@ fn pre_v10_diagnostics_json_deserializes_with_empty_defaults() {
 
 #[test]
 fn diagnostics_with_only_dep_pin_divergence_is_not_empty() {
-    let mut d = Diagnostics::default();
-    d.dep_pin_divergence = vec![DepPinDivergence {
-        dep: DependencyName::new("cowboy").unwrap(),
-        source: "hex 2.16.0".to_owned(),
-        target: "hex 2.13.0".to_owned(),
-    }];
+    let d = Diagnostics {
+        dep_pin_divergence: vec![DepPinDivergence {
+            dep: DependencyName::new("cowboy").unwrap(),
+            source: "hex 2.16.0".to_owned(),
+            target: "hex 2.13.0".to_owned(),
+        }],
+        ..Default::default()
+    };
     assert!(!d.is_empty());
 }

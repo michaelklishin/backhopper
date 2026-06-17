@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::slice;
 use std::time::{Duration, SystemTime};
 
 use tempfile::TempDir;
@@ -19,9 +20,9 @@ fn write_aged(dir: &Path, name: &str, age: Duration) {
     f.set_modified(SystemTime::now() - age).unwrap();
 }
 
-const TWO_DAYS: Duration = Duration::from_secs(2 * 24 * 60 * 60);
-const ONE_DAY: Duration = Duration::from_secs(24 * 60 * 60);
-const TWO_HOURS: Duration = Duration::from_secs(2 * 60 * 60);
+const TWO_DAYS: Duration = Duration::from_hours(48);
+const ONE_DAY: Duration = Duration::from_hours(24);
+const TWO_HOURS: Duration = Duration::from_hours(2);
 
 #[test]
 fn sweep_removes_only_expired_entries_and_orphaned_tmps() {
@@ -71,12 +72,12 @@ fn daily_sweep_runs_once_then_defers_to_the_marker() {
     let marker = dir.path().join("markers").join("swept");
     write_aged(&cache, "leftover.tmp", TWO_HOURS);
 
-    maybe_daily_sweep(&[cache.clone()], None, &marker);
+    maybe_daily_sweep(slice::from_ref(&cache), None, &marker);
     assert!(marker.exists(), "first run writes the marker");
     assert!(!cache.join("leftover.tmp").exists());
 
     write_aged(&cache, "second.tmp", TWO_HOURS);
-    maybe_daily_sweep(&[cache.clone()], None, &marker);
+    maybe_daily_sweep(slice::from_ref(&cache), None, &marker);
     assert!(
         cache.join("second.tmp").exists(),
         "a fresh marker defers the next sweep"

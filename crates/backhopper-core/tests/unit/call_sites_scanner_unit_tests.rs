@@ -183,7 +183,7 @@ fn scan_reports_unterminated_for_wrapped_args() {
             assert_eq!(args, vec!["A", " B"]);
             assert_eq!(consumed, 5);
         }
-        other => panic!("expected terminated, got {other:?}"),
+        other @ ScannedArgs::Unterminated { .. } => panic!("expected terminated, got {other:?}"),
     }
 }
 

@@ -28,10 +28,7 @@ fn entry(key: &str) -> ScannedEntry {
 #[test]
 fn ttl_from_days_zero_means_no_expiry() {
     assert_eq!(ttl_from_days(0), None);
-    assert_eq!(
-        ttl_from_days(7),
-        Some(Duration::from_secs(7 * 24 * 60 * 60))
-    );
+    assert_eq!(ttl_from_days(7), Some(Duration::from_hours(168)));
 }
 
 #[test]
