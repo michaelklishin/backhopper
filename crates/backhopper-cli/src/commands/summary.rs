@@ -14,7 +14,9 @@ use backhopper_core::config::Config;
 use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
-use backhopper_core::model::verdict::{SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict};
+use backhopper_core::model::verdict::{
+    SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict, non_self_tracked,
+};
 
 use crate::cli::Formatter;
 use crate::errors::{CliError, CliResult};
@@ -78,14 +80,7 @@ fn summary_row(
     series: Option<SeriesName>,
     parent_count: Option<NonZeroU32>,
 ) -> SummaryRow {
-    let tracked: u32 = verdict
-        .results
-        .iter()
-        .filter(|pin| !self_projects.contains(&pin.pin.project))
-        .fold(0u32, |acc, pin| {
-            let v = u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX);
-            acc.saturating_add(v)
-        });
+    let tracked = non_self_tracked(&verdict.results, self_projects);
     SummaryRow {
         sha,
         verdict: rollup_verdict_kind(verdict),

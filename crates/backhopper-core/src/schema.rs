@@ -44,6 +44,7 @@ const SCHEMA_V7_FROZEN: &str = include_str!("schema_v7_snapshot.json");
 const SCHEMA_V8_FROZEN: &str = include_str!("schema_v8_snapshot.json");
 const SCHEMA_V9_FROZEN: &str = include_str!("schema_v9_snapshot.json");
 const SCHEMA_V10_FROZEN: &str = include_str!("schema_v10_snapshot.json");
+const SCHEMA_V11_FROZEN: &str = include_str!("schema_v11_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -77,7 +78,10 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         10 => {
             Ok(serde_json::from_str(SCHEMA_V10_FROZEN).expect("frozen v10 snapshot is valid JSON"))
         }
-        11 => Ok(combined_v11()),
+        11 => {
+            Ok(serde_json::from_str(SCHEMA_V11_FROZEN).expect("frozen v11 snapshot is valid JSON"))
+        }
+        12 => Ok(combined_v12()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -125,19 +129,15 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v11() -> Value {
+fn combined_v12() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
-        11,
+        12,
         "check",
-        "v11 connects tracked-dep snapshots to self-project call sites: path routing \
-         becomes reason-granular (reference-level evidence survives for pins that own \
-         no touched file), `Reason::MissingSymbol` gains `needs_pin_at_least` and a \
-         populated `first_seen_at_tag`, `Reason::ArityChanged` gains \
-         `expected_available_at` and `needs_pin_at_least` (both reclassify the reason \
-         as adaptable: land the dep pin bump first), `SymbolRef` gains an `origin` \
-         (`added` vs `context` hunk line) and the `function_any_arity` kind for calls \
-         whose arity wraps to the next line, and `Diagnostics` gains \
-         `context_refs_missing` plus `unattributed_paths`.",
+        "v12 carries the self-projects the clearance roll-up needs: `BatchPayload` and \
+         the single-check payload gain `self_projects`, the set excluded from the \
+         tracked-dependency tally. `None` (field absent) marks a producer that predates \
+         the field; a current producer always emits it, so a consumer can reconstruct \
+         the tracked count and the round clearance from the payload alone.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
@@ -166,8 +166,8 @@ fn combined_v11() -> Value {
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
     obj.insert("suite_plan_payload".into(), suite_plan_payload);
-    obj.insert("schema_version".into(), json!(11));
-    obj.insert("title".into(), json!("backhopper envelope v11"));
+    obj.insert("schema_version".into(), json!(12));
+    obj.insert("title".into(), json!("backhopper envelope v12"));
     Value::Object(obj)
 }
 

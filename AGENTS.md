@@ -551,6 +551,17 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
    never ` - ` or ` — `
  * No comments referencing the current task, fix number, or callers
 
+### Voice
+
+Write like a senior engineer who values clarity and simplicity.
+
+ * Plain and factual: state the why in one line, never narrate the what
+ * Literal mechanism over metaphor: "run clean picks first", not "bank
+   a stable base"; "conflicted", not "the pick fought the merge"
+ * No flourish, no editorializing, no imagery. Real domain terms are fine
+ * If a comment needs a second clause to justify itself, it is probably
+   too clever
+
 ## Git Instructions
 
  * Never add yourself to the list of commit co-authors

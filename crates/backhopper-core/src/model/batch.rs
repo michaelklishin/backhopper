@@ -5,10 +5,12 @@
 //! Public wire-format types for `check batch`. Promoted from the
 //! previously-private types in `backhopper-cli::commands::check`.
 
+use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::clearance::RoundClearance;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
@@ -20,6 +22,32 @@ use crate::model::verdict::{Diagnostics, PatchFacts, SeriesVerdict};
 pub struct BatchPayload {
     pub queried_against: Vec<BatchQuery>,
     pub results: Vec<BatchResult>,
+
+    /// Projects evaluated as the backport subject itself, excluded from
+    /// the tracked-dependency tally. `None` means the producing binary
+    /// predates the field, not "no self project": a current producer
+    /// always emits `Some`, even when empty, so it is never skipped.
+    #[serde(default)]
+    pub self_projects: Option<BTreeSet<ProjectName>>,
+}
+
+impl BatchPayload {
+    /// Round-level clearance over these rows, excluding `self_projects`
+    /// from the tracked-dependency tally.
+    #[must_use]
+    pub fn clearance(&self, self_projects: &BTreeSet<ProjectName>) -> RoundClearance {
+        RoundClearance::from_results(&self.results, self_projects)
+    }
+
+    /// Clearance from the self-projects the producer recorded on the
+    /// wire. `None` when the producer predates the field; the caller
+    /// then passes its own set to `clearance`.
+    #[must_use]
+    pub fn clearance_self_inferred(&self) -> Option<RoundClearance> {
+        self.self_projects
+            .as_ref()
+            .map(|projects| self.clearance(projects))
+    }
 }
 
 /// One series queried by the batch. Holds the pin set used during

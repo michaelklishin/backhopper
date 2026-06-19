@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
@@ -179,6 +180,7 @@ fn batch_payload_full_round_trip_with_typed_pin_payload() {
             }],
         }],
         results: vec![],
+        self_projects: Some(BTreeSet::from([ProjectName::new("rabbit").unwrap()])),
     };
     let json = serde_json::to_string(&payload).unwrap();
     let back: BatchPayload = serde_json::from_str(&json).unwrap();

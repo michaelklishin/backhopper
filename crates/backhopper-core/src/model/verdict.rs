@@ -894,6 +894,17 @@ impl PinVerdict {
     }
 }
 
+/// Saturating sum of `tracked_refs` over pins not owned by a self project.
+#[must_use]
+pub fn non_self_tracked(results: &[PinVerdict], self_projects: &BTreeSet<ProjectName>) -> u32 {
+    results
+        .iter()
+        .filter(|pin| !self_projects.contains(&pin.pin.project))
+        .fold(0u32, |acc, pin| {
+            acc.saturating_add(u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX))
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeriesVerdict {

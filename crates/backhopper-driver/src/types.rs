@@ -14,6 +14,9 @@ pub use backhopper_core::model::cache::{
     CacheLevel, CacheLevelStats, CacheListPayload, CacheListRow, CacheMutationPayload,
     CacheShowPayload, CacheStatsPayload,
 };
+pub use backhopper_core::model::clearance::{
+    BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
+};
 pub use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
     DependencyName, DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName,
@@ -37,8 +40,9 @@ pub use backhopper_core::model::snapshot_diff::{
 pub use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 pub use backhopper_core::model::symbol::{RefOrigin, Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
-    FileKind, InapplicableReason, NeedsPin, PinVerdict, Reason, SeriesVerdict, SnapshotSide,
-    TouchedKinds, Verdict,
+    BumpStatus, Diagnostics, FileKind, InapplicableReason, NeedsPin, PatchFacts, PinBump,
+    PinVerdict, Reason, SeriesSummary, SeriesVerdict, SnapshotSide, SourceDelta, TouchedKinds,
+    Verdict,
 };
 pub use backhopper_core::suites::{
     SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef, UncoveredApplication,

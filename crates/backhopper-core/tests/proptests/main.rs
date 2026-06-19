@@ -12,6 +12,7 @@ mod diff_parser_proptests;
 mod dynamic_calls_proptests;
 mod evaluation_typestate_proptests;
 mod mfa_round_trip_proptests;
+mod non_self_tracked_proptests;
 mod path_routing_proptests;
 mod path_translation_proptests;
 mod pin_resolution_proptests;

@@ -6,6 +6,7 @@ mod batch_builder_unit_tests;
 mod batch_v6_envelope_unit_tests;
 mod cancellation_unit_tests;
 mod check_builder_unit_tests;
+mod clearance_reexport_unit_tests;
 mod compatibility_unit_tests;
 mod envelope_parsing_unit_tests;
 mod envelope_unit_tests;

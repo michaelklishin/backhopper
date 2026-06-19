@@ -10,7 +10,7 @@
 //! it through [`BatchResult::evaluation`], and the driver's single-check
 //! `SeriesEvaluation` through its own `view`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::model::batch::BatchResult;
 use crate::model::names::{MacroName, ModuleName, ProjectName, RelativePath};
@@ -18,7 +18,7 @@ use crate::model::pin::Pin;
 use crate::model::summary::VerdictKind;
 use crate::model::verdict::{
     Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TestCallSite,
-    Verdict,
+    Verdict, non_self_tracked,
 };
 
 /// Aggregate verdict across the pins of a series.
@@ -103,6 +103,12 @@ impl<'a> SeriesEvaluationView<'a> {
             .iter()
             .filter(move |p| &p.pin == pin)
             .flat_map(pin_reasons)
+    }
+
+    /// Saturating sum of `tracked_refs` over non-self pins.
+    #[must_use]
+    pub fn tracked_refs(self, self_projects: &BTreeSet<ProjectName>) -> u32 {
+        non_self_tracked(&self.results.results, self_projects)
     }
 
     /// First pin whose project name matches `project`, if any.

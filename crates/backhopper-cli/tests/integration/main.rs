@@ -25,6 +25,7 @@ mod end_to_end_rev_resolve_integration_tests;
 mod end_to_end_schema_integration_tests;
 mod end_to_end_scope_integration_tests;
 mod end_to_end_self_project_integration_tests;
+mod end_to_end_self_projects_envelope_integration_tests;
 mod end_to_end_series_coverage_integration_tests;
 mod end_to_end_series_pins_integration_tests;
 mod end_to_end_series_sync_integration_tests;

@@ -94,6 +94,9 @@ struct CompatPayload {
     /// everything else. The `None` vs `Some(vec![])` distinction is
     /// wire-load-bearing, so no `skip_serializing_if`.
     pr_commits: Option<Vec<PrCommit>>,
+    /// Projects excluded from the tracked-dependency tally. Always
+    /// emitted so a consumer can tell an empty set from an old binary.
+    self_projects: Option<BTreeSet<ProjectName>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1205,6 +1208,7 @@ fn run_check_patch(
         diagnostics: evaluation.diagnostics.clone(),
         pr_commits: evaluation.pr_commits.clone(),
         project_suggestions: project_suggestions.clone(),
+        self_projects: Some(self_project_names(cfg)),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
@@ -2307,6 +2311,7 @@ fn run_batch(
     let payload = BatchPayload {
         queried_against: queried,
         results,
+        self_projects: Some(self_project_names(cfg)),
     };
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
         let rows = batch_summary_rows(cfg, &git_repo, &payload.results);

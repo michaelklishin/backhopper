@@ -4,6 +4,7 @@
 
 mod app_src_unit_tests;
 mod arg_shape_unit_tests;
+mod batch_clearance_self_projects_unit_tests;
 mod batch_payload_unit_tests;
 mod behaviour_conformance_unit_tests;
 mod behaviour_implementer_sweep_planner_unit_tests;
@@ -34,6 +35,7 @@ mod library_derivation_unit_tests;
 mod missing_type_reason_unit_tests;
 mod module_relocation_unit_tests;
 mod names_unit_tests;
+mod non_self_tracked_unit_tests;
 mod only_self_surface_touched_unit_tests;
 mod only_test_visibility_changed_unit_tests;
 mod otp_unit_tests;

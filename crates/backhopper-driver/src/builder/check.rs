@@ -9,7 +9,7 @@
 //! `run` and `run_with_diagnostics`. Calling `run()` before both
 //! slots are filled is a compile-time error.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ffi::OsString;
 use std::fmt;
 use std::marker::PhantomData;
@@ -821,6 +821,10 @@ pub struct SeriesEvaluation {
     /// Series-wide diagnostics (untracked calls, suggested suites).
     #[serde(default)]
     pub diagnostics: Diagnostics,
+    /// Projects excluded from the tracked-dependency tally. `None` when
+    /// the producing binary predates the field.
+    #[serde(default)]
+    pub self_projects: Option<BTreeSet<ProjectName>>,
 }
 
 impl SeriesEvaluation {
@@ -830,6 +834,15 @@ impl SeriesEvaluation {
     #[must_use]
     pub fn view(&self) -> SeriesEvaluationView<'_> {
         SeriesEvaluationView::new(&self.results, &self.diagnostics)
+    }
+
+    /// Self-excluded tracked-dependency count from the wire-recorded
+    /// self-projects. `None` when the producer predates the field.
+    #[must_use]
+    pub fn tracked_refs(&self) -> Option<u32> {
+        self.self_projects
+            .as_ref()
+            .map(|projects| self.view().tracked_refs(projects))
     }
 
     /// See [`SeriesEvaluationView::worst_verdict`].

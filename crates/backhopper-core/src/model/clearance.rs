@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::model::batch::BatchResult;
 use crate::model::names::ProjectName;
-use crate::model::verdict::{BumpStatus, SeriesSummary, Verdict, exit};
+use crate::model::verdict::{BumpStatus, SeriesSummary, Verdict, exit, non_self_tracked};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoundClearance {
@@ -134,11 +134,8 @@ impl RoundClearance {
             verdicts.incompatible += row.verdict.summary.incompatible;
             verdicts.inapplicable += row.verdict.summary.inapplicable;
 
+            tracked = tracked.saturating_add(non_self_tracked(&row.verdict.results, self_projects));
             for pin in &row.verdict.results {
-                if !self_projects.contains(&pin.pin.project) {
-                    let refs = u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX);
-                    tracked = tracked.saturating_add(refs);
-                }
                 if let Verdict::Inapplicable { reason } = &pin.verdict {
                     reasons.record(reason.as_str());
                 }
