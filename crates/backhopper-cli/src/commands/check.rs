@@ -31,6 +31,7 @@ use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
+use backhopper_core::model::clearance::{BumpSummary, RoundClearance};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
     SeriesName, TagName,
@@ -2313,8 +2314,16 @@ fn run_batch(
         return Ok(worst_exit);
     }
     let ctx = OutputContext::new(args.formatter, "check batch");
+    let self_projects = self_project_names(cfg);
+    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     render_with_exit(&ctx, &payload, worst_exit, |w| {
-        render_batch_text(w, &payload.results, diagnostics)
+        render_batch_text(
+            w,
+            &payload.results,
+            diagnostics,
+            &self_projects,
+            &known_projects,
+        )
     })
 }
 
@@ -2400,10 +2409,12 @@ fn select_batch_reporter(args: &GlobalArgs) -> Box<dyn ProgressReporter> {
     }
 }
 
-fn render_batch_text(
+pub fn render_batch_text(
     w: &mut dyn Write,
     results: &[BatchResult],
     flags: CheckFlags,
+    self_projects: &BTreeSet<ProjectName>,
+    known_projects: &[ProjectName],
 ) -> CliResult<()> {
     if flags.summary_only {
         for r in results {
@@ -2420,22 +2431,10 @@ fn render_batch_text(
         }
         return Ok(());
     }
-    let totals = results
-        .iter()
-        .fold((0u32, 0u32, 0u32, 0u32), |(c, ra, i, v), x| {
-            (
-                c + x.verdict.summary.compatible,
-                ra + x.verdict.summary.requires_adaptation,
-                i + x.verdict.summary.incompatible,
-                v + x.verdict.summary.inapplicable,
-            )
-        });
-    writeln!(
-        w,
-        "totals: compatible={} requires_adaptation={} incompatible={} inapplicable={}",
-        totals.0, totals.1, totals.2, totals.3,
-    )?;
+    let clearance = RoundClearance::from_results(results, self_projects);
+    render_clearance(w, &clearance)?;
     writeln!(w)?;
+    let show_untracked = flags.show_untracked_calls || flags.show_otp_calls;
     for r in results {
         writeln!(
             w,
@@ -2447,12 +2446,144 @@ fn render_batch_text(
             r.verdict.summary.incompatible,
             r.verdict.summary.inapplicable,
         )?;
+        let reasons = row_inapplicable_reasons(&r.verdict.results);
+        if !reasons.is_empty() {
+            writeln!(w, "  inapplicable: {}", reasons.join(", "))?;
+        }
+        // Shown only when non-zero so a clean round's rows stay terse;
+        // it points the reviewer at the rows the header total came from.
+        let tracked = row_tracked_refs(&r.verdict.results, self_projects);
+        if tracked > 0 {
+            writeln!(w, "  tracked refs: {tracked} (see --explain)")?;
+        }
         for b in &r.diagnostics.pin_bumps {
             writeln!(w, "  pin bump: {}", pin_bump_label(b))?;
+        }
+        render_unattributed_paths(w, &r.diagnostics)?;
+        if show_untracked && !r.diagnostics.is_empty() {
+            render_untracked_section(w, &r.diagnostics, known_projects, flags.show_otp_calls)?;
         }
         if flags.explain {
             render_explain_section(w, &r.verdict.results)?;
         }
     }
     Ok(())
+}
+
+/// Renders the round-level roll-up. The match is the type-state lever:
+/// a clean round can only be reported through the `Clean` arm, which
+/// states its negatives so a vacuous round proves it was checked.
+pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliResult<()> {
+    let f = clearance.facts();
+    let exit = if f.exit_code == 0 {
+        "OK"
+    } else {
+        "NEEDS_ATTENTION"
+    };
+    writeln!(
+        w,
+        "clearance: {} candidate{} \u{d7} {} series \u{b7} exit={exit}",
+        f.candidates,
+        plural(f.candidates),
+        f.series,
+    )?;
+    writeln!(
+        w,
+        "  tracked dep surface : {} symbol{} referenced",
+        f.tracked,
+        plural(f.tracked as usize),
+    )?;
+    writeln!(
+        w,
+        "  verdicts            : compatible={} requires_adaptation={} incompatible={} inapplicable={}",
+        f.verdicts.compatible,
+        f.verdicts.requires_adaptation,
+        f.verdicts.incompatible,
+        f.verdicts.inapplicable,
+    )?;
+    if !f.reasons.is_empty() {
+        let ranked: Vec<String> = f
+            .reasons
+            .ranked()
+            .into_iter()
+            .map(|(label, n)| format!("{n} {label}"))
+            .collect();
+        writeln!(w, "  inapplicable reasons: {}", ranked.join(", "))?;
+    }
+    render_bump_summary_line(w, &f.bumps)?;
+    if f.suites.is_empty() {
+        writeln!(w, "  suites worth running: (none)")?;
+    } else {
+        writeln!(w, "  suites worth running: {}", f.suites.join(", "))?;
+    }
+    writeln!(w)?;
+    match clearance {
+        RoundClearance::Clean(_) => writeln!(
+            w,
+            "no dependency-API risk found: backhopper analyzes only Erlang, Elixir, and dep-pin changes and does not model branch divergence, so verify cherry-pick conflicts and any non-analyzable files separately"
+        )?,
+        RoundClearance::Findings(_) => writeln!(
+            w,
+            "review the rows below: tracked-dep references, blocking verdicts, or snapshot-missing pin bumps are present"
+        )?,
+    }
+    Ok(())
+}
+
+fn render_bump_summary_line(w: &mut dyn Write, bumps: &BumpSummary) -> CliResult<()> {
+    if bumps.is_empty() {
+        writeln!(w, "  dep-pin bumps       : none")?;
+        return Ok(());
+    }
+    let mut parts = Vec::new();
+    if bumps.snapshot_present > 0 {
+        parts.push(format!("{} snapshot present", bumps.snapshot_present));
+    }
+    if bumps.snapshot_missing > 0 {
+        parts.push(format!("{} snapshot MISSING", bumps.snapshot_missing));
+    }
+    if bumps.untracked > 0 {
+        parts.push(format!("{} untracked dep", bumps.untracked));
+    }
+    if bumps.unassessed > 0 {
+        parts.push(format!("{} unassessed", bumps.unassessed));
+    }
+    if bumps.introduced > 0 {
+        parts.push(format!("{} introduced", bumps.introduced));
+    }
+    writeln!(
+        w,
+        "  dep-pin bumps       : {} ({})",
+        bumps.total,
+        parts.join(", "),
+    )?;
+    Ok(())
+}
+
+/// Distinct inapplicability reason labels for one row, sorted. The
+/// round histogram lives in the clearance header; this is the per-row
+/// breadcrumb.
+fn row_inapplicable_reasons(results: &[PinVerdict]) -> Vec<&'static str> {
+    let mut seen = BTreeSet::new();
+    for pin in results {
+        if let Verdict::Inapplicable { reason } = &pin.verdict {
+            seen.insert(reason.as_str());
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Tracked-dep references for one row, excluding self pins: the
+/// per-row share of the header total.
+fn row_tracked_refs(results: &[PinVerdict], self_projects: &BTreeSet<ProjectName>) -> u32 {
+    results
+        .iter()
+        .filter(|pin| !self_projects.contains(&pin.pin.project))
+        .fold(0u32, |acc, pin| {
+            acc.saturating_add(u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX))
+        })
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
 }

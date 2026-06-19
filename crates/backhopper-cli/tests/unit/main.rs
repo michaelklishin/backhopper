@@ -4,6 +4,7 @@
 
 mod added_file_synthesis_unit_tests;
 mod auto_generate_unit_tests;
+mod batch_clearance_render_unit_tests;
 mod bel7_cli_integration_unit_tests;
 mod check_markdown_render_unit_tests;
 mod check_pr_unit_tests;

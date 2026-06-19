@@ -4,6 +4,7 @@
 
 pub mod batch;
 pub mod cache;
+pub mod clearance;
 pub mod evaluation;
 pub mod names;
 pub mod pin;

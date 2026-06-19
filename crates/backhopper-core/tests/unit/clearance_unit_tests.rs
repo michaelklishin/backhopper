@@ -1,0 +1,444 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
+//! `RoundClearance::from_results` roll-up: the Clean-versus-Findings
+//! discriminator, the inapplicability histogram, self-pin exclusion,
+//! the three-way bump classification with cross-series dedup, and the
+//! suite union.
+
+use std::collections::BTreeSet;
+
+use backhopper_core::model::batch::BatchResult;
+use backhopper_core::model::clearance::RoundClearance;
+use backhopper_core::model::names::{CommitSha, DependencyName, ProjectName, SeriesName, TagName};
+use backhopper_core::model::pin::Pin;
+use backhopper_core::model::verdict::{
+    BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump, PinVerdict, SeriesVerdict,
+    Verdict,
+};
+
+fn commit(c: char) -> CommitSha {
+    CommitSha::new(c.to_string().repeat(40)).unwrap()
+}
+
+fn proj(name: &str) -> ProjectName {
+    ProjectName::new(name).unwrap()
+}
+
+fn pin(project: &str) -> Pin {
+    Pin::new(proj(project), TagName::new("v1.0.0").unwrap())
+}
+
+fn tracked_pin(project: &str, verdict: Verdict, tracked: usize) -> PinVerdict {
+    PinVerdict::new(pin(project), verdict).with_tracked_refs(tracked)
+}
+
+fn inapplicable(project: &str, reason: InapplicableReason) -> PinVerdict {
+    PinVerdict::new(pin(project), Verdict::Inapplicable { reason })
+}
+
+fn bump(dep: &str, from: Option<&str>, to: &str, status: Option<BumpStatus>) -> PinBump {
+    PinBump {
+        dep: DependencyName::new(dep).unwrap(),
+        from: from.map(str::to_owned),
+        to: to.to_owned(),
+        status,
+    }
+}
+
+fn row(c: char, series: &str, pins: Vec<PinVerdict>) -> BatchResult {
+    row_with_diagnostics(c, series, pins, Diagnostics::default())
+}
+
+fn row_with_diagnostics(
+    c: char,
+    series: &str,
+    pins: Vec<PinVerdict>,
+    diagnostics: Diagnostics,
+) -> BatchResult {
+    BatchResult {
+        commit: commit(c),
+        series: SeriesName::new(series).unwrap(),
+        verdict: SeriesVerdict::from_results(pins),
+        diagnostics,
+        patch_facts: PatchFacts::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
+        parent_count: None,
+    }
+}
+
+fn no_self() -> BTreeSet<ProjectName> {
+    BTreeSet::new()
+}
+
+#[test]
+fn empty_round_is_clean() {
+    let clearance = RoundClearance::from_results(&[], &no_self());
+    assert!(clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.rows, 0);
+    assert_eq!(facts.candidates, 0);
+    assert_eq!(facts.series, 0);
+    assert_eq!(facts.tracked, 0);
+    assert_eq!(facts.exit_code, 0);
+    assert!(facts.reasons.is_empty());
+    assert!(facts.bumps.is_empty());
+}
+
+#[test]
+fn vacuous_inapplicable_round_is_clean_with_reason_histogram() {
+    let rows = vec![
+        row(
+            'a',
+            "v4.1.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::NoErlangSurfaceTouched,
+            )],
+        ),
+        row(
+            'b',
+            "v4.1.x",
+            vec![inapplicable("khepri", InapplicableReason::OnlyDocsTouched)],
+        ),
+        row(
+            'c',
+            "v4.1.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::NoErlangSurfaceTouched,
+            )],
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.candidates, 3);
+    assert_eq!(facts.series, 1);
+    assert_eq!(facts.tracked, 0);
+    assert_eq!(facts.verdicts.inapplicable, 3);
+    assert_eq!(facts.reasons.count("no_erlang_surface_touched"), 2);
+    assert_eq!(facts.reasons.count("only_docs_touched"), 1);
+    assert_eq!(facts.reasons.total(), 3);
+}
+
+#[test]
+fn a_tracked_reference_makes_the_round_findings() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![tracked_pin("ra", Verdict::Compatible, 2)],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(!clearance.is_clean());
+    assert_eq!(clearance.facts().tracked, 2);
+    assert_eq!(clearance.facts().exit_code, 0);
+}
+
+#[test]
+fn incompatible_is_findings_and_needs_attention() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![tracked_pin(
+            "ra",
+            Verdict::Incompatible {
+                reasons: Vec::new(),
+            },
+            0,
+        )],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(!clearance.is_clean());
+    assert_eq!(clearance.facts().exit_code, 3);
+    assert_eq!(clearance.facts().verdicts.incompatible, 1);
+}
+
+#[test]
+fn requires_adaptation_is_findings_and_needs_attention() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![tracked_pin(
+            "ra",
+            Verdict::RequiresAdaptation {
+                reasons: Vec::new(),
+            },
+            0,
+        )],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(!clearance.is_clean());
+    assert_eq!(clearance.facts().exit_code, 3);
+    assert_eq!(clearance.facts().verdicts.requires_adaptation, 1);
+}
+
+#[test]
+fn tracked_count_excludes_self_pins() {
+    let mut self_projects = BTreeSet::new();
+    self_projects.insert(proj("rabbit"));
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![
+            tracked_pin("rabbit", Verdict::Compatible, 5),
+            tracked_pin("ra", Verdict::Compatible, 3),
+        ],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &self_projects);
+    assert_eq!(clearance.facts().tracked, 3);
+    assert!(!clearance.is_clean());
+}
+
+#[test]
+fn a_round_with_only_self_pin_references_is_clean() {
+    let mut self_projects = BTreeSet::new();
+    self_projects.insert(proj("rabbit"));
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![tracked_pin("rabbit", Verdict::Compatible, 5)],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &self_projects);
+    assert_eq!(clearance.facts().tracked, 0);
+    assert!(clearance.is_clean());
+}
+
+#[test]
+fn snapshot_missing_bump_makes_findings() {
+    let mut diagnostics = Diagnostics::default();
+    diagnostics.pin_bumps = vec![bump(
+        "ra",
+        Some("hex 2.16.0"),
+        "hex 2.17.0",
+        Some(BumpStatus::SnapshotMissing {
+            note: "snapshots generate".to_owned(),
+        }),
+    )];
+    let rows = vec![row_with_diagnostics(
+        'a',
+        "s",
+        vec![inapplicable("ra", InapplicableReason::OnlyMakefileTouched)],
+        diagnostics,
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(!clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.bumps.total, 1);
+    assert_eq!(facts.bumps.snapshot_missing, 1);
+}
+
+#[test]
+fn snapshot_present_bump_alone_stays_clean() {
+    let mut diagnostics = Diagnostics::default();
+    diagnostics.pin_bumps = vec![bump(
+        "ra",
+        Some("hex 2.16.0"),
+        "hex 2.17.0",
+        Some(BumpStatus::SnapshotPresent),
+    )];
+    let rows = vec![row_with_diagnostics(
+        'a',
+        "s",
+        vec![inapplicable("ra", InapplicableReason::OnlyMakefileTouched)],
+        diagnostics,
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.bumps.total, 1);
+    assert_eq!(facts.bumps.snapshot_present, 1);
+    assert_eq!(facts.bumps.snapshot_missing, 0);
+}
+
+#[test]
+fn untracked_and_unassessed_bumps_are_classified_and_do_not_force_findings() {
+    let mut diagnostics = Diagnostics::default();
+    diagnostics.pin_bumps = vec![
+        bump("elixir", Some("1.16"), "1.17", Some(BumpStatus::Untracked)),
+        bump("ra", Some("hex 1.0.0"), "hex 2.0.0", None),
+    ];
+    let rows = vec![row_with_diagnostics(
+        'a',
+        "s",
+        vec![inapplicable("ra", InapplicableReason::OnlyMakefileTouched)],
+        diagnostics,
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.bumps.total, 2);
+    assert_eq!(facts.bumps.untracked, 1);
+    assert_eq!(facts.bumps.unassessed, 1);
+    assert_eq!(facts.bumps.snapshot_missing, 0);
+}
+
+#[test]
+fn the_same_bump_under_several_series_counts_once() {
+    let bumped = |series: &str| {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.pin_bumps = vec![bump(
+            "ra",
+            Some("hex 1.0.0"),
+            "hex 2.0.0",
+            Some(BumpStatus::SnapshotPresent),
+        )];
+        row_with_diagnostics(
+            'a',
+            series,
+            vec![tracked_pin("ra", Verdict::Compatible, 0)],
+            diagnostics,
+        )
+    };
+    let rows = vec![bumped("s1"), bumped("s2")];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    let facts = clearance.facts();
+    assert_eq!(facts.bumps.total, 1);
+    assert_eq!(facts.candidates, 1);
+    assert_eq!(facts.series, 2);
+}
+
+#[test]
+fn the_same_bump_under_distinct_commits_counts_twice() {
+    let bumped = |c: char| {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.pin_bumps = vec![bump(
+            "ra",
+            Some("hex 1.0.0"),
+            "hex 2.0.0",
+            Some(BumpStatus::SnapshotPresent),
+        )];
+        row_with_diagnostics(
+            c,
+            "s",
+            vec![tracked_pin("ra", Verdict::Compatible, 0)],
+            diagnostics,
+        )
+    };
+    let rows = vec![bumped('a'), bumped('b')];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert_eq!(clearance.facts().bumps.total, 2);
+}
+
+#[test]
+fn an_introduced_pin_is_counted() {
+    let mut diagnostics = Diagnostics::default();
+    diagnostics.pin_bumps = vec![bump(
+        "osiris",
+        None,
+        "hex 1.8.0",
+        Some(BumpStatus::SnapshotPresent),
+    )];
+    let rows = vec![row_with_diagnostics(
+        'a',
+        "s",
+        vec![inapplicable(
+            "osiris",
+            InapplicableReason::OnlyMakefileTouched,
+        )],
+        diagnostics,
+    )];
+    let facts = RoundClearance::from_results(&rows, &no_self())
+        .facts()
+        .clone();
+    assert_eq!(facts.bumps.introduced, 1);
+    assert_eq!(facts.bumps.total, 1);
+}
+
+#[test]
+fn suggested_suites_are_unioned_sorted_and_deduplicated() {
+    let with_suites = |series: &str, suites: &[&str]| {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.suggested_suites = suites.iter().map(|s| (*s).to_owned()).collect();
+        row_with_diagnostics(
+            'a',
+            series,
+            vec![inapplicable("ra", InapplicableReason::OnlyDocsTouched)],
+            diagnostics,
+        )
+    };
+    let rows = vec![
+        with_suites("s1", &["b_SUITE", "a_SUITE"]),
+        with_suites("s2", &["a_SUITE", "c_SUITE"]),
+    ];
+    let facts = RoundClearance::from_results(&rows, &no_self())
+        .facts()
+        .clone();
+    assert_eq!(facts.suites, vec!["a_SUITE", "b_SUITE", "c_SUITE"]);
+}
+
+#[test]
+fn reason_histogram_ranks_by_count_then_label() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![
+            inapplicable("p1", InapplicableReason::NoErlangSurfaceTouched),
+            inapplicable("p2", InapplicableReason::NoErlangSurfaceTouched),
+            inapplicable("p3", InapplicableReason::NoErlangSurfaceTouched),
+            inapplicable("p4", InapplicableReason::OnlyMakefileTouched),
+            inapplicable("p5", InapplicableReason::OnlyMakefileTouched),
+            inapplicable("p6", InapplicableReason::OnlyDocsTouched),
+        ],
+    )];
+    let facts = RoundClearance::from_results(&rows, &no_self())
+        .facts()
+        .clone();
+    let ranked = facts.reasons.ranked();
+    assert_eq!(
+        ranked,
+        vec![
+            ("no_erlang_surface_touched", 3),
+            ("only_makefile_touched", 2),
+            ("only_docs_touched", 1),
+        ]
+    );
+}
+
+#[test]
+fn ranked_breaks_count_ties_alphabetically() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![
+            inapplicable("p1", InapplicableReason::OnlyMakefileTouched),
+            inapplicable("p2", InapplicableReason::OnlyDocsTouched),
+        ],
+    )];
+    let facts = RoundClearance::from_results(&rows, &no_self())
+        .facts()
+        .clone();
+    let ranked = facts.reasons.ranked();
+    assert_eq!(
+        ranked,
+        vec![("only_docs_touched", 1), ("only_makefile_touched", 1)]
+    );
+}
+
+#[test]
+fn verdict_totals_sum_per_pin_counts() {
+    let rows = vec![row(
+        'a',
+        "s",
+        vec![
+            tracked_pin("p1", Verdict::Compatible, 0),
+            tracked_pin(
+                "p2",
+                Verdict::Incompatible {
+                    reasons: Vec::new(),
+                },
+                0,
+            ),
+            inapplicable("p3", InapplicableReason::OnlyDocsTouched),
+        ],
+    )];
+    let facts = RoundClearance::from_results(&rows, &no_self())
+        .facts()
+        .clone();
+    assert_eq!(facts.verdicts.compatible, 1);
+    assert_eq!(facts.verdicts.incompatible, 1);
+    assert_eq!(facts.verdicts.inapplicable, 1);
+    assert_eq!(facts.verdicts.requires_adaptation, 0);
+}
