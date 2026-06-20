@@ -29,7 +29,7 @@ pub use inspect::{
 pub use policy::{CacheMode, FORCE_CACHE_ENV, NO_CACHE_ENV};
 pub use sweep::{maybe_daily_sweep, sweep_dir};
 pub use verdict::{
-    CacheKeyInputs, ContentKeyInputs, ContentOutcome, EvaluationShape, InputMissToken,
-    InputOutcome, MissToken, PinKeyRow, SIBLINGS_CACHE_DIR_NAME, TargetKeyInputs,
+    CacheKeyInputs, CachedVerdict, ContentKeyInputs, ContentOutcome, EvaluationShape,
+    InputMissToken, InputOutcome, MissToken, PinKeyRow, SIBLINGS_CACHE_DIR_NAME, TargetKeyInputs,
     VERDICT_CACHE_DIR_NAME, VerdictCache, ttl_from_days,
 };

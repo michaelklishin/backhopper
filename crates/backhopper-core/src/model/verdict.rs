@@ -170,6 +170,15 @@ pub enum Reason {
         hunk_index: usize,
         line_delta: isize,
     },
+    /// The hunk's preimage matches, but its added lines land at a file
+    /// edge where the target already has divergent content the base
+    /// lacked: an add/add a contiguous preimage match cannot see. The
+    /// 3-way cherry-pick conflicts where the preimage-only check reads
+    /// clean. Non-blocking: the operator resolves the overlap.
+    PostimageCollision {
+        path: PathBuf,
+        hunk_index: usize,
+    },
     /// The preimage block does not appear anywhere in the file. The
     /// patch was authored against a tree where the lines existed; on
     /// this pin they don't. Structurally inapplicable: the operator
@@ -343,6 +352,35 @@ pub enum Reason {
         include_directive: IncludeDirective,
         attempted_paths: Vec<RelativePath>,
     },
+    /// A touched `.erl` or `.hrl` file references `?MACRO` on an added
+    /// line, but `MACRO` is defined nowhere the target tree reaches (not
+    /// in the file, its includes, or the patch itself) and is not
+    /// predefined. Compiles on source, dangles on target. Non-blocking:
+    /// the operator drops or adapts the reference.
+    MacroUndefinedOnTarget {
+        source_path: RelativePath,
+        macro_name: String,
+        line: u32,
+    },
+    /// A touched `.erl` or `.hrl` file uses `#record{}` on an added
+    /// line, but `record` is defined nowhere the target tree reaches and
+    /// is not added by the patch. Sister of `MacroUndefinedOnTarget` for
+    /// the record namespace; non-blocking.
+    RecordUndefinedOnTarget {
+        source_path: RelativePath,
+        record_name: RecordName,
+        line: u32,
+    },
+    /// A touched `.erl` file calls an unqualified `f/a` on an added line
+    /// that the target version of the same module neither defines,
+    /// exports, imports, nor inherits as an auto-imported BIF. The
+    /// function-namespace counterpart; non-blocking.
+    LocalCallUndefinedOnTarget {
+        source_path: RelativePath,
+        function: FunctionName,
+        arity: Arity,
+        line: u32,
+    },
     /// Declared versioned-machine module is touched but the snapshot
     /// has no recorded `versioned_machine_version` on `side`.
     /// Non-blocking.
@@ -507,6 +545,7 @@ impl Reason {
             Self::ContextDrift { .. }
             | Self::PreimageDrifted { .. }
             | Self::PreimageMissing { .. }
+            | Self::PostimageCollision { .. }
             | Self::DeprecatedUsage { .. }
             | Self::UnsupportedFileType { .. }
             | Self::ModuleRelocated { .. }
@@ -516,6 +555,9 @@ impl Reason {
             | Self::TestModuleSymbolMissing { .. }
             | Self::BehaviourModuleMissing { .. }
             | Self::HeaderFileMissing { .. }
+            | Self::MacroUndefinedOnTarget { .. }
+            | Self::RecordUndefinedOnTarget { .. }
+            | Self::LocalCallUndefinedOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -531,6 +573,7 @@ impl Reason {
             | Self::ModuleRelocated { .. }
             | Self::PreimageDrifted { .. }
             | Self::PreimageMissing { .. }
+            | Self::PostimageCollision { .. }
             | Self::ContextDrift { .. }
             | Self::PathRename { .. }
             | Self::UnsupportedFileType { .. }
@@ -556,6 +599,9 @@ impl Reason {
             | Self::TestModuleSymbolMissing { .. }
             | Self::BehaviourModuleMissing { .. }
             | Self::HeaderFileMissing { .. }
+            | Self::MacroUndefinedOnTarget { .. }
+            | Self::RecordUndefinedOnTarget { .. }
+            | Self::LocalCallUndefinedOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }

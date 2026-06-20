@@ -54,6 +54,7 @@ fn row_with_bumps(
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     }
 }
 

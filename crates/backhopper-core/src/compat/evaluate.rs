@@ -604,6 +604,140 @@ fn check_files_against_pin(
     tally
 }
 
+/// Classify each hunk's preimage against the target-tree content of one
+/// file and return the drift reasons. The cross-branch counterpart of
+/// the self-pin check above: `target_content` is the file at the apply
+/// target, so `Missing` predicts a textual conflict and `Drifted` a
+/// clean shifted apply. `added_lines_collide` closes the add/add case
+/// the contiguous preimage match alone cannot see.
+pub fn classify_hunks_against_target(
+    path: &Path,
+    hunks: &[Hunk],
+    target_content: &str,
+) -> Vec<Reason> {
+    let target_lines: Vec<&str> = target_content.lines().collect();
+    let mut reasons = Vec::new();
+    for (idx, hunk) in hunks.iter().enumerate() {
+        let collision = || Reason::PostimageCollision {
+            path: path.to_path_buf(),
+            hunk_index: idx,
+        };
+        match classify_preimage(hunk, &target_lines) {
+            PreimageMatch::Missing { excerpt } => reasons.push(Reason::PreimageMissing {
+                path: path.to_path_buf(),
+                hunk_index: idx,
+                preimage_excerpt: excerpt,
+            }),
+            // A collision dominates the clean signals: it predicts the
+            // conflict the bare match would call clean.
+            PreimageMatch::Exact => {
+                if added_lines_collide(hunk, &target_lines) {
+                    reasons.push(collision());
+                }
+            }
+            PreimageMatch::Drifted { line_delta } => {
+                if added_lines_collide(hunk, &target_lines) {
+                    reasons.push(collision());
+                } else {
+                    reasons.push(Reason::PreimageDrifted {
+                        path: path.to_path_buf(),
+                        hunk_index: idx,
+                        line_delta,
+                    });
+                }
+            }
+        }
+    }
+    reasons
+}
+
+/// True when the hunk's added lines land where the target already
+/// diverged from the base, so a 3-way merge conflicts though the
+/// preimage matched. The contiguous match already protects interior
+/// insertions; only the file edges and a whole-file add escape it, and
+/// each is decidable from the hunk and target alone, no base needed.
+fn added_lines_collide(hunk: &Hunk, target: &[&str]) -> bool {
+    let preimage: Vec<&str> = preimage_lines(hunk);
+    let postimage: Vec<&str> = postimage_lines(hunk);
+    if preimage.is_empty() {
+        // Whole-file add: a conflict when the target already ships the
+        // file with content that is neither empty nor the same add.
+        return !target.is_empty() && target != postimage.as_slice();
+    }
+    let Some(found) = preimage_offset(&preimage, hunk.old_start, target) else {
+        return false;
+    };
+    let trailing = trailing_added_run(hunk);
+    if !trailing.is_empty() {
+        // No trailing context means the hunk reached base EOF; divergent
+        // target content past the matched block is an add/add there.
+        let tail = &target[(found + preimage.len()).min(target.len())..];
+        if !tail.is_empty() && tail != trailing.as_slice() {
+            return true;
+        }
+    }
+    let leading = leading_added_run(hunk);
+    if !leading.is_empty() && hunk.old_start <= 1 {
+        let head = &target[..found];
+        if !head.is_empty() && head != leading.as_slice() {
+            return true;
+        }
+    }
+    false
+}
+
+fn preimage_lines(hunk: &Hunk) -> Vec<&str> {
+    hunk.lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Context(t) | HunkLine::Removed(t) => Some(t.as_str()),
+            HunkLine::Added(_) => None,
+        })
+        .collect()
+}
+
+fn postimage_lines(hunk: &Hunk) -> Vec<&str> {
+    hunk.lines
+        .iter()
+        .filter_map(|l| match l {
+            HunkLine::Context(t) | HunkLine::Added(t) => Some(t.as_str()),
+            HunkLine::Removed(_) => None,
+        })
+        .collect()
+}
+
+fn leading_added_run(hunk: &Hunk) -> Vec<&str> {
+    hunk.lines
+        .iter()
+        .map_while(|l| match l {
+            HunkLine::Added(t) => Some(t.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn trailing_added_run(hunk: &Hunk) -> Vec<&str> {
+    let mut run: Vec<&str> = hunk
+        .lines
+        .iter()
+        .rev()
+        .map_while(|l| match l {
+            HunkLine::Added(t) => Some(t.as_str()),
+            _ => None,
+        })
+        .collect();
+    run.reverse();
+    run
+}
+
+fn preimage_offset(preimage: &[&str], old_start: usize, target: &[&str]) -> Option<usize> {
+    let expected = old_start.saturating_sub(1);
+    if matches_at(preimage, target, expected) {
+        return Some(expected);
+    }
+    find_subsequence(preimage, target)
+}
+
 /// The dual of `classify_preimage`: does the hunk's post-image
 /// (Context plus Added lines) already exist in the pin's file? Only
 /// hunks that add lines are considered; deletions get no signal.

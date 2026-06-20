@@ -87,6 +87,49 @@ fn a_new_sha_with_the_same_content_hits_l2_and_mints_an_alias() {
     assert!(matches!(cache.lookup(&key('b')), InputOutcome::Hit(_)));
 }
 
+// The batch path reads the fingerprint off the hit, never re-resolving
+// the patch it just skipped: a hit must carry the stored fingerprint,
+// equal to the one the content key computes.
+#[test]
+fn an_l1_hit_returns_the_stored_fingerprint() {
+    let dir = TempDir::new().unwrap();
+    let cache = VerdictCache::open(dir.path(), 42);
+    seed(&cache, 'a', "patch-hash");
+    let expected = key('a')
+        .content_key("patch-hash".to_owned(), Some("macro-env".to_owned()))
+        .fingerprint();
+    let InputOutcome::Hit(cached) = cache.lookup(&key('a')) else {
+        panic!("seeded SHA must hit L1");
+    };
+    assert!(expected.is_some());
+    assert_eq!(cached.fingerprint, expected);
+}
+
+// A cascade hop hits L2 with a fresh SHA: the fingerprint is the same
+// as the original's, so both rows join one outcome.
+#[test]
+fn an_l2_hit_returns_the_same_fingerprint_as_the_original() {
+    let dir = TempDir::new().unwrap();
+    let cache = VerdictCache::open(dir.path(), 42);
+    seed(&cache, 'a', "patch-hash");
+    let original = key('a')
+        .content_key("patch-hash".to_owned(), Some("macro-env".to_owned()))
+        .fingerprint();
+    let InputOutcome::MissOnInput(token) = cache.lookup(&key('b')) else {
+        panic!("a fresh SHA must miss L1");
+    };
+    let content = key('b').content_key("patch-hash".to_owned(), Some("macro-env".to_owned()));
+    let ContentOutcome::Hit(cached) = token.lookup_content(&content) else {
+        panic!("identical content must hit L2");
+    };
+    assert_eq!(cached.fingerprint, original);
+    // the minted alias carries it onto the L1 fast path too
+    let InputOutcome::Hit(aliased) = cache.lookup(&key('b')) else {
+        panic!("the alias must serve L1");
+    };
+    assert_eq!(aliased.fingerprint, original);
+}
+
 #[test]
 fn drifted_content_misses_l2() {
     let dir = TempDir::new().unwrap();

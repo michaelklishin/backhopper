@@ -4,9 +4,10 @@
 
 //! Workspace helper tasks.
 //!
-//! Today this crate ships one verb: `gen-schema`, which generates the
-//! JSON-schema document(s) used by `backhopper schema show <N>` and
-//! verifies that on-disk schema files match the current types.
+//! `gen-schema` generates the JSON-schema document(s) `backhopper schema
+//! show <N>` serves and verifies the on-disk files match the types.
+//! `eval-corpus` folds a corpus of paired verdicts and build outcomes
+//! into accuracy rates and a harvest worklist.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
+use backhopper_core::model::eval::{CorpusEntry, evaluate_corpus};
 use xtask::{CURRENT_SCHEMA_VERSION, rendered_schema};
 
 #[derive(Parser, Debug)]
@@ -35,6 +37,17 @@ enum Command {
         #[arg(long)]
         bless: bool,
     },
+    /// Fold a JSON corpus of `(fingerprint, verdict, outcome)` rows into
+    /// recall, precision, the vacuous-trust rate, and a list of breaks a
+    /// clean verdict missed. Prints the report as JSON.
+    EvalCorpus {
+        /// Path to the corpus JSON: an array of `CorpusEntry`.
+        #[arg(long)]
+        corpus: PathBuf,
+        /// When set, write the missed-break worklist here as JSON.
+        #[arg(long)]
+        harvest: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -47,7 +60,29 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Command::EvalCorpus { corpus, harvest } => {
+            match run_eval_corpus(&corpus, harvest.as_deref()) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("xtask eval-corpus: {e:?}");
+                    ExitCode::from(1)
+                }
+            }
+        }
     }
+}
+
+fn run_eval_corpus(corpus: &Path, harvest: Option<&Path>) -> Result<()> {
+    let bytes = fs::read(corpus).with_context(|| format!("read corpus {}", corpus.display()))?;
+    let entries: Vec<CorpusEntry> =
+        serde_json::from_slice(&bytes).context("parse corpus as a CorpusEntry array")?;
+    let report = evaluate_corpus(&entries);
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    if let Some(path) = harvest {
+        let body = serde_json::to_vec_pretty(&report.missed_breaks)?;
+        fs::write(path, body).with_context(|| format!("write harvest {}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn run_gen_schema(bless: bool) -> Result<()> {

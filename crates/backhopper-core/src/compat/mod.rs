@@ -5,8 +5,10 @@
 pub mod added_file;
 pub mod arg_shape;
 pub mod call_sites;
+pub mod define_resolve;
 pub(crate) mod diff;
 pub(crate) mod evaluate;
+pub mod local_call_resolve;
 pub mod otp;
 pub mod patch;
 pub(crate) mod patch_facts;
@@ -18,6 +20,7 @@ pub mod target_tree;
 pub mod target_tree_index;
 pub mod test_suite;
 
+pub use evaluate::classify_hunks_against_target;
 pub use otp::is_otp_module;
 pub use patch::{
     Analyzed, EvaluationContext, EvaluationFiles, EvaluationInput, Language, Patch, Pinned, Raw,

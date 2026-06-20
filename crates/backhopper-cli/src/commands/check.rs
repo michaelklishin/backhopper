@@ -32,6 +32,7 @@ use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 use backhopper_core::model::clearance::{BumpSummary, RoundClearance};
+use backhopper_core::model::fingerprint::VerdictFingerprint;
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
     SeriesName, TagName,
@@ -97,6 +98,11 @@ struct CompatPayload {
     /// Projects excluded from the tracked-dependency tally. Always
     /// emitted so a consumer can tell an empty set from an old binary.
     self_projects: Option<BTreeSet<ProjectName>>,
+    /// Stable join key for this verdict, omitted for inputs with no
+    /// cache key (patch, range, PR, or an unresolvable pin): absent and
+    /// `None` both mean "no join key", so nothing is lost by skipping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verdict_fingerprint: Option<VerdictFingerprint>,
 }
 
 #[derive(Debug, Serialize)]
@@ -749,6 +755,12 @@ fn apply_target_context(
     let findings =
         target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
     target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
+    let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
+    target_repo::merge_reasons_into_evaluation(define_reasons, evaluation);
+    let local_call_reasons = target_repo::collect_local_call_findings(&parsed.files, target_ctx);
+    target_repo::merge_reasons_into_evaluation(local_call_reasons, evaluation);
+    let preimage_reasons = target_repo::collect_target_preimage_findings(&parsed.files, target_ctx);
+    target_repo::merge_reasons_into_evaluation(preimage_reasons, evaluation);
     Ok(())
 }
 
@@ -1104,6 +1116,11 @@ fn run_check_patch(
             target_ctx.as_ref(),
         )
     });
+    // computed before the key is consumed by lookup; cheap, so it
+    // rides every path including the cache hit
+    let verdict_fingerprint = key
+        .as_ref()
+        .and_then(|k| k.fingerprint(&patch_hash_for_key(bytes)));
     let cache = SnapshotCache::new(&store);
     let evaluate_and_finish = |files: FileMap| -> CliResult<SeriesEvaluation> {
         let mut evaluation = evaluate_one(
@@ -1144,7 +1161,7 @@ fn run_check_patch(
         Ok(evaluation)
     };
     let mut evaluation = match session.lookup(key) {
-        SessionLookup::Hit(evaluation) => *evaluation,
+        SessionLookup::Hit(cached) => *cached.evaluation,
         SessionLookup::Bypassed => evaluate_and_finish(source_files.load(bytes)?)?,
         SessionLookup::Miss(miss) => {
             // a key exists, so provenance and a repo path do too
@@ -1154,7 +1171,7 @@ fn run_check_patch(
             let repo_dir = repo_dir_path.expect("commit-shaped inputs always carry a repo path");
             let macro_env = commit_macro_env(repo_dir, &p.diff_base, bytes)?;
             match session.consult_content(*miss, patch_hash_for_key(bytes), &macro_env) {
-                CacheLookupOutcome::Hit(evaluation) => *evaluation,
+                CacheLookupOutcome::Hit(cached) => *cached.evaluation,
                 CacheLookupOutcome::Miss(slot) => {
                     let evaluation = evaluate_and_finish(source_files.load(bytes)?)?;
                     slot.store(&evaluation);
@@ -1209,6 +1226,7 @@ fn run_check_patch(
         pr_commits: evaluation.pr_commits.clone(),
         project_suggestions: project_suggestions.clone(),
         self_projects: Some(self_project_names(cfg)),
+        verdict_fingerprint,
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
@@ -1420,6 +1438,9 @@ fn reason_md_label(r: &Reason) -> String {
         Reason::PreimageMissing {
             path, hunk_index, ..
         } => format!("PreimageMissing {} hunk #{hunk_index}", path.display()),
+        Reason::PostimageCollision { path, hunk_index } => {
+            format!("PostimageCollision {} hunk #{hunk_index}", path.display())
+        }
         Reason::PathRename {
             source_path,
             target_path,
@@ -1448,6 +1469,22 @@ fn reason_md_label(r: &Reason) -> String {
                 side_label(*side),
             )
         }
+        Reason::MacroUndefinedOnTarget {
+            source_path,
+            macro_name,
+            line,
+        } => format!("MacroUndefinedOnTarget ?{macro_name} in {source_path}:{line}"),
+        Reason::RecordUndefinedOnTarget {
+            source_path,
+            record_name,
+            line,
+        } => format!("RecordUndefinedOnTarget #{record_name} in {source_path}:{line}"),
+        Reason::LocalCallUndefinedOnTarget {
+            source_path,
+            function,
+            arity,
+            line,
+        } => format!("LocalCallUndefinedOnTarget {function}/{arity} in {source_path}:{line}"),
         _ => format!("{r:?}"),
     }
 }
@@ -2263,9 +2300,11 @@ fn run_batch(
                 }
                 Ok(evaluation)
             };
-            let mut evaluation = match lookup {
-                SessionLookup::Hit(evaluation) => *evaluation,
-                SessionLookup::Bypassed => evaluate(&mut source_files)?,
+            // captured per outcome: a hit reads it from the entry (no
+            // patch needed), a miss computes it before storing
+            let (mut evaluation, verdict_fingerprint) = match lookup {
+                SessionLookup::Hit(cached) => (*cached.evaluation, cached.fingerprint),
+                SessionLookup::Bypassed => (evaluate(&mut source_files)?, None),
                 SessionLookup::Miss(miss) => {
                     let resolved = input.as_ref().expect("resolved on the miss path");
                     if macro_env.is_none() {
@@ -2277,11 +2316,12 @@ fn run_batch(
                     }
                     let env = macro_env.as_ref().expect("computed above");
                     match session.consult_content(*miss, patch_hash_for_key(&resolved.bytes), env) {
-                        CacheLookupOutcome::Hit(evaluation) => *evaluation,
+                        CacheLookupOutcome::Hit(cached) => (*cached.evaluation, cached.fingerprint),
                         CacheLookupOutcome::Miss(slot) => {
+                            let fingerprint = slot.fingerprint().cloned();
                             let evaluation = evaluate(&mut source_files)?;
                             slot.store(&evaluation);
-                            evaluation
+                            (evaluation, fingerprint)
                         }
                     }
                 }
@@ -2303,6 +2343,7 @@ fn run_batch(
                 patch_facts: evaluation.patch_facts,
                 touched_paths: evaluation.touched_paths,
                 parent_count: NonZeroU32::new(planned.parents.len() as u32),
+                verdict_fingerprint,
             });
         }
     }

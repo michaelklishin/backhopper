@@ -12,7 +12,7 @@
 //! `RequiresAdaptation`, never `Incompatible`. They match the
 //! precedent set by `MissingType` and `PathRename`.
 
-use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RecordName, RelativePath};
 use backhopper_core::model::verdict::{IncludeDirective, Reason, TestCallSite, Verdict};
 
 fn mn(s: &str) -> ModuleName {
@@ -60,6 +60,81 @@ fn header_file_missing_is_non_blocking() {
         attempted_paths: vec![rp("deps/rabbitmq_amqp_client/include/foo.hrl")],
     };
     assert!(!r.is_blocking());
+}
+
+#[test]
+fn macro_undefined_on_target_is_non_blocking() {
+    let r = Reason::MacroUndefinedOnTarget {
+        source_path: rp("deps/rabbit/src/rabbit_mgmt_util.erl"),
+        macro_name: "OAUTH2_BOOTSTRAP_PATH".to_owned(),
+        line: 42,
+    };
+    assert!(!r.is_blocking());
+    assert!(matches!(
+        Verdict::from_reasons(vec![r]),
+        Verdict::RequiresAdaptation { .. }
+    ));
+}
+
+#[test]
+fn postimage_collision_is_non_blocking_and_path_scoped() {
+    let r = Reason::PostimageCollision {
+        path: "deps/rabbit/src/x.erl".into(),
+        hunk_index: 2,
+    };
+    assert!(!r.is_blocking());
+    assert!(r.is_path_scoped());
+    assert!(matches!(
+        Verdict::from_reasons(vec![r]),
+        Verdict::RequiresAdaptation { .. }
+    ));
+}
+
+#[test]
+fn postimage_collision_round_trips_through_serde() {
+    let r = Reason::PostimageCollision {
+        path: "deps/rabbit/src/x.erl".into(),
+        hunk_index: 2,
+    };
+    let s = serde_json::to_string(&r).unwrap();
+    assert!(s.contains("\"kind\":\"postimage_collision\""));
+    let back: Reason = serde_json::from_str(&s).unwrap();
+    assert_eq!(back, r);
+}
+
+#[test]
+fn record_and_local_call_undefined_are_non_blocking() {
+    let record = Reason::RecordUndefinedOnTarget {
+        source_path: rp("deps/rabbit/src/x.erl"),
+        record_name: RecordName::new("state").unwrap(),
+        line: 5,
+    };
+    let call = Reason::LocalCallUndefinedOnTarget {
+        source_path: rp("deps/rabbit/src/x.erl"),
+        function: fnm("reader_options"),
+        arity: Arity::new(1),
+        line: 9,
+    };
+    assert!(!record.is_blocking());
+    assert!(!call.is_blocking());
+    assert!(matches!(
+        Verdict::from_reasons(vec![record, call]),
+        Verdict::RequiresAdaptation { .. }
+    ));
+}
+
+#[test]
+fn macro_undefined_on_target_round_trips_through_serde() {
+    let r = Reason::MacroUndefinedOnTarget {
+        source_path: rp("deps/rabbit/src/x.erl"),
+        macro_name: "FOO".to_owned(),
+        line: 3,
+    };
+    let s = serde_json::to_string(&r).unwrap();
+    assert!(s.contains("\"kind\":\"macro_undefined_on_target\""));
+    assert!(s.contains("\"macro_name\":\"FOO\""));
+    let back: Reason = serde_json::from_str(&s).unwrap();
+    assert_eq!(back, r);
 }
 
 #[test]

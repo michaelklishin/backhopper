@@ -18,11 +18,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use backhopper_cache::{
-    CacheKeyInputs, CacheMode, ContentOutcome, EvaluationShape, InputMissToken, InputOutcome,
-    MissToken, PinKeyRow, TargetKeyInputs, VerdictCache, content_hash, hash_bytes, hash_file,
+    CacheKeyInputs, CacheMode, CachedVerdict, ContentOutcome, EvaluationShape, InputMissToken,
+    InputOutcome, MissToken, PinKeyRow, TargetKeyInputs, VerdictCache, content_hash, hash_bytes,
+    hash_file,
 };
 use backhopper_core::config::Config;
 use backhopper_core::envelope_version::CURRENT_SCHEMA_VERSION;
+use backhopper_core::model::fingerprint::VerdictFingerprint;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{Pin, PinSpec};
 use backhopper_core::model::verdict::SeriesEvaluation;
@@ -75,7 +77,7 @@ pub struct CacheSession {
 pub enum SessionLookup<'c> {
     /// The session or this pair is uncacheable; evaluate normally.
     Bypassed,
-    Hit(Box<SeriesEvaluation>),
+    Hit(CachedVerdict),
     Miss(Box<SessionMiss<'c>>),
 }
 
@@ -90,7 +92,7 @@ pub struct SessionMiss<'c> {
 /// L2 consultation result.
 #[derive(Debug)]
 pub enum CacheLookupOutcome<'c> {
-    Hit(Box<SeriesEvaluation>),
+    Hit(CachedVerdict),
     Miss(SessionStore<'c>),
 }
 
@@ -102,6 +104,13 @@ pub struct SessionStore<'c> {
 }
 
 impl SessionStore<'_> {
+    /// The fingerprint that will be stored, for the payload on the
+    /// miss path.
+    #[must_use]
+    pub fn fingerprint(&self) -> Option<&VerdictFingerprint> {
+        self.token.fingerprint()
+    }
+
     pub fn store(self, evaluation: &SeriesEvaluation) {
         self.token.store(evaluation);
     }
@@ -251,9 +260,9 @@ impl CacheSession {
             return SessionLookup::Bypassed;
         };
         match cache.lookup(&key) {
-            InputOutcome::Hit(evaluation) => {
+            InputOutcome::Hit(cached) => {
                 self.counters.l1_hits.set(self.counters.l1_hits.get() + 1);
-                SessionLookup::Hit(evaluation)
+                SessionLookup::Hit(cached)
             }
             InputOutcome::MissOnInput(token) => {
                 SessionLookup::Miss(Box::new(SessionMiss { token, key }))
@@ -278,9 +287,9 @@ impl CacheSession {
         };
         let content = miss.key.content_key(patch_blake3, macro_env_blake3);
         match miss.token.lookup_content(&content) {
-            ContentOutcome::Hit(evaluation) => {
+            ContentOutcome::Hit(cached) => {
                 self.counters.l2_hits.set(self.counters.l2_hits.get() + 1);
-                CacheLookupOutcome::Hit(evaluation)
+                CacheLookupOutcome::Hit(cached)
             }
             ContentOutcome::Miss(token) => {
                 self.counters.misses.set(self.counters.misses.get() + 1);

@@ -11,11 +11,13 @@ use std::collections::BTreeSet;
 
 use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::clearance::RoundClearance;
-use backhopper_core::model::names::{CommitSha, DependencyName, ProjectName, SeriesName, TagName};
+use backhopper_core::model::names::{
+    CommitSha, DependencyName, ProjectName, RelativePath, SeriesName, TagName,
+};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{
-    BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump, PinVerdict, SeriesVerdict,
-    Verdict,
+    BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump, PinVerdict, Reason,
+    SeriesVerdict, Verdict,
 };
 
 fn commit(c: char) -> CommitSha {
@@ -66,11 +68,29 @@ fn row_with_diagnostics(
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     }
 }
 
 fn no_self() -> BTreeSet<ProjectName> {
     BTreeSet::new()
+}
+
+// An unresolved intra-repo macro forces Findings even with no tracked
+// reference: it rides the RequiresAdaptation tier the roll-up counts.
+#[test]
+fn a_macro_undefined_finding_forces_findings_with_zero_tracked() {
+    let verdict = Verdict::RequiresAdaptation {
+        reasons: vec![Reason::MacroUndefinedOnTarget {
+            source_path: RelativePath::new("deps/rabbit/src/x.erl").unwrap(),
+            macro_name: "OAUTH2_BOOTSTRAP_PATH".to_owned(),
+            line: 1,
+        }],
+    };
+    let rows = [row('a', "v4.1.x", vec![tracked_pin("rabbit", verdict, 0)])];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(!clearance.is_clean());
+    assert_eq!(clearance.facts().tracked, 0);
 }
 
 #[test]

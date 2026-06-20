@@ -19,6 +19,7 @@
 //! values) is invisible to the scanner: those cases land in a
 //! follow-up `--deep-helper-resolution` pass.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::str;
 
@@ -41,6 +42,340 @@ pub struct BehaviourRef {
 pub struct IncludeRef {
     pub directive: IncludeDirective,
     pub line: u32,
+}
+
+/// One scanned `?MACRO` or `#record` use, with its line for the report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScannedUse {
+    pub name: String,
+    pub line: u32,
+}
+
+/// Macro names defined via `-define(NAME, ...)` or
+/// `-define(NAME(Args), ...)`. Conditional nesting is ignored: a macro
+/// with any `-define` counts as present, so the resolver never
+/// false-flags a defined macro (the rare inactive-branch define is the
+/// one documented miss).
+pub fn extract_defined_macros(src: &str) -> BTreeSet<String> {
+    iter_attribute_bodies(src, &["define"])
+        .into_iter()
+        .filter_map(|hit| parse_macro_define_name(hit.body))
+        .collect()
+}
+
+/// Every `?MACRO` reference in `src`, comments and strings skipped.
+/// `??NAME` (stringify) counts as a use of `NAME`.
+pub fn extract_macro_uses(src: &str) -> Vec<ScannedUse> {
+    scan_uses(src, b'?', |bytes, j| {
+        let mut k = j;
+        while k < bytes.len() && bytes[k] == b'?' {
+            k += 1;
+        }
+        let start = k;
+        while k < bytes.len() && is_name_char(bytes[k]) {
+            k += 1;
+        }
+        (start, k)
+    })
+}
+
+/// Every `#record` use in `src` (creation, match, update, field
+/// access), comments and strings skipped. `#{...}` maps have no name
+/// and are ignored.
+pub fn extract_record_uses(src: &str) -> Vec<ScannedUse> {
+    scan_uses(src, b'#', |bytes, j| {
+        let mut start = j;
+        if bytes.get(start) == Some(&b'\'') {
+            start += 1;
+            let mut k = start;
+            while k < bytes.len() && bytes[k] != b'\'' {
+                k += 1;
+            }
+            return (start, k);
+        }
+        let mut k = start;
+        while k < bytes.len() && is_name_char(bytes[k]) {
+            k += 1;
+        }
+        (start, k)
+    })
+}
+
+/// Record names defined via `-record(name, {...})`.
+pub fn extract_defined_records(src: &str) -> BTreeSet<String> {
+    iter_attribute_bodies(src, &["record"])
+        .into_iter()
+        .filter_map(|hit| parse_single_atom_argument(hit.body))
+        .collect()
+}
+
+/// Walk `src` for `sigil`-prefixed uses, skipping comments, strings,
+/// and char literals. `name_span` returns the byte range of the name
+/// just past the sigil; an empty range (e.g. a `#{` map) yields no use.
+fn scan_uses(
+    src: &str,
+    sigil: u8,
+    name_span: impl Fn(&[u8], usize) -> (usize, usize),
+) -> Vec<ScannedUse> {
+    let bytes = src.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut line = 1u32;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => {
+                line += 1;
+                i += 1;
+            }
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b if b == sigil => {
+                let (start, end) = name_span(bytes, i + 1);
+                if end > start {
+                    out.push(ScannedUse {
+                        name: String::from_utf8_lossy(&bytes[start..end]).into_owned(),
+                        line,
+                    });
+                }
+                i = end.max(i + 1);
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// One `name(Args)` occurrence: a clause head when followed by `->` or
+/// `when`, a call otherwise. Arity is the top-level argument count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    pub name: String,
+    pub arity: usize,
+    pub line: u32,
+    pub is_definition: bool,
+}
+
+/// Every `name(Args)` the scanner saw, classified into definitions and
+/// calls. Qualified (`mod:f(`), macro (`?f(`), and `fun name(` forms
+/// are skipped, as are reserved words.
+pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
+    let bytes = src.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut line = 1u32;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => {
+                line += 1;
+                i += 1;
+            }
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b if b.is_ascii_lowercase() => {
+                let start = i;
+                let mut j = i;
+                while j < bytes.len() && is_name_char(bytes[j]) {
+                    j += 1;
+                }
+                let name = &bytes[start..j];
+                let qualified = start > 0 && matches!(bytes[start - 1], b':' | b'?' | b'#');
+                if bytes.get(j) == Some(&b'(') && !qualified && !is_reserved_word(name) {
+                    if let Some(close) = match_parens(bytes, j + 1) {
+                        let arity = top_level_arity(&bytes[j + 1..close]);
+                        let is_definition = followed_by_clause_arrow(bytes, close + 1);
+                        out.push(FunctionSignature {
+                            name: String::from_utf8_lossy(name).into_owned(),
+                            arity,
+                            line,
+                            is_definition,
+                        });
+                        line += count_newlines(&bytes[start..=close]);
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                i = j;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// `(Module, Function, Arity)` triples imported via `-import(mod, [f/a,
+/// ...])`, by function and arity (the module is irrelevant once
+/// imported into the local namespace).
+pub fn extract_imports(src: &str) -> BTreeSet<(String, usize)> {
+    let mut out = BTreeSet::new();
+    for hit in iter_attribute_bodies(src, &["import"]) {
+        let Some(open) = hit.body.find('[') else {
+            continue;
+        };
+        let Some(close) = hit.body[open..].find(']') else {
+            continue;
+        };
+        for entry in hit.body[open + 1..open + close].split(',') {
+            if let Some((name, arity)) = parse_fun_arity(entry) {
+                out.insert((name, arity));
+            }
+        }
+    }
+    out
+}
+
+/// True when the module declares a `parse_transform`, which can inject
+/// functions the scanner cannot see: the caller suppresses local-call
+/// flagging for such a module.
+#[must_use]
+pub fn declares_parse_transform(src: &str) -> bool {
+    iter_attribute_bodies(src, &["compile"])
+        .iter()
+        .any(|hit| hit.body.contains("parse_transform"))
+}
+
+fn parse_fun_arity(entry: &str) -> Option<(String, usize)> {
+    let (name, arity) = entry.trim().split_once('/')?;
+    let name = name.trim();
+    if name.is_empty() || !name.bytes().all(is_name_char) {
+        return None;
+    }
+    Some((name.to_owned(), arity.trim().parse().ok()?))
+}
+
+fn is_reserved_word(name: &[u8]) -> bool {
+    matches!(
+        name,
+        b"after"
+            | b"and"
+            | b"andalso"
+            | b"band"
+            | b"begin"
+            | b"bnot"
+            | b"bor"
+            | b"bsl"
+            | b"bsr"
+            | b"bxor"
+            | b"case"
+            | b"catch"
+            | b"cond"
+            | b"div"
+            | b"end"
+            | b"fun"
+            | b"if"
+            | b"let"
+            | b"maybe"
+            | b"not"
+            | b"of"
+            | b"or"
+            | b"orelse"
+            | b"receive"
+            | b"rem"
+            | b"try"
+            | b"when"
+            | b"xor"
+    )
+}
+
+/// True when, after skipping whitespace, the bytes at `pos` begin a
+/// clause arrow (`->`) or a `when` guard: the marks of a definition.
+fn followed_by_clause_arrow(bytes: &[u8], pos: usize) -> bool {
+    let mut i = pos;
+    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+        i += 1;
+    }
+    bytes[i..].starts_with(b"->") || bytes[i..].starts_with(b"when")
+}
+
+fn top_level_arity(args: &[u8]) -> usize {
+    if args.iter().all(|b| b.is_ascii_whitespace()) {
+        return 0;
+    }
+    let mut depth = 0i32;
+    let mut commas = 0usize;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b'"' => {
+                i = skip_string(args, i, b'"');
+                continue;
+            }
+            b'\'' => {
+                i = skip_string(args, i, b'\'');
+                continue;
+            }
+            b'$' => {
+                i += 2;
+                continue;
+            }
+            b',' if depth == 0 => commas += 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    commas + 1
+}
+
+fn count_newlines(bytes: &[u8]) -> u32 {
+    let mut n = 0u32;
+    for &b in bytes {
+        if b == b'\n' {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// `erlc` predefines these, so a reference to one is never undefined.
+#[must_use]
+pub fn is_predefined_macro(name: &str) -> bool {
+    matches!(
+        name,
+        "MODULE"
+            | "MODULE_STRING"
+            | "FILE"
+            | "LINE"
+            | "MACHINE"
+            | "FUNCTION_NAME"
+            | "FUNCTION_ARITY"
+            | "OTP_RELEASE"
+            | "FEATURE_AVAILABLE"
+            | "FEATURE_ENABLED"
+    )
+}
+
+fn is_name_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
+}
+
+fn parse_macro_define_name(body: &str) -> Option<String> {
+    let trimmed = body.trim_start();
+    let mut chars = trimmed.char_indices();
+    let (_, first) = chars.next()?;
+    if first == '\'' {
+        let end = trimmed[1..].find('\'')?;
+        return Some(trimmed[1..=end].to_owned());
+    }
+    if !(first.is_ascii_alphanumeric() || first == '_' || first == '@') {
+        return None;
+    }
+    let end = trimmed
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '@'))
+        .unwrap_or(trimmed.len());
+    Some(trimmed[..end].to_owned())
 }
 
 /// Extract every `-behaviour(M)` / `-behavior(M)` declaration in

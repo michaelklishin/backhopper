@@ -80,6 +80,23 @@ proptest! {
         prop_assert_ne!(content_hash(&key).unwrap(), content_hash(&other).unwrap());
     }
 
+    // The fingerprint must survive an upgrade and a cherry-pick hop:
+    // the version fields and the SHA never move it.
+    #[test]
+    fn fingerprint_is_invariant_to_version_and_sha(key in arb_key(), patch in "[a-f0-9]{16}") {
+        let mut other = key.clone();
+        other.crate_version.push('z');
+        other.schema_version += 1;
+        other.commit = if other.commit == hex_sha(0) { hex_sha(1) } else { hex_sha(0) };
+        prop_assert_eq!(key.fingerprint(&patch), other.fingerprint(&patch));
+    }
+
+    #[test]
+    fn fingerprint_tracks_the_patch(key in arb_key(), a in "[a-f0-9]{16}", b in "[a-f0-9]{16}") {
+        prop_assume!(a != b);
+        prop_assert_ne!(key.fingerprint(&a), key.fingerprint(&b));
+    }
+
     #[test]
     fn the_content_key_carries_every_shared_component(key in arb_key(), patch in "[a-f0-9]{16}") {
         let content = key.content_key(patch.clone(), Some("env".to_owned()));

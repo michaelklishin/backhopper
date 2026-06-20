@@ -11,6 +11,7 @@ use std::num::NonZeroU32;
 use serde::{Deserialize, Serialize};
 
 use crate::model::clearance::RoundClearance;
+use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
@@ -112,4 +113,10 @@ pub struct BatchResult {
     /// producers always emit it.
     #[serde(default)]
     pub parent_count: Option<NonZeroU32>,
+
+    /// Stable join key tying this row's verdict to a later build
+    /// outcome. Absent for uncacheable rows (`--no-cache`, an
+    /// unresolvable pin) and pre-fingerprint producers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_fingerprint: Option<VerdictFingerprint>,
 }

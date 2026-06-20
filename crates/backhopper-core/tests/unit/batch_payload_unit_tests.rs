@@ -34,6 +34,7 @@ fn batch_result_round_trips_with_empty_collections() {
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     };
     let json = serde_json::to_string(&row).expect("serialise");
     let back: BatchResult = serde_json::from_str(&json).expect("deserialise");
@@ -51,6 +52,7 @@ fn pr_commits_distinguishes_none_from_empty_some() {
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     };
     let json_none = serde_json::to_string(&row).expect("none serialises");
     row.pr_commits = Some(Vec::new());
@@ -74,6 +76,7 @@ fn pr_commits_some_empty_round_trips_through_serde() {
         touched_paths: Vec::new(),
         pr_commits: Some(Vec::new()),
         parent_count: None,
+        verdict_fingerprint: None,
     };
     let json = serde_json::to_string(&row).unwrap();
     let back: BatchResult = serde_json::from_str(&json).unwrap();
@@ -98,6 +101,7 @@ fn pr_commits_with_entries_round_trips() {
         touched_paths: Vec::new(),
         pr_commits: Some(vec![pc.clone()]),
         parent_count: None,
+        verdict_fingerprint: None,
     };
     let json = serde_json::to_string(&row).unwrap();
     let back: BatchResult = serde_json::from_str(&json).unwrap();
@@ -119,6 +123,7 @@ fn touched_paths_emit_in_diff_encounter_order() {
         ],
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     };
     let json = serde_json::to_value(&row).expect("serialise");
     let arr = json

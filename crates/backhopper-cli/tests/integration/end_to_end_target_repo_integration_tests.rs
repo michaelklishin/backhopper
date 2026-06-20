@@ -532,3 +532,237 @@ fn missing_translations_file_is_hard_error() {
         "expected error about missing translations file, got: {err}"
     );
 }
+
+// A cleanly-applying hunk references a macro the target branch never
+// had: flagged pre-pick rather than at the build.
+fn make_macro_source_repo() -> FixtureRepo {
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/demo/src/x.erl",
+        "-module(x).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("seed with the macro defined");
+    repo.tag("source-v1");
+    repo.write_file(
+        "deps/demo/src/x.erl",
+        "-module(x).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([go/0, cookie/0]).\ngo() -> ok.\ncookie() -> ?OAUTH2_BOOTSTRAP_PATH.\n",
+    );
+    repo.commit("reference the macro from a new function");
+    repo
+}
+
+fn make_macro_target_repo() -> FixtureRepo {
+    let repo = FixtureRepo::new();
+    // same module, but the branch never had the macro
+    repo.write_file(
+        "deps/demo/src/x.erl",
+        "-module(x).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    repo.commit("seed without the macro");
+    repo
+}
+
+#[test]
+fn macro_undefined_on_target_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = make_macro_source_repo();
+    let target = make_macro_target_repo();
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let flagged = reasons
+        .iter()
+        .find(|r| r["kind"] == "macro_undefined_on_target")
+        .unwrap_or_else(|| panic!("expected macro_undefined_on_target in {reasons:?}"));
+    assert_eq!(flagged["macro_name"], "OAUTH2_BOOTSTRAP_PATH");
+}
+
+// A modified region the target branch diverged on: the preimage block
+// is absent on target, so the pick will conflict. Flagged pre-pick.
+fn make_preimage_source_repo() -> FixtureRepo {
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/demo/src/y.erl",
+        "-module(y).\n-export([f/0]).\nf() -> original.\n",
+    );
+    repo.commit("seed");
+    repo.tag("source-v1");
+    repo.write_file(
+        "deps/demo/src/y.erl",
+        "-module(y).\n-export([f/0]).\nf() -> changed.\n",
+    );
+    repo.commit("change f");
+    repo
+}
+
+fn make_preimage_target_repo() -> FixtureRepo {
+    let repo = FixtureRepo::new();
+    repo.write_file(
+        "deps/demo/src/y.erl",
+        "-module(y).\n-export([f/0]).\nf() -> diverged.\n",
+    );
+    repo.commit("seed diverged");
+    repo
+}
+
+#[test]
+fn target_preimage_divergence_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = make_preimage_source_repo();
+    let target = make_preimage_target_repo();
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    assert!(
+        reasons.iter().any(|r| r["kind"] == "preimage_missing"),
+        "expected preimage_missing in {reasons:?}"
+    );
+}
+
+// A `#record{}` use whose definition the target branch lacks.
+#[test]
+fn record_undefined_on_target_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = FixtureRepo::new();
+    source.write_file(
+        "deps/demo/src/z.erl",
+        "-module(z).\n-record(newrec, {field}).\n-export([f/1]).\nf(S) -> S.\n",
+    );
+    source.commit("seed with the record");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/z.erl",
+        "-module(z).\n-record(newrec, {field}).\n-export([f/1]).\nf(S) -> S#newrec.field.\n",
+    );
+    source.commit("use the record");
+    let target = FixtureRepo::new();
+    target.write_file(
+        "deps/demo/src/z.erl",
+        "-module(z).\n-export([f/1]).\nf(S) -> S.\n",
+    );
+    target.commit("seed without the record");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let r = reasons
+        .iter()
+        .find(|r| r["kind"] == "record_undefined_on_target")
+        .unwrap_or_else(|| panic!("expected record_undefined_on_target in {reasons:?}"));
+    assert_eq!(r["record_name"], "newrec");
+}
+
+// A local call to a function a sibling commit added that the target lacks.
+#[test]
+fn local_call_undefined_on_target_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = FixtureRepo::new();
+    source.write_file(
+        "deps/demo/src/w.erl",
+        "-module(w).\n-export([g/0]).\nhelper() -> ok.\ng() -> ok.\n",
+    );
+    source.commit("seed with helper");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/w.erl",
+        "-module(w).\n-export([g/0]).\nhelper() -> ok.\ng() -> helper().\n",
+    );
+    source.commit("call helper");
+    let target = FixtureRepo::new();
+    target.write_file(
+        "deps/demo/src/w.erl",
+        "-module(w).\n-export([g/0]).\ng() -> ok.\n",
+    );
+    target.commit("seed without helper");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let r = reasons
+        .iter()
+        .find(|r| r["kind"] == "local_call_undefined_on_target")
+        .unwrap_or_else(|| panic!("expected local_call_undefined_on_target in {reasons:?}"));
+    assert_eq!(r["function"], "helper");
+}

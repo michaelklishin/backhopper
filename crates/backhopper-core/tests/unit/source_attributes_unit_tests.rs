@@ -6,8 +6,91 @@
 //! tests that need a real `TargetTreeIndex` live in
 //! `integration/source_attributes_resolve_integration_tests.rs`.
 
-use backhopper_core::compat::source_attributes::{extract_behaviours, extract_includes};
+use backhopper_core::compat::source_attributes::{
+    declares_parse_transform, extract_behaviours, extract_defined_macros, extract_defined_records,
+    extract_function_signatures, extract_imports, extract_includes, extract_macro_uses,
+    extract_record_uses, is_predefined_macro,
+};
 use backhopper_core::model::verdict::IncludeDirective;
+
+#[test]
+fn record_uses_skip_maps_and_capture_names() {
+    let uses = extract_record_uses("f(S) -> S#state.field;\ng() -> #{k => v}.\n");
+    assert_eq!(
+        uses.iter().map(|u| u.name.as_str()).collect::<Vec<_>>(),
+        ["state"]
+    );
+}
+
+#[test]
+fn defined_records_are_extracted() {
+    let defs = extract_defined_records("-record(state, {a, b}).\n-record(cfg, {}).\n");
+    assert!(defs.contains("state"));
+    assert!(defs.contains("cfg"));
+}
+
+#[test]
+fn function_signatures_classify_definitions_and_calls() {
+    let sigs = extract_function_signatures("f(A) -> g(A).\ng(X) when X > 0 -> X.\n");
+    let f = sigs.iter().find(|s| s.name == "f").unwrap();
+    assert_eq!((f.arity, f.is_definition), (1, true));
+    let call = sigs
+        .iter()
+        .find(|s| s.name == "g" && !s.is_definition)
+        .unwrap();
+    assert_eq!(call.arity, 1);
+    let guarded = sigs
+        .iter()
+        .find(|s| s.name == "g" && s.is_definition)
+        .unwrap();
+    assert_eq!(guarded.arity, 1);
+}
+
+#[test]
+fn imports_are_extracted_by_name_and_arity() {
+    let imps = extract_imports("-import(lists, [map/2, foldl/3]).\n");
+    assert!(imps.contains(&("map".to_owned(), 2)));
+    assert!(imps.contains(&("foldl".to_owned(), 3)));
+}
+
+#[test]
+fn parse_transform_is_detected() {
+    assert!(declares_parse_transform(
+        "-compile({parse_transform, lager_transform}).\n"
+    ));
+    assert!(!declares_parse_transform("-compile([debug_info]).\n"));
+}
+
+#[test]
+fn macro_uses_capture_name_and_line_and_skip_comments_and_strings() {
+    let src = "f() ->\n    %% ?COMMENTED\n    X = \"?QUOTED\",\n    ?REAL.\n";
+    let uses = extract_macro_uses(src);
+    assert_eq!(uses.len(), 1);
+    assert_eq!(uses[0].name, "REAL");
+    assert_eq!(uses[0].line, 4);
+}
+
+#[test]
+fn macro_use_stringify_form_names_the_macro() {
+    let uses = extract_macro_uses("g() -> ??NAME.\n");
+    assert_eq!(uses.len(), 1);
+    assert_eq!(uses[0].name, "NAME");
+}
+
+#[test]
+fn defined_macros_cover_constant_and_function_forms() {
+    let src = "-define(FOO, 1).\n-define(bar(X), X + 1).\n";
+    let defs = extract_defined_macros(src);
+    assert!(defs.contains("FOO"));
+    assert!(defs.contains("bar"));
+}
+
+#[test]
+fn predefined_macros_are_recognised() {
+    assert!(is_predefined_macro("MODULE"));
+    assert!(is_predefined_macro("LINE"));
+    assert!(!is_predefined_macro("OAUTH2_BOOTSTRAP_PATH"));
+}
 
 #[test]
 fn extract_behaviours_finds_single_attribute() {

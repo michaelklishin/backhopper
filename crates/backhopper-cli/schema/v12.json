@@ -357,6 +357,17 @@
           },
           "verdict": {
             "$ref": "#/$defs/SeriesVerdict"
+          },
+          "verdict_fingerprint": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/VerdictFingerprint"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable join key tying this row's verdict to a later build\noutcome. Absent for uncacheable rows (`--no-cache`, an\nunresolvable pin) and pre-fingerprint producers."
           }
         },
         "required": [
@@ -1327,6 +1338,29 @@
             "type": "object"
           },
           {
+            "description": "The hunk's preimage matches, but its added lines land at a file\nedge where the target already has divergent content the base\nlacked: an add/add a contiguous preimage match cannot see. The\n3-way cherry-pick conflicts where the preimage-only check reads\nclean. Non-blocking: the operator resolves the overlap.",
+            "properties": {
+              "hunk_index": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "postimage_collision",
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path",
+              "hunk_index"
+            ],
+            "type": "object"
+          },
+          {
             "description": "The preimage block does not appear anywhere in the file. The\npatch was authored against a tree where the lines existed; on\nthis pin they don't. Structurally inapplicable: the operator\nneeds an excerpt to reason about why.",
             "properties": {
               "hunk_index": {
@@ -1975,6 +2009,94 @@
             "type": "object"
           },
           {
+            "description": "A touched `.erl` or `.hrl` file references `?MACRO` on an added\nline, but `MACRO` is defined nowhere the target tree reaches (not\nin the file, its includes, or the patch itself) and is not\npredefined. Compiles on source, dangles on target. Non-blocking:\nthe operator drops or adapts the reference.",
+            "properties": {
+              "kind": {
+                "const": "macro_undefined_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "macro_name": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "macro_name",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A touched `.erl` or `.hrl` file uses `#record{}` on an added\nline, but `record` is defined nowhere the target tree reaches and\nis not added by the patch. Sister of `MacroUndefinedOnTarget` for\nthe record namespace; non-blocking.",
+            "properties": {
+              "kind": {
+                "const": "record_undefined_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "record_name": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "record_name",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A touched `.erl` file calls an unqualified `f/a` on an added line\nthat the target version of the same module neither defines,\nexports, imports, nor inherits as an auto-imported BIF. The\nfunction-namespace counterpart; non-blocking.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "local_call_undefined_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "function",
+              "arity",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
             "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
             "properties": {
               "kind": {
@@ -2542,6 +2664,10 @@
             "type": "object"
           }
         ]
+      },
+      "VerdictFingerprint": {
+        "description": "A verdict's stable identity for measurement: equal fingerprints\nmean the same patch against the same target and pins, whatever\nbackhopper version produced either side.",
+        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4074,6 +4200,29 @@
                 "type": "object"
               },
               {
+                "description": "The hunk's preimage matches, but its added lines land at a file\nedge where the target already has divergent content the base\nlacked: an add/add a contiguous preimage match cannot see. The\n3-way cherry-pick conflicts where the preimage-only check reads\nclean. Non-blocking: the operator resolves the overlap.",
+                "properties": {
+                  "hunk_index": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "postimage_collision",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path",
+                  "hunk_index"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "The preimage block does not appear anywhere in the file. The\npatch was authored against a tree where the lines existed; on\nthis pin they don't. Structurally inapplicable: the operator\nneeds an excerpt to reason about why.",
                 "properties": {
                   "hunk_index": {
@@ -4718,6 +4867,94 @@
                   "source_path",
                   "include_directive",
                   "attempted_paths"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` or `.hrl` file references `?MACRO` on an added\nline, but `MACRO` is defined nowhere the target tree reaches (not\nin the file, its includes, or the patch itself) and is not\npredefined. Compiles on source, dangles on target. Non-blocking:\nthe operator drops or adapts the reference.",
+                "properties": {
+                  "kind": {
+                    "const": "macro_undefined_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "macro_name": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "macro_name",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` or `.hrl` file uses `#record{}` on an added\nline, but `record` is defined nowhere the target tree reaches and\nis not added by the patch. Sister of `MacroUndefinedOnTarget` for\nthe record namespace; non-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "record_undefined_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "record_name": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "record_name",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` file calls an unqualified `f/a` on an added line\nthat the target version of the same module neither defines,\nexports, imports, nor inherits as an auto-imported BIF. The\nfunction-namespace counterpart; non-blocking.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "local_call_undefined_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "function",
+                  "arity",
+                  "line"
                 ],
                 "type": "object"
               },

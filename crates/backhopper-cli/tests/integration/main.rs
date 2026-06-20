@@ -21,6 +21,7 @@ mod end_to_end_json_integration_tests;
 mod end_to_end_merge_batch_integration_tests;
 mod end_to_end_multi_app_integration_tests;
 mod end_to_end_pin_bump_integration_tests;
+mod end_to_end_preimage_recall_integration_tests;
 mod end_to_end_rev_resolve_integration_tests;
 mod end_to_end_schema_integration_tests;
 mod end_to_end_scope_integration_tests;

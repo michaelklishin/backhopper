@@ -103,11 +103,11 @@ fn run_commit(
         };
         let key = session.bisect_key(&store, commit, &project, tag);
         let evaluation = match session.lookup(key) {
-            SessionLookup::Hit(evaluation) => *evaluation,
+            SessionLookup::Hit(cached) => *cached.evaluation,
             SessionLookup::Bypassed => evaluate()?,
             SessionLookup::Miss(miss) => {
                 match session.consult_content(*miss, patch_blake3.clone(), &MacroEnv::Unused) {
-                    CacheLookupOutcome::Hit(evaluation) => *evaluation,
+                    CacheLookupOutcome::Hit(cached) => *cached.evaluation,
                     CacheLookupOutcome::Miss(slot) => {
                         let evaluation = evaluate()?;
                         slot.store(&evaluation);

@@ -44,6 +44,7 @@ fn row(c: char, pins: Vec<PinVerdict>, diagnostics: Diagnostics) -> BatchResult 
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
+        verdict_fingerprint: None,
     }
 }
 

@@ -11,13 +11,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
+use backhopper_core::compat::classify_hunks_against_target;
+use backhopper_core::compat::define_resolve::{DefineSubject, analyse_define_symbols};
+use backhopper_core::compat::local_call_resolve::{LocalCallSubject, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
 };
 use backhopper_core::config::{Config, PathTranslations};
-use backhopper_core::model::names::{GitRef, ModuleName, RelativePath};
+use backhopper_core::model::names::{CommitSha, GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesSummary,
     SeriesVerdict, TranslationSource, Verdict,
@@ -275,6 +278,146 @@ pub fn collect_added_file_findings(
     )
 }
 
+/// Added-line text of every touched `.erl` or `.hrl` file, modified
+/// files included: a macro or record reference dangles on a
+/// cleanly-modified file too, so this does not require `old_path` to be
+/// absent.
+fn collect_define_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, String)> {
+    let mut out = Vec::new();
+    for file in files {
+        if file.binary {
+            continue;
+        }
+        let Some(new_path) = file.new_path.as_ref() else {
+            continue;
+        };
+        if new_path == Path::new("/dev/null") || !is_erl_or_hrl(new_path) {
+            continue;
+        }
+        let Some(path) = new_path.to_str().and_then(|s| RelativePath::new(s).ok()) else {
+            continue;
+        };
+        let mut added = String::new();
+        for hunk in &file.hunks {
+            for line in &hunk.lines {
+                if let HunkLine::Added(s) = line {
+                    added.push_str(s);
+                    added.push('\n');
+                }
+            }
+        }
+        if !added.is_empty() {
+            out.push((path, added));
+        }
+    }
+    out
+}
+
+/// Resolve `?MACRO` and `#record` uses the patch adds against the
+/// target tree, reading target blobs through `repo` at the indexed
+/// commit (the path as-is, then any configured translation).
+pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+    let subjects_text = collect_define_subject_text(files);
+    if subjects_text.is_empty() {
+        return Vec::new();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let subjects: Vec<DefineSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t)| DefineSubject {
+            source_path: p,
+            added_text: t,
+        })
+        .collect();
+    analyse_define_symbols(&subjects, &ctx.index, &read_target)
+}
+
+/// Resolve unqualified calls the patch adds against the target
+/// module's function set. `.erl` files only: a `.hrl` defines no
+/// function set of its own.
+pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+    let subjects_text: Vec<(RelativePath, String)> = collect_define_subject_text(files)
+        .into_iter()
+        .filter(|(p, _)| p.as_str().ends_with(".erl"))
+        .collect();
+    if subjects_text.is_empty() {
+        return Vec::new();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let subjects: Vec<LocalCallSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t)| LocalCallSubject {
+            source_path: p,
+            added_text: t,
+        })
+        .collect();
+    analyse_local_calls(&subjects, &read_target)
+}
+
+/// Classify every touched file's hunks against the target tree:
+/// `Missing` predicts a textual conflict, `Drifted` a clean shifted
+/// apply.
+pub fn collect_target_preimage_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let mut reasons = Vec::new();
+    for file in files {
+        if file.binary {
+            continue;
+        }
+        let Some(path) = file.new_path.as_deref().or(file.old_path.as_deref()) else {
+            continue;
+        };
+        if path == Path::new("/dev/null") {
+            continue;
+        }
+        let Some(rel) = path
+            .to_str()
+            .and_then(|s| RelativePath::new(s.to_owned()).ok())
+        else {
+            continue;
+        };
+        if let Some(content) = read_target_text(&repo, &commit, &ctx.translations, &rel) {
+            reasons.extend(classify_hunks_against_target(path, &file.hunks, &content));
+        }
+    }
+    reasons
+}
+
+/// Read a path's bytes at `commit`, falling back to its translated
+/// path so a relocated layout still resolves. `None` when neither
+/// exists or the blob is not valid UTF-8.
+fn read_target_text(
+    repo: &GitRepo,
+    commit: &CommitSha,
+    translations: &PathTranslations,
+    path: &RelativePath,
+) -> Option<String> {
+    let direct = repo
+        .read_blob_at(commit, Path::new(path.as_str()))
+        .ok()
+        .flatten();
+    let bytes = direct.or_else(|| {
+        let (translated, _) = translations.translate(path.as_str())?;
+        repo.read_blob_at(commit, &translated).ok().flatten()
+    })?;
+    String::from_utf8(bytes).ok()
+}
+
 /// Merge `findings` into every pin's verdict and the series-level
 /// diagnostics. Non-blocking reasons promote `Compatible` to
 /// `RequiresAdaptation` and append to existing reason vectors;
@@ -292,22 +435,28 @@ pub fn merge_added_file_findings_into_evaluation(
     if reasons.is_empty() && missing_test_modules.is_empty() {
         return;
     }
-    if !reasons.is_empty() {
-        for pin in evaluation.verdict.results.iter_mut() {
-            let mut to_add = reasons.clone();
-            match &mut pin.verdict {
-                Verdict::Compatible => {
-                    pin.verdict = Verdict::from_reasons(to_add);
-                }
-                Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
-                    reasons.append(&mut to_add);
-                }
-                Verdict::Inapplicable { .. } => {}
-            }
-        }
-        evaluation.verdict.summary = recount_summary(&evaluation.verdict.results);
-    }
+    merge_reasons_into_evaluation(reasons, evaluation);
     merge_missing_test_modules(&mut evaluation.diagnostics, missing_test_modules);
+}
+
+/// Append non-blocking reasons to every pin: a `Compatible` pin
+/// becomes `RequiresAdaptation`, an existing reason vector grows,
+/// `Inapplicable` is left alone.
+pub fn merge_reasons_into_evaluation(reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation) {
+    if reasons.is_empty() {
+        return;
+    }
+    for pin in evaluation.verdict.results.iter_mut() {
+        let mut to_add = reasons.clone();
+        match &mut pin.verdict {
+            Verdict::Compatible => pin.verdict = Verdict::from_reasons(to_add),
+            Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
+                reasons.append(&mut to_add);
+            }
+            Verdict::Inapplicable { .. } => {}
+        }
+    }
+    evaluation.verdict.summary = recount_summary(&evaluation.verdict.results);
 }
 
 fn merge_missing_test_modules(

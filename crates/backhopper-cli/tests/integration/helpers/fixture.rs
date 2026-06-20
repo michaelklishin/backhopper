@@ -128,6 +128,32 @@ impl FixtureRepo {
         );
     }
 
+    // Ground truth for the recall-superset check: attempt the real
+    // cherry-pick, report whether it conflicted, then restore the
+    // branch either way so the caller reads a clean target tree.
+    #[cfg(unix)]
+    pub(crate) fn cherry_pick_conflicts(&self, sha: &str) -> bool {
+        let status = Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "cherry-pick",
+                sha,
+            ])
+            .current_dir(self.dir.path())
+            .status()
+            .expect("git cherry-pick");
+        if status.success() {
+            run(self.dir.path(), &["git", "reset", "--hard", "-q", "HEAD~1"]);
+            false
+        } else {
+            run(self.dir.path(), &["git", "cherry-pick", "--abort"]);
+            true
+        }
+    }
+
     pub(crate) fn head_sha(&self) -> String {
         let out = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])

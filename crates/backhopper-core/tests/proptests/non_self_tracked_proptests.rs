@@ -47,6 +47,7 @@ fn arb_row() -> impl Strategy<Value = BatchResult> {
             touched_paths: Vec::new(),
             pr_commits: None,
             parent_count: None,
+            verdict_fingerprint: None,
         })
 }
 

@@ -182,7 +182,7 @@ fn analyse_includes(
 /// they fail to resolve under `deps/`, `apps/`, `lib/`. Only the
 /// `IncludeLib` form gets this exemption: a `-include("…")` always
 /// points at a project-local path.
-fn is_stdlib_include_lib(directive: &IncludeDirective) -> bool {
+pub fn is_stdlib_include_lib(directive: &IncludeDirective) -> bool {
     let path = match directive {
         IncludeDirective::IncludeLib { path } => path,
         IncludeDirective::Include { .. } => return false,

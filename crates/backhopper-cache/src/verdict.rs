@@ -29,6 +29,7 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::verdict::SeriesEvaluation;
 
@@ -147,10 +148,69 @@ pub struct ContentKeyInputs {
     pub macro_env_blake3: Option<String>,
 }
 
+/// What the fingerprint hashes: the verdict's `(patch, target, pins)`
+/// identity. Drops the cache key's SHA (so cherry-pick hops of one
+/// patch share a fingerprint) and its `crate_version`/`schema_version`
+/// (so the join survives upgrades), and omits the macro env (the build
+/// outcome turns on patch and target, not on macro resolution).
+/// `fingerprint_version` versions the key's meaning on its own cadence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct FingerprintInputs<'a> {
+    fingerprint_version: u32,
+    shape: EvaluationShape,
+    series: &'a Option<SeriesName>,
+    pins: &'a [PinKeyRow],
+    source_pins: &'a [PinKeyRow],
+    target: &'a Option<TargetKeyInputs>,
+    config_blake3: &'a str,
+    patch_blake3: &'a str,
+}
+
+impl ContentKeyInputs {
+    /// The stable join key for this verdict. `None` only when the
+    /// inputs fail to serialize.
+    #[must_use]
+    pub fn fingerprint(&self) -> Option<VerdictFingerprint> {
+        let inputs = FingerprintInputs {
+            fingerprint_version: FINGERPRINT_VERSION,
+            shape: self.shape,
+            series: &self.series,
+            pins: &self.pins,
+            source_pins: &self.source_pins,
+            target: &self.target,
+            config_blake3: &self.config_blake3,
+            patch_blake3: &self.patch_blake3,
+        };
+        content_hash(&inputs).ok().map(VerdictFingerprint::new)
+    }
+}
+
+impl CacheKeyInputs {
+    /// The fingerprint for this key and patch, for callers that hold
+    /// the patch bytes (the miss and bypass paths). Delegates through
+    /// `content_key` so it cannot drift from the stored form; the macro
+    /// env is irrelevant to the fingerprint, so `None` here is fine.
+    #[must_use]
+    pub fn fingerprint(&self, patch_blake3: &str) -> Option<VerdictFingerprint> {
+        self.content_key(patch_blake3.to_owned(), None)
+            .fingerprint()
+    }
+}
+
+/// A cache hit: the stored evaluation plus the verdict fingerprint
+/// the entry recorded (`None` for entries written before fingerprints
+/// existed). The fingerprint rides the hit so a warm-batch row gets it
+/// without resolving the patch the hit just skipped.
+#[derive(Debug)]
+pub struct CachedVerdict {
+    pub evaluation: Box<SeriesEvaluation>,
+    pub fingerprint: Option<VerdictFingerprint>,
+}
+
 /// L1 lookup result.
 #[derive(Debug)]
 pub enum InputOutcome<'c> {
-    Hit(Box<SeriesEvaluation>),
+    Hit(CachedVerdict),
     MissOnInput(InputMissToken<'c>),
 }
 
@@ -158,7 +218,7 @@ pub enum InputOutcome<'c> {
 /// was minted before returning.
 #[derive(Debug)]
 pub enum ContentOutcome<'c> {
-    Hit(Box<SeriesEvaluation>),
+    Hit(CachedVerdict),
     Miss(MissToken<'c>),
 }
 
@@ -180,6 +240,16 @@ pub struct MissToken<'c> {
     input_pre_image: Value,
     content_hash: String,
     content_pre_image: Value,
+    fingerprint: Option<VerdictFingerprint>,
+}
+
+impl MissToken<'_> {
+    /// The fingerprint that will be stored with the evaluation, for a
+    /// caller that needs it on the miss path without recomputing.
+    #[must_use]
+    pub fn fingerprint(&self) -> Option<&VerdictFingerprint> {
+        self.fingerprint.as_ref()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -191,6 +261,10 @@ struct VerdictEntry {
     /// hit; records which content key they matched.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     alias_of_content_key: Option<String>,
+    /// The verdict fingerprint, so an L1 hit returns it without the
+    /// patch. Absent in entries written before fingerprints existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    verdict_fingerprint: Option<String>,
     evaluation: SeriesEvaluation,
 }
 
@@ -233,7 +307,10 @@ impl VerdictCache {
         };
         let path = self.by_input.join(entry_file_name(&hash));
         if let Some(entry) = self.read_entry(&path) {
-            return InputOutcome::Hit(Box::new(entry.evaluation));
+            return InputOutcome::Hit(CachedVerdict {
+                fingerprint: entry.verdict_fingerprint.map(VerdictFingerprint::new),
+                evaluation: Box::new(entry.evaluation),
+            });
         }
         InputOutcome::MissOnInput(InputMissToken {
             cache: self,
@@ -268,6 +345,7 @@ impl VerdictCache {
         hash: &str,
         key_inputs: Value,
         alias_of_content_key: Option<String>,
+        fingerprint: Option<&VerdictFingerprint>,
         evaluation: &SeriesEvaluation,
     ) {
         self.sweep_once();
@@ -281,6 +359,7 @@ impl VerdictCache {
                 .unwrap_or_default(),
             key_inputs,
             alias_of_content_key,
+            verdict_fingerprint: fingerprint.map(|f| f.as_str().to_owned()),
             evaluation: evaluation.clone(),
         };
         let result = fs::create_dir_all(dir)
@@ -314,6 +393,9 @@ impl<'c> InputMissToken<'c> {
     /// the L1 alias for the looked-up SHA is minted here, inside the
     /// lookup, so no caller can forget it.
     pub fn lookup_content(self, content: &ContentKeyInputs) -> ContentOutcome<'c> {
+        // computed from the content key, which carries the patch hash;
+        // stored on every write so an L1 hit can return it patch-free
+        let fingerprint = content.fingerprint();
         let Ok(hash) = content_hash(content) else {
             return ContentOutcome::Miss(MissToken {
                 cache: self.cache,
@@ -321,6 +403,7 @@ impl<'c> InputMissToken<'c> {
                 input_pre_image: self.input_pre_image,
                 content_hash: String::new(),
                 content_pre_image: Value::Null,
+                fingerprint,
             });
         };
         let path = self.cache.by_content.join(entry_file_name(&hash));
@@ -330,9 +413,13 @@ impl<'c> InputMissToken<'c> {
                 &self.input_hash,
                 self.input_pre_image,
                 Some(hash),
+                fingerprint.as_ref(),
                 &entry.evaluation,
             );
-            return ContentOutcome::Hit(Box::new(entry.evaluation));
+            return ContentOutcome::Hit(CachedVerdict {
+                evaluation: Box::new(entry.evaluation),
+                fingerprint,
+            });
         }
         ContentOutcome::Miss(MissToken {
             cache: self.cache,
@@ -340,6 +427,7 @@ impl<'c> InputMissToken<'c> {
             input_pre_image: self.input_pre_image,
             content_hash: hash,
             content_pre_image: serde_json::to_value(content).unwrap_or(Value::Null),
+            fingerprint,
         })
     }
 }
@@ -353,6 +441,7 @@ impl MissToken<'_> {
             &self.content_hash,
             self.content_pre_image,
             None,
+            self.fingerprint.as_ref(),
             evaluation,
         );
         self.cache.write_entry(
@@ -360,6 +449,7 @@ impl MissToken<'_> {
             &self.input_hash,
             self.input_pre_image,
             None,
+            self.fingerprint.as_ref(),
             evaluation,
         );
     }
