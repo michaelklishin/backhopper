@@ -15,6 +15,7 @@ use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
+use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::verdict::{Diagnostics, PatchFacts, SeriesVerdict};
 
 /// Top-level payload of a `check batch` envelope.
@@ -30,6 +31,18 @@ pub struct BatchPayload {
     /// always emits `Some`, even when empty, so it is never skipped.
     #[serde(default)]
     pub self_projects: Option<BTreeSet<ProjectName>>,
+
+    /// Symbol classes this producer checks. A corpus row keeps it so the
+    /// fold routes bug-vs-gap against the producing binary, not the one
+    /// running the fold. `None` for a producer that predates the field.
+    #[serde(default)]
+    pub resolver_coverage: Option<ResolverCoverage>,
+
+    /// The fingerprint generation this producer stamped. Lets a corpus
+    /// spanning a bump segregate generations instead of reading an
+    /// unexplained zero-match. `None` for a producer that predates it.
+    #[serde(default)]
+    pub fingerprint_version: Option<u32>,
 }
 
 impl BatchPayload {

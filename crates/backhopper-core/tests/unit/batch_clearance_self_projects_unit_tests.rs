@@ -66,6 +66,8 @@ fn payload(
         queried_against: Vec::new(),
         results,
         self_projects,
+        resolver_coverage: None,
+        fingerprint_version: None,
     }
 }
 

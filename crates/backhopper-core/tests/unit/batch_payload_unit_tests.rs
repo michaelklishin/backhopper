@@ -6,9 +6,11 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
+use backhopper_core::model::fingerprint::FINGERPRINT_VERSION;
 use backhopper_core::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
+use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::verdict::{Diagnostics, PatchFacts, SeriesSummary, SeriesVerdict};
 use time::OffsetDateTime;
 
@@ -186,10 +188,37 @@ fn batch_payload_full_round_trip_with_typed_pin_payload() {
         }],
         results: vec![],
         self_projects: Some(BTreeSet::from([ProjectName::new("rabbit").unwrap()])),
+        resolver_coverage: None,
+        fingerprint_version: None,
     };
     let json = serde_json::to_string(&payload).unwrap();
     let back: BatchPayload = serde_json::from_str(&json).unwrap();
     assert_eq!(back, payload);
+}
+
+#[test]
+fn resolver_coverage_and_fingerprint_version_round_trip() {
+    let payload = BatchPayload {
+        queried_against: vec![],
+        results: vec![],
+        self_projects: Some(BTreeSet::new()),
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
+    };
+    let json = serde_json::to_string(&payload).unwrap();
+    let back: BatchPayload = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, payload);
+    assert_eq!(back.fingerprint_version, Some(FINGERPRINT_VERSION));
+}
+
+// An old producer omits both fields; they deserialize to None, not an
+// empty coverage that would read as "checks nothing".
+#[test]
+fn a_pre_field_producer_parses_both_as_none() {
+    let json = r#"{"queried_against":[],"results":[],"self_projects":[]}"#;
+    let back: BatchPayload = serde_json::from_str(json).unwrap();
+    assert_eq!(back.resolver_coverage, None);
+    assert_eq!(back.fingerprint_version, None);
 }
 
 #[test]

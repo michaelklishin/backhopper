@@ -15,6 +15,7 @@ use crate::model::names::{
 };
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
+use crate::model::resolver_coverage::ResolverClass;
 use crate::model::symbol::{SymbolKind, SymbolRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -510,7 +511,109 @@ impl ConflictMarker {
     }
 }
 
+/// The apply outcomes a divergence predictor consumes, ordered by
+/// severity: a higher variant outranks a lower one on the same path, so
+/// dedup to one conflict per path is a `max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyConflictKind {
+    PostimageCollision,
+    PreimageMissing,
+    FileAbsent,
+}
+
 impl Reason {
+    /// The risky apply outcome and its path, or `None` for a clean or
+    /// non-apply reason. `PreimageDrifted` is excluded: a drifted preimage
+    /// applies cleanly. Wildcard-free so a future apply reason must
+    /// declare its risk here, not default silently to clean.
+    pub fn apply_conflict(&self) -> Option<(&Path, ApplyConflictKind)> {
+        match self {
+            Self::PostimageCollision { path, .. } => {
+                Some((path, ApplyConflictKind::PostimageCollision))
+            }
+            Self::PreimageMissing { path, .. } => Some((path, ApplyConflictKind::PreimageMissing)),
+            Self::FileAbsent { path } => Some((path, ApplyConflictKind::FileAbsent)),
+            Self::MissingSymbol { .. }
+            | Self::ArityChanged { .. }
+            | Self::SignatureChanged { .. }
+            | Self::ContextDrift { .. }
+            | Self::PreimageDrifted { .. }
+            | Self::DeprecatedUsage { .. }
+            | Self::NowHidden { .. }
+            | Self::RecordFieldsChanged { .. }
+            | Self::UnsupportedFileType { .. }
+            | Self::UntrackedModuleMissing { .. }
+            | Self::ClauseMismatch { .. }
+            | Self::MissingPrereq { .. }
+            | Self::SyntacticArtifact { .. }
+            | Self::BehaviourCallbackSignatureChanged { .. }
+            | Self::BehaviourCallbackRemoved { .. }
+            | Self::BehaviourCallbackAdded { .. }
+            | Self::ModuleRelocated { .. }
+            | Self::WireConstantChanged { .. }
+            | Self::HistoricalImplementationMissing { .. }
+            | Self::WireContractBodyDrift { .. }
+            | Self::WireContractRegression { .. }
+            | Self::ReturnShapeMismatch { .. }
+            | Self::MissingType { .. }
+            | Self::PathRename { .. }
+            | Self::TestModuleSymbolMissing { .. }
+            | Self::BehaviourModuleMissing { .. }
+            | Self::HeaderFileMissing { .. }
+            | Self::MacroUndefinedOnTarget { .. }
+            | Self::RecordUndefinedOnTarget { .. }
+            | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::VersionedMachineSnapshotMissing { .. }
+            | Self::WireConstantBindingsMissing { .. } => None,
+        }
+    }
+
+    /// The class this reason flagged, for a predicted-class breakdown:
+    /// the absent-symbol family only. Not the corpus break class, which
+    /// is the symbol that actually broke the build (the observed outcome).
+    pub fn resolver_class(&self) -> Option<ResolverClass> {
+        match self {
+            Self::MissingSymbol { symbol, .. } | Self::MissingPrereq { symbol, .. } => {
+                Some(ResolverClass::of_symbol_kind(&symbol.kind))
+            }
+            Self::MissingType { .. } => Some(ResolverClass::Type),
+            Self::MacroUndefinedOnTarget { .. } => Some(ResolverClass::Macro),
+            Self::RecordUndefinedOnTarget { .. } => Some(ResolverClass::Record),
+            Self::LocalCallUndefinedOnTarget { .. } => Some(ResolverClass::LocalCall),
+            Self::HeaderFileMissing { .. } => Some(ResolverClass::Include),
+            Self::BehaviourModuleMissing { .. } => Some(ResolverClass::Behaviour),
+            Self::ArityChanged { .. }
+            | Self::SignatureChanged { .. }
+            | Self::FileAbsent { .. }
+            | Self::ContextDrift { .. }
+            | Self::PreimageDrifted { .. }
+            | Self::PostimageCollision { .. }
+            | Self::PreimageMissing { .. }
+            | Self::DeprecatedUsage { .. }
+            | Self::NowHidden { .. }
+            | Self::RecordFieldsChanged { .. }
+            | Self::UnsupportedFileType { .. }
+            | Self::UntrackedModuleMissing { .. }
+            | Self::ClauseMismatch { .. }
+            | Self::SyntacticArtifact { .. }
+            | Self::BehaviourCallbackSignatureChanged { .. }
+            | Self::BehaviourCallbackRemoved { .. }
+            | Self::BehaviourCallbackAdded { .. }
+            | Self::ModuleRelocated { .. }
+            | Self::WireConstantChanged { .. }
+            | Self::HistoricalImplementationMissing { .. }
+            | Self::WireContractBodyDrift { .. }
+            | Self::WireContractRegression { .. }
+            | Self::ReturnShapeMismatch { .. }
+            | Self::PathRename { .. }
+            | Self::TestModuleSymbolMissing { .. }
+            | Self::VersionedMachineSnapshotMissing { .. }
+            | Self::WireConstantBindingsMissing { .. } => None,
+        }
+    }
+
     // Wildcard-free on purpose: a new variant fails compilation here
     // until it is classified.
     pub fn is_blocking(&self) -> bool {

@@ -10,5 +10,6 @@ mod helpers;
 mod patch_input_integration_tests;
 mod pr_commits_walk_integration_tests;
 mod source_attributes_resolve_integration_tests;
+mod target_tree_by_ref_integration_tests;
 mod test_suite_resolve_integration_tests;
 mod walk_integration_tests;

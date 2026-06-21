@@ -3,42 +3,30 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! The corpus fold: joins recorded verdicts to observed build outcomes
-//! and reports how trustworthy the verdict is. The fingerprint is what
-//! pairs the two; this is a plain fold over the paired rows, run as
-//! needed, not a stored subsystem.
+//! and reports how trustworthy the verdict is. The fingerprint pairs the
+//! two; this is a plain fold over the paired rows, run as needed, not a
+//! stored subsystem.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::evaluation::AggregateVerdict;
 use crate::model::fingerprint::VerdictFingerprint;
-use crate::model::resolver_coverage::ResolverClass;
+use crate::model::resolver_coverage::{ResolverClass, ResolverCoverage};
+use crate::model::verdict::ApplyConflictKind;
 
-/// The verdict a row carried, collapsed to whether it flagged the pick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum VerdictClass {
-    Compatible,
-    Inapplicable,
-    RequiresAdaptation,
-    Incompatible,
-}
-
-impl VerdictClass {
-    /// True when the verdict told the operator to adapt or stop: the
-    /// other arms (`Compatible`, `Inapplicable`) read as "nothing here".
-    #[must_use]
-    pub fn flagged(self) -> bool {
-        matches!(self, Self::RequiresAdaptation | Self::Incompatible)
-    }
-}
-
-/// What the build did once the pick landed.
+/// What the build did once the pick landed. Only `CompilationFailed` carries
+/// a class: an apply conflict and a test regression are not symbol-class
+/// breaks. The class is the symbol that actually broke, which the
+/// consumer reads from the build error, not from the verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BuildOutcome {
     BuiltClean,
-    CompileFailed,
+    CompilationFailed { class: Option<ResolverClass> },
     ApplyConflicted,
     TestRegressed,
 }
@@ -48,19 +36,38 @@ impl BuildOutcome {
     pub fn is_break(self) -> bool {
         !matches!(self, Self::BuiltClean)
     }
+
+    /// The symbol class the break fell in, for a compile failure that
+    /// named one.
+    #[must_use]
+    pub fn break_class(self) -> Option<ResolverClass> {
+        match self {
+            Self::CompilationFailed { class } => class,
+            Self::BuiltClean | Self::ApplyConflicted | Self::TestRegressed => None,
+        }
+    }
 }
 
-/// One paired row: a verdict and the outcome it was meant to predict.
+/// One paired row: a verdict, its fingerprint, and the outcome it was
+/// meant to predict. `coverage` is the producing binary's claims, so the
+/// fold routes bug-vs-gap against the row, not the running binary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CorpusEntry {
     pub fingerprint: VerdictFingerprint,
-    pub verdict: VerdictClass,
+    pub verdict: AggregateVerdict,
     pub outcome: BuildOutcome,
-    /// The symbol class a break fell in, when known: lets a missed break
-    /// be routed to a coverage gap or a resolver bug.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub break_class: Option<ResolverClass>,
+    pub coverage: Option<ResolverCoverage>,
+}
+
+/// A risky apply conflict a verdict predicts: one path, its conflict
+/// kind. The path is the reason's own `PathBuf`, never dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct PredictedConflict {
+    pub path: PathBuf,
+    pub kind: ApplyConflictKind,
 }
 
 /// A measured rate kept as `hit/total` so the sample size is never lost
@@ -72,16 +79,17 @@ pub struct Ratio {
     pub total: usize,
 }
 
-/// A break the verdict did not flag: a resolver bug if its class is
-/// covered, a coverage gap if not.
+/// A break the verdict did not flag.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MissedBreak {
     pub fingerprint: VerdictFingerprint,
     pub break_class: Option<ResolverClass>,
-    /// `true` when the class is one the resolver claims to cover, so the
-    /// miss is a bug rather than an unbuilt class.
-    pub is_resolver_bug: bool,
+    pub outcome: BuildOutcome,
+    /// `Some(true)` a resolver bug (the producer checked the class),
+    /// `Some(false)` a coverage gap, `None` when unknown: the row recorded
+    /// no coverage, or the break carried no class.
+    pub is_resolver_bug: Option<bool>,
 }
 
 /// The fold's output.
@@ -108,8 +116,7 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
     let mut vacuous_trust = Ratio { hits: 0, total: 0 };
     let mut recall = Ratio { hits: 0, total: 0 };
     let mut precision = Ratio { hits: 0, total: 0 };
-    let mut by_class: std::collections::BTreeMap<ResolverClass, usize> =
-        std::collections::BTreeMap::new();
+    let mut by_class: BTreeMap<ResolverClass, usize> = BTreeMap::new();
     let mut missed = Vec::new();
 
     for e in entries {
@@ -126,14 +133,16 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
             if flagged {
                 recall.hits += 1;
             }
-            if let Some(class) = e.break_class {
+            let break_class = e.outcome.break_class();
+            if let Some(class) = break_class {
                 *by_class.entry(class).or_insert(0) += 1;
             }
             if !flagged {
                 missed.push(MissedBreak {
                     fingerprint: e.fingerprint.clone(),
-                    break_class: e.break_class,
-                    is_resolver_bug: e.break_class.is_some_and(ResolverClass::is_covered),
+                    break_class,
+                    outcome: e.outcome,
+                    is_resolver_bug: resolver_bug(break_class, e.coverage.as_ref()),
                 });
             }
         }
@@ -152,5 +161,14 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
         precision,
         breaks_by_class: by_class.into_iter().collect(),
         missed_breaks: missed,
+    }
+}
+
+/// Bug-vs-gap against the row's own coverage: unknown when the class or
+/// the coverage is absent.
+fn resolver_bug(class: Option<ResolverClass>, coverage: Option<&ResolverCoverage>) -> Option<bool> {
+    match (class, coverage) {
+        (Some(class), Some(coverage)) => Some(coverage.is_checked(class)),
+        _ => None,
     }
 }

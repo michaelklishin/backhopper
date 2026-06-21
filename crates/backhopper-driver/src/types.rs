@@ -17,6 +17,11 @@ pub use backhopper_core::model::cache::{
 pub use backhopper_core::model::clearance::{
     BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
 };
+pub use backhopper_core::model::eval::{
+    BuildOutcome, CorpusEntry, EvalReport, MissedBreak, PredictedConflict, Ratio,
+};
+pub use backhopper_core::model::evaluation::AggregateVerdict;
+pub use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 pub use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
     DependencyName, DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName,
@@ -24,6 +29,7 @@ pub use backhopper_core::model::names::{
 };
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
+pub use backhopper_core::model::resolver_coverage::{ResolverClass, ResolverCoverage};
 pub use backhopper_core::model::sibling_drift::{
     CandidateFeatures, Confidence, ScoreComponents, Scored, SiblingCandidate, SiblingDoctorReport,
     SiblingDriftAction, SinceDerivation, VocabularySource,
@@ -40,9 +46,9 @@ pub use backhopper_core::model::snapshot_diff::{
 pub use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 pub use backhopper_core::model::symbol::{RefOrigin, Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
-    BumpStatus, Diagnostics, FileKind, InapplicableReason, NeedsPin, PatchFacts, PinBump,
-    PinVerdict, Reason, SeriesSummary, SeriesVerdict, SnapshotSide, SourceDelta, TouchedKinds,
-    Verdict,
+    ApplyConflictKind, BumpStatus, Diagnostics, FileKind, InapplicableReason, NeedsPin, PatchFacts,
+    PinBump, PinVerdict, Reason, SeriesSummary, SeriesVerdict, SnapshotSide, SourceDelta,
+    TouchedKinds, Verdict,
 };
 pub use backhopper_core::suites::{
     SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef, UncoveredApplication,

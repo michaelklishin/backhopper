@@ -3,7 +3,8 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! `check batch --formatter json` emits `self_projects`, so a consumer
-//! can rebuild the clearance from the envelope.
+//! can rebuild the clearance from the envelope, plus the measurement
+//! context (`resolver_coverage`, `fingerprint_version`) a corpus needs.
 
 use std::fs;
 use std::io::Write;
@@ -11,10 +12,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command as Std;
 
 use backhopper_core::model::batch::BatchPayload;
+use backhopper_core::model::fingerprint::FINGERPRINT_VERSION;
+use backhopper_core::model::resolver_coverage::ResolverClass;
 use serde_json::Value;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::helpers::cli::{run, run_succeeds, stdout};
+use crate::helpers::cli::{run, run_succeeds, run_with_env, stdout};
 use crate::helpers::fixture::FixtureRepo;
 
 const ERL_V1: &str = r#"
@@ -118,6 +121,98 @@ fn batch_json_envelope_carries_self_projects_and_reconstructs_a_clearance() {
 
     let payload: BatchPayload = serde_json::from_value(envelope["data"].clone()).unwrap();
     assert!(payload.clearance_self_inferred().is_some());
+
+    // The measurement context rides the same envelope, always emitted so a
+    // corpus row records what its producer checked and stamped.
+    assert_eq!(payload.fingerprint_version, Some(FINGERPRINT_VERSION));
+    let coverage = payload
+        .resolver_coverage
+        .unwrap_or_else(|| panic!("resolver_coverage must be present: {out}"));
+    assert!(coverage.is_checked(ResolverClass::Macro));
+}
+
+// A vacuous pick still carries a join key when caching is on: the
+// fingerprint needs no resolved tracked symbol, only a cache key. Debug
+// builds default caching off, so force it on for this invariant.
+#[test]
+fn a_cached_vacuous_batch_row_carries_a_fingerprint() {
+    let (repo, work, head_sha) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    run_succeeds([
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "snapshots",
+        "generate",
+        "--project",
+        "demo",
+    ]);
+    let mut commits = NamedTempFile::new().unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
+
+    let assert = run_with_env(
+        [
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "--formatter",
+            "json",
+            "check",
+            "batch",
+            "--series",
+            "stable",
+            "--repo-dir-path",
+            repo.dir.path().to_str().unwrap(),
+            "--commits-file-path",
+            commits.path().to_str().unwrap(),
+        ],
+        &[("BACKHOPPER_FORCE_CACHE", "1")],
+    );
+    let out = stdout(&assert);
+    let envelope: Value = serde_json::from_str(&out).unwrap();
+    let payload: BatchPayload = serde_json::from_value(envelope["data"].clone()).unwrap();
+    assert!(
+        payload.results[0].verdict_fingerprint.is_some(),
+        "a cached vacuous row must join the corpus: {out}"
+    );
+}
+
+// The inherent exception: with caching off there is no key, so no
+// fingerprint, and the consumer reads the row as un-joinable.
+#[test]
+fn a_no_cache_batch_row_has_no_fingerprint() {
+    let (repo, work, head_sha) = build_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    run_succeeds([
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "snapshots",
+        "generate",
+        "--project",
+        "demo",
+    ]);
+    let mut commits = NamedTempFile::new().unwrap();
+    writeln!(commits, "{head_sha}").unwrap();
+
+    let out = stdout(&run([
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "--formatter",
+        "json",
+        "check",
+        "batch",
+        "--no-cache",
+        "--series",
+        "stable",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--commits-file-path",
+        commits.path().to_str().unwrap(),
+    ]));
+
+    let envelope: Value = serde_json::from_str(&out).unwrap();
+    let payload: BatchPayload = serde_json::from_value(envelope["data"].clone()).unwrap();
+    assert!(payload.results[0].verdict_fingerprint.is_none());
 }
 
 #[test]
@@ -156,5 +251,13 @@ fn single_check_json_envelope_carries_self_projects() {
             .as_array()
             .is_some_and(|projects| projects.is_empty()),
         "single-check envelope must carry an empty self_projects: {out}"
+    );
+    assert!(
+        envelope["data"]["resolver_coverage"]["checked"].is_array(),
+        "single-check envelope must carry resolver_coverage: {out}"
+    );
+    assert_eq!(
+        envelope["data"]["fingerprint_version"].as_u64(),
+        Some(u64::from(FINGERPRINT_VERSION)),
     );
 }

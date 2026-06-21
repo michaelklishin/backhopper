@@ -93,6 +93,8 @@ proptest! {
             queried_against: Vec::new(),
             results: rows,
             self_projects: Some(self_projects.clone()),
+            resolver_coverage: None,
+            fingerprint_version: None,
         };
         prop_assert_eq!(
             payload.clearance_self_inferred(),
@@ -109,6 +111,8 @@ proptest! {
             queried_against: Vec::new(),
             results: rows,
             self_projects: Some(self_projects),
+            resolver_coverage: None,
+            fingerprint_version: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         let back: BatchPayload = serde_json::from_str(&json).unwrap();

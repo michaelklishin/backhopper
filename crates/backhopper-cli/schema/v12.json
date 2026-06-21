@@ -2155,6 +2155,35 @@
         ],
         "type": "string"
       },
+      "ResolverClass": {
+        "description": "A class of symbol whose presence a backport can dangle on.",
+        "enum": [
+          "macro",
+          "include",
+          "behaviour",
+          "qualified_call",
+          "record",
+          "local_call",
+          "type"
+        ],
+        "type": "string"
+      },
+      "ResolverCoverage": {
+        "description": "The set of classes a producer checks, stamped on a verdict envelope\nso a corpus row self-describes its producer's coverage. Stores only\nthe checked set: `unchecked` is derived, so a class can never be in\nboth or neither.",
+        "properties": {
+          "checked": {
+            "items": {
+              "$ref": "#/$defs/ResolverClass"
+            },
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "checked"
+        ],
+        "type": "object"
+      },
       "SeriesSummary": {
         "properties": {
           "compatible": {
@@ -2673,11 +2702,33 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "Top-level payload of a `check batch` envelope.",
     "properties": {
+      "fingerprint_version": {
+        "default": null,
+        "description": "The fingerprint generation this producer stamped. Lets a corpus\nspanning a bump segregate generations instead of reading an\nunexplained zero-match. `None` for a producer that predates it.",
+        "format": "uint32",
+        "minimum": 0,
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
       "queried_against": {
         "items": {
           "$ref": "#/$defs/BatchQuery"
         },
         "type": "array"
+      },
+      "resolver_coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ResolverCoverage"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Symbol classes this producer checks. A corpus row keeps it so the\nfold routes bug-vs-gap against the producing binary, not the one\nrunning the fold. `None` for a producer that predates the field."
       },
       "results": {
         "items": {
@@ -2956,7 +3007,7 @@
     "type": "object"
   },
   "command_family": "check",
-  "description": "v12 carries the self-projects the clearance roll-up needs: `BatchPayload` and the single-check payload gain `self_projects`, the set excluded from the tracked-dependency tally. `None` (field absent) marks a producer that predates the field; a current producer always emits it, so a consumer can reconstruct the tracked count and the round clearance from the payload alone.",
+  "description": "v12 carries the self-projects the clearance roll-up needs: `BatchPayload` and the single-check payload gain `self_projects`, the set excluded from the tracked-dependency tally. `None` (field absent) marks a producer that predates the field; a current producer always emits it, so a consumer can reconstruct the tracked count and the round clearance from the payload alone. The same payloads also carry `resolver_coverage` (the symbol classes this producer checks, so a measurement corpus routes a build break against the producing binary) and `fingerprint_version` (the fingerprint generation, so a corpus spanning a bump segregates generations); both are `None` for a producer that predates them.",
   "envelope": {
     "properties": {
       "command": {

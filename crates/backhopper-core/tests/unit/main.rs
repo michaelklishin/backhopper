@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod aggregate_verdict_unit_tests;
 mod app_src_unit_tests;
+mod apply_conflict_unit_tests;
 mod arg_shape_unit_tests;
 mod batch_clearance_self_projects_unit_tests;
 mod batch_payload_unit_tests;
@@ -23,6 +25,7 @@ mod compat_source_macros_unit_tests;
 mod config_otp_unit_tests;
 mod config_unit_tests;
 mod context_drift_unit_tests;
+mod corpus_projection_unit_tests;
 mod define_resolve_unit_tests;
 mod eval_unit_tests;
 mod evaluation_typestate_unit_tests;
@@ -52,6 +55,7 @@ mod postimage_check_unit_tests;
 mod preimage_check_unit_tests;
 mod project_layout_unit_tests;
 mod reason_path_scoped_unit_tests;
+mod reason_resolver_class_unit_tests;
 mod ref_origin_unit_tests;
 mod relative_path_unit_tests;
 mod resolver_coverage_unit_tests;

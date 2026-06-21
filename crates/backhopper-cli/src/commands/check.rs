@@ -32,13 +32,14 @@ use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 use backhopper_core::model::clearance::{BumpSummary, RoundClearance};
-use backhopper_core::model::fingerprint::VerdictFingerprint;
+use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
     SeriesName, TagName,
 };
 use backhopper_core::model::pin::{self, Pin, PinSpec};
 use backhopper_core::model::pr_commit::PrCommit;
+use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
@@ -103,6 +104,11 @@ struct CompatPayload {
     /// `None` both mean "no join key", so nothing is lost by skipping.
     #[serde(skip_serializing_if = "Option::is_none")]
     verdict_fingerprint: Option<VerdictFingerprint>,
+    /// Symbol classes this binary checks, for the measurement fold.
+    /// Always emitted so a consumer tells it from an old binary.
+    resolver_coverage: Option<ResolverCoverage>,
+    /// The fingerprint generation this binary stamped. Always emitted.
+    fingerprint_version: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1227,6 +1233,8 @@ fn run_check_patch(
         project_suggestions: project_suggestions.clone(),
         self_projects: Some(self_project_names(cfg)),
         verdict_fingerprint,
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
@@ -2353,6 +2361,8 @@ fn run_batch(
         queried_against: queried,
         results,
         self_projects: Some(self_project_names(cfg)),
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
     };
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
         let rows = batch_summary_rows(cfg, &git_repo, &payload.results);

@@ -137,7 +137,12 @@ fn combined_v12() -> Value {
          the single-check payload gain `self_projects`, the set excluded from the \
          tracked-dependency tally. `None` (field absent) marks a producer that predates \
          the field; a current producer always emits it, so a consumer can reconstruct \
-         the tracked count and the round clearance from the payload alone.",
+         the tracked count and the round clearance from the payload alone. The same \
+         payloads also carry `resolver_coverage` (the symbol classes this producer \
+         checks, so a measurement corpus routes a build break against the producing \
+         binary) and `fingerprint_version` (the fingerprint generation, so a corpus \
+         spanning a bump segregates generations); both are `None` for a producer that \
+         predates them.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");

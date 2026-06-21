@@ -11,19 +11,26 @@
 //! `SeriesEvaluation` through its own `view`.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 
 use crate::model::batch::BatchResult;
+use crate::model::eval::{BuildOutcome, CorpusEntry, PredictedConflict};
 use crate::model::names::{MacroName, ModuleName, ProjectName, RelativePath};
 use crate::model::pin::Pin;
+use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::summary::VerdictKind;
 use crate::model::verdict::{
-    Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict, SnapshotSide, TestCallSite,
-    Verdict, non_self_tracked,
+    ApplyConflictKind, Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict,
+    SnapshotSide, TestCallSite, Verdict, non_self_tracked,
 };
 
 /// Aggregate verdict across the pins of a series.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum AggregateVerdict {
     /// At least one pin compatible, none worse.
     Compatible,
@@ -35,6 +42,15 @@ pub enum AggregateVerdict {
     Inapplicable,
     /// The series has no pins.
     Empty,
+}
+
+impl AggregateVerdict {
+    /// True when the verdict told the operator to adapt or stop. The
+    /// other arms read as "nothing here", `Empty` included.
+    #[must_use]
+    pub fn flagged(self) -> bool {
+        matches!(self, Self::Incompatible | Self::RequiresAdaptation)
+    }
 }
 
 /// Borrowed accessors over a `SeriesVerdict` and its `Diagnostics`.
@@ -94,6 +110,11 @@ impl<'a> SeriesEvaluationView<'a> {
             .results
             .iter()
             .filter(move |p| VerdictKind::from(&p.verdict) == verdict)
+    }
+
+    /// Every [`Reason`] across all pins, flattened.
+    pub fn reasons(self) -> impl Iterator<Item = &'a Reason> {
+        self.results.results.iter().flat_map(pin_reasons)
     }
 
     /// All [`Reason`] values attached to the pin matching `pin`.
@@ -252,6 +273,52 @@ impl BatchResult {
     #[must_use]
     pub fn evaluation(&self) -> SeriesEvaluationView<'_> {
         SeriesEvaluationView::new(&self.verdict, &self.diagnostics)
+    }
+
+    /// Project this row into a corpus entry. backhopper fills the
+    /// fingerprint and aggregate verdict; the caller supplies the observed
+    /// outcome and the round's coverage. `None` when the row is not
+    /// measurable: no fingerprint (un-joinable), or an empty verdict (no
+    /// pins, so nothing was predicted).
+    #[must_use]
+    pub fn to_corpus_entry(
+        &self,
+        observed: BuildOutcome,
+        coverage: Option<&ResolverCoverage>,
+    ) -> Option<CorpusEntry> {
+        let fingerprint = self.verdict_fingerprint.clone()?;
+        let verdict = self.evaluation().worst_verdict();
+        if verdict == AggregateVerdict::Empty {
+            return None;
+        }
+        Some(CorpusEntry {
+            fingerprint,
+            verdict,
+            outcome: observed,
+            coverage: coverage.cloned(),
+        })
+    }
+
+    /// The risky apply conflicts this row predicts, one per path at its
+    /// highest severity. Path stays a `PathBuf`: a predictor never drops a
+    /// risky path, so relativizing is the caller's call.
+    #[must_use]
+    pub fn predicted_conflicts(&self) -> Vec<PredictedConflict> {
+        let mut by_path: BTreeMap<PathBuf, ApplyConflictKind> = BTreeMap::new();
+        for (path, kind) in self
+            .evaluation()
+            .reasons()
+            .filter_map(Reason::apply_conflict)
+        {
+            by_path
+                .entry(path.to_path_buf())
+                .and_modify(|seen| *seen = (*seen).max(kind))
+                .or_insert(kind);
+        }
+        by_path
+            .into_iter()
+            .map(|(path, kind)| PredictedConflict { path, kind })
+            .collect()
     }
 }
 

@@ -8,6 +8,7 @@ mod cancellation_unit_tests;
 mod check_builder_unit_tests;
 mod clearance_reexport_unit_tests;
 mod compatibility_unit_tests;
+mod corpus_reexport_unit_tests;
 mod envelope_parsing_unit_tests;
 mod envelope_unit_tests;
 mod envelope_version_constants_unit_tests;
