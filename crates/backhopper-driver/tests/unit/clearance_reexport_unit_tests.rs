@@ -16,18 +16,17 @@ use serde_json::json;
 // Naming every type through the façade guards the re-exports: drop one
 // and this stops compiling.
 #[allow(dead_code)]
-fn names_every_reexport(
-    _a: &RoundClearance,
-    _b: &ClearanceFacts,
-    _c: &ReasonHistogram,
-    _d: &BumpSummary,
-    _e: &Diagnostics,
-    _f: &PatchFacts,
-    _g: &BumpStatus,
-    _h: &PinBump,
-    _i: &SeriesSummary,
-    _j: &SourceDelta,
-) {
+struct NamesEveryReexport<'a> {
+    a: &'a RoundClearance,
+    b: &'a ClearanceFacts,
+    c: &'a ReasonHistogram,
+    d: &'a BumpSummary,
+    e: &'a Diagnostics,
+    f: &'a PatchFacts,
+    g: &'a BumpStatus,
+    h: &'a PinBump,
+    i: &'a SeriesSummary,
+    j: &'a SourceDelta,
 }
 
 fn batch_payload(self_projects: serde_json::Value) -> BatchPayload {

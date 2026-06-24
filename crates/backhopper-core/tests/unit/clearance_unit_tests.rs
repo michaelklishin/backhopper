@@ -228,15 +228,17 @@ fn a_round_with_only_self_pin_references_is_clean() {
 
 #[test]
 fn snapshot_missing_bump_makes_findings() {
-    let mut diagnostics = Diagnostics::default();
-    diagnostics.pin_bumps = vec![bump(
-        "ra",
-        Some("hex 2.16.0"),
-        "hex 2.17.0",
-        Some(BumpStatus::SnapshotMissing {
-            note: "snapshots generate".to_owned(),
-        }),
-    )];
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![bump(
+            "ra",
+            Some("hex 2.16.0"),
+            "hex 2.17.0",
+            Some(BumpStatus::SnapshotMissing {
+                note: "snapshots generate".to_owned(),
+            }),
+        )],
+        ..Default::default()
+    };
     let rows = vec![row_with_diagnostics(
         'a',
         "s",
@@ -252,13 +254,15 @@ fn snapshot_missing_bump_makes_findings() {
 
 #[test]
 fn snapshot_present_bump_alone_stays_clean() {
-    let mut diagnostics = Diagnostics::default();
-    diagnostics.pin_bumps = vec![bump(
-        "ra",
-        Some("hex 2.16.0"),
-        "hex 2.17.0",
-        Some(BumpStatus::SnapshotPresent),
-    )];
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![bump(
+            "ra",
+            Some("hex 2.16.0"),
+            "hex 2.17.0",
+            Some(BumpStatus::SnapshotPresent),
+        )],
+        ..Default::default()
+    };
     let rows = vec![row_with_diagnostics(
         'a',
         "s",
@@ -275,11 +279,13 @@ fn snapshot_present_bump_alone_stays_clean() {
 
 #[test]
 fn untracked_and_unassessed_bumps_are_classified_and_do_not_force_findings() {
-    let mut diagnostics = Diagnostics::default();
-    diagnostics.pin_bumps = vec![
-        bump("elixir", Some("1.16"), "1.17", Some(BumpStatus::Untracked)),
-        bump("ra", Some("hex 1.0.0"), "hex 2.0.0", None),
-    ];
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![
+            bump("elixir", Some("1.16"), "1.17", Some(BumpStatus::Untracked)),
+            bump("ra", Some("hex 1.0.0"), "hex 2.0.0", None),
+        ],
+        ..Default::default()
+    };
     let rows = vec![row_with_diagnostics(
         'a',
         "s",
@@ -298,13 +304,15 @@ fn untracked_and_unassessed_bumps_are_classified_and_do_not_force_findings() {
 #[test]
 fn the_same_bump_under_several_series_counts_once() {
     let bumped = |series: &str| {
-        let mut diagnostics = Diagnostics::default();
-        diagnostics.pin_bumps = vec![bump(
-            "ra",
-            Some("hex 1.0.0"),
-            "hex 2.0.0",
-            Some(BumpStatus::SnapshotPresent),
-        )];
+        let diagnostics = Diagnostics {
+            pin_bumps: vec![bump(
+                "ra",
+                Some("hex 1.0.0"),
+                "hex 2.0.0",
+                Some(BumpStatus::SnapshotPresent),
+            )],
+            ..Default::default()
+        };
         row_with_diagnostics(
             'a',
             series,
@@ -323,13 +331,15 @@ fn the_same_bump_under_several_series_counts_once() {
 #[test]
 fn the_same_bump_under_distinct_commits_counts_twice() {
     let bumped = |c: char| {
-        let mut diagnostics = Diagnostics::default();
-        diagnostics.pin_bumps = vec![bump(
-            "ra",
-            Some("hex 1.0.0"),
-            "hex 2.0.0",
-            Some(BumpStatus::SnapshotPresent),
-        )];
+        let diagnostics = Diagnostics {
+            pin_bumps: vec![bump(
+                "ra",
+                Some("hex 1.0.0"),
+                "hex 2.0.0",
+                Some(BumpStatus::SnapshotPresent),
+            )],
+            ..Default::default()
+        };
         row_with_diagnostics(
             c,
             "s",
@@ -344,13 +354,15 @@ fn the_same_bump_under_distinct_commits_counts_twice() {
 
 #[test]
 fn an_introduced_pin_is_counted() {
-    let mut diagnostics = Diagnostics::default();
-    diagnostics.pin_bumps = vec![bump(
-        "osiris",
-        None,
-        "hex 1.8.0",
-        Some(BumpStatus::SnapshotPresent),
-    )];
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![bump(
+            "osiris",
+            None,
+            "hex 1.8.0",
+            Some(BumpStatus::SnapshotPresent),
+        )],
+        ..Default::default()
+    };
     let rows = vec![row_with_diagnostics(
         'a',
         "s",
@@ -370,8 +382,10 @@ fn an_introduced_pin_is_counted() {
 #[test]
 fn suggested_suites_are_unioned_sorted_and_deduplicated() {
     let with_suites = |series: &str, suites: &[&str]| {
-        let mut diagnostics = Diagnostics::default();
-        diagnostics.suggested_suites = suites.iter().map(|s| (*s).to_owned()).collect();
+        let diagnostics = Diagnostics {
+            suggested_suites: suites.iter().map(|s| (*s).to_owned()).collect(),
+            ..Default::default()
+        };
         row_with_diagnostics(
             'a',
             series,
