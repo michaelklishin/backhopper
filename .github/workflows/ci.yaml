@@ -29,7 +29,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free up disk space
         run: .github/scripts/free_disk_space.sh
@@ -63,7 +63,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free up disk space
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -92,7 +92,7 @@ jobs:
       checks: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo generate-lockfile
       - uses: rustsec/audit-check@v2
