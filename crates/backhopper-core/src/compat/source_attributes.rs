@@ -163,12 +163,17 @@ pub struct FunctionSignature {
 
 /// Every `name(Args)` the scanner saw, classified into definitions and
 /// calls. Qualified (`mod:f(`), macro (`?f(`), and `fun name(` forms
-/// are skipped, as are reserved words.
+/// are skipped, as are reserved words. Variables (`Var(...)`) and
+/// attribute or spec forms (`-export(...)`, `-spec ... term()`) hold no
+/// local calls, so they are consumed without emitting a signature.
 pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
     let bytes = src.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
     let mut line = 1u32;
+    // True between an attribute or spec's leading `-` and its closing
+    // `.`: type names there look like zero-arity calls but are not.
+    let mut in_attribute = false;
     while i < bytes.len() {
         match bytes[i] {
             b'\n' => {
@@ -183,6 +188,21 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
             b'"' => i = skip_string(bytes, i, b'"'),
             b'$' => i += 2.min(bytes.len() - i),
             b'\'' => i = skip_string(bytes, i, b'\''),
+            b'-' if !in_attribute && at_form_start(bytes, i) => {
+                in_attribute = true;
+                i += 1;
+            }
+            b'.' if in_attribute && is_form_terminator(bytes, i) => {
+                in_attribute = false;
+                i += 1;
+            }
+            b if b.is_ascii_uppercase() || b == b'_' => {
+                // A variable or `_`-name: consume whole so its tail is
+                // not re-lexed, and never count it as a local call.
+                while i < bytes.len() && is_name_char(bytes[i]) {
+                    i += 1;
+                }
+            }
             b if b.is_ascii_lowercase() => {
                 let start = i;
                 let mut j = i;
@@ -193,14 +213,16 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
                 let qualified = start > 0 && matches!(bytes[start - 1], b':' | b'?' | b'#');
                 if bytes.get(j) == Some(&b'(') && !qualified && !is_reserved_word(name) {
                     if let Some(close) = match_parens(bytes, j + 1) {
-                        let arity = top_level_arity(&bytes[j + 1..close]);
-                        let is_definition = followed_by_clause_arrow(bytes, close + 1);
-                        out.push(FunctionSignature {
-                            name: String::from_utf8_lossy(name).into_owned(),
-                            arity,
-                            line,
-                            is_definition,
-                        });
+                        if !in_attribute {
+                            let arity = top_level_arity(&bytes[j + 1..close]);
+                            let is_definition = followed_by_clause_arrow(bytes, close + 1);
+                            out.push(FunctionSignature {
+                                name: String::from_utf8_lossy(name).into_owned(),
+                                arity,
+                                line,
+                                is_definition,
+                            });
+                        }
                         line += count_newlines(&bytes[start..=close]);
                         i = close + 1;
                         continue;
@@ -212,6 +234,25 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
         }
     }
     out
+}
+
+/// True when only whitespace precedes `pos` back to the last newline:
+/// a `-` here opens an attribute or spec form, not a subtraction.
+fn at_form_start(bytes: &[u8], pos: usize) -> bool {
+    bytes[..pos]
+        .iter()
+        .rev()
+        .take_while(|&&b| b != b'\n')
+        .all(|&b| b.is_ascii_whitespace())
+}
+
+/// True when `.` at `pos` ends a form: followed by whitespace or end of
+/// input, not a `..` range or a `mod.field` dot.
+fn is_form_terminator(bytes: &[u8], pos: usize) -> bool {
+    match bytes.get(pos + 1) {
+        None => true,
+        Some(b) => b.is_ascii_whitespace(),
+    }
 }
 
 /// `(Module, Function, Arity)` triples imported via `-import(mod, [f/a,

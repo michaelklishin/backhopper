@@ -1932,6 +1932,23 @@
             "type": "object"
           },
           {
+            "description": "A touched path is absent on the target while others are present\nand no `[[path_translation]]` rewrites it. Non-blocking: dropping\nthe hunks for this path lets the rest apply. The all-absent case\nis `InapplicableReason::PathsMissingOnTarget`.",
+            "properties": {
+              "kind": {
+                "const": "target_path_absent",
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
             "description": "A `_SUITE.erl` file in the patch references `missing_module:f/n`\nwhere `missing_module` resolves to no source file under any\nconfigured `FamilyDefaults.test_helper_search_paths` on the\ntarget tree. The cherry-pick compiles and the SUITE may even\nload, but every call to the missing helper crashes at runtime:\nthe failure pattern that bit the Jun 2026 v4.1.x → v4.0.x round\n(the `amqp_utils:connection_config/1` undef in\n`amqp10_connection_max_SUITE`). Non-blocking by default: the\ndiagnostic equivalent (`Diagnostics.missing_test_modules`)\nalways fires; the `Reason` variant fires only when\n`--target-repo-dir-path` is supplied and the resolution is\nauthoritative.",
             "properties": {
               "call_sites": {
@@ -4841,6 +4858,23 @@
                   "source_path",
                   "target_path",
                   "translation"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched path is absent on the target while others are present\nand no `[[path_translation]]` rewrites it. Non-blocking: dropping\nthe hunks for this path lets the rest apply. The all-absent case\nis `InapplicableReason::PathsMissingOnTarget`.",
+                "properties": {
+                  "kind": {
+                    "const": "target_path_absent",
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "path"
                 ],
                 "type": "object"
               },

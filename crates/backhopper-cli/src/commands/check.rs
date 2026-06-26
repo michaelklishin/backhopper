@@ -757,6 +757,10 @@ fn apply_target_context(
         .collect();
     let summary = target_repo::classify_touched_paths(&touched, target_ctx);
     target_repo::merge_into_series_verdict(&summary, &mut evaluation.verdict);
+    target_repo::merge_reasons_into_evaluation(
+        target_repo::partial_absence_reasons(&summary),
+        evaluation,
+    );
     let search_globs = target_repo::collect_search_path_globs(cfg);
     let findings =
         target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
@@ -1459,6 +1463,7 @@ fn reason_md_label(r: &Reason) -> String {
             target_path.display(),
             translation_name(translation),
         ),
+        Reason::TargetPathAbsent { path } => format!("TargetPathAbsent {path}"),
         Reason::VersionedMachineSnapshotMissing { module, side } => {
             format!(
                 "VersionedMachineSnapshotMissing {module} ({})",

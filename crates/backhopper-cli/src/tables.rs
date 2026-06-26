@@ -132,6 +132,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::PreimageDrifted { .. } => "PreimageDrifted",
         Reason::PreimageMissing { .. } => "PreimageMissing",
         Reason::PathRename { .. } => "PathRename",
+        Reason::TargetPathAbsent { .. } => "TargetPathAbsent",
         Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
         Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
         _ => "UnknownReason",
@@ -362,6 +363,7 @@ fn reason_detail(r: &Reason) -> String {
             target_path,
             ..
         } => format!("{} → {}", source_path.display(), target_path.display()),
+        Reason::TargetPathAbsent { path } => format!("{path}: absent on target, drop these hunks"),
         Reason::VersionedMachineSnapshotMissing { module, side } => {
             format!("{module}: versioned-machine snapshot missing on {side:?}")
         }

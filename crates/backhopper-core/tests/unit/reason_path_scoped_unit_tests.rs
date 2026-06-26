@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use backhopper_core::model::names::{Arity, FunctionName, Mfa, ModuleName, TypeName};
+use backhopper_core::model::names::{Arity, FunctionName, Mfa, ModuleName, RelativePath, TypeName};
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{Reason, TranslationSource};
 
@@ -24,6 +24,7 @@ fn expected_path_scoped(reason: &Reason) -> bool {
             | Reason::PreimageMissing { .. }
             | Reason::ModuleRelocated { .. }
             | Reason::PathRename { .. }
+            | Reason::TargetPathAbsent { .. }
             | Reason::UnsupportedFileType { .. }
             | Reason::SyntacticArtifact { .. }
     )
@@ -64,6 +65,9 @@ fn samples() -> Vec<Reason> {
             source_path: PathBuf::from("a"),
             target_path: PathBuf::from("b"),
             translation: TranslationSource::ConfigStanza { name: "t".into() },
+        },
+        Reason::TargetPathAbsent {
+            path: RelativePath::new("deps/rabbit/src/m.erl").unwrap(),
         },
         Reason::UnsupportedFileType {
             path: PathBuf::from("lib/m.ex"),

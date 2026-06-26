@@ -94,6 +94,26 @@ fn check_group_has_patch_commit_range() {
     assert!(names.contains(&"range"));
 }
 
+// Drift guard: the documented `check` surface is exactly these six,
+// catching both a dropped verb and a phantom (`multi`) the docs name
+// but the binary never shipped.
+#[test]
+fn check_group_subcommand_set_is_exact() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let group = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "check")
+        .unwrap();
+    let mut names: Vec<&str> = group
+        .get_subcommands()
+        .map(|c| c.get_name())
+        .filter(|n| *n != "help")
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, ["batch", "commit", "merge", "patch", "pr", "range"]);
+}
+
 #[test]
 fn check_patch_advertises_diagnostic_flags() {
     let mut cmd = Cli::command();

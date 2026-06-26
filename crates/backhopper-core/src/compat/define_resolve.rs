@@ -133,6 +133,8 @@ fn collect_target_defines(
         out.records.extend(extract_defined_records(&content));
         for inc in extract_includes(&content) {
             if is_stdlib_include_lib(&inc.directive) {
+                // Unreadable header: cannot prove a symbol undefined
+                out.complete = false;
                 continue;
             }
             match resolve_include(target, &path, &inc.directive) {

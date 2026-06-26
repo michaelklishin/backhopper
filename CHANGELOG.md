@@ -1,6 +1,22 @@
 # Changelog
 
-## v0.18.0 (in development)
+## v0.19.0 (in development)
+
+### Enhancements
+
+ * A path absent on the target while others are present is now a
+   non-blocking `target_path_absent` reason, not silently dropped
+
+### Bug Fixes
+
+ * `?MACRO` and `#record` uses are no longer reported as undefined when
+   the file includes an unreadable stdlib header (`eunit`, `logger.hrl`):
+   the define set is incomplete, so the check skips them
+ * Variable applications (`Fun(...)`), attribute forms (`-export(...)`),
+   and `-spec` type names are no longer read as undefined local calls;
+   the scanner skips them instead of re-lexing their tails
+
+## v0.18.0
 
 ### Enhancements
 

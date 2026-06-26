@@ -47,6 +47,75 @@ fn function_signatures_classify_definitions_and_calls() {
 }
 
 #[test]
+fn a_variable_application_is_not_a_call() {
+    // `Fun(A, B)` calls a variable, not a local function: its lowercase
+    // tail must not be re-lexed as `un/2`.
+    let sigs = extract_function_signatures("g(Fun) -> Fun(a, b).\n");
+    assert!(sigs.iter().all(|s| s.name != "un"));
+    assert!(sigs.iter().any(|s| s.name == "g" && s.is_definition));
+}
+
+#[test]
+fn a_variable_application_still_exposes_inner_calls() {
+    // The variable is skipped whole, but a genuine call among its
+    // arguments is still seen.
+    let sigs = extract_function_signatures("g(Fun, Q) -> Fun(queue_definition(Q)).\n");
+    let call = sigs
+        .iter()
+        .find(|s| s.name == "queue_definition" && !s.is_definition)
+        .unwrap();
+    assert_eq!(call.arity, 1);
+    assert!(sigs.iter().all(|s| s.name != "un"));
+}
+
+#[test]
+fn an_attribute_form_is_not_a_call() {
+    let sigs = extract_function_signatures("-export([f/0, g/1]).\n");
+    assert!(sigs.is_empty());
+}
+
+#[test]
+fn a_spec_type_is_not_a_call() {
+    // `map()` and `term()` in a spec look like zero-arity calls but are
+    // type references; the following clause is still a definition.
+    let sigs = extract_function_signatures("-spec f(map()) -> term().\nf(M) -> M.\n");
+    assert!(sigs.iter().all(|s| s.name != "map" && s.name != "term"));
+    assert!(sigs.iter().any(|s| s.name == "f" && s.is_definition));
+}
+
+#[test]
+fn subtraction_does_not_start_an_attribute() {
+    // A mid-expression `-` is an operator, not an attribute marker, so
+    // it must not hide the calls around it.
+    let sigs = extract_function_signatures("g(X) -> h(X) - other(X).\n");
+    assert!(sigs.iter().any(|s| s.name == "h" && !s.is_definition));
+    assert!(sigs.iter().any(|s| s.name == "other" && !s.is_definition));
+}
+
+#[test]
+fn a_define_body_call_is_not_a_call() {
+    // Neither the `define` attribute name nor the call in its body is a
+    // local call at this site.
+    let sigs = extract_function_signatures("-define(MAX, compute(1)).\n");
+    assert!(
+        sigs.iter()
+            .all(|s| s.name != "define" && s.name != "compute")
+    );
+}
+
+#[test]
+fn a_call_after_an_attribute_is_still_found() {
+    // The closing `.` ends the attribute, so the following clause and
+    // its call are scanned normally.
+    let sigs = extract_function_signatures("-spec g() -> ok.\ng() -> real_call().\n");
+    assert!(sigs.iter().any(|s| s.name == "g" && s.is_definition));
+    assert!(
+        sigs.iter()
+            .any(|s| s.name == "real_call" && !s.is_definition)
+    );
+}
+
+#[test]
 fn imports_are_extracted_by_name_and_arity() {
     let imps = extract_imports("-import(lists, [map/2, foldl/3]).\n");
     assert!(imps.contains(&("map".to_owned(), 2)));

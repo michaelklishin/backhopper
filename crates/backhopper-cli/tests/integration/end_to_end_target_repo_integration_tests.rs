@@ -766,3 +766,66 @@ fn local_call_undefined_on_target_is_flagged_through_the_cli() {
         .unwrap_or_else(|| panic!("expected local_call_undefined_on_target in {reasons:?}"));
     assert_eq!(r["function"], "helper");
 }
+
+// A patch touching one present and one absent target path: the absent
+// path surfaces as a TargetPathAbsent reason.
+#[test]
+fn partial_target_absence_emits_target_path_absent() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    // mgmt.erl exists on the source pin but not the target tree.
+    let source = FixtureRepo::new();
+    source.write_file(
+        "deps/demo/src/core.erl",
+        "-module(core).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    source.write_file(
+        "deps/demo/src/mgmt.erl",
+        "-module(mgmt).\n-export([m/0]).\nm() -> ok.\n",
+    );
+    source.commit("seed core and mgmt");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/core.erl",
+        "-module(core).\n-export([go/0]).\ngo() -> {ok}.\n",
+    );
+    source.write_file(
+        "deps/demo/src/mgmt.erl",
+        "-module(mgmt).\n-export([m/0]).\nm() -> core:go().\n",
+    );
+    source.commit("edit both bodies");
+    let target = FixtureRepo::new();
+    target.write_file(
+        "deps/demo/src/core.erl",
+        "-module(core).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    target.commit("seed without mgmt");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let r = reasons
+        .iter()
+        .find(|r| r["kind"] == "target_path_absent")
+        .unwrap_or_else(|| panic!("expected target_path_absent in {reasons:?}"));
+    assert_eq!(r["path"], "deps/demo/src/mgmt.erl");
+}

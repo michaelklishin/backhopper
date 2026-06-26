@@ -134,7 +134,7 @@ fn an_unresolved_include_suppresses_flagging() {
 }
 
 #[test]
-fn a_stdlib_include_lib_does_not_suppress_flagging() {
+fn a_stdlib_include_lib_suppresses_macro_flagging() {
     let path = rp("deps/rabbit/src/x.erl");
     let reasons = analyse(
         &path,
@@ -145,7 +145,39 @@ fn a_stdlib_include_lib_does_not_suppress_flagging() {
             "-module(x).\n-include_lib(\"kernel/include/logger.hrl\").\n",
         )],
     );
-    assert_eq!(macros_flagged(&reasons), ["FOO"]);
+    assert!(reasons.is_empty());
+}
+
+// The eunit assert family lives in the skipped eunit.hrl.
+#[test]
+fn an_eunit_assert_macro_is_not_flagged() {
+    let path = rp("deps/rabbit/test/x_SUITE.erl");
+    let reasons = analyse(
+        &path,
+        "t() -> ?assertEqual(1, 1).\n",
+        &index(&["deps/rabbit/test/x_SUITE.erl"]),
+        &[(
+            "deps/rabbit/test/x_SUITE.erl",
+            "-module(x_SUITE).\n-include_lib(\"eunit/include/eunit.hrl\").\n",
+        )],
+    );
+    assert!(reasons.is_empty());
+}
+
+// Records use the same completeness flag as macros.
+#[test]
+fn a_stdlib_include_lib_suppresses_record_flagging() {
+    let path = rp("deps/rabbit/src/x.erl");
+    let reasons = analyse(
+        &path,
+        "f(S) -> S#state.field.\n",
+        &index(&["deps/rabbit/src/x.erl"]),
+        &[(
+            "deps/rabbit/src/x.erl",
+            "-module(x).\n-include_lib(\"kernel/include/file.hrl\").\n",
+        )],
+    );
+    assert!(reasons.is_empty());
 }
 
 #[test]

@@ -132,6 +132,35 @@ fn arity_distinguishes_the_call() {
     assert_eq!(flagged(&reasons), [("f", 2)]);
 }
 
+// Regression from rabbitmq/rabbitmq-server #16736 (commit bd457076ac):
+// a clean-applying backport was flagged because the scanner read a
+// variable application (`Fun(...)`), an `-export` form, and `-spec` type
+// names as undefined local calls. None are calls; the only real call,
+// `queue_definition/1`, is defined on target, so the result is clean.
+#[test]
+fn rabbitmq_definitions_backport_flags_no_spurious_calls() {
+    let path = rp("deps/rabbit/src/rabbit_definitions.erl");
+    let added = "\
+-export([fold_queues/3]).
+-spec fold_queues(Selector, Acc, Fun) -> Acc when
+      Fun :: fun((Queue :: map(), Acc) -> Acc),
+      Acc :: term().
+fold_queues(Selector, AccIn, Fun) ->
+    lists:foldl(fun(Q, Acc0) -> Fun(queue_definition(Q), Acc0) end, AccIn, all_queues()).
+";
+    let target = "-module(rabbit_definitions).
+fold_queues(_, A, _) -> A.
+queue_definition(Q) -> Q.
+all_queues() -> [].
+";
+    let reasons = analyse(
+        &path,
+        added,
+        &[("deps/rabbit/src/rabbit_definitions.erl", target)],
+    );
+    assert!(reasons.is_empty(), "spurious flags: {reasons:?}");
+}
+
 // A function defined later in the target file still resolves: the whole
 // file is parsed, not just a prefix.
 #[test]

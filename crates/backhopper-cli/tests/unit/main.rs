@@ -16,6 +16,7 @@ mod init_build_toml_unit_tests;
 mod json_envelope_unit_tests;
 mod merge_added_file_findings_unit_tests;
 mod multi_app_match_unit_tests;
+mod partial_absence_reasons_unit_tests;
 mod partial_success_exit_codes_unit_tests;
 mod pin_bump_detection_unit_tests;
 mod rabbitmq_components_unit_tests;

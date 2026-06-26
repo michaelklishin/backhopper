@@ -314,6 +314,13 @@ pub enum Reason {
         target_path: PathBuf,
         translation: TranslationSource,
     },
+    /// A touched path is absent on the target while others are present
+    /// and no `[[path_translation]]` rewrites it. Non-blocking: dropping
+    /// the hunks for this path lets the rest apply. The all-absent case
+    /// is `InapplicableReason::PathsMissingOnTarget`.
+    TargetPathAbsent {
+        path: RelativePath,
+    },
     /// A `_SUITE.erl` file in the patch references `missing_module:f/n`
     /// where `missing_module` resolves to no source file under any
     /// configured `FamilyDefaults.test_helper_search_paths` on the
@@ -559,6 +566,7 @@ impl Reason {
             | Self::ReturnShapeMismatch { .. }
             | Self::MissingType { .. }
             | Self::PathRename { .. }
+            | Self::TargetPathAbsent { .. }
             | Self::TestModuleSymbolMissing { .. }
             | Self::BehaviourModuleMissing { .. }
             | Self::HeaderFileMissing { .. }
@@ -608,6 +616,7 @@ impl Reason {
             | Self::WireContractRegression { .. }
             | Self::ReturnShapeMismatch { .. }
             | Self::PathRename { .. }
+            | Self::TargetPathAbsent { .. }
             | Self::TestModuleSymbolMissing { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => None,
@@ -655,6 +664,7 @@ impl Reason {
             | Self::WireContractBodyDrift { .. }
             | Self::MissingType { .. }
             | Self::PathRename { .. }
+            | Self::TargetPathAbsent { .. }
             | Self::TestModuleSymbolMissing { .. }
             | Self::BehaviourModuleMissing { .. }
             | Self::HeaderFileMissing { .. }
@@ -679,6 +689,7 @@ impl Reason {
             | Self::PostimageCollision { .. }
             | Self::ContextDrift { .. }
             | Self::PathRename { .. }
+            | Self::TargetPathAbsent { .. }
             | Self::UnsupportedFileType { .. }
             | Self::SyntacticArtifact { .. } => true,
             Self::MissingSymbol { .. }

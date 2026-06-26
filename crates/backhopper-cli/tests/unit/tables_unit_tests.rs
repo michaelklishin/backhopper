@@ -10,7 +10,7 @@ use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, RecordName, TagName,
+    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, RecordName, RelativePath, TagName,
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
@@ -284,6 +284,31 @@ fn unsupported_file_type_reason_renders_in_table() {
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UnsupportedFileType"), "table: {text}");
     assert!(text.contains("lib/foo.ex"), "table: {text}");
+}
+
+#[test]
+fn target_path_absent_reason_renders_in_table() {
+    let eval = SeriesEvaluation {
+        verdict: SeriesVerdict::from_results(vec![PinVerdict::new(
+            pin_for("demo"),
+            Verdict::RequiresAdaptation {
+                reasons: vec![Reason::TargetPathAbsent {
+                    path: RelativePath::new("deps/rabbit/src/rabbit_stream_super_stream_mgmt.erl")
+                        .unwrap(),
+                }],
+            },
+        )]),
+        diagnostics: Diagnostics::default(),
+        patch_facts: Default::default(),
+        touched_paths: Vec::new(),
+        pr_commits: None,
+    };
+    let text = render_evaluation_table(&eval, TableStyle::Modern);
+    assert!(text.contains("TargetPathAbsent"), "table: {text}");
+    assert!(
+        text.contains("rabbit_stream_super_stream_mgmt.erl"),
+        "table: {text}"
+    );
 }
 
 #[test]

@@ -87,6 +87,7 @@ mod suite_rule_toml_unit_tests;
 mod summary_unit_tests;
 mod symbol_availability_unit_tests;
 mod tag_glob_unit_tests;
+mod target_path_absent_reason_unit_tests;
 mod target_preimage_unit_tests;
 mod target_tree_classifier_unit_tests;
 mod test_018_diagnostics_and_family_unit_tests;

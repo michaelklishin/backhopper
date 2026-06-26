@@ -137,6 +137,24 @@ pub fn classify_touched_paths(
     }
 }
 
+/// One non-blocking `TargetPathAbsent` per absent path, empty unless
+/// some path is also present (all-absent is the whole-patch
+/// `PathsMissingOnTarget` case handled in `merge_into_series_verdict`).
+pub fn partial_absence_reasons(summary: &TouchedPathSummary) -> Vec<Reason> {
+    if summary.on_target == 0 {
+        return Vec::new();
+    }
+    summary
+        .missing
+        .iter()
+        .filter_map(|p| {
+            p.to_str()
+                .and_then(|s| RelativePath::new(s.to_owned()).ok())
+        })
+        .map(|path| Reason::TargetPathAbsent { path })
+        .collect()
+}
+
 #[derive(Debug)]
 pub struct TouchedPath<'a> {
     pub path: &'a Path,

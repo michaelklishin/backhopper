@@ -553,11 +553,15 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
 
 ### Voice
 
-Write like a senior engineer who values clarity and simplicity.
+Write like a senior engineer who values clarity and simplicity. This
+applies to all prose: comments, commit messages, the changelog, and
+design docs.
 
  * Plain and factual: state the why in one line, never narrate the what
  * Literal mechanism over metaphor: "run clean picks first", not "bank
    a stable base"; "conflicted", not "the pick fought the merge"
+ * Prefer the plainest word: "skipped", not "ceded"; "a false positive",
+   not "false-flagging". No coined verbs, no jargon for its own sake
  * No flourish, no editorializing, no imagery. Real domain terms are fine
  * If a comment needs a second clause to justify itself, it is probably
    too clever
