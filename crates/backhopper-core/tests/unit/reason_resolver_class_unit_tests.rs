@@ -52,6 +52,16 @@ fn the_target_tree_reasons_map_one_to_one() {
             ResolverClass::LocalCall,
         ),
         (
+            Reason::QualifiedCallUndefinedOnTarget {
+                source_path: rp("src/x.erl"),
+                module: module("rabbit_misc"),
+                function: FunctionName::from_str("queue_resource").unwrap(),
+                arity: Arity::new(2),
+                line: 1,
+            },
+            ResolverClass::QualifiedCall,
+        ),
+        (
             Reason::HeaderFileMissing {
                 source_path: rp("src/x.erl"),
                 include_directive: IncludeDirective::Include {

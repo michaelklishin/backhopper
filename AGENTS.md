@@ -553,7 +553,7 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
 
 ### Voice
 
-Write like a senior engineer who values clarity and simplicity. This
+Write like an engineer who values clarity and simplicity. This
 applies to all prose: comments, commit messages, the changelog, and
 design docs.
 

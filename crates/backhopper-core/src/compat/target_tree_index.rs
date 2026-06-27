@@ -7,10 +7,11 @@
 //! analyser. Pure data: construction from a live repository lives in
 //! `backhopper-git`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-use crate::model::names::{CommitSha, GitRef};
+use crate::model::names::{CommitSha, GitRef, ModuleName};
 
 #[derive(Debug, Clone)]
 pub struct TargetTreeIndex {
@@ -19,6 +20,7 @@ pub struct TargetTreeIndex {
     resolved_commit: CommitSha,
     present_paths: BTreeSet<PathBuf>,
     present_dirs: BTreeSet<PathBuf>,
+    erl_modules: BTreeMap<ModuleName, PathBuf>,
 }
 
 impl TargetTreeIndex {
@@ -33,6 +35,9 @@ impl TargetTreeIndex {
         present_paths: BTreeSet<PathBuf>,
     ) -> Self {
         let mut present_dirs: BTreeSet<PathBuf> = BTreeSet::new();
+        // Erlang fixes module name to file basename. A basename seen
+        // twice is a clash Erlang itself rejects, so record neither.
+        let mut by_module: BTreeMap<ModuleName, Option<PathBuf>> = BTreeMap::new();
         for path in &present_paths {
             for ancestor in path.ancestors().skip(1) {
                 if ancestor.as_os_str().is_empty() {
@@ -40,13 +45,27 @@ impl TargetTreeIndex {
                 }
                 present_dirs.insert(ancestor.to_path_buf());
             }
+            if path.extension().and_then(|e| e.to_str()) == Some("erl")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                && let Ok(module) = ModuleName::from_str(stem)
+            {
+                by_module
+                    .entry(module)
+                    .and_modify(|slot| *slot = None)
+                    .or_insert_with(|| Some(path.clone()));
+            }
         }
+        let erl_modules = by_module
+            .into_iter()
+            .filter_map(|(m, p)| p.map(|p| (m, p)))
+            .collect();
         Self {
             target_repo,
             target_ref,
             resolved_commit,
             present_paths,
             present_dirs,
+            erl_modules,
         }
     }
 
@@ -80,5 +99,11 @@ impl TargetTreeIndex {
 
     pub fn present_paths(&self) -> &BTreeSet<PathBuf> {
         &self.present_paths
+    }
+
+    /// The `.erl` file that defines `module`, by basename, or `None`
+    /// when the tree has no such file or two files share the basename.
+    pub fn module_erl_path(&self, module: &ModuleName) -> Option<&Path> {
+        self.erl_modules.get(module).map(PathBuf::as_path)
     }
 }

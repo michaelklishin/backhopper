@@ -38,6 +38,7 @@ fn analyse(path: &RelativePath, added: &str, target: &[(&str, &str)]) -> Vec<Rea
     let subjects = [LocalCallSubject {
         source_path: path,
         added_text: added,
+        line_map: &[],
     }];
     analyse_local_calls(&subjects, &reader(target))
 }

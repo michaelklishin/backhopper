@@ -9,12 +9,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
+use backhopper_core::compat::added_lines::added_lines_with_offsets;
 use backhopper_core::compat::classify_hunks_against_target;
 use backhopper_core::compat::define_resolve::{DefineSubject, analyse_define_symbols};
 use backhopper_core::compat::local_call_resolve::{LocalCallSubject, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
+use backhopper_core::compat::qualified_call_resolve::{
+    QualifiedCallSubject, analyse_qualified_calls, patch_added_functions,
+};
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
@@ -296,11 +301,11 @@ pub fn collect_added_file_findings(
     )
 }
 
-/// Added-line text of every touched `.erl` or `.hrl` file, modified
-/// files included: a macro or record reference dangles on a
-/// cleanly-modified file too, so this does not require `old_path` to be
-/// absent.
-fn collect_define_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, String)> {
+/// Added-line text of every touched `.erl` or `.hrl` file, with the
+/// blob-line to file-line map for each. Modified files are included: a
+/// macro or record reference dangles on a cleanly-modified file too, so
+/// this does not require `old_path` to be absent.
+fn collect_define_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, String, Vec<u32>)> {
     let mut out = Vec::new();
     for file in files {
         if file.binary {
@@ -315,17 +320,9 @@ fn collect_define_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, Stri
         let Some(path) = new_path.to_str().and_then(|s| RelativePath::new(s).ok()) else {
             continue;
         };
-        let mut added = String::new();
-        for hunk in &file.hunks {
-            for line in &hunk.lines {
-                if let HunkLine::Added(s) = line {
-                    added.push_str(s);
-                    added.push('\n');
-                }
-            }
-        }
+        let (added, line_map) = added_lines_with_offsets(&file.hunks);
         if !added.is_empty() {
-            out.push((path, added));
+            out.push((path, added, line_map));
         }
     }
     out
@@ -348,9 +345,10 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
     };
     let subjects: Vec<DefineSubject<'_>> = subjects_text
         .iter()
-        .map(|(p, t)| DefineSubject {
+        .map(|(p, t, lm)| DefineSubject {
             source_path: p,
             added_text: t,
+            line_map: lm,
         })
         .collect();
     analyse_define_symbols(&subjects, &ctx.index, &read_target)
@@ -360,9 +358,9 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
 /// module's function set. `.erl` files only: a `.hrl` defines no
 /// function set of its own.
 pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
-    let subjects_text: Vec<(RelativePath, String)> = collect_define_subject_text(files)
+    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
         .into_iter()
-        .filter(|(p, _)| p.as_str().ends_with(".erl"))
+        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
         .collect();
     if subjects_text.is_empty() {
         return Vec::new();
@@ -376,12 +374,68 @@ pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -
     };
     let subjects: Vec<LocalCallSubject<'_>> = subjects_text
         .iter()
-        .map(|(p, t)| LocalCallSubject {
+        .map(|(p, t, lm)| LocalCallSubject {
             source_path: p,
             added_text: t,
+            line_map: lm,
         })
         .collect();
     analyse_local_calls(&subjects, &read_target)
+}
+
+/// Resolve qualified `m:f/a` calls the patch adds against the called
+/// module's exports on the target tree. `.erl` files only.
+/// `covered_modules` is the union of every pin snapshot's modules: a
+/// call into one of those defers to the snapshot axis.
+pub fn collect_qualified_call_findings(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+    covered_modules: &BTreeSet<ModuleName>,
+) -> Vec<Reason> {
+    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
+        .into_iter()
+        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
+        .collect();
+    if subjects_text.is_empty() {
+        return Vec::new();
+    }
+    let per_file: Vec<(ModuleName, &str)> = subjects_text
+        .iter()
+        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+        .collect();
+    let patch_added = patch_added_functions(&per_file);
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
+        let path = ctx.index.module_erl_path(m)?;
+        RelativePath::new(path.to_str()?.to_owned()).ok()
+    };
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let subjects: Vec<QualifiedCallSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t, lm)| QualifiedCallSubject {
+            source_path: p,
+            added_text: t,
+            line_map: lm,
+        })
+        .collect();
+    analyse_qualified_calls(
+        &subjects,
+        covered_modules,
+        &patch_added,
+        &resolve_module_path,
+        &read_target,
+    )
+}
+
+/// The Erlang module a `.erl` path defines, by basename.
+fn module_of_erl_path(path: &RelativePath) -> Option<ModuleName> {
+    let stem = Path::new(path.as_str()).file_stem()?.to_str()?;
+    ModuleName::from_str(stem).ok()
 }
 
 /// Classify every touched file's hunks against the target tree:

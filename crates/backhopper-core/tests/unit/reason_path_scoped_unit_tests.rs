@@ -105,6 +105,13 @@ fn samples() -> Vec<Reason> {
             pin_version: 2,
             patch_version: 1,
         },
+        Reason::QualifiedCallUndefinedOnTarget {
+            source_path: RelativePath::new("deps/rabbit/src/m.erl").unwrap(),
+            module: module(),
+            function: function(),
+            arity: Arity::new(1),
+            line: 1,
+        },
     ]
 }
 

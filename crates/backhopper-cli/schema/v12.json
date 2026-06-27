@@ -2114,6 +2114,44 @@
             "type": "object"
           },
           {
+            "description": "A touched `.erl` file calls a qualified `m:f/a` on an added line\nwhose module is a first-party module present on the target tree,\nbut the target version of that module does not export `f/a` (and\nthe patch does not add it). The qualified counterpart of\n`LocalCallUndefinedOnTarget`, resolved against the called\nmodule's exports. Withheld when any pin snapshot already covers\nthe module, when it is absent from the tree, or when its export\nsurface is not fully readable. Non-blocking.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "qualified_call_undefined_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "module": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "module",
+              "function",
+              "arity",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
             "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
             "properties": {
               "kind": {
@@ -5037,6 +5075,44 @@
                 "required": [
                   "kind",
                   "source_path",
+                  "function",
+                  "arity",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A touched `.erl` file calls a qualified `m:f/a` on an added line\nwhose module is a first-party module present on the target tree,\nbut the target version of that module does not export `f/a` (and\nthe patch does not add it). The qualified counterpart of\n`LocalCallUndefinedOnTarget`, resolved against the called\nmodule's exports. Withheld when any pin snapshot already covers\nthe module, when it is absent from the tree, or when its export\nsurface is not fully readable. Non-blocking.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "qualified_call_undefined_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "module",
                   "function",
                   "arity",
                   "line"

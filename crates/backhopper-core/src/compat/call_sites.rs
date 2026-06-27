@@ -86,6 +86,38 @@ pub fn extract_into(line: &str, out: &mut Vec<SymbolRef>) {
     extract_into_with_macros(line, empty_macros(), out);
 }
 
+/// One statically-named `mod:fun(Args)` call with its source line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QualifiedCallSite {
+    pub mfa: Mfa,
+    pub line: u32,
+}
+
+/// Every statically-named `mod:fun(Args)` call in `src`, with line and
+/// arity. Type-attribute lines (`-spec`, `-callback`, `-type`,
+/// `-opaque`) are skipped: a qualified `mod:t()` there is a type
+/// reference, not a call. Variable-module and wrapped multi-line calls
+/// are skipped by `extract_call_args_into`.
+pub fn extract_qualified_calls(src: &str) -> Vec<QualifiedCallSite> {
+    let mut scanner = AttrCtxScanner::new();
+    let mut out = Vec::new();
+    let mut calls = Vec::new();
+    for (idx, line) in src.lines().enumerate() {
+        if scanner.classify(line) != RefContext::Body {
+            continue;
+        }
+        calls.clear();
+        extract_call_args_into(line, &mut calls);
+        for (mfa, _shapes) in calls.drain(..) {
+            out.push(QualifiedCallSite {
+                mfa,
+                line: (idx + 1) as u32,
+            });
+        }
+    }
+    out
+}
+
 /// Cross-line classifier that decides whether a hunk line is body or
 /// type-attribute context. `-spec`, `-callback`, `-type`, and
 /// `-opaque` open a type-attribute region that runs until the

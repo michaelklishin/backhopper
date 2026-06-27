@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use crate::compat::added_file::is_stdlib_include_lib;
+use crate::compat::added_lines::file_line;
 use crate::compat::source_attributes::{
     extract_defined_macros, extract_defined_records, extract_includes, extract_macro_uses,
     extract_record_uses, is_predefined_macro, resolve_include,
@@ -24,12 +25,14 @@ use crate::model::verdict::Reason;
 /// `-include` follow depth bound: real header chains are a handful deep.
 const MAX_INCLUDE_DEPTH: usize = 16;
 
-/// One touched file: its source-relative path and the text of its added
-/// lines, where new `?MACRO` and `#record` uses appear.
+/// One touched file: its source-relative path, the text of its added
+/// lines where new `?MACRO` and `#record` uses appear, and the
+/// blob-line to file-line map for the reported line.
 #[derive(Debug, Clone, Copy)]
 pub struct DefineSubject<'a> {
     pub source_path: &'a RelativePath,
     pub added_text: &'a str,
+    pub line_map: &'a [u32],
 }
 
 /// Flag each added macro or record use that resolves to no definition on
@@ -66,7 +69,7 @@ pub fn analyse_define_symbols(
             reasons.push(Reason::MacroUndefinedOnTarget {
                 source_path: subject.source_path.clone(),
                 macro_name: u.name,
-                line: u.line,
+                line: file_line(subject.line_map, u.line),
             });
         }
         let patch_records = extract_defined_records(subject.added_text);
@@ -84,7 +87,7 @@ pub fn analyse_define_symbols(
             reasons.push(Reason::RecordUndefinedOnTarget {
                 source_path: subject.source_path.clone(),
                 record_name,
-                line: u.line,
+                line: file_line(subject.line_map, u.line),
             });
         }
     }

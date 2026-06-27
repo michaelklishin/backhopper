@@ -765,6 +765,161 @@ fn local_call_undefined_on_target_is_flagged_through_the_cli() {
         .find(|r| r["kind"] == "local_call_undefined_on_target")
         .unwrap_or_else(|| panic!("expected local_call_undefined_on_target in {reasons:?}"));
     assert_eq!(r["function"], "helper");
+    // The call is the fourth line of the file: the line map made the
+    // report file-relative for the existing reasons too.
+    assert_eq!(r["line"], 4);
+}
+
+// A patch that adds both a qualified call and the callee (with its
+// export, in the callee's own file) must not false-positive: the
+// collector's patch-wide added-functions map covers the cross-file case
+// even though the target tree lacks the new function.
+#[test]
+fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = FixtureRepo::new();
+    source.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    source.commit("seed caller");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\nf() -> helper:fresh(x).\n",
+    );
+    source.write_file(
+        "deps/demo/src/helper.erl",
+        "-module(helper).\n-export([fresh/1]).\nfresh(X) -> X.\n",
+    );
+    source.commit("add helper:fresh/1 and call it");
+    let target = FixtureRepo::new();
+    target.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    target.write_file(
+        "deps/demo/src/helper.erl",
+        "-module(helper).\n-export([present/0]).\npresent() -> ok.\n",
+    );
+    target.commit("seed caller and helper without fresh/1");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    assert!(
+        !reasons
+            .iter()
+            .any(|r| r["kind"] == "qualified_call_undefined_on_target"),
+        "patch-added callee should not be flagged: {reasons:?}"
+    );
+}
+
+// A patch that adds a qualified call into a first-party module the
+// target tree does not export is flagged, and the reported line is the
+// true file line (the #16771 shape). `helper` is present on the target
+// tree but absent from the demo snapshot, so it resolves live.
+#[test]
+fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = FixtureRepo::new();
+    source.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    source.commit("seed caller");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\nf() -> helper:missing(x).\n",
+    );
+    source.commit("call helper:missing/1");
+    let target = FixtureRepo::new();
+    target.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    target.write_file(
+        "deps/demo/src/helper.erl",
+        "-module(helper).\n-export([present/0]).\npresent() -> ok.\n",
+    );
+    target.commit("seed caller and helper without missing/1");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let r = reasons
+        .iter()
+        .find(|r| r["kind"] == "qualified_call_undefined_on_target")
+        .unwrap_or_else(|| panic!("expected qualified_call_undefined_on_target in {reasons:?}"));
+    assert_eq!(r["module"], "helper");
+    assert_eq!(r["function"], "missing");
+    assert_eq!(r["arity"], 1);
+    // The call is the fourth line of the new file, not the first line
+    // of the added block: the line map made the report file-relative.
+    assert_eq!(r["line"], 4);
+
+    // The text table names the reason and the m:f/a, not "UnknownReason".
+    let t = run([
+        "--formatter",
+        "text",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let text = stdout(&t);
+    assert!(
+        text.contains("QualifiedCallUndefinedOnTarget") && text.contains("helper:missing/1"),
+        "text table missing the reason: {text}"
+    );
 }
 
 // A patch touching one present and one absent target path: the absent

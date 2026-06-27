@@ -742,6 +742,7 @@ fn apply_target_context(
     cfg: &Config,
     target_ctx: &target_repo::TargetContext,
     bytes: &[u8],
+    covered_modules: &BTreeSet<ModuleName>,
     evaluation: &mut SeriesEvaluation,
 ) -> CliResult<()> {
     let parsed = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
@@ -769,9 +770,26 @@ fn apply_target_context(
     target_repo::merge_reasons_into_evaluation(define_reasons, evaluation);
     let local_call_reasons = target_repo::collect_local_call_findings(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(local_call_reasons, evaluation);
+    let qualified_call_reasons =
+        target_repo::collect_qualified_call_findings(&parsed.files, target_ctx, covered_modules);
+    target_repo::merge_reasons_into_evaluation(qualified_call_reasons, evaluation);
     let preimage_reasons = target_repo::collect_target_preimage_findings(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(preimage_reasons, evaluation);
     Ok(())
+}
+
+/// Union of every pin snapshot's modules: a qualified call into one of
+/// these is the snapshot axis's, so the live target-tree resolver
+/// defers on it.
+fn covered_module_set(cache: &SnapshotCache<'_>, pins: &[Pin]) -> CliResult<BTreeSet<ModuleName>> {
+    let mut modules = BTreeSet::new();
+    for pin in pins {
+        let snap = cache
+            .get(&pin.project, &pin.tag)
+            .map_err(|e| CliError::Core(e.into()))?;
+        modules.extend(snap.modules().iter().map(|m| m.name.clone()));
+    }
+    Ok(modules)
 }
 
 /// What tier-1 already-present detection concluded for one candidate.
@@ -1155,7 +1173,8 @@ fn run_check_patch(
             evaluation.pr_commits.clone_from(&p.pr_commits);
         }
         if let Some(target_ctx) = &target_ctx {
-            apply_target_context(cfg, target_ctx, bytes, &mut evaluation)?;
+            let covered = covered_module_set(&cache, &pins)?;
+            apply_target_context(cfg, target_ctx, bytes, &covered, &mut evaluation)?;
             // Patch-shaped inputs have no commit identity to probe.
             if let Some(p) = &provenance {
                 if let Some(probe) =
@@ -1498,6 +1517,15 @@ fn reason_md_label(r: &Reason) -> String {
             arity,
             line,
         } => format!("LocalCallUndefinedOnTarget {function}/{arity} in {source_path}:{line}"),
+        Reason::QualifiedCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            line,
+        } => format!(
+            "QualifiedCallUndefinedOnTarget {module}:{function}/{arity} in {source_path}:{line}"
+        ),
         _ => format!("{r:?}"),
     }
 }
@@ -2251,6 +2279,15 @@ fn run_batch(
             source,
         )?);
     }
+    // Snapshot-covered modules also depend only on the series.
+    let mut covered_modules_by_series = Vec::with_capacity(resolved_series.len());
+    for series in &resolved_series {
+        covered_modules_by_series.push(if target_ctx.is_some() {
+            covered_module_set(&cache, &series.pins)?
+        } else {
+            BTreeSet::new()
+        });
+    }
     for planned in plan.commits() {
         // resolved lazily: only a miss pays for the diff, the macro
         // environment, or the file map
@@ -2262,7 +2299,11 @@ fn run_batch(
         } else {
             ""
         };
-        for (series, source_pins) in resolved_series.iter().zip(&source_pins_by_series) {
+        for ((series, source_pins), covered) in resolved_series
+            .iter()
+            .zip(&source_pins_by_series)
+            .zip(&covered_modules_by_series)
+        {
             let item_label = format!("{} @ {}{merge_marker}", planned.sha, series.name);
             let key = session.check_key(
                 cfg,
@@ -2303,7 +2344,7 @@ fn run_batch(
                 )?;
                 evaluation.pr_commits.clone_from(&input.pr_commits);
                 if let Some(target_ctx) = &target_ctx {
-                    apply_target_context(cfg, target_ctx, &input.bytes, &mut evaluation)?;
+                    apply_target_context(cfg, target_ctx, &input.bytes, covered, &mut evaluation)?;
                     if let Some(probe) = &probe {
                         probe.apply(&planned.sha, &input.bytes, &mut evaluation);
                     }

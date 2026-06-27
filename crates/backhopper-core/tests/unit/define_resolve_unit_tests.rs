@@ -64,6 +64,7 @@ fn analyse(
     let subjects = [DefineSubject {
         source_path: path,
         added_text: added,
+        line_map: &[],
     }];
     analyse_define_symbols(&subjects, idx, &reader(files))
 }

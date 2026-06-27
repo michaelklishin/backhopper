@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 pub mod added_file;
+pub mod added_lines;
 pub mod arg_shape;
 pub mod call_sites;
 pub mod define_resolve;
@@ -12,6 +13,7 @@ pub mod local_call_resolve;
 pub mod otp;
 pub mod patch;
 pub(crate) mod patch_facts;
+pub mod qualified_call_resolve;
 pub mod routing;
 pub mod scope;
 pub mod source_attributes;

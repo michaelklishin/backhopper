@@ -389,6 +389,21 @@ pub enum Reason {
         arity: Arity,
         line: u32,
     },
+    /// A touched `.erl` file calls a qualified `m:f/a` on an added line
+    /// whose module is a first-party module present on the target tree,
+    /// but the target version of that module does not export `f/a` (and
+    /// the patch does not add it). The qualified counterpart of
+    /// `LocalCallUndefinedOnTarget`, resolved against the called
+    /// module's exports. Withheld when any pin snapshot already covers
+    /// the module, when it is absent from the tree, or when its export
+    /// surface is not fully readable. Non-blocking.
+    QualifiedCallUndefinedOnTarget {
+        source_path: RelativePath,
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+        line: u32,
+    },
     /// Declared versioned-machine module is touched but the snapshot
     /// has no recorded `versioned_machine_version` on `side`.
     /// Non-blocking.
@@ -573,6 +588,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => None,
         }
@@ -590,6 +606,7 @@ impl Reason {
             Self::MacroUndefinedOnTarget { .. } => Some(ResolverClass::Macro),
             Self::RecordUndefinedOnTarget { .. } => Some(ResolverClass::Record),
             Self::LocalCallUndefinedOnTarget { .. } => Some(ResolverClass::LocalCall),
+            Self::QualifiedCallUndefinedOnTarget { .. } => Some(ResolverClass::QualifiedCall),
             Self::HeaderFileMissing { .. } => Some(ResolverClass::Include),
             Self::BehaviourModuleMissing { .. } => Some(ResolverClass::Behaviour),
             Self::ArityChanged { .. }
@@ -671,6 +688,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -716,6 +734,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }

@@ -22,10 +22,11 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::str;
+use std::str::FromStr;
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
-use crate::model::names::{ModuleName, RelativePath};
+use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::verdict::IncludeDirective;
 
 /// One `-behaviour(M)` declaration the scanner saw, with the line
@@ -284,6 +285,57 @@ pub fn declares_parse_transform(src: &str) -> bool {
     iter_attribute_bodies(src, &["compile"])
         .iter()
         .any(|hit| hit.body.contains("parse_transform"))
+}
+
+/// A module's exported `f/a` set, with `complete = false` when the true
+/// export surface cannot be read from source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportSet {
+    pub exports: BTreeSet<(FunctionName, Arity)>,
+    pub complete: bool,
+}
+
+/// Functions a module exports via `-export([f/a, ...])`. `complete` is
+/// false when the export surface is not fully knowable from source:
+/// `-compile(export_all)` (or `nowarn_export_all`), a declared
+/// `parse_transform` (which can inject exports), or an `-export` entry
+/// naming a macro the scanner cannot expand. A `complete = false` set
+/// means the caller must withhold rather than treat an unlisted `f/a`
+/// as undefined.
+pub fn extract_exports(src: &str) -> ExportSet {
+    let mut exports = BTreeSet::new();
+    let mut complete = true;
+    for hit in iter_attribute_bodies(src, &["compile"]) {
+        if hit.body.contains("export_all") || hit.body.contains("parse_transform") {
+            complete = false;
+        }
+    }
+    for hit in iter_attribute_bodies(src, &["export"]) {
+        let Some(open) = hit.body.find('[') else {
+            continue;
+        };
+        let Some(close) = hit.body[open..].find(']') else {
+            continue;
+        };
+        for entry in hit.body[open + 1..open + close].split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            // A macro in the export list hides which `f/a` it names.
+            if entry.contains('?') {
+                complete = false;
+                continue;
+            }
+            if let Some((name, arity)) = parse_fun_arity(entry)
+                && let (Ok(function), Ok(arity)) =
+                    (FunctionName::from_str(&name), u8::try_from(arity))
+            {
+                exports.insert((function, Arity::new(arity)));
+            }
+        }
+    }
+    ExportSet { exports, complete }
 }
 
 fn parse_fun_arity(entry: &str) -> Option<(String, usize)> {

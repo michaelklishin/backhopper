@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod added_lines_unit_tests;
 mod aggregate_verdict_unit_tests;
 mod app_src_unit_tests;
 mod apply_conflict_unit_tests;
@@ -31,6 +32,7 @@ mod eval_unit_tests;
 mod evaluation_typestate_unit_tests;
 mod evaluation_unit_tests;
 mod explain_payload_unit_tests;
+mod export_set_unit_tests;
 mod export_without_body_unit_tests;
 mod file_kind_and_family_unit_tests;
 mod format_v2_unit_tests;
@@ -54,6 +56,8 @@ mod pin_spec_unit_tests;
 mod postimage_check_unit_tests;
 mod preimage_check_unit_tests;
 mod project_layout_unit_tests;
+mod qualified_call_resolve_unit_tests;
+mod qualified_call_sites_unit_tests;
 mod reason_path_scoped_unit_tests;
 mod reason_resolver_class_unit_tests;
 mod ref_origin_unit_tests;
@@ -90,6 +94,7 @@ mod tag_glob_unit_tests;
 mod target_path_absent_reason_unit_tests;
 mod target_preimage_unit_tests;
 mod target_tree_classifier_unit_tests;
+mod target_tree_module_path_unit_tests;
 mod test_018_diagnostics_and_family_unit_tests;
 mod test_018_reason_variants_unit_tests;
 mod test_only_exports_round_trip_unit_tests;

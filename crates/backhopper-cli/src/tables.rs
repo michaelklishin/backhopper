@@ -133,6 +133,10 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::PreimageMissing { .. } => "PreimageMissing",
         Reason::PathRename { .. } => "PathRename",
         Reason::TargetPathAbsent { .. } => "TargetPathAbsent",
+        Reason::MacroUndefinedOnTarget { .. } => "MacroUndefinedOnTarget",
+        Reason::RecordUndefinedOnTarget { .. } => "RecordUndefinedOnTarget",
+        Reason::LocalCallUndefinedOnTarget { .. } => "LocalCallUndefinedOnTarget",
+        Reason::QualifiedCallUndefinedOnTarget { .. } => "QualifiedCallUndefinedOnTarget",
         Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
         Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
         _ => "UnknownReason",
@@ -364,6 +368,29 @@ fn reason_detail(r: &Reason) -> String {
             ..
         } => format!("{} → {}", source_path.display(), target_path.display()),
         Reason::TargetPathAbsent { path } => format!("{path}: absent on target, drop these hunks"),
+        Reason::MacroUndefinedOnTarget {
+            source_path,
+            macro_name,
+            line,
+        } => format!("?{macro_name} undefined on target ({source_path}:{line})"),
+        Reason::RecordUndefinedOnTarget {
+            source_path,
+            record_name,
+            line,
+        } => format!("#{record_name} undefined on target ({source_path}:{line})"),
+        Reason::LocalCallUndefinedOnTarget {
+            source_path,
+            function,
+            arity,
+            line,
+        } => format!("{function}/{arity} undefined on target ({source_path}:{line})"),
+        Reason::QualifiedCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            line,
+        } => format!("{module}:{function}/{arity} undefined on target ({source_path}:{line})"),
         Reason::VersionedMachineSnapshotMissing { module, side } => {
             format!("{module}: versioned-machine snapshot missing on {side:?}")
         }

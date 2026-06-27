@@ -22,6 +22,7 @@ mod pin_resolution_proptests;
 mod postimage_duality_proptests;
 mod predicted_conflicts_proptests;
 mod preimage_check_proptests;
+mod qualified_call_gate_proptests;
 mod relative_path_proptests;
 mod schema_diff_proptests;
 mod scope_filter_proptests;

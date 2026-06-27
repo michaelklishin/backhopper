@@ -16,18 +16,21 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
+use crate::compat::added_lines::file_line;
 use crate::compat::source_attributes::{
     FunctionSignature, declares_parse_transform, extract_function_signatures, extract_imports,
 };
 use crate::model::names::{Arity, FunctionName, RelativePath};
 use crate::model::verdict::Reason;
 
-/// One touched `.erl` file: its path and the text of its added lines,
-/// where new local calls appear.
+/// One touched `.erl` file: its path, the text of its added lines where
+/// new local calls appear, and the blob-line to file-line map for the
+/// reported line.
 #[derive(Debug, Clone, Copy)]
 pub struct LocalCallSubject<'a> {
     pub source_path: &'a RelativePath,
     pub added_text: &'a str,
+    pub line_map: &'a [u32],
 }
 
 /// Flag each added unqualified call whose `f/arity` the target module
@@ -73,7 +76,7 @@ pub fn analyse_local_calls(
                 source_path: subject.source_path.clone(),
                 function,
                 arity,
-                line: call.line,
+                line: file_line(subject.line_map, call.line),
             });
         }
     }
