@@ -1,6 +1,10 @@
 # Changelog
 
-## v0.19.0 (in development)
+## v0.20.0 (in development)
+
+No changes yet.
+
+## v0.19.0
 
 ### Enhancements
 
