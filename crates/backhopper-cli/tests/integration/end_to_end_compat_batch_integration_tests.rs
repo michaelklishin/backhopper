@@ -82,13 +82,8 @@ fn discover_snapshots(cfg: &Path) {
     ]);
 }
 
-fn batch_args<'a>(
-    cfg: &'a Path,
-    repo: &'a Path,
-    commits: &'a Path,
-    summary_only: bool,
-) -> Vec<&'a str> {
-    let mut args = vec![
+fn batch_args<'a>(cfg: &'a Path, repo: &'a Path, commits: &'a Path) -> Vec<&'a str> {
+    vec![
         "--config-file-path",
         cfg.to_str().unwrap(),
         "--formatter",
@@ -101,11 +96,7 @@ fn batch_args<'a>(
         repo.to_str().unwrap(),
         "--commits-file-path",
         commits.to_str().unwrap(),
-    ];
-    if summary_only {
-        args.push("--summary-only");
-    }
-    args
+    ]
 }
 
 #[test]
@@ -117,12 +108,7 @@ fn batch_reads_commits_from_file_and_emits_one_row_per_pair() {
     let mut commits = NamedTempFile::new().unwrap();
     writeln!(commits, "# example commits").unwrap();
     writeln!(commits, "{head_sha}").unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        false,
-    )));
+    let out = stdout(&run(batch_args(&cfg, repo.dir.path(), commits.path())));
     assert!(
         out.contains("compatible="),
         "expected key=value rows, got {out}"
@@ -132,30 +118,6 @@ fn batch_reads_commits_from_file_and_emits_one_row_per_pair() {
         "expected commit sha in output, got {out}"
     );
     assert!(out.contains("stable"), "expected series name in output");
-}
-
-#[test]
-fn batch_summary_only_emits_one_line_per_commit_series_pair() {
-    let (repo, work, head_sha) = build_two_commit_repo();
-    let snap = work.path().join("snapshots");
-    let cfg = write_series_config(work.path(), repo.dir.path(), &snap);
-    discover_snapshots(&cfg);
-    let mut commits = NamedTempFile::new().unwrap();
-    writeln!(commits, "{head_sha}").unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        true,
-    )));
-    let non_empty: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert_eq!(
-        non_empty.len(),
-        1,
-        "summary-only should emit one line per (commit, series) pair, got {non_empty:?}"
-    );
-    assert!(non_empty[0].starts_with(&head_sha[..7]));
-    assert!(non_empty[0].contains("compatible="));
 }
 
 #[test]
@@ -170,12 +132,22 @@ fn batch_skips_blank_lines_and_comments() {
     writeln!(commits, "   ").unwrap();
     writeln!(commits, "{head_sha}").unwrap();
     writeln!(commits, "# trailing comment").unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        true,
-    )));
+    // one JSONL row per pair, so the line count proves the blanks and
+    // comments were skipped
+    let out = stdout(&run([
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "--formatter",
+        "summary",
+        "check",
+        "batch",
+        "--series",
+        "stable",
+        "--repo-dir-path",
+        repo.dir.path().to_str().unwrap(),
+        "--commits-file-path",
+        commits.path().to_str().unwrap(),
+    ]));
     let non_empty: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
     assert_eq!(
         non_empty.len(),
@@ -273,7 +245,7 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
         "--config-file-path",
         cfg.to_str().unwrap(),
         "--formatter",
-        "text",
+        "summary",
         "check",
         "batch",
         "--series",
@@ -282,7 +254,6 @@ pins = [{{ project = "demo", tag = "v1.0.0" }}]
         repo.dir.path().to_str().unwrap(),
         "--commits-file-path",
         commits.path().to_str().unwrap(),
-        "--summary-only",
     ]));
     let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
     assert_eq!(
@@ -302,12 +273,7 @@ fn batch_accepts_short_sha_prefixes_in_commits_file() {
     discover_snapshots(&cfg);
     let mut commits = NamedTempFile::new().unwrap();
     writeln!(commits, "{}", &head_sha[..10]).unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        true,
-    )));
+    let out = stdout(&run(batch_args(&cfg, repo.dir.path(), commits.path())));
     assert!(
         out.contains("compatible="),
         "expected batch summary, got: {out}"
@@ -322,12 +288,7 @@ fn batch_accepts_trailing_inline_annotation_after_hash() {
     discover_snapshots(&cfg);
     let mut commits = NamedTempFile::new().unwrap();
     writeln!(commits, "{}  # [GO] backport candidate", &head_sha[..10]).unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        true,
-    )));
+    let out = stdout(&run(batch_args(&cfg, repo.dir.path(), commits.path())));
     assert!(
         out.contains("compatible="),
         "expected batch summary, got: {out}"
@@ -343,12 +304,7 @@ fn batch_strips_leading_utf8_bom_from_commits_file() {
     let mut commits = NamedTempFile::new().unwrap();
     write!(commits, "\u{FEFF}").unwrap();
     writeln!(commits, "{head_sha}").unwrap();
-    let out = stdout(&run(batch_args(
-        &cfg,
-        repo.dir.path(),
-        commits.path(),
-        true,
-    )));
+    let out = stdout(&run(batch_args(&cfg, repo.dir.path(), commits.path())));
     assert!(out.contains("compatible="), "expected summary, got: {out}");
 }
 
@@ -362,7 +318,7 @@ fn batch_reports_line_number_on_malformed_commit_entry() {
     writeln!(commits, "{head_sha}").unwrap();
     writeln!(commits, "{head_sha}").unwrap();
     writeln!(commits, "bogus").unwrap();
-    let err = stderr(&run(batch_args(&cfg, repo.dir.path(), commits.path(), true)).failure());
+    let err = stderr(&run(batch_args(&cfg, repo.dir.path(), commits.path())).failure());
     assert!(
         err.contains("line 3"),
         "expected line number 3 in error, got: {err}"
@@ -377,7 +333,7 @@ fn batch_reads_commits_from_stdin_when_path_is_dash() {
     discover_snapshots(&cfg);
     let dash_path = PathBuf::from("-");
     let assert = run_with_stdin(
-        batch_args(&cfg, repo.dir.path(), &dash_path, true),
+        batch_args(&cfg, repo.dir.path(), &dash_path),
         &format!("{head_sha}\n"),
     );
     let out = stdout(&assert);

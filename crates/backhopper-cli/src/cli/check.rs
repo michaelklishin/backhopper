@@ -22,11 +22,6 @@ pub struct CheckFlags {
     pub show_otp_calls: bool,
     #[arg(
         long,
-        help = "Print only the counts: `compatible=N requires_adaptation=N incompatible=N`"
-    )]
-    pub summary_only: bool,
-    #[arg(
-        long,
         help = "Resolve each untracked module's `.erl` against the target checkout; absent files flip the verdict to Incompatible"
     )]
     pub resolve_untracked_modules: bool,

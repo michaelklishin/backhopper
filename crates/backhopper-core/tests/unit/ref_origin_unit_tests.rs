@@ -145,6 +145,45 @@ fn context_only_dep_patch_reads_as_vacuous_not_verified() {
     assert_eq!(eval.verdict.results[0].tracked_refs, 0);
 }
 
+// A call whose argument list wraps across two added lines. The old
+// per-line scanner saw `dep_mod:gone(X,` unterminated and emitted a
+// `FunctionAnyArity`, which resolved against `gone/1` and passed. The
+// joined scan resolves it at arity 2.
+fn wrapped_call_patch() -> Vec<u8> {
+    "diff --git a/src/user.erl b/src/user.erl\n\
+     --- a/src/user.erl\n\
+     +++ b/src/user.erl\n\
+     @@ -1,1 +1,3 @@\n\
+     +go(X) -> dep_mod:gone(X,\n\
+     +                      Y).\n\
+      other() -> ok.\n"
+        .as_bytes()
+        .to_vec()
+}
+
+// The verified false negative: a wrapped call to `gone/2` against a
+// snapshot exporting only `gone/1` is no longer accepted.
+#[test]
+fn a_wrapped_added_call_resolves_at_exact_arity() {
+    let eval = evaluate(&wrapped_call_patch(), dep_snapshot(&[("gone", 1)]));
+    assert!(
+        !matches!(eval.verdict.results[0].verdict, Verdict::Compatible),
+        "wrapped gone/2 against gone/1 must not pass: {:?}",
+        eval.verdict.results[0].verdict
+    );
+}
+
+// The same wrapped call resolves clean when the exact arity exists, so
+// the recovery does not introduce a false positive.
+#[test]
+fn a_wrapped_added_call_at_a_present_arity_is_clean() {
+    let eval = evaluate(&wrapped_call_patch(), dep_snapshot(&[("gone", 2)]));
+    assert!(matches!(
+        eval.verdict.results[0].verdict,
+        Verdict::Compatible
+    ));
+}
+
 #[test]
 fn symbol_kind_match_is_exhaustive_for_any_arity() {
     // FunctionAnyArity participates in scope and tally paths; this

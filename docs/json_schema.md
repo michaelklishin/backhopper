@@ -59,8 +59,6 @@ A few flags add fields or reasons to `data`:
   target-pin checkout. Modules missing from the checkout produce
   `untracked_module_missing` reasons that flip the verdict to
   `incompatible`
-* `--summary-only` on `check {patch, commit, range, batch}`: affects
-  the text formatter only. The JSON payload is unchanged
 * `--suggest-projects` on `check {patch, commit, range, pr}`: adds a
   `project_suggestions` array to `data`. Each element groups untracked
   call sites by inferred project prefix

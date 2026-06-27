@@ -25,6 +25,15 @@
  * The `check` text table names the target-tree reasons (macro, record,
    local-call, and qualified-call undefined-on-target) instead of
    showing `UnknownReason`
+ * A call or clause head whose argument list wraps across lines now
+   resolves at exact arity. The per-line scanner lost the arity and read
+   the call as any-arity, so a wrapped call to a missing arity was
+   accepted when the function existed at another arity
+
+### Removed
+
+ * `--summary-only` is removed; use `--formatter summary` (JSONL) or
+   `--formatter text-summary` (text)
 
 ## v0.18.0
 

@@ -65,6 +65,7 @@ mod relative_path_unit_tests;
 mod resolver_coverage_unit_tests;
 mod return_shape_conformance_unit_tests;
 mod route_pin_verdict_unit_tests;
+mod scan_hunk_unit_tests;
 mod schema_diff_unit_tests;
 mod schema_generation_unit_tests;
 mod schema_mfa_extraction_unit_tests;

@@ -26,7 +26,7 @@ use regex::Regex;
 use crate::compat::arg_shape::ArgShape;
 use crate::erlang_macros::{MacroTable, expand_value_macro_to_atom, expand_value_macro_to_mf};
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
-use crate::model::symbol::{RefContext, SymbolRef};
+use crate::model::symbol::{RefContext, RefOrigin, SymbolRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DynamicCall {
@@ -55,9 +55,11 @@ fn macro_re() -> &'static Regex {
     R.get_or_init(|| Regex::new(r"\?([A-Z_][A-Za-z0-9_]*)\b").expect("regex"))
 }
 
+// Multi-line `^`: a joined run holds several clause heads, each at the
+// start of its physical line.
 fn fun_def_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"^([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex"))
+    R.get_or_init(|| Regex::new(r"(?m)^([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex"))
 }
 
 fn apply_bif_re() -> &'static Regex {
@@ -221,22 +223,30 @@ pub fn strip_line_comment(line: &str) -> &str {
 /// only, with no type-side equivalent.
 pub fn extract_type_refs_into(line: &str, out: &mut Vec<SymbolRef>) {
     let line = strip_line_comment(line);
-    for caps in call_re().captures_iter(line) {
+    let mut with_offsets = Vec::new();
+    push_type_refs_with_offsets(line, &mut with_offsets);
+    out.extend(with_offsets.into_iter().map(|(r, _)| r));
+}
+
+/// `extract_type_refs_into` over already-stripped text, with each
+/// reference's match offset for origin mapping.
+fn push_type_refs_with_offsets(text: &str, out: &mut Vec<(SymbolRef, usize)>) {
+    for caps in call_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
         let module = &caps[1];
         let ident = &caps[2];
-        let after = &line[caps.get(0).expect("capture").end()..];
-        // A type ref whose arg list wraps to the next line has no
-        // trustworthy arity on this one: skip rather than guess.
-        let ScanArity::Exact(arity) = scan_arity(after) else {
+        // There is no any-arity type kind, so a type ref that does not
+        // close even across the run is skipped, not guessed.
+        let ScanArity::Exact(arity) = scan_arity(&text[group.end()..]) else {
             continue;
         };
         if let (Ok(m), Ok(t)) = (ModuleName::from_str(module), TypeName::from_str(ident)) {
-            out.push(SymbolRef::type_ref(m, t, Arity::new(arity)));
+            out.push((SymbolRef::type_ref(m, t, Arity::new(arity)), group.start()));
         }
     }
-    for caps in macro_re().captures_iter(line) {
-        let name = &caps[1];
-        out.push(SymbolRef::macro_use(name.to_owned()));
+    for caps in macro_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
+        out.push((SymbolRef::macro_use(caps[1].to_owned()), group.start()));
     }
 }
 
@@ -252,39 +262,48 @@ fn empty_macros() -> &'static MacroTable {
 /// into the matching `Mfa` and land in `out` as normal function refs.
 pub fn extract_into_with_macros(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
     let line = strip_line_comment(line);
-    for caps in call_re().captures_iter(line) {
+    let mut with_offsets = Vec::new();
+    push_refs_with_offsets(line, macros, &mut with_offsets);
+    out.extend(with_offsets.into_iter().map(|(r, _)| r));
+}
+
+/// `extract_into_with_macros` over already-stripped text, pairing each
+/// reference with the byte offset its match started at, so the caller
+/// can map it to the origin of the physical line that offset lands on.
+fn push_refs_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(SymbolRef, usize)>) {
+    for caps in call_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
         let module = &caps[1];
         let function = &caps[2];
-        let after = &line[caps.get(0).expect("capture").end()..];
+        let after = &text[group.end()..];
         let (Ok(m), Ok(f)) = (
             ModuleName::from_str(module),
             FunctionName::from_str(function),
         ) else {
             continue;
         };
-        match scan_arity(after) {
-            ScanArity::Exact(arity) => {
-                out.push(SymbolRef::function(Mfa::new(m, f, Arity::new(arity))));
-            }
-            ScanArity::Unterminated => {
-                out.push(SymbolRef::function_any_arity(m, f));
-            }
-        }
+        let r = match scan_arity(after) {
+            ScanArity::Exact(arity) => SymbolRef::function(Mfa::new(m, f, Arity::new(arity))),
+            ScanArity::Unterminated => SymbolRef::function_any_arity(m, f),
+        };
+        out.push((r, group.start()));
     }
-    extract_fun_refs_into(line, macros, out);
-    for caps in record_re().captures_iter(line) {
+    push_fun_refs_with_offsets(text, macros, out);
+    for caps in record_re().captures_iter(text) {
+        let start = caps.get(0).expect("capture").start();
         if let Ok(name) = RecordName::from_str(&caps[1]) {
-            out.push(SymbolRef::record(name));
+            out.push((SymbolRef::record(name), start));
         }
     }
-    for caps in macro_re().captures_iter(line) {
+    for caps in macro_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
         let name = &caps[1];
-        out.push(SymbolRef::macro_use(name.to_owned()));
-        let head_end = caps.get(0).expect("capture").end();
-        let tail = &line[head_end..];
-        try_resolve_macro_call(name, tail, macros, out);
+        out.push((SymbolRef::macro_use(name.to_owned()), group.start()));
+        let mut resolved = Vec::new();
+        try_resolve_macro_call(name, &text[group.end()..], macros, &mut resolved);
+        out.extend(resolved.into_iter().map(|r| (r, group.start())));
     }
-    extract_apply_family_into(line, macros, out);
+    push_apply_family_with_offsets(text, macros, out);
 }
 
 fn fun_ref_re() -> &'static Regex {
@@ -300,8 +319,8 @@ fn fun_ref_re() -> &'static Regex {
 /// `fun M:F/A` remote fun references. The arity is written in the
 /// source, so these land at full precision. Variable-shaped slots are
 /// `extract_dynamic_into`'s business.
-fn extract_fun_refs_into(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
-    for caps in fun_ref_re().captures_iter(line) {
+fn push_fun_refs_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(SymbolRef, usize)>) {
+    for caps in fun_ref_re().captures_iter(text) {
         let module_raw = &caps[1];
         let function_raw = &caps[2];
         let arity_raw = &caps[3];
@@ -330,7 +349,11 @@ fn extract_fun_refs_into(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRe
         let Ok(f) = FunctionName::from_str(function_raw) else {
             continue;
         };
-        out.push(SymbolRef::function(Mfa::new(module, f, Arity::new(arity))));
+        let start = caps.get(0).expect("capture").start();
+        out.push((
+            SymbolRef::function(Mfa::new(module, f, Arity::new(arity))),
+            start,
+        ));
     }
 }
 
@@ -390,18 +413,22 @@ fn split_lowercase_ident(s: &str) -> (&str, &str) {
     s.split_at(end)
 }
 
-fn extract_apply_family_into(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
-    for caps in apply_family_re().captures_iter(line) {
+fn push_apply_family_with_offsets(
+    text: &str,
+    macros: &MacroTable,
+    out: &mut Vec<(SymbolRef, usize)>,
+) {
+    for caps in apply_family_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
         let name = &caps[1];
-        let head_end = caps.get(0).expect("capture").end();
-        let after_open = &line[head_end..];
+        let after_open = &text[group.end()..];
         // A wrapped apply-family call has an incomplete arg list here;
         // resolving from a partial slot set would fabricate an Mfa.
         let ScannedArgs::Terminated { args, .. } = scan_top_level_args(after_open) else {
             continue;
         };
         if let Some(mfa) = resolve_apply_family(name, &args, macros) {
-            out.push(SymbolRef::function(mfa));
+            out.push((SymbolRef::function(mfa), group.start()));
         }
     }
 }
@@ -594,14 +621,21 @@ pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
 /// clause-head patterns.
 pub fn extract_call_args_into(line: &str, out: &mut Vec<(Mfa, Vec<ArgShape>)>) {
     let line = strip_line_comment(line);
-    for caps in call_re().captures_iter(line) {
+    let mut with_offsets = Vec::new();
+    push_call_args_with_offsets(line, &mut with_offsets);
+    out.extend(with_offsets.into_iter().map(|(c, _)| c));
+}
+
+/// `extract_call_args_into` over already-stripped text, with each call's
+/// match offset so the caller can keep only `Added`-origin calls.
+fn push_call_args_with_offsets(text: &str, out: &mut Vec<((Mfa, Vec<ArgShape>), usize)>) {
+    for caps in call_re().captures_iter(text) {
+        let group = caps.get(0).expect("capture");
         let module = &caps[1];
         let function = &caps[2];
-        let head_end = caps.get(0).expect("capture").end();
-        let after = &line[head_end..];
-        // A wrapped call has no complete arg list on this line, and a
-        // partial shape list would feed `ClauseMismatch` garbage.
-        let Some((args, _consumed)) = extract_arg_shapes(after) else {
+        // A call whose arg list never closes in the run has no complete
+        // shape list, and a partial one would feed `ClauseMismatch` garbage.
+        let Some((args, _consumed)) = extract_arg_shapes(&text[group.end()..]) else {
             continue;
         };
         let arity = u8::try_from(args.len()).unwrap_or(u8::MAX);
@@ -609,7 +643,7 @@ pub fn extract_call_args_into(line: &str, out: &mut Vec<(Mfa, Vec<ArgShape>)>) {
             ModuleName::from_str(module),
             FunctionName::from_str(function),
         ) {
-            out.push((Mfa::new(m, f, Arity::new(arity)), args));
+            out.push(((Mfa::new(m, f, Arity::new(arity)), args), group.start()));
         }
     }
 }
@@ -725,32 +759,21 @@ pub fn extract_dynamic_into(line: &str, out: &mut Vec<DynamicCall>) {
     }
 }
 
-pub fn extract_definitions_into(line: &str, out: &mut Vec<SymbolRef>) {
-    let line = strip_line_comment(line);
-    if !line.starts_with(|c: char| c.is_ascii_lowercase()) {
-        return;
-    }
-    let Some(caps) = fun_def_re().captures(line) else {
-        return;
-    };
-    let head_end = caps.get(0).expect("capture").end();
-    let after = &line[head_end..];
-    let Ok(f) = FunctionName::from_str(&caps[1]) else {
-        return;
-    };
-    match scan_arity(after) {
-        ScanArity::Exact(arity) => {
-            out.push(SymbolRef::function(Mfa::new(
-                local_placeholder_module().clone(),
-                f,
-                Arity::new(arity),
-            )));
-        }
-        ScanArity::Unterminated => {
-            out.push(SymbolRef::function_any_arity(
-                local_placeholder_module().clone(),
-                f,
-            ));
+pub fn extract_definitions_into(text: &str, out: &mut Vec<SymbolRef>) {
+    for caps in fun_def_re().captures_iter(text) {
+        let head_end = caps.get(0).expect("capture").end();
+        let after = &text[head_end..];
+        let Ok(f) = FunctionName::from_str(&caps[1]) else {
+            continue;
+        };
+        let module = local_placeholder_module().clone();
+        match scan_arity(after) {
+            ScanArity::Exact(arity) => {
+                out.push(SymbolRef::function(Mfa::new(module, f, Arity::new(arity))));
+            }
+            ScanArity::Unterminated => {
+                out.push(SymbolRef::function_any_arity(module, f));
+            }
         }
     }
 }
@@ -758,4 +781,100 @@ pub fn extract_definitions_into(line: &str, out: &mut Vec<SymbolRef>) {
 fn local_placeholder_module() -> &'static ModuleName {
     static M: OnceLock<ModuleName> = OnceLock::new();
     M.get_or_init(|| ModuleName::from_str("_local").expect("valid"))
+}
+
+/// Origin-tagged references, definitions, dynamic calls, and `Added`
+/// call-arg shapes pulled from one Erlang hunk.
+#[derive(Debug, Default)]
+pub struct HunkScan {
+    pub referenced: Vec<SymbolRef>,
+    pub defined: Vec<SymbolRef>,
+    pub dynamic_calls: Vec<DynamicCall>,
+    pub call_args: Vec<(Mfa, Vec<ArgShape>)>,
+}
+
+/// Scan one Erlang hunk's lines as logical units, not one diff line at a
+/// time. `lines` is the hunk's `Added` and `Context` lines in order,
+/// `Removed` already dropped. Consecutive lines of the same context
+/// (`Body` or `TypeAttribute`) are joined and scanned together, so a
+/// call or clause head whose argument list wraps across lines resolves
+/// at exact arity. Each reference takes the origin of the physical line
+/// its match started on.
+pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
+    let mut out = HunkScan::default();
+    let mut scanner = AttrCtxScanner::new();
+    let mut text = String::new();
+    let mut line_origins: Vec<(usize, RefOrigin)> = Vec::new();
+    let mut run_ctx: Option<RefContext> = None;
+    for &(origin, raw) in lines {
+        let stripped = strip_line_comment(raw);
+        let ctx = scanner.classify(stripped);
+        if run_ctx != Some(ctx) {
+            if let Some(prev) = run_ctx {
+                flush_run(prev, &text, &line_origins, macros, &mut out);
+            }
+            text.clear();
+            line_origins.clear();
+            run_ctx = Some(ctx);
+        }
+        line_origins.push((text.len(), origin));
+        text.push_str(stripped);
+        text.push('\n');
+    }
+    if let Some(prev) = run_ctx {
+        flush_run(prev, &text, &line_origins, macros, &mut out);
+    }
+    out
+}
+
+fn flush_run(
+    ctx: RefContext,
+    text: &str,
+    line_origins: &[(usize, RefOrigin)],
+    macros: &MacroTable,
+    out: &mut HunkScan,
+) {
+    match ctx {
+        RefContext::Body => {
+            let mut refs = Vec::new();
+            push_refs_with_offsets(text, macros, &mut refs);
+            tag_by_origin(refs, line_origins, &mut out.referenced);
+            extract_definitions_into(text, &mut out.defined);
+            extract_dynamic_into(text, &mut out.dynamic_calls);
+            let mut args = Vec::new();
+            push_call_args_with_offsets(text, &mut args);
+            // Only an added-head call feeds the clause-mismatch comparison:
+            // a context-line call is a pre-existing target fact.
+            for (call, offset) in args {
+                if origin_at(line_origins, offset) == RefOrigin::Added {
+                    out.call_args.push(call);
+                }
+            }
+        }
+        RefContext::TypeAttribute => {
+            let mut refs = Vec::new();
+            push_type_refs_with_offsets(text, &mut refs);
+            tag_by_origin(refs, line_origins, &mut out.referenced);
+        }
+    }
+}
+
+fn tag_by_origin(
+    refs: Vec<(SymbolRef, usize)>,
+    line_origins: &[(usize, RefOrigin)],
+    out: &mut Vec<SymbolRef>,
+) {
+    for (r, offset) in refs {
+        out.push(r.with_origin(origin_at(line_origins, offset)));
+    }
+}
+
+/// The origin of the physical line a match offset lands on: the last
+/// line whose start is at or before the offset. `line_origins` is sorted
+/// by start, so this is a binary search.
+fn origin_at(line_origins: &[(usize, RefOrigin)], offset: usize) -> RefOrigin {
+    match line_origins.partition_point(|(start, _)| *start <= offset) {
+        0 => RefOrigin::Context,
+        count => line_origins[count - 1].1,
+    }
 }

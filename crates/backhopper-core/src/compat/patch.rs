@@ -14,10 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::compat::arg_shape::ArgShape;
-use crate::compat::call_sites::{
-    AttrCtxScanner, DynamicCall, extract_call_args_into, extract_definitions_into,
-    extract_dynamic_into, extract_into_with_macros, extract_type_refs_into, strip_line_comment,
-};
+use crate::compat::call_sites::{DynamicCall, extract_into_with_macros, scan_hunk};
 use crate::compat::diff;
 use crate::compat::evaluate::{PostimageTally, evaluate_pin};
 use crate::compat::patch_facts::{
@@ -30,7 +27,7 @@ use crate::errors::PatchError;
 use crate::model::names::{Mfa, ModuleName, ProjectName, RecordName, RelativePath};
 use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
-use crate::model::symbol::{RefContext, RefOrigin, SymbolKind, SymbolRef};
+use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     AlreadyPresent, ContentPresence, Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict,
     Unanalyzed,
@@ -188,37 +185,22 @@ impl Patch<Raw> {
             match file.language {
                 Language::Erlang => {
                     for hunk in &file.hunks {
-                        let mut scanner = AttrCtxScanner::new();
-                        for line in &hunk.lines {
-                            let (text, origin) = match line {
-                                HunkLine::Added(text) => (text, RefOrigin::Added),
-                                HunkLine::Context(text) => (text, RefOrigin::Context),
-                                HunkLine::Removed(_) => continue,
-                            };
-                            // Strip once; the extractors' own strips no-op on
-                            // an already-stripped line.
-                            let text = strip_line_comment(text);
-                            let mut line_refs: Vec<SymbolRef> = Vec::new();
-                            match scanner.classify(text) {
-                                RefContext::TypeAttribute => {
-                                    extract_type_refs_into(text, &mut line_refs);
+                        let lines: Vec<(RefOrigin, &str)> = hunk
+                            .lines
+                            .iter()
+                            .filter_map(|line| match line {
+                                HunkLine::Added(text) => Some((RefOrigin::Added, text.as_str())),
+                                HunkLine::Context(text) => {
+                                    Some((RefOrigin::Context, text.as_str()))
                                 }
-                                RefContext::Body => {
-                                    extract_into_with_macros(text, file_macros, &mut line_refs);
-                                    extract_definitions_into(text, &mut defined);
-                                    extract_dynamic_into(text, &mut dynamic_calls);
-                                    // Context-line call shapes are pre-existing
-                                    // target facts; only added calls feed the
-                                    // clause-mismatch comparison.
-                                    if origin == RefOrigin::Added {
-                                        extract_call_args_into(text, &mut call_args);
-                                    }
-                                }
-                            }
-                            for r in line_refs {
-                                referenced.push(r.with_origin(origin));
-                            }
-                        }
+                                HunkLine::Removed(_) => None,
+                            })
+                            .collect();
+                        let scan = scan_hunk(&lines, file_macros);
+                        referenced.extend(scan.referenced);
+                        defined.extend(scan.defined);
+                        dynamic_calls.extend(scan.dynamic_calls);
+                        call_args.extend(scan.call_args);
                     }
                 }
                 Language::CuttlefishSchema => {

@@ -24,6 +24,7 @@ mod predicted_conflicts_proptests;
 mod preimage_check_proptests;
 mod qualified_call_gate_proptests;
 mod relative_path_proptests;
+mod scan_hunk_proptests;
 mod schema_diff_proptests;
 mod scope_filter_proptests;
 mod sibling_drift_proptests;

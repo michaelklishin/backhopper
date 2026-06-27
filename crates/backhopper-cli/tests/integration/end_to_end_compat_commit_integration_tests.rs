@@ -117,30 +117,6 @@ fn compat_commit_rejects_unknown_sha_with_clear_error() {
 }
 
 #[test]
-fn compat_commit_summary_only_prints_single_kv_line() {
-    let (repo, work, head_sha) = build_two_commit_repo();
-    let snap = work.path().join("snapshots");
-    let cfg = write_config(work.path(), repo.dir.path(), &snap);
-    discover_snapshots(&cfg);
-    let out = stdout(&run(commit_args(
-        &cfg,
-        repo.dir.path(),
-        &head_sha,
-        &["--summary-only"],
-    )));
-    assert!(
-        out.contains("compatible=") && out.contains("incompatible="),
-        "expected key=value summary, got {out}"
-    );
-    let non_empty: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert_eq!(
-        non_empty.len(),
-        1,
-        "summary-only must collapse to a single line, got: {non_empty:?}"
-    );
-}
-
-#[test]
 fn compat_commit_runs_against_local_repo() {
     let (repo, work, head_sha) = build_two_commit_repo();
     let snap = work.path().join("snapshots");

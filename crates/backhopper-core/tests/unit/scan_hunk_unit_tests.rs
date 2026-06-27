@@ -1,0 +1,200 @@
+// Copyright (C) 2026 Michael S. Klishin and Contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// See LICENSE-APACHE and LICENSE-MIT for details.
+
+//! `scan_hunk`: joins same-context hunk runs so a call or clause head
+//! whose argument list wraps across lines resolves at exact arity, and
+//! attributes each reference by the line its match started on.
+
+use backhopper_core::compat::call_sites::scan_hunk;
+use backhopper_core::erlang_macros::MacroTable;
+use backhopper_core::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
+
+fn added(text: &str) -> (RefOrigin, &str) {
+    (RefOrigin::Added, text)
+}
+
+fn context(text: &str) -> (RefOrigin, &str) {
+    (RefOrigin::Context, text)
+}
+
+fn scan(lines: &[(RefOrigin, &str)]) -> backhopper_core::compat::call_sites::HunkScan {
+    scan_hunk(lines, &MacroTable::new())
+}
+
+// `m:f/a` and the origin, for each function or any-arity reference.
+fn functions(refs: &[SymbolRef]) -> Vec<(String, RefOrigin)> {
+    refs.iter()
+        .filter_map(|r| match &r.kind {
+            SymbolKind::Function { mfa } => Some((mfa.to_string(), r.origin)),
+            SymbolKind::FunctionAnyArity { module, function } => {
+                Some((format!("{module}:{function}/?"), r.origin))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn defined(refs: &[SymbolRef]) -> Vec<String> {
+    refs.iter()
+        .filter_map(|r| match &r.kind {
+            SymbolKind::Function { mfa } => Some(mfa.to_string()),
+            SymbolKind::FunctionAnyArity { module, function } => {
+                Some(format!("{module}:{function}/?"))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+// The verified win: a call whose argument list closes on a later line
+// resolves at exact arity, not `FunctionAnyArity`.
+#[test]
+fn a_wrapped_call_resolves_to_exact_arity() {
+    let scan = scan(&[
+        added("    ok = rabbit_misc:queue_resource(V,"),
+        added("        Q)"),
+    ]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("rabbit_misc:queue_resource/2".to_owned(), RefOrigin::Added)]
+    );
+}
+
+#[test]
+fn a_single_line_call_is_unchanged() {
+    let scan = scan(&[added("    ok = rabbit_misc:queue_resource(V, Q).")]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("rabbit_misc:queue_resource/2".to_owned(), RefOrigin::Added)]
+    );
+}
+
+// A call whose head is on a `Context` line stays a `Context` reference
+// even when a later argument line is `Added`: an edited argument does
+// not turn a pre-existing call into a verdict-driving reference.
+#[test]
+fn the_calls_origin_is_its_head_line() {
+    let scan = scan(&[context("    ok = m:g(V,"), added("        NewArg)")]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("m:g/2".to_owned(), RefOrigin::Context)]
+    );
+}
+
+#[test]
+fn an_added_head_drives_the_reference() {
+    let scan = scan(&[added("    ok = m:g(V,"), context("        Arg)")]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("m:g/2".to_owned(), RefOrigin::Added)]
+    );
+}
+
+// A construct that starts on a later line of a run takes its own start
+// line's origin, not the run's first.
+#[test]
+fn each_construct_takes_its_own_line_origin() {
+    let scan = scan(&[context("    a:b(X),"), added("    c:d(Y)")]);
+    let mut got = functions(&scan.referenced);
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("a:b/1".to_owned(), RefOrigin::Context),
+            ("c:d/1".to_owned(), RefOrigin::Added),
+        ]
+    );
+}
+
+#[test]
+fn a_wrapped_clause_head_recovers_its_arity() {
+    let scan = scan(&[
+        added("handle_call(Request,"),
+        added("            From, State) -> ok."),
+    ]);
+    assert_eq!(defined(&scan.defined), ["_local:handle_call/3".to_owned()]);
+}
+
+// A `fun M:F/A` whose module and function sit on different lines: the
+// per-line scanner matched neither line, the join reads it whole.
+#[test]
+fn a_wrapped_fun_ref_resolves() {
+    let scan = scan(&[
+        added("    F = fun rabbit_misc:"),
+        added("            queue_resource/2,"),
+    ]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("rabbit_misc:queue_resource/2".to_owned(), RefOrigin::Added)]
+    );
+}
+
+// A `-spec` run and the body that follows are scanned as separate
+// regions: the spec yields a type reference, the body a call.
+#[test]
+fn the_spec_region_does_not_merge_into_the_body() {
+    let scan = scan(&[
+        added("-spec foo(ra:index()) -> ok."),
+        added("foo(X) -> bar:baz(X)."),
+    ]);
+    assert_eq!(
+        functions(&scan.referenced),
+        [("bar:baz/1".to_owned(), RefOrigin::Added)]
+    );
+    assert_eq!(defined(&scan.defined), ["_local:foo/1".to_owned()]);
+    let has_type = scan
+        .referenced
+        .iter()
+        .any(|r| matches!(&r.kind, SymbolKind::Type { name, .. } if name.as_str() == "index"));
+    assert!(
+        has_type,
+        "expected ra:index/0 type ref: {:?}",
+        scan.referenced
+    );
+}
+
+// A type reference whose argument list wraps inside the spec region now
+// closes across the join and resolves at exact arity.
+#[test]
+fn a_wrapped_type_reference_resolves() {
+    let scan = scan(&[added("-spec f(maps:t(a,"), added("            b)) -> ok.")]);
+    let arity = scan.referenced.iter().find_map(|r| match &r.kind {
+        SymbolKind::Type {
+            module,
+            name,
+            arity,
+        } if module.as_str() == "maps" && name.as_str() == "t" => Some(arity.get()),
+        _ => None,
+    });
+    assert_eq!(arity, Some(2));
+}
+
+// Only `Added`-head calls feed the clause-mismatch comparison.
+#[test]
+fn call_args_keep_only_added_head_calls() {
+    let scan = scan(&[added("    a:f(X),"), context("    b:g(Y)")]);
+    let names: Vec<String> = scan
+        .call_args
+        .iter()
+        .map(|(mfa, _)| mfa.to_string())
+        .collect();
+    assert_eq!(names, ["a:f/1".to_owned()]);
+}
+
+// Several clause heads in one body run are each defined: the multi-line
+// `^` anchor finds a head at the start of every physical line.
+#[test]
+fn multiple_clause_heads_in_one_run_are_all_defined() {
+    let scan = scan(&[added("foo(a) -> 1;"), added("foo(b, c) -> 2.")]);
+    let mut defs = defined(&scan.defined);
+    defs.sort();
+    assert_eq!(defs, ["_local:foo/1".to_owned(), "_local:foo/2".to_owned()]);
+}
+
+#[test]
+fn an_empty_hunk_scans_to_nothing() {
+    let scan = scan(&[]);
+    assert!(scan.referenced.is_empty());
+    assert!(scan.defined.is_empty());
+}

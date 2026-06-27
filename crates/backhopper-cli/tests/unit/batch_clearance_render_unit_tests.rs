@@ -4,8 +4,7 @@
 
 //! Text rendering of `check batch`. The load-bearing test is the
 //! vacuous-round one: a clean round must state its negatives so it
-//! reads as "checked, clean" rather than "never ran". `--summary-only`
-//! keeps the terse per-row counts.
+//! reads as "checked, clean" rather than "never ran".
 
 use std::collections::BTreeSet;
 
@@ -86,27 +85,6 @@ fn vacuous_round_states_its_negatives() {
         !out.contains("tracked refs:"),
         "clean rows stay terse: {out}"
     );
-}
-
-#[test]
-fn summary_only_stays_terse() {
-    let rows = vec![row(
-        'a',
-        vec![inapplicable(
-            "ra",
-            InapplicableReason::NoErlangSurfaceTouched,
-        )],
-        Diagnostics::default(),
-    )];
-    let out = render(
-        &rows,
-        CheckFlags {
-            summary_only: true,
-            ..CheckFlags::default()
-        },
-    );
-    assert!(!out.contains("clearance:"), "{out}");
-    assert!(out.contains("inapplicable=1"), "{out}");
 }
 
 #[test]

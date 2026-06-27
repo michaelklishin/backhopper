@@ -202,7 +202,6 @@ impl SourceFilesInput<'_> {
 
 pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
     let cfg = load_config(args)?;
-    warn_on_deprecated_summary_only(&cmd);
     match cmd {
         CheckCmd::Patch {
             project,
@@ -411,23 +410,6 @@ fn lookup_commit_subject(sha: &CommitSha, repo: Option<&Path>) -> Option<String>
 #[allow(clippy::disallowed_methods)]
 fn placeholder_zero_sha() -> CommitSha {
     CommitSha::new("0".repeat(40)).expect("40-char zero sha is valid")
-}
-
-fn warn_on_deprecated_summary_only(cmd: &CheckCmd) {
-    let diagnostics = match cmd {
-        CheckCmd::Patch { diagnostics, .. }
-        | CheckCmd::Commit { diagnostics, .. }
-        | CheckCmd::Range { diagnostics, .. }
-        | CheckCmd::Merge { diagnostics, .. }
-        | CheckCmd::Pr { diagnostics, .. }
-        | CheckCmd::Batch { diagnostics, .. } => diagnostics,
-    };
-    if diagnostics.summary_only {
-        eprintln!(
-            "backhopper: warning: --summary-only is deprecated and will be removed in 0.11.0; \
-             use `--formatter summary` (JSONL) or `--formatter text-summary` (text) instead"
-        );
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1620,7 +1602,7 @@ fn render_suggestions_text(
     suggestions: &[ProjectSuggestion],
     flags: CheckFlags,
 ) -> CliResult<()> {
-    if !flags.suggest_projects || suggestions.is_empty() || flags.summary_only {
+    if !flags.suggest_projects || suggestions.is_empty() {
         return Ok(());
     }
     writeln!(w)?;
@@ -1647,17 +1629,6 @@ fn render_text(
     style: TableStyle,
 ) -> CliResult<()> {
     let v = &evaluation.verdict;
-    if flags.summary_only {
-        writeln!(
-            w,
-            "compatible={} requires_adaptation={} incompatible={} inapplicable={}",
-            v.summary.compatible,
-            v.summary.requires_adaptation,
-            v.summary.incompatible,
-            v.summary.inapplicable,
-        )?;
-        return Ok(());
-    }
     writeln!(
         w,
         "compatible: {}, requires_adaptation: {}, incompatible: {}, inapplicable: {}",
@@ -2518,21 +2489,6 @@ pub fn render_batch_text(
     self_projects: &BTreeSet<ProjectName>,
     known_projects: &[ProjectName],
 ) -> CliResult<()> {
-    if flags.summary_only {
-        for r in results {
-            writeln!(
-                w,
-                "{} {} compatible={} requires_adaptation={} incompatible={} inapplicable={}",
-                r.commit,
-                r.series,
-                r.verdict.summary.compatible,
-                r.verdict.summary.requires_adaptation,
-                r.verdict.summary.incompatible,
-                r.verdict.summary.inapplicable,
-            )?;
-        }
-        return Ok(());
-    }
     let clearance = RoundClearance::from_results(results, self_projects);
     render_clearance(w, &clearance)?;
     writeln!(w)?;

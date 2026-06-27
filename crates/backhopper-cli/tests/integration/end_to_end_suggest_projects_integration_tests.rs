@@ -124,10 +124,10 @@ fn suggest_projects_in_json_envelope() {
     assert_eq!(arr[0]["name"], "rabbit");
 }
 
+// The summary formatters render one line and return before the
+// suggestion block, so `--suggest-projects` cannot add output to them.
 #[test]
-fn summary_only_overrides_suggest_projects() {
-    // `--summary-only` promises a single-line output. `--suggest-projects`
-    // must not violate that even when both are set.
+fn summary_formatter_suppresses_suggestion_output() {
     let (_repo, _work, cfg) = fresh_workspace();
     let mut pf = NamedTempFile::new().unwrap();
     pf.write_all(UNTRACKED_PATCH.as_bytes()).unwrap();
@@ -137,14 +137,13 @@ fn summary_only_overrides_suggest_projects() {
             "--config-file-path",
             cfg.to_str().unwrap(),
             "--formatter",
-            "text",
+            "text-summary",
             "check",
             "patch",
             "--project",
             "demo",
             "--tag",
             "v1.0.0",
-            "--summary-only",
             "--suggest-projects",
             pf.path().to_str().unwrap(),
         ])
@@ -157,7 +156,7 @@ fn summary_only_overrides_suggest_projects() {
     assert_eq!(
         non_empty.len(),
         1,
-        "summary-only must remain one line even with suggestions on: {non_empty:?}"
+        "summary output must stay one line even with suggestions on: {non_empty:?}"
     );
 }
 
