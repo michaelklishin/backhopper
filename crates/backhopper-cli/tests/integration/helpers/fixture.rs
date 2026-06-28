@@ -80,9 +80,6 @@ impl FixtureRepo {
         );
     }
 
-    // Only consumed by `end_to_end_target_repo_integration_tests`, which is
-    // `#![cfg(unix)]`. Gate to match so Windows CI doesn't flag dead code.
-    #[cfg(unix)]
     pub(crate) fn checkout_new_branch(&self, name: &str) {
         run(self.dir.path(), &["git", "checkout", "-q", "-b", name]);
     }

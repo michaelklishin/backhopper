@@ -20,7 +20,7 @@ cargo build --workspace --all-features
 cargo fmt --all
 
 RUSTFLAGS="-D warnings" cargo nextest run --workspace --all-features
-RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features
+RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features --tests
 ```
 
 To filter tests with `cargo nextest`:
@@ -433,7 +433,8 @@ We deliberately do *not* take `tokio`, `tar`, `walkdir`, `unidiff`,
    implementation files
  * At the end of each task, run `cargo fmt --all`
  * At the end of each task, run `RUSTFLAGS="-D warnings" cargo clippy
-   --workspace --all-features` and fix any warnings
+   --workspace --all-features --tests` and fix any warnings (CI lints
+   test code too, so `--tests` catches what a plain clippy run misses)
  * At the end of each task, run `RUSTFLAGS="-D warnings" cargo nextest
    run --workspace --all-features` and ensure it is clean
 
