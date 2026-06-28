@@ -101,7 +101,7 @@ fn handles_quoted_atoms_in_app_name() {
 
 #[test]
 fn rejects_non_application_tag() {
-    let result = parse(Path::new("bad.app.src"), "{module, foo, []}.");
+    let result = parse(Path::new("bad.app.src"), "{module, ra_server, []}.");
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.contains("application"));
@@ -115,7 +115,7 @@ fn rejects_truncated_input() {
 
 #[test]
 fn parses_module_names_with_underscores_and_at() {
-    let text = "{application, demo, [{modules, [rabbit_mgmt_wm_user, rabbit_log@db, foo_bar_2]}]}.";
+    let text = "{application, demo, [{modules, [rabbit_mgmt_wm_user, rabbit_log@db, ra_log_2]}]}.";
     let spec = parse_ok(text);
     assert_eq!(spec.modules.len(), 3);
     assert!(
@@ -130,7 +130,7 @@ fn parses_module_names_with_underscores_and_at() {
 
 #[test]
 fn modules_set_dedupes_duplicates() {
-    let text = "{application, demo, [{modules, [foo, foo, bar]}]}.";
+    let text = "{application, demo, [{modules, [ra_log, ra_log, ra_server]}]}.";
     let spec = parse_ok(text);
     assert_eq!(spec.modules.len(), 2);
 }

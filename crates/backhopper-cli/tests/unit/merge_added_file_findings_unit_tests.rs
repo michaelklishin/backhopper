@@ -69,8 +69,8 @@ fn compatible_pin_promotes_to_requires_adaptation() {
 #[test]
 fn requires_adaptation_pin_appends_reasons() {
     let existing = vec![Reason::MissingType {
-        module: mn("foo"),
-        name: TypeName::new("bar").unwrap(),
+        module: mn("ra_log"),
+        name: TypeName::new("state").unwrap(),
         arity: Arity::new(0),
     }];
     let mut eval = eval_with(vec![PinVerdict::new(

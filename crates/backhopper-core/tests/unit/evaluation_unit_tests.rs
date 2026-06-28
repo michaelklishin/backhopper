@@ -80,12 +80,12 @@ fn make_context(project: &str, modules_in_snapshot: Vec<Module>) -> EvaluationCo
 fn out_of_scope_module_call_does_not_produce_a_reason() {
     let context = make_context("ra", vec![module_with("ra", &[("noop", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> lists:foreach(fun(_) -> ok end, []).
+ -module(rabbit_fifo).
++flush() -> lists:foreach(fun(_) -> ok end, []).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -107,12 +107,12 @@ diff --git a/x.erl b/x.erl
 fn missing_function_in_tracked_module_is_still_incompatible() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:nonexistent_function(1, 2, 3).
+ -module(rabbit_fifo).
++restart() -> ra:nonexistent_function(1, 2, 3).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -133,13 +133,13 @@ diff --git a/x.erl b/x.erl
 fn zero_tracked_refs_is_compatible_when_only_otp_called() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
-+go(L) -> lists:foreach(fun(_) -> ok end, L).
-+gor(M) -> maps:get(k, M, default).
+ -module(rabbit_fifo).
++for_each(L) -> lists:foreach(fun(_) -> ok end, L).
++lookup(M) -> maps:get(k, M, default).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -227,14 +227,14 @@ diff --git a/src/ra_log.erl b/src/ra_log.erl
 fn repeated_calls_to_same_mfa_count_once() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,4 @@
- -module(x).
-+a() -> ra:start().
-+b() -> ra:start().
-+c() -> ra:start().
+ -module(rabbit_fifo).
++enable() -> ra:start().
++recover() -> ra:start().
++tick() -> ra:start().
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -250,14 +250,14 @@ fn diagnostics_aggregate_across_pins_but_count_unique_mfas() {
     let ra_ctx = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let khepri_ctx = make_context("khepri", vec![module_with("khepri", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,4 @@
- -module(x).
-+a(L) -> lists:foreach(fun(_) -> ok end, L).
-+b(L) -> lists:map(fun(X) -> X end, L).
-+c(M) -> maps:get(k, M).
+ -module(rabbit_fifo).
++log_each(L) -> lists:foreach(fun(_) -> ok end, L).
++transform(L) -> lists:map(fun(X) -> X end, L).
++lookup(M) -> maps:get(k, M).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -283,12 +283,12 @@ diff --git a/x.erl b/x.erl
 fn untracked_record_does_not_produce_a_reason() {
     let context = make_context("ra", vec![module_with("ra", &[("noop", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(#user{id = I}) -> I.
+ -module(rabbit_fifo).
++extract_id(#user{id = I}) -> I.
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -316,12 +316,12 @@ fn tracked_record_missing_in_pin_still_emits_reason() {
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
     let context = EvaluationContext::new(pin, snap, scope);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(#nonexistent{}) -> ok.
+ -module(rabbit_fifo).
++handle(#nonexistent{}) -> ok.
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -345,11 +345,11 @@ diff --git a/x.erl b/x.erl
 fn apply_3_callback_dispatch_does_not_break_verdict() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
+ -module(rabbit_fifo).
 +init(#{module := Mod, args := Args}) ->
 +    apply(Mod, init, [Args]).
 ";
@@ -374,11 +374,11 @@ diff --git a/x.erl b/x.erl
 fn variable_module_dispatch_does_not_break_verdict() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
+ -module(rabbit_fifo).
 +dispatch(#{handler := Mod, state := State}, Cmd) ->
 +    Mod:handle_command(Cmd, State).
 ";
@@ -399,11 +399,11 @@ diff --git a/x.erl b/x.erl
 fn spawn_family_counts_as_apply() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
+ -module(rabbit_fifo).
 +spin_up(Mod, Args) ->
 +    spawn_link(Mod, init, [Args]).
 ";
@@ -418,12 +418,12 @@ diff --git a/x.erl b/x.erl
 fn mixed_static_and_dynamic_keeps_them_separate() {
     let context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,5 @@
- -module(x).
-+go(Mod, Args) ->
+ -module(rabbit_fifo).
++start_child(Mod, Args) ->
 +    ok = ra:start(),
 +    Mod:bootstrap(Args),
 +    apply(Mod, terminate, [shutdown]).
@@ -444,13 +444,13 @@ fn series_evaluation_tracks_refs_per_pin() {
     let ra_context = make_context("ra", vec![module_with("ra", &[("start", 0)])]);
     let khepri_context = make_context("khepri", vec![module_with("khepri", &[("start", 0)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
-+a() -> ra:start().
-+b() -> khepri:start().
+ -module(rabbit_fifo).
++start_ra() -> ra:start().
++start_khepri() -> khepri:start().
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -470,12 +470,12 @@ diff --git a/x.erl b/x.erl
 #[test]
 fn elixir_files_in_patch_emit_unsupported_file_type() {
     let diff = "\
-diff --git a/lib/foo.ex b/lib/foo.ex
---- a/lib/foo.ex
-+++ b/lib/foo.ex
+diff --git a/lib/status_command.ex b/lib/status_command.ex
+--- a/lib/status_command.ex
++++ b/lib/status_command.ex
 @@ -1,1 +1,2 @@
- defmodule Foo do
-+  def bar, do: :ok
+ defmodule RabbitMQ.CLI.StatusCommand do
++  def run, do: :ok
 ";
     let snap = snapshot("demo", vec![module_with("demo", &[])]);
     let verdict = Patch::parse(diff.as_bytes())
@@ -486,7 +486,7 @@ diff --git a/lib/foo.ex b/lib/foo.ex
     let reasons = pin_verdict.verdict.reasons();
     let has_unsupported = reasons
         .iter()
-        .any(|r| matches!(r, Reason::UnsupportedFileType { path } if path == &PathBuf::from("lib/foo.ex")));
+        .any(|r| matches!(r, Reason::UnsupportedFileType { path } if path == &PathBuf::from("lib/status_command.ex")));
     assert!(
         has_unsupported,
         "expected UnsupportedFileType reason, got {reasons:?}"
@@ -543,12 +543,12 @@ fn signature_changed_fires_when_source_spec_differs_from_target() {
     let source =
         snapshot_with_module_specs("ra", "ra", vec![("new", 2, "new(atom(), term()) -> ok")]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(R) -> ra:new(R, foo).
+ -module(rabbit_fifo).
++build(R) -> ra:new(R, default).
 ";
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &target, []);
     let ctx = EvaluationContext::new(pin_for("ra"), target, scope)
@@ -581,12 +581,12 @@ fn signature_changed_silent_when_specs_match() {
     let source =
         snapshot_with_module_specs("ra", "ra", vec![("new", 2, "new(atom(), term()) -> ok")]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(R) -> ra:new(R, foo).
+ -module(rabbit_fifo).
++build(R) -> ra:new(R, default).
 ";
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &target, []);
     let ctx = EvaluationContext::new(pin_for("ra"), target, scope)
@@ -607,12 +607,12 @@ fn record_fields_changed_fires_when_source_record_has_extra_fields() {
     let target = snapshot_with_record_fields("demo", "user", vec!["id", "name"]);
     let source = snapshot_with_record_fields("demo", "user", vec!["id", "name", "email"]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(U) -> U#user.email.
+ -module(rabbit_fifo).
++email_of(U) -> U#user.email.
 ";
     let scope = PinScope::from_snapshot(ProjectName::new("demo").unwrap(), &target, []);
     let ctx = EvaluationContext::new(pin_for("demo"), target, scope)
@@ -664,12 +664,12 @@ fn record_fields_changed_fires_for_inline_module_record() {
     let target = snapshot_with_inline_record_fields("demo", "user", vec!["id", "name"]);
     let source = snapshot_with_inline_record_fields("demo", "user", vec!["id", "name", "email"]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(U) -> U#user.email.
+ -module(rabbit_fifo).
++email_of(U) -> U#user.email.
 ";
     let scope = PinScope::from_snapshot(ProjectName::new("demo").unwrap(), &target, []);
     let ctx = EvaluationContext::new(pin_for("demo"), target, scope)
@@ -732,12 +732,12 @@ fn clause_mismatch_fires_when_args_dont_satisfy_clause_head() {
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
     let ctx = EvaluationContext::new(pin_for("ra"), snap, scope);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:mode(restart).
+ -module(rabbit_fifo).
++run() -> ra:mode(restart).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -763,12 +763,12 @@ diff --git a/x.erl b/x.erl
 fn clause_mismatch_silent_when_clauses_empty() {
     let context = make_context("ra", vec![module_with("ra", &[("mode", 1)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:mode(restart).
+ -module(rabbit_fifo).
++run() -> ra:mode(restart).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -797,11 +797,11 @@ fn clause_mismatch_fires_when_one_of_many_calls_fails_match() {
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
     let ctx = EvaluationContext::new(pin_for("ra"), snap, scope);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,3 @@
- -module(x).
+ -module(rabbit_fifo).
 +ok_call() -> ra:mode(start).
 +bad_call() -> ra:mode(restart).
 ";
@@ -837,12 +837,12 @@ fn clause_mismatch_silent_when_call_arg_is_variable() {
     let scope = PinScope::from_snapshot(ProjectName::new("ra").unwrap(), &snap, []);
     let ctx = EvaluationContext::new(pin_for("ra"), snap, scope);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go(Cmd) -> ra:mode(Cmd).
+ -module(rabbit_fifo).
++run(Cmd) -> ra:mode(Cmd).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -887,12 +887,12 @@ fn clause_mismatch_suppressed_when_signature_changed_already_fired() {
         .with_files(EvaluationFiles::new())
         .with_source_snapshot(source);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
+--- a/rabbit_fifo.erl
++++ b/rabbit_fifo.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:mode(restart).
+ -module(rabbit_fifo).
++run() -> ra:mode(restart).
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -923,7 +923,7 @@ diff --git a/Makefile b/Makefile
 +++ b/Makefile
 @@ -1,1 +1,2 @@
  PROJECT = demo
-+DEPS = foo
++DEPS = ra
 ";
     let snap = snapshot("demo", vec![module_with("demo", &[])]);
     let verdict = Patch::parse(diff.as_bytes())

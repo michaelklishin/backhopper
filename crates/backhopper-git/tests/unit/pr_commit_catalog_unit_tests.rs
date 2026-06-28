@@ -36,7 +36,7 @@ fn substantive_when_subject_does_not_match_any_pattern() {
 fn conflict_resolution_for_git_merge_default_subjects() {
     for s in [
         "Merge branch 'main' into mk-item-21",
-        "Merge branch 'main' of github.com:foo/bar",
+        "Merge branch 'main' of github.com:rabbitmq/ra",
         "Merge branch 'main'",
         "Merge remote-tracking branch 'origin/main' into feature",
         "Merge remote-tracking branch 'origin/main'",

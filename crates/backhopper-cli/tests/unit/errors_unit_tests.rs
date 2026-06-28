@@ -54,8 +54,8 @@ fn io_error_maps_to_io_err() {
 #[test]
 fn snapshot_dir_escape_maps_to_usage() {
     let e = CliError::SnapshotDirEscape {
-        configured: PathBuf::from("../foo"),
-        resolved: PathBuf::from("/home/u/cfg/../foo"),
+        configured: PathBuf::from("../snapshots"),
+        resolved: PathBuf::from("/home/u/cfg/../snapshots"),
         root: PathBuf::from("/home/u/cfg"),
     };
     assert_eq!(e.exit_code(), ExitCode::Usage);

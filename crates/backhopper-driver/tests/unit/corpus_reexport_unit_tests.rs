@@ -19,7 +19,7 @@ fn measurement_types_reach_the_consumer_through_the_facade() {
     assert!(coverage.is_checked(ResolverClass::Macro));
     assert_eq!(
         ResolverClass::of_symbol_kind(&SymbolKind::Macro {
-            name: "FOO".to_owned()
+            name: "MAGIC".to_owned()
         }),
         ResolverClass::Macro
     );

@@ -126,7 +126,7 @@ fn cfg_with(projects: Vec<Project>) -> Config {
 
 #[test]
 fn search_path_globs_empty_for_generic_only_workspace() {
-    let cfg = cfg_with(vec![project("foo", ProjectFamily::Generic)]);
+    let cfg = cfg_with(vec![project("seshat", ProjectFamily::Generic)]);
     assert!(collect_search_path_globs(&cfg).is_empty());
 }
 

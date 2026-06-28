@@ -6,13 +6,13 @@ use backhopper_core::compat::patch::{HunkLine, Language, Patch};
 use backhopper_core::errors::PatchError;
 
 const SIMPLE_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/ra_server.erl b/src/ra_server.erl
+--- a/src/ra_server.erl
++++ b/src/ra_server.erl
 @@ -1,3 +1,4 @@
--hello() -> ok.
-+hello() -> ok.
-+goodbye(X) -> bar:zap(X).
+-init() -> ok.
++init() -> ok.
++handle(X) -> ra_lib:id(X).
  % unchanged comment
 ";
 
@@ -35,7 +35,7 @@ fn analyze_collects_referenced_calls() {
             _ => None,
         })
         .collect();
-    assert!(calls.iter().any(|c| c == "bar:zap/1"), "got {calls:?}");
+    assert!(calls.iter().any(|c| c == "ra_lib:id/1"), "got {calls:?}");
 }
 
 #[test]
@@ -74,9 +74,9 @@ fn rejects_invalid_utf8_with_offset() {
 #[test]
 fn captures_hunk_lines_whose_content_starts_with_dashes_or_pluses() {
     let body = "\
-diff --git a/src/m.erl b/src/m.erl
---- a/src/m.erl
-+++ b/src/m.erl
+diff --git a/src/ra_log.erl b/src/ra_log.erl
+--- a/src/ra_log.erl
++++ b/src/ra_log.erl
 @@ -1,2 +1,2 @@
 -    R = A -- B,
 +    R = A ++ B,

@@ -47,7 +47,7 @@ fn type_extractor_captures_remote_type_with_args() {
 #[test]
 fn type_extractor_does_not_emit_function_refs() {
     let mut out = Vec::new();
-    extract_type_refs_into("-spec foo([ra:index()]) -> ok.", &mut out);
+    extract_type_refs_into("-spec fetch([ra:index()]) -> ok.", &mut out);
     assert!(
         out.iter()
             .all(|s| !matches!(s.kind, SymbolKind::Function { .. })),
@@ -58,7 +58,7 @@ fn type_extractor_does_not_emit_function_refs() {
 #[test]
 fn type_extractor_captures_macro_uses_in_spec() {
     let mut out = Vec::new();
-    extract_type_refs_into("-spec foo(?MAX_SIZE) -> ok.", &mut out);
+    extract_type_refs_into("-spec allocate(?MAX_SIZE) -> ok.", &mut out);
     let macros: Vec<_> = out
         .iter()
         .filter_map(|s| match &s.kind {
@@ -78,30 +78,30 @@ fn body_extractor_still_emits_function_refs_for_calls() {
 #[test]
 fn scanner_classifies_body_line_as_body() {
     let mut s = AttrCtxScanner::new();
-    assert_eq!(s.classify("foo(X) -> X + 1."), RefContext::Body);
+    assert_eq!(s.classify("increment(X) -> X + 1."), RefContext::Body);
 }
 
 #[test]
 fn scanner_classifies_single_line_spec_as_type_attribute() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-spec foo(int()) -> ok."),
+        s.classify("-spec handle(int()) -> ok."),
         RefContext::TypeAttribute
     );
     // After a self-closing spec, the next line is body again.
-    assert_eq!(s.classify("foo(X) -> X."), RefContext::Body);
+    assert_eq!(s.classify("handle(X) -> X."), RefContext::Body);
 }
 
 #[test]
 fn scanner_classifies_multiline_spec_through_to_closing_period() {
     let mut s = AttrCtxScanner::new();
-    assert_eq!(s.classify("-spec foo(int(),"), RefContext::TypeAttribute);
+    assert_eq!(s.classify("-spec merge(int(),"), RefContext::TypeAttribute);
     assert_eq!(
         s.classify("           atom()) ->"),
         RefContext::TypeAttribute
     );
     assert_eq!(s.classify("    ok."), RefContext::TypeAttribute);
-    assert_eq!(s.classify("foo(X, Y) -> X."), RefContext::Body);
+    assert_eq!(s.classify("merge(X, Y) -> X."), RefContext::Body);
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn scanner_classifies_callback_type_and_opaque_as_type_attribute() {
 fn scanner_treats_export_attribute_as_body() {
     let mut s = AttrCtxScanner::new();
     // -export is not a type-context attribute.
-    assert_eq!(s.classify("-export([foo/1, bar/2])."), RefContext::Body);
+    assert_eq!(s.classify("-export([start/1, stop/2])."), RefContext::Body);
 }
 
 #[test]
@@ -139,9 +139,9 @@ fn scanner_treats_minus_prefixed_function_names_as_body() {
 fn scanner_trailing_comment_does_not_block_closing_period() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-spec foo() -> ok.  %% trailing"),
+        s.classify("-spec flush() -> ok.  %% trailing"),
         RefContext::TypeAttribute
     );
     // Period was outside the comment, so we are back to body.
-    assert_eq!(s.classify("foo() -> ok."), RefContext::Body);
+    assert_eq!(s.classify("flush() -> ok."), RefContext::Body);
 }

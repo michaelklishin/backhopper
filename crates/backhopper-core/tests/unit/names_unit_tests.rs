@@ -46,7 +46,7 @@ fn tag_name_rejects_path_separators() {
 fn tag_name_rejects_git_ref_magic() {
     assert!(TagName::new("HEAD~1").is_err());
     assert!(TagName::new("v1^2").is_err());
-    assert!(TagName::new("v1:foo").is_err());
+    assert!(TagName::new("v1:main").is_err());
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn module_name_accepts_erlang_and_elixir_forms() {
     ModuleName::new("'Quoted Atom'").expect("valid quoted");
     ModuleName::new("Plug").expect("valid Elixir module");
     ModuleName::new("Plug.Conn").expect("valid Elixir nested module");
-    ModuleName::new("MyApp.Foo.Bar").expect("valid Elixir deep module");
+    ModuleName::new("RabbitMQ.CLI.Ctl").expect("valid Elixir deep module");
     assert!(ModuleName::new("").is_err());
     assert!(ModuleName::new("9starts_digit").is_err());
     assert!(ModuleName::new("has space").is_err());
@@ -111,8 +111,8 @@ fn mfa_round_trip_via_from_str() {
 fn mfa_rejects_garbage() {
     assert!(Mfa::from_str("noslash").is_err());
     assert!(Mfa::from_str("no:colon").is_err());
-    assert!(Mfa::from_str("a:b/").is_err());
-    assert!(Mfa::from_str(":b/1").is_err());
+    assert!(Mfa::from_str("ra:members/").is_err());
+    assert!(Mfa::from_str(":members/1").is_err());
 }
 
 #[test]
@@ -126,8 +126,8 @@ fn commit_sha_validates_40_hex_lowercase() {
 
 #[test]
 fn function_name_round_trip() {
-    let f = FunctionName::from_str("foo_bar@1").unwrap();
-    assert_eq!(f.to_string(), "foo_bar@1");
+    let f = FunctionName::from_str("process_command@1").unwrap();
+    assert_eq!(f.to_string(), "process_command@1");
 }
 
 #[test]
@@ -165,8 +165,8 @@ fn callback_name_round_trips() {
 #[test]
 fn mfa_implements_ord_for_btree_keys() {
     use std::collections::BTreeMap;
-    let m1: Mfa = "a:b/0".parse().unwrap();
-    let m2: Mfa = "a:c/0".parse().unwrap();
+    let m1: Mfa = "ra:members/0".parse().unwrap();
+    let m2: Mfa = "ra:overview/0".parse().unwrap();
     let mut map = BTreeMap::new();
     map.insert(m1.clone(), 1);
     map.insert(m2.clone(), 2);

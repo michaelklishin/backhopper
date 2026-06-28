@@ -165,7 +165,7 @@ fn pin_verdict_with_unsupported_file_type_matches_fixture() {
         ),
         Verdict::RequiresAdaptation {
             reasons: vec![Reason::UnsupportedFileType {
-                path: PathBuf::from("lib/foo.ex"),
+                path: PathBuf::from("lib/rabbitmq/cli/ctl/commands/status_command.ex"),
             }],
         },
     );

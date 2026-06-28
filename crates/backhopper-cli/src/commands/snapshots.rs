@@ -405,7 +405,7 @@ fn generate_series(
             )?;
         }
         for s in &payload.self_pins_skipped {
-            writeln!(w, "  {} ({}): skipped — {}", s.project, s.git_ref, s.reason)?;
+            writeln!(w, "  {} ({}): skipped: {}", s.project, s.git_ref, s.reason)?;
         }
         Ok(())
     })?;

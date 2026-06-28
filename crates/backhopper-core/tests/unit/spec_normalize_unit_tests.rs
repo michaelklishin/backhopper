@@ -7,14 +7,14 @@ use backhopper_core::snapshot::spec_normalize::normalize_signature;
 #[test]
 fn normalizer_collapses_whitespace_runs() {
     assert_eq!(
-        normalize_signature("foo(  X  ,  Y )    ->   ok"),
-        "foo( X , Y ) -> ok"
+        normalize_signature("apply(  X  ,  Y )    ->   ok"),
+        "apply( X , Y ) -> ok"
     );
 }
 
 #[test]
 fn normalizer_is_idempotent_for_short_inputs() {
-    let s = "foo(X) -> ok";
+    let s = "apply(X) -> ok";
     let once = normalize_signature(s);
     let twice = normalize_signature(&once);
     assert_eq!(once, twice);
@@ -22,9 +22,9 @@ fn normalizer_is_idempotent_for_short_inputs() {
 
 #[test]
 fn normalizer_does_not_break_quoted_strings() {
-    let s = r#"foo(X) -> "a    b" | bar"#;
+    let s = r#"apply(X) -> "a    b" | binary"#;
     let n = normalize_signature(s);
-    assert!(n.starts_with(r#"foo(X) -> "a    b""#) || n.contains(r#""a    b""#));
+    assert!(n.starts_with(r#"apply(X) -> "a    b""#) || n.contains(r#""a    b""#));
 }
 
 #[test]

@@ -6,7 +6,7 @@ use backhopper_core::model::snapshot::Visibility;
 use backhopper_elixir::ElixirExtractor;
 
 const SIMPLE: &str = r#"
-defmodule MyApp.Foo do
+defmodule Khepri.Machine do
   @spec greet(String.t()) :: String.t()
   def greet(name), do: "hi " <> name
 
@@ -19,10 +19,10 @@ end
 "#;
 
 const NESTED: &str = r#"
-defmodule Outer do
-  defmodule Inner do
+defmodule Ra do
+  defmodule Server do
     @callback handle(term()) :: :ok
-    def go(x), do: x
+    def init(x), do: x
   end
 end
 "#;
@@ -38,7 +38,7 @@ end
 const HIDDEN: &str = r#"
 defmodule Internal do
   @moduledoc false
-  def go, do: :ok
+  def start, do: :ok
 end
 "#;
 
@@ -48,7 +48,7 @@ fn extracts_def_and_defmacro_as_exports_skips_defp() {
     let modules = ex.extract_modules(SIMPLE);
     let m = modules
         .iter()
-        .find(|m| m.name.as_str() == "MyApp.Foo")
+        .find(|m| m.name.as_str() == "Khepri.Machine")
         .expect("module");
     let exports: Vec<_> = m
         .exports
@@ -65,14 +65,14 @@ fn nested_modules_are_namespaced_with_parent() {
     let ex = ElixirExtractor::default();
     let modules = ex.extract_modules(NESTED);
     let names: Vec<_> = modules.iter().map(|m| m.name.to_string()).collect();
-    assert!(names.contains(&"Outer".to_owned()));
-    assert!(names.contains(&"Outer.Inner".to_owned()));
+    assert!(names.contains(&"Ra".to_owned()));
+    assert!(names.contains(&"Ra.Server".to_owned()));
     let inner = modules
         .iter()
-        .find(|m| m.name.as_str() == "Outer.Inner")
+        .find(|m| m.name.as_str() == "Ra.Server")
         .expect("inner module");
     assert!(inner.callbacks.iter().any(|c| c.name.as_str() == "handle"));
-    assert!(inner.exports.iter().any(|fa| fa.name.as_str() == "go"));
+    assert!(inner.exports.iter().any(|fa| fa.name.as_str() == "init"));
 }
 
 #[test]
@@ -123,12 +123,12 @@ end
 #[test]
 fn def_with_no_args_yields_arity_zero() {
     let ex = ElixirExtractor::default();
-    let modules = ex.extract_modules("defmodule A do\n  def go, do: :ok\nend\n");
+    let modules = ex.extract_modules("defmodule Khepri do\n  def is_empty, do: :ok\nend\n");
     assert!(
         modules[0]
             .exports
             .iter()
-            .any(|fa| fa.name.as_str() == "go" && fa.arity.get() == 0)
+            .any(|fa| fa.name.as_str() == "is_empty" && fa.arity.get() == 0)
     );
 }
 
@@ -148,32 +148,32 @@ fn exports_of(source: &str, module: &str) -> Vec<String> {
 // must not collapse the arity to zero.
 #[test]
 fn char_literal_quote_in_default_arg_keeps_arity() {
-    let source = "defmodule A do\n  def f(sep \\\\ ?\", b, c), do: :ok\nend\n";
-    let exports = exports_of(source, "A");
-    assert!(exports.iter().any(|e| e == "f/3"), "got {exports:?}");
+    let source = "defmodule Osiris.Log do\n  def encode(sep \\\\ ?\", b, c), do: :ok\nend\n";
+    let exports = exports_of(source, "Osiris.Log");
+    assert!(exports.iter().any(|e| e == "encode/3"), "got {exports:?}");
 }
 
 // A `?,` char literal must not be counted as an argument separator.
 #[test]
 fn char_literal_comma_in_default_arg_does_not_inflate_arity() {
-    let source = "defmodule A do\n  def f(sep \\\\ ?,, b), do: :ok\nend\n";
-    let exports = exports_of(source, "A");
-    assert!(exports.iter().any(|e| e == "f/2"), "got {exports:?}");
+    let source = "defmodule Ra.Log do\n  def decode(sep \\\\ ?,, b), do: :ok\nend\n";
+    let exports = exports_of(source, "Ra.Log");
+    assert!(exports.iter().any(|e| e == "decode/2"), "got {exports:?}");
 }
 
 // A predicate name like `valid?` ends in `?` but that is not a char literal:
 // the function must still be extracted with the correct arity.
 #[test]
 fn predicate_name_is_not_mistaken_for_a_char_literal() {
-    let source = "defmodule A do\n  def valid?(a, b), do: true\nend\n";
-    let exports = exports_of(source, "A");
+    let source = "defmodule Khepri.Path do\n  def valid?(a, b), do: true\nend\n";
+    let exports = exports_of(source, "Khepri.Path");
     assert!(exports.iter().any(|e| e == "valid?/2"), "got {exports:?}");
 }
 
 #[test]
 fn callback_with_complex_args_yields_correct_arity() {
     let source = r#"
-defmodule X do
+defmodule Ra.Machine do
   @callback handle(conn :: term(), opts :: keyword()) :: term()
 end
 "#;

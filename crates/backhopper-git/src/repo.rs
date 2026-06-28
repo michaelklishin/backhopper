@@ -4,8 +4,7 @@
 
 //! `GitRepo`: the single wrapper around `gix::Repository`.
 
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fmt::Write;
 use std::ops::ControlFlow;
@@ -125,9 +124,7 @@ impl GitRepo {
         prefix: &CommitShaPrefix,
         full: CommitSha,
     ) -> Result<ResolvedSha, GitError> {
-        let oid = gix::ObjectId::from_hex(full.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        self.peel_to_commit(prefix, oid)
+        self.peel_to_commit(prefix, oid_of(&full)?)
     }
 
     fn peel_to_commit(
@@ -182,32 +179,26 @@ impl GitRepo {
         let Ok(hex_prefix) = gix::hash::Prefix::from_hex(prefix.as_str()) else {
             return PrefixLookup::None;
         };
-        let mut candidates: Vec<gix::ObjectId> = Vec::new();
-        let mut total: usize = 0;
-        for oid in self
+        // indexed prefix lookup over the pack and loose object indices,
+        // not a full object-store scan: the candidate set is every oid
+        // sharing the prefix, capped to a sample for the error message
+        let mut candidates: HashSet<gix::ObjectId> = HashSet::new();
+        if self
             .repo
             .objects
-            .iter()
-            .ok()
-            .into_iter()
-            .flatten()
-            .flatten()
+            .lookup_prefix(hex_prefix, Some(&mut candidates))
+            .is_err()
         {
-            if hex_prefix.cmp_oid(&oid) == Ordering::Equal {
-                total += 1;
-                if candidates.len() < AMBIGUOUS_SHA_CANDIDATE_CAP {
-                    candidates.push(oid);
-                }
-            }
+            return PrefixLookup::None;
         }
+        let total = candidates.len();
         if total <= 1 {
             PrefixLookup::None
         } else {
-            candidates.sort();
-            PrefixLookup::Ambiguous {
-                total,
-                sample: candidates,
-            }
+            let mut sample: Vec<gix::ObjectId> = candidates.into_iter().collect();
+            sample.sort();
+            sample.truncate(AMBIGUOUS_SHA_CANDIDATE_CAP);
+            PrefixLookup::Ambiguous { total, sample }
         }
     }
 
@@ -283,18 +274,7 @@ impl GitRepo {
         commit: &CommitSha,
         path_filter: impl Fn(&str) -> bool,
     ) -> Result<Vec<BlobAtPath>, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let object = self
-            .repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?;
-        let commit_obj = object
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let tree = commit_obj
-            .tree()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let tree = self.tree_of(commit)?;
         let mut out = Vec::new();
         let mut stack: Vec<(PathBuf, gix::Tree<'_>)> = Vec::new();
         stack.push((PathBuf::new(), tree));
@@ -353,8 +333,7 @@ impl GitRepo {
     }
 
     pub fn branches_containing(&self, commit: &CommitSha) -> Result<Vec<String>, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let oid = oid_of(commit)?;
         let platform = self
             .repo
             .references()
@@ -378,28 +357,12 @@ impl GitRepo {
 
     /// Return the one-line subject of a commit message.
     pub fn commit_subject(&self, commit: &CommitSha) -> Result<String, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let object = self
-            .repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?;
-        let c = object
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let c = self.commit_of(commit)?;
         pr_commits::commit_subject(&c)
     }
 
     pub fn parents(&self, commit: &CommitSha) -> Result<Vec<CommitSha>, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let object = self
-            .repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?;
-        let c = object
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let c = self.commit_of(commit)?;
         let mut out = Vec::new();
         for id in c.parent_ids() {
             out.push(CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?);
@@ -409,14 +372,7 @@ impl GitRepo {
 
     /// Full raw commit message (subject plus body plus trailers).
     pub fn commit_message(&self, commit: &CommitSha) -> Result<String, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let c = self
-            .repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let c = self.commit_of(commit)?;
         Ok(c.message_raw()
             .map_err(|e| GitError::Gix(e.to_string()))?
             .to_str_lossy()
@@ -427,12 +383,13 @@ impl GitRepo {
     /// store. An object of another kind under the same id does not
     /// count.
     pub fn has_commit(&self, commit: &CommitSha) -> Result<bool, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let oid = oid_of(commit)?;
+        // header lookup reports the object kind without inflating the
+        // full commit, so existence-plus-kind costs no object decode
         Ok(self
             .repo
-            .find_object(oid)
-            .is_ok_and(|o| o.try_into_commit().is_ok()))
+            .find_header(oid)
+            .is_ok_and(|header| header.kind() == gix::objs::Kind::Commit))
     }
 
     /// Best merge base of two commits, `None` when the histories are
@@ -447,10 +404,8 @@ impl GitRepo {
                 return Err(GitError::CommitNotFound(sha.to_string()));
             }
         }
-        let a = gix::ObjectId::from_hex(one.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let b = gix::ObjectId::from_hex(two.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let a = oid_of(one)?;
+        let b = oid_of(two)?;
         match self.repo.merge_base(a, b) {
             Ok(id) => {
                 let sha =
@@ -512,14 +467,7 @@ impl GitRepo {
 
     /// Committer timestamp of a commit: when it landed on its branch.
     pub fn commit_timestamp(&self, commit: &CommitSha) -> Result<OffsetDateTime, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let c = self
-            .repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let c = self.commit_of(commit)?;
         let time = c.time().map_err(|e| GitError::Gix(e.to_string()))?;
         OffsetDateTime::from_unix_timestamp(time.seconds)
             .map_err(|e| GitError::Gix(format!("committer time out of range: {e}")))
@@ -532,10 +480,8 @@ impl GitRepo {
         ancestor: &CommitSha,
         descendant: &CommitSha,
     ) -> Result<bool, GitError> {
-        let target = gix::ObjectId::from_hex(ancestor.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let from = gix::ObjectId::from_hex(descendant.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let target = oid_of(ancestor)?;
+        let from = oid_of(descendant)?;
         for info in self
             .repo
             .rev_walk([from])
@@ -562,13 +508,10 @@ impl GitRepo {
         if candidates.is_empty() {
             return Ok(BTreeSet::new());
         }
-        let from = gix::ObjectId::from_hex(tip.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let from = oid_of(tip)?;
         let mut wanted: BTreeMap<gix::ObjectId, CommitSha> = BTreeMap::new();
         for sha in candidates {
-            let oid = gix::ObjectId::from_hex(sha.as_str().as_bytes())
-                .map_err(|e| GitError::Gix(e.to_string()))?;
-            wanted.insert(oid, sha.clone());
+            wanted.insert(oid_of(sha)?, sha.clone());
         }
         let mut found: BTreeSet<CommitSha> = BTreeSet::new();
         for info in self
@@ -720,16 +663,28 @@ impl GitRepo {
     }
 
     fn tree_of(&self, commit: &CommitSha) -> Result<gix::Tree<'_>, GitError> {
-        let oid = gix::ObjectId::from_hex(commit.as_str().as_bytes())
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        self.repo
-            .find_object(oid)
-            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
-            .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))?
+        self.commit_of(commit)?
             .tree()
             .map_err(|e| GitError::Gix(e.to_string()))
     }
+
+    /// Find `commit`'s object and peel it to a commit. A missing object
+    /// maps to `CommitNotFound`; an object of another kind maps to
+    /// `Gix`. The single place this crate turns a `CommitSha` into a
+    /// `gix::Commit`.
+    fn commit_of(&self, commit: &CommitSha) -> Result<gix::Commit<'_>, GitError> {
+        self.repo
+            .find_object(oid_of(commit)?)
+            .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
+            .try_into_commit()
+            .map_err(|e| GitError::Gix(e.to_string()))
+    }
+}
+
+/// Decode a `CommitSha` into a `gix::ObjectId`, mapping a malformed
+/// hex string to `GitError::Gix`.
+fn oid_of(commit: &CommitSha) -> Result<gix::ObjectId, GitError> {
+    gix::ObjectId::from_hex(commit.as_str().as_bytes()).map_err(|e| GitError::Gix(e.to_string()))
 }
 
 fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {

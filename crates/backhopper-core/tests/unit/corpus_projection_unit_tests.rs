@@ -45,8 +45,8 @@ fn empty_row(fingerprint: Option<&str>) -> BatchResult {
 
 fn macro_undefined() -> Reason {
     Reason::MacroUndefinedOnTarget {
-        source_path: RelativePath::new("src/x.erl").unwrap(),
-        macro_name: "FOO".to_owned(),
+        source_path: RelativePath::new("src/osiris_log.erl").unwrap(),
+        macro_name: "SEGMENT_MAX_BYTES".to_owned(),
         line: 1,
     }
 }
@@ -107,9 +107,9 @@ fn preimage_missing(path: &str) -> Reason {
 fn predicted_conflicts_lists_only_risky_paths() {
     let verdict = Verdict::RequiresAdaptation {
         reasons: vec![
-            preimage_missing("src/a.erl"),
+            preimage_missing("src/ra_server.erl"),
             Reason::PreimageDrifted {
-                path: "src/a.erl".into(),
+                path: "src/ra_server.erl".into(),
                 hunk_index: 1,
                 line_delta: 2,
             },
@@ -117,7 +117,7 @@ fn predicted_conflicts_lists_only_risky_paths() {
     };
     let conflicts = row(verdict, None).predicted_conflicts();
     assert_eq!(conflicts.len(), 1);
-    assert_eq!(conflicts[0].path.to_str(), Some("src/a.erl"));
+    assert_eq!(conflicts[0].path.to_str(), Some("src/ra_server.erl"));
     assert_eq!(conflicts[0].kind, ApplyConflictKind::PreimageMissing);
 }
 
@@ -127,11 +127,11 @@ fn predicted_conflicts_dedups_to_the_max_severity() {
     let verdict = Verdict::RequiresAdaptation {
         reasons: vec![
             Reason::PostimageCollision {
-                path: "src/a.erl".into(),
+                path: "src/ra_server.erl".into(),
                 hunk_index: 0,
             },
             Reason::FileAbsent {
-                path: "src/a.erl".into(),
+                path: "src/ra_server.erl".into(),
             },
         ],
     };
@@ -144,14 +144,15 @@ fn predicted_conflicts_dedups_to_the_max_severity() {
 fn predicted_conflicts_keeps_one_entry_per_path() {
     let verdict = Verdict::RequiresAdaptation {
         reasons: vec![
-            preimage_missing("src/a.erl"),
+            preimage_missing("src/ra_server.erl"),
             Reason::FileAbsent {
-                path: "src/b.erl".into(),
+                path: "src/ra_log.erl".into(),
             },
         ],
     };
     let conflicts = row(verdict, None).predicted_conflicts();
     assert_eq!(conflicts.len(), 2);
-    assert_eq!(conflicts[0].path.to_str(), Some("src/a.erl"));
-    assert_eq!(conflicts[1].path.to_str(), Some("src/b.erl"));
+    // predicted_conflicts is keyed by path, so entries come out path-sorted
+    assert_eq!(conflicts[0].path.to_str(), Some("src/ra_log.erl"));
+    assert_eq!(conflicts[1].path.to_str(), Some("src/ra_server.erl"));
 }

@@ -402,6 +402,18 @@ fn top_level_arity(args: &[u8]) -> usize {
         match args[i] {
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth -= 1,
+            // << and >> are binary delimiters: nest like brackets so
+            // interior commas are not counted as argument separators
+            b'<' if args.get(i + 1) == Some(&b'<') => {
+                depth += 1;
+                i += 2;
+                continue;
+            }
+            b'>' if args.get(i + 1) == Some(&b'>') => {
+                depth -= 1;
+                i += 2;
+                continue;
+            }
             b'"' => {
                 i = skip_string(args, i, b'"');
                 continue;

@@ -66,8 +66,25 @@ fn classify_recognizes_tests() {
         FileKind::Tests
     );
     assert_eq!(
-        TouchedKinds::classify(Path::new("tests/integration/foo.erl")),
+        TouchedKinds::classify(Path::new("tests/integration/cluster_SUITE.erl")),
         FileKind::Tests
+    );
+}
+
+#[test]
+fn classify_keeps_erl_source_under_a_docs_path_as_erl() {
+    assert_eq!(
+        TouchedKinds::classify(Path::new("docs/examples/ra_kv.erl")),
+        FileKind::Erl,
+        "a docs/ path component must not vacuously demote real Erlang source to docs"
+    );
+    assert_eq!(
+        TouchedKinds::classify(Path::new("docs/khepri_machine.hrl")),
+        FileKind::Hrl
+    );
+    assert_eq!(
+        TouchedKinds::classify(Path::new("docs/cluster_formation.md")),
+        FileKind::Docs
     );
 }
 
@@ -87,12 +104,12 @@ fn classify_falls_through_to_other_for_unknown() {
 fn from_paths_tallies_each_kind() {
     let paths = [
         "src/rabbit.erl",
-        "include/x.hrl",
-        "include/y.hrl",
+        "include/ra.hrl",
+        "include/osiris.hrl",
         "README.md",
         "Cargo.toml",
-        "priv/schema/foo.schema",
-        "test/bar_SUITE.erl",
+        "priv/schema/rabbit.schema",
+        "test/rabbit_fifo_SUITE.erl",
     ];
     let tk = TouchedKinds::from_paths(paths);
     assert_eq!(tk.erl, 1);

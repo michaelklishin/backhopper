@@ -11,7 +11,7 @@ use backhopper_core::model::names::RelativePath;
 fn accepts_ordinary_repo_relative_paths() {
     RelativePath::new("deps/rabbit/src/rabbit.erl").expect("valid");
     RelativePath::new("Cargo.toml").expect("valid");
-    RelativePath::new("a/b/c/d").expect("valid");
+    RelativePath::new("deps/osiris/src/osiris_log.erl").expect("valid");
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn rejects_parent_directory_segments() {
 #[test]
 fn rejects_isolated_dot_dot_segment() {
     assert!(RelativePath::new("..").is_err());
-    assert!(RelativePath::new("../foo").is_err());
+    assert!(RelativePath::new("../rabbit.erl").is_err());
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn rejects_overlong_paths() {
 #[test]
 fn permits_single_dot_segments() {
     RelativePath::new("./Cargo.toml").expect("valid");
-    RelativePath::new("a/./b").expect("valid");
+    RelativePath::new("src/./rabbit.erl").expect("valid");
 }
 
 #[test]
@@ -69,8 +69,8 @@ fn from_str_roundtrip() {
 
 #[test]
 fn display_matches_inner_string() {
-    let p = RelativePath::new("a/b/c").expect("valid");
-    assert_eq!(p.to_string(), "a/b/c");
+    let p = RelativePath::new("deps/aten/src/aten.erl").expect("valid");
+    assert_eq!(p.to_string(), "deps/aten/src/aten.erl");
 }
 
 #[test]
@@ -93,9 +93,9 @@ fn from_bytes_rejects_absolute_path() {
 
 #[test]
 fn serde_roundtrip_via_json() {
-    let p = RelativePath::new("a/b/c").expect("valid");
+    let p = RelativePath::new("deps/seshat/src/seshat.erl").expect("valid");
     let json = serde_json::to_string(&p).expect("serialise");
-    assert_eq!(json, "\"a/b/c\"");
+    assert_eq!(json, "\"deps/seshat/src/seshat.erl\"");
     let back: RelativePath = serde_json::from_str(&json).expect("deserialise");
     assert_eq!(back, p);
 }

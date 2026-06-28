@@ -159,20 +159,20 @@ fn record_field_without_type_round_trips() {
 
 #[test]
 fn multi_field_record_with_one_multiline_round_trips() {
-    let mut hrl = HrlFile::new("include/x.hrl");
+    let mut hrl = HrlFile::new("include/ra.hrl");
     hrl.records.push(RecordDecl {
-        name: RecordName::new("r").unwrap(),
+        name: RecordName::new("cfg").unwrap(),
         fields: vec![
             RecordField {
-                name: FieldName::new("a").unwrap(),
+                name: FieldName::new("first_index").unwrap(),
                 type_repr: Some("integer()".into()),
             },
             RecordField {
-                name: FieldName::new("b").unwrap(),
-                type_repr: Some("foo:bar() |\n      foo:baz()".into()),
+                name: FieldName::new("comparison").unwrap(),
+                type_repr: Some("ra:index() |\n      ra:idxterm()".into()),
             },
             RecordField {
-                name: FieldName::new("c").unwrap(),
+                name: FieldName::new("state").unwrap(),
                 type_repr: Some("term()".into()),
             },
         ],
@@ -197,8 +197,8 @@ fn four_space_non_field_line_is_not_treated_as_continuation() {
 # generated-at: 1970-01-01T00:00:00Z
 
 header include/khepri.hrl
-  record r
-    field a :: integer()
+  record khepri_machine
+    field root :: integer()
     garbage_at_field_indent
 ";
     let err = parser::parse(bad).unwrap_err();
@@ -210,19 +210,21 @@ header include/khepri.hrl
 
 #[test]
 fn two_records_with_multiline_fields_round_trip() {
-    let mut hrl = HrlFile::new("include/x.hrl");
+    let mut hrl = HrlFile::new("include/khepri.hrl");
     hrl.records.push(RecordDecl {
-        name: RecordName::new("alpha").unwrap(),
+        name: RecordName::new("khepri_machine").unwrap(),
         fields: vec![RecordField {
-            name: FieldName::new("x").unwrap(),
-            type_repr: Some("a |\n      b".into()),
+            name: FieldName::new("root").unwrap(),
+            type_repr: Some("khepri:node_id() |\n      khepri_path:pattern()".into()),
         }],
     });
     hrl.records.push(RecordDecl {
-        name: RecordName::new("beta").unwrap(),
+        name: RecordName::new("khepri_tree").unwrap(),
         fields: vec![RecordField {
-            name: FieldName::new("y").unwrap(),
-            type_repr: Some("c |\n      d |\n      e".into()),
+            name: FieldName::new("keep_while").unwrap(),
+            type_repr: Some(
+                "khepri:node_id() |\n      khepri:payload() |\n      khepri:props()".into(),
+            ),
         }],
     });
     let snap = Snapshot::from_extracted(minimal_header(), vec![], vec![hrl]).into_canonical();

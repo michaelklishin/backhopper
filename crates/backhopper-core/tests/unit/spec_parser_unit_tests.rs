@@ -226,7 +226,7 @@ fn parse_underscore_var() {
 
 #[test]
 fn parse_signature_return_strips_arrow_and_args() {
-    let t = parse_signature_return("foo(A, B) -> {ok, B}");
+    let t = parse_signature_return("process(A, B) -> {ok, B}");
     match t {
         SpecType::TaggedTuple { tag, arity } => {
             assert_eq!(tag, "ok");
@@ -238,7 +238,7 @@ fn parse_signature_return_strips_arrow_and_args() {
 
 #[test]
 fn parse_signature_return_skips_when_guard() {
-    let t = parse_signature_return("foo(B) -> B when B :: binary()");
+    let t = parse_signature_return("cast(B) -> B when B :: binary()");
     match t {
         SpecType::Var { name } => assert_eq!(name, "B"),
         other => panic!("expected Var(B), got {other:?}"),
@@ -247,7 +247,7 @@ fn parse_signature_return_skips_when_guard() {
 
 #[test]
 fn parse_signature_return_handles_no_arrow() {
-    let t = parse_signature_return("just_a_thing");
+    let t = parse_signature_return("machine_version");
     assert!(matches!(t, SpecType::Unknown));
 }
 

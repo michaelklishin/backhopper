@@ -83,14 +83,20 @@ fn include_absent_returns_attempted_paths() {
 #[test]
 fn include_lib_resolves_under_deps_app_path() {
     let repo = FakeRepo::new();
-    repo.write_file("deps/rabbitmq_amqp_client/include/foo.hrl", "%% hdr\n");
+    repo.write_file(
+        "deps/rabbitmq_amqp_client/include/amqp_client.hrl",
+        "%% hdr\n",
+    );
     repo.commit("hdr");
     let target = build_target(&repo);
     let directive = IncludeDirective::IncludeLib {
-        path: "rabbitmq_amqp_client/include/foo.hrl".to_owned(),
+        path: "rabbitmq_amqp_client/include/amqp_client.hrl".to_owned(),
     };
     let found = resolve_include(&target, &rp("deps/rabbit/test/x_SUITE.erl"), &directive).unwrap();
-    assert_eq!(found.as_str(), "deps/rabbitmq_amqp_client/include/foo.hrl");
+    assert_eq!(
+        found.as_str(),
+        "deps/rabbitmq_amqp_client/include/amqp_client.hrl"
+    );
 }
 
 #[test]
@@ -100,7 +106,7 @@ fn include_lib_absent_attempts_deps_apps_lib_in_order() {
     repo.commit("docs");
     let target = build_target(&repo);
     let directive = IncludeDirective::IncludeLib {
-        path: "rabbitmq_amqp_client/include/foo.hrl".to_owned(),
+        path: "rabbitmq_amqp_client/include/amqp_client.hrl".to_owned(),
     };
     let attempted =
         resolve_include(&target, &rp("deps/rabbit/test/x_SUITE.erl"), &directive).unwrap_err();
@@ -109,9 +115,9 @@ fn include_lib_absent_attempts_deps_apps_lib_in_order() {
     assert_eq!(
         s,
         vec![
-            "deps/rabbitmq_amqp_client/include/foo.hrl",
-            "apps/rabbitmq_amqp_client/include/foo.hrl",
-            "lib/rabbitmq_amqp_client/include/foo.hrl",
+            "deps/rabbitmq_amqp_client/include/amqp_client.hrl",
+            "apps/rabbitmq_amqp_client/include/amqp_client.hrl",
+            "lib/rabbitmq_amqp_client/include/amqp_client.hrl",
         ]
     );
 }

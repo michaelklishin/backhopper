@@ -67,11 +67,11 @@ fn context(project: &str, modules: Vec<Module>) -> EvaluationContext {
 }
 
 const VARIANT_B_DIFF: &str = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
+--- a/rabbit_quorum_queue.erl
++++ b/rabbit_quorum_queue.erl
 @@ -1,1 +1,4 @@
- -module(x).
+ -module(rabbit_quorum_queue).
 +-spec init([ra:index()]) -> ok.
 +init(Servers) ->
 +    ok.
@@ -132,12 +132,12 @@ fn missing_type_is_not_blocking_so_verdict_is_requires_adaptation_not_incompatib
 #[test]
 fn function_call_to_same_name_still_emits_missing_symbol_in_body() {
     let body_diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
+--- a/rabbit_quorum_queue.erl
++++ b/rabbit_quorum_queue.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:index().
+ -module(rabbit_quorum_queue).
++lookup_index() -> ra:index().
 ";
     let m = with_exported_function(module_named("ra"), "start", 0);
     let eval = Patch::parse(body_diff.as_bytes())
@@ -171,13 +171,13 @@ diff --git a/x.erl b/x.erl
 fn out_of_scope_type_ref_produces_no_reason() {
     let m = with_exported_type(module_named("ra"), "index", 0);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
+--- a/rabbit_quorum_queue.erl
++++ b/rabbit_quorum_queue.erl
 @@ -1,1 +1,3 @@
- -module(x).
-+-spec foo(unknown:t()) -> ok.
-+foo(_) -> ok.
+ -module(rabbit_quorum_queue).
++-spec decode(unknown:t()) -> ok.
++decode(_) -> ok.
 ";
     let eval = Patch::parse(diff.as_bytes())
         .unwrap()

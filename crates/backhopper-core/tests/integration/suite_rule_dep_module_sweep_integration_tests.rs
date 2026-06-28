@@ -34,12 +34,12 @@ fn fixture() -> Fixture {
     .unwrap();
     fs::write(
         rabbit.join("test/config_schema_SUITE.erl"),
-        "-module(config_schema_SUITE).\ngo() -> cuttlefish_generator:map(x).",
+        "-module(config_schema_SUITE).\ngenerate() -> cuttlefish_generator:map(schema).",
     )
     .unwrap();
     fs::write(
         rabbit.join("test/unrelated_SUITE.erl"),
-        "-module(unrelated_SUITE).\ngo() -> ok.",
+        "-module(unrelated_SUITE).\ngenerate() -> ok.",
     )
     .unwrap();
     fs::write(
@@ -146,7 +146,7 @@ fn dep_module_sweep_works_with_dep_capture_from_path_only() {
     };
     let input = PlanInput {
         repo_root: f.root.clone(),
-        modified_paths: vec![PathBuf::from("deps/cuttlefish/priv/schema/foo.schema")],
+        modified_paths: vec![PathBuf::from("deps/cuttlefish/priv/schema/rabbit.schema")],
         apps: f.apps.clone(),
         library_apps: vec![],
         extra_rules: vec![rule],

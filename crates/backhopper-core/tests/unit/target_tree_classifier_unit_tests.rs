@@ -8,16 +8,16 @@ use backhopper_core::compat::target_tree::normalise;
 
 #[test]
 fn normalise_swaps_backslashes_to_forward() {
-    let p = PathBuf::from(r"deps\rabbit\src\foo.erl");
+    let p = PathBuf::from(r"deps\rabbit\src\rabbit_amqqueue.erl");
     let out = normalise(&p).expect("safe");
-    assert_eq!(out.to_string_lossy(), "deps/rabbit/src/foo.erl");
+    assert_eq!(out.to_string_lossy(), "deps/rabbit/src/rabbit_amqqueue.erl");
 }
 
 #[test]
 fn normalise_strips_leading_dot_slash() {
-    let p = PathBuf::from("./deps/rabbit/src/foo.erl");
+    let p = PathBuf::from("./deps/rabbit/src/rabbit_amqqueue.erl");
     let out = normalise(&p).expect("safe");
-    assert_eq!(out.to_string_lossy(), "deps/rabbit/src/foo.erl");
+    assert_eq!(out.to_string_lossy(), "deps/rabbit/src/rabbit_amqqueue.erl");
 }
 
 #[test]
@@ -28,14 +28,14 @@ fn normalise_rejects_dotdot_segments() {
 
 #[test]
 fn normalise_passes_through_clean_paths() {
-    let p = Path::new("deps/rabbit/src/foo.erl");
+    let p = Path::new("deps/rabbit/src/rabbit_amqqueue.erl");
     let out = normalise(p).expect("clean");
-    assert_eq!(out, PathBuf::from("deps/rabbit/src/foo.erl"));
+    assert_eq!(out, PathBuf::from("deps/rabbit/src/rabbit_amqqueue.erl"));
 }
 
 #[test]
 fn normalise_strips_repeated_dot_slash() {
-    let p = PathBuf::from(".//deps/x.erl");
+    let p = PathBuf::from(".//deps/osiris_log.erl");
     let out = normalise(&p).expect("safe");
-    assert_eq!(out.to_string_lossy(), "/deps/x.erl");
+    assert_eq!(out.to_string_lossy(), "/deps/osiris_log.erl");
 }

@@ -39,7 +39,7 @@ fn unmatched_path_returns_no_layout_match() {
 #[test]
 fn empty_layout_returns_no_layout_match() {
     let layout = ProjectLayout::new();
-    let p = PathBuf::from("/x/deps/rabbit/src/foo.erl");
+    let p = PathBuf::from("/x/deps/rabbit/src/ra_server.erl");
     assert!(matches!(
         layout.resolve(&p),
         ApplicationAssignment::NoLayoutMatch { .. }
@@ -60,8 +60,9 @@ fn custom_prefix_resolves_application() {
 #[test]
 fn assignment_assigned_returns_some_application_name() {
     use backhopper_core::ApplicationName;
-    let assigned = ApplicationAssignment::Assigned(ApplicationName::new("foo".to_owned()).unwrap());
-    assert_eq!(assigned.assigned().unwrap().as_str(), "foo");
+    let assigned =
+        ApplicationAssignment::Assigned(ApplicationName::new("osiris".to_owned()).unwrap());
+    assert_eq!(assigned.assigned().unwrap().as_str(), "osiris");
 }
 
 #[test]

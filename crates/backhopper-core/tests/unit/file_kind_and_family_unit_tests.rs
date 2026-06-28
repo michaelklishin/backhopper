@@ -17,7 +17,7 @@ fn classify_recognizes_app_src() {
         FileKind::AppSrc,
     );
     assert_eq!(
-        TouchedKinds::classify(Path::new("src/foo.app.src.script")),
+        TouchedKinds::classify(Path::new("src/rabbit.app.src.script")),
         FileKind::AppSrc,
     );
 }
@@ -29,7 +29,7 @@ fn classify_recognizes_rebar_config() {
         FileKind::RebarConfig,
     );
     assert_eq!(
-        TouchedKinds::classify(Path::new("deps/foo/rebar.config")),
+        TouchedKinds::classify(Path::new("deps/ra/rebar.config")),
         FileKind::RebarConfig,
     );
     assert_eq!(
@@ -108,7 +108,7 @@ fn classify_does_not_misidentify_docs_yaml() {
 #[test]
 fn only_makefile_touched_promotes_inapplicable() {
     let kinds =
-        TouchedKinds::from_paths(vec![Path::new("Makefile"), Path::new("deps/foo/Makefile")]);
+        TouchedKinds::from_paths(vec![Path::new("Makefile"), Path::new("deps/ra/Makefile")]);
     assert_eq!(
         kinds.inapplicable_reason(),
         Some(InapplicableReason::OnlyMakefileTouched)
@@ -266,8 +266,8 @@ fn conflict_marker_rejects_unrelated_lines() {
 #[test]
 fn project_family_defaults_to_generic() {
     let raw = ProjectRaw {
-        name: "x".to_owned(),
-        git_url: Some("https://example.com/x.git".to_owned()),
+        name: "ra".to_owned(),
+        git_url: Some("https://github.com/rabbitmq/ra.git".to_owned()),
         kind: None,
         family: None,
         language: None,

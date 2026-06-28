@@ -58,7 +58,7 @@ fn summary_row_round_trips_via_json() {
             ..TouchedKinds::default()
         },
         tracked: 7,
-        subject: "Add a thing".to_owned(),
+        subject: "Add osiris bloom filter".to_owned(),
         series: None,
         parent_count: None,
     };
@@ -77,7 +77,7 @@ fn summary_row_json_includes_touched_breakdown() {
             ..TouchedKinds::default()
         },
         tracked: 0,
-        subject: "x".to_owned(),
+        subject: "Update CHANGELOG".to_owned(),
         series: None,
         parent_count: None,
     };
@@ -91,7 +91,7 @@ fn summary_row_json_includes_touched_breakdown() {
 fn unused_reason_variant_still_present() {
     let _: Verdict = Verdict::Incompatible {
         reasons: vec![Reason::FileAbsent {
-            path: PathBuf::from("foo"),
+            path: PathBuf::from("deps/ra/src/ra_log.erl"),
         }],
     };
 }

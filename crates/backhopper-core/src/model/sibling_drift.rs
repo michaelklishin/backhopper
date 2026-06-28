@@ -426,8 +426,8 @@ impl SiblingCandidate<Unscored> {
         thresholds: &ActionThresholds,
     ) -> SiblingCandidate<Scored> {
         let features = CandidateFeatures {
-            subject: self.subject.clone(),
-            touched_paths: self.touched_paths.clone(),
+            subject: self.subject,
+            touched_paths: self.touched_paths,
             lines_added: self.state.lines_added,
             lines_removed: self.state.lines_removed,
             parent_count: self.parent_count,
@@ -435,10 +435,10 @@ impl SiblingCandidate<Unscored> {
         let outcome = score_features(&features, vocabulary, weights);
         SiblingCandidate {
             sha: self.sha,
-            subject: self.subject,
+            subject: features.subject,
             committed_at: self.committed_at,
             age_days: self.age_days,
-            touched_paths: self.touched_paths,
+            touched_paths: features.touched_paths,
             parent_count: self.parent_count,
             state: Scored {
                 confidence: outcome.confidence,

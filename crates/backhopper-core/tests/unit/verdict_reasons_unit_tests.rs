@@ -57,15 +57,15 @@ fn reference_to_hidden_module_is_now_hidden() {
     let snap = snapshot_with(vec![module(
         "ra_internal",
         Visibility::Hidden,
-        &[("foo", 1)],
+        &[("init", 1)],
     )]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/ra_server.erl b/ra_server.erl
+--- a/ra_server.erl
++++ b/ra_server.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra_internal:foo(1).
+ -module(ra_server).
++apply() -> ra_internal:init(1).
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -99,12 +99,12 @@ fn reference_to_deprecated_function_yields_requires_adaptation() {
     });
     let snap = snapshot_with(vec![m]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/ra_directory.erl b/ra_directory.erl
+--- a/ra_directory.erl
++++ b/ra_directory.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:start_node(a, b).
+ -module(ra_directory).
++register_name() -> ra:start_node(Server, Cmd).
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -127,12 +127,12 @@ fn arity_change_is_distinct_from_missing_symbol() {
         &[("process_command", 3)],
     )]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/ra_server_proc.erl b/ra_server_proc.erl
+--- a/ra_server_proc.erl
++++ b/ra_server_proc.erl
 @@ -1,1 +1,2 @@
- -module(x).
-+go() -> ra:process_command(a, b).
+ -module(ra_server_proc).
++handle_command() -> ra:process_command(Server, Cmd).
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
@@ -148,15 +148,15 @@ diff --git a/x.erl b/x.erl
 
 #[test]
 fn helper_defined_in_patch_is_not_missing() {
-    let snap = snapshot_with(vec![module("foo", Visibility::Public, &[("bar", 1)])]);
+    let snap = snapshot_with(vec![module("ra_lib", Visibility::Public, &[("id", 1)])]);
     let diff = "\
-diff --git a/x.erl b/x.erl
---- a/x.erl
-+++ b/x.erl
+diff --git a/ra_machine.erl b/ra_machine.erl
+--- a/ra_machine.erl
++++ b/ra_machine.erl
 @@ -1,1 +1,4 @@
- -module(x).
+ -module(ra_machine).
 +helper(X) -> X + 1.
-+go() -> _local:helper(2).
++apply() -> _local:helper(2).
 ";
     let v = Patch::parse(diff.as_bytes())
         .unwrap()

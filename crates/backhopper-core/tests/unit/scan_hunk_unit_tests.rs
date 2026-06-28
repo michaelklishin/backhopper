@@ -75,19 +75,22 @@ fn a_single_line_call_is_unchanged() {
 // not turn a pre-existing call into a verdict-driving reference.
 #[test]
 fn the_calls_origin_is_its_head_line() {
-    let scan = scan(&[context("    ok = m:g(V,"), added("        NewArg)")]);
+    let scan = scan(&[
+        context("    ok = ra_log:append(V,"),
+        added("        NewArg)"),
+    ]);
     assert_eq!(
         functions(&scan.referenced),
-        [("m:g/2".to_owned(), RefOrigin::Context)]
+        [("ra_log:append/2".to_owned(), RefOrigin::Context)]
     );
 }
 
 #[test]
 fn an_added_head_drives_the_reference() {
-    let scan = scan(&[added("    ok = m:g(V,"), context("        Arg)")]);
+    let scan = scan(&[added("    ok = ra_log:append(V,"), context("        Arg)")]);
     assert_eq!(
         functions(&scan.referenced),
-        [("m:g/2".to_owned(), RefOrigin::Added)]
+        [("ra_log:append/2".to_owned(), RefOrigin::Added)]
     );
 }
 
@@ -95,14 +98,14 @@ fn an_added_head_drives_the_reference() {
 // line's origin, not the run's first.
 #[test]
 fn each_construct_takes_its_own_line_origin() {
-    let scan = scan(&[context("    a:b(X),"), added("    c:d(Y)")]);
+    let scan = scan(&[context("    aten:register(X),"), added("    khepri:get(Y)")]);
     let mut got = functions(&scan.referenced);
     got.sort();
     assert_eq!(
         got,
         [
-            ("a:b/1".to_owned(), RefOrigin::Context),
-            ("c:d/1".to_owned(), RefOrigin::Added),
+            ("aten:register/1".to_owned(), RefOrigin::Context),
+            ("khepri:get/1".to_owned(), RefOrigin::Added),
         ]
     );
 }
@@ -135,14 +138,14 @@ fn a_wrapped_fun_ref_resolves() {
 #[test]
 fn the_spec_region_does_not_merge_into_the_body() {
     let scan = scan(&[
-        added("-spec foo(ra:index()) -> ok."),
-        added("foo(X) -> bar:baz(X)."),
+        added("-spec append(ra:index()) -> ok."),
+        added("append(X) -> ra_lib:id(X)."),
     ]);
     assert_eq!(
         functions(&scan.referenced),
-        [("bar:baz/1".to_owned(), RefOrigin::Added)]
+        [("ra_lib:id/1".to_owned(), RefOrigin::Added)]
     );
-    assert_eq!(defined(&scan.defined), ["_local:foo/1".to_owned()]);
+    assert_eq!(defined(&scan.defined), ["_local:append/1".to_owned()]);
     let has_type = scan
         .referenced
         .iter()
@@ -158,13 +161,16 @@ fn the_spec_region_does_not_merge_into_the_body() {
 // closes across the join and resolves at exact arity.
 #[test]
 fn a_wrapped_type_reference_resolves() {
-    let scan = scan(&[added("-spec f(maps:t(a,"), added("            b)) -> ok.")]);
+    let scan = scan(&[
+        added("-spec lookup(dict:dict(K,"),
+        added("            V)) -> ok."),
+    ]);
     let arity = scan.referenced.iter().find_map(|r| match &r.kind {
         SymbolKind::Type {
             module,
             name,
             arity,
-        } if module.as_str() == "maps" && name.as_str() == "t" => Some(arity.get()),
+        } if module.as_str() == "dict" && name.as_str() == "dict" => Some(arity.get()),
         _ => None,
     });
     assert_eq!(arity, Some(2));
@@ -173,23 +179,29 @@ fn a_wrapped_type_reference_resolves() {
 // Only `Added`-head calls feed the clause-mismatch comparison.
 #[test]
 fn call_args_keep_only_added_head_calls() {
-    let scan = scan(&[added("    a:f(X),"), context("    b:g(Y)")]);
+    let scan = scan(&[added("    aten:register(X),"), context("    khepri:get(Y)")]);
     let names: Vec<String> = scan
         .call_args
         .iter()
         .map(|(mfa, _)| mfa.to_string())
         .collect();
-    assert_eq!(names, ["a:f/1".to_owned()]);
+    assert_eq!(names, ["aten:register/1".to_owned()]);
 }
 
 // Several clause heads in one body run are each defined: the multi-line
 // `^` anchor finds a head at the start of every physical line.
 #[test]
 fn multiple_clause_heads_in_one_run_are_all_defined() {
-    let scan = scan(&[added("foo(a) -> 1;"), added("foo(b, c) -> 2.")]);
+    let scan = scan(&[
+        added("apply(leader) -> 1;"),
+        added("apply(follower, candidate) -> 2."),
+    ]);
     let mut defs = defined(&scan.defined);
     defs.sort();
-    assert_eq!(defs, ["_local:foo/1".to_owned(), "_local:foo/2".to_owned()]);
+    assert_eq!(
+        defs,
+        ["_local:apply/1".to_owned(), "_local:apply/2".to_owned()]
+    );
 }
 
 #[test]

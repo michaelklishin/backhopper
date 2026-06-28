@@ -78,7 +78,7 @@ proptest! {
     ) {
         prop_assume!(scan != other);
         let p = project("demo", vec![scan], vec![]);
-        let path_str = format!("{other}/foo.erl");
+        let path_str = format!("{other}/ra_server.erl");
         prop_assert!(!p.owns_path(Path::new(&path_str)));
     }
 

@@ -20,18 +20,18 @@ fn index_reflects_the_named_ref_not_the_working_tree() {
     let repo = FakeRepo::new();
     // a file that survives both commits keeps HEAD's tree non-empty
     repo.write_file("src/keep.erl", "-module(keep).\n");
-    repo.write_file("src/foo.erl", "-module(foo).\n");
-    repo.commit("add foo");
+    repo.write_file("src/osiris_log.erl", "-module(osiris_log).\n");
+    repo.commit("add osiris_log");
     repo.tag("rel");
-    std::fs::remove_file(repo.dir.path().join("src/foo.erl")).unwrap();
+    std::fs::remove_file(repo.dir.path().join("src/osiris_log.erl")).unwrap();
     repo.stage_all();
-    repo.commit("remove foo");
+    repo.commit("remove osiris_log");
 
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let at_tag = build_target_tree_index(&g, &GitRef::new("rel").unwrap()).unwrap();
     let at_head = build_target_tree_index(&g, &GitRef::new("HEAD").unwrap()).unwrap();
 
-    assert!(at_tag.contains_path(Path::new("src/foo.erl")));
-    assert!(!at_head.contains_path(Path::new("src/foo.erl")));
+    assert!(at_tag.contains_path(Path::new("src/osiris_log.erl")));
+    assert!(!at_head.contains_path(Path::new("src/osiris_log.erl")));
     assert_eq!(at_tag.resolved_commit().as_str(), repo.rev_parse("rel"));
 }

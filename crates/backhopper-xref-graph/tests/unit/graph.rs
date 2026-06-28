@@ -41,11 +41,11 @@ fn empty_built_graph_has_no_modules() {
 fn module_summary_round_trips_through_builder() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
     let mut summary = ModuleSummary::default();
-    summary.exports.insert(sig("foo", 1));
-    summary.locals.insert(sig("bar", 0));
-    g.insert_module(mname("m"), summary);
+    summary.exports.insert(sig("append", 1));
+    summary.locals.insert(sig("fold", 0));
+    g.insert_module(mname("ra_log"), summary);
     let g = g.finish();
-    let s = g.module(&mname("m")).unwrap();
+    let s = g.module(&mname("ra_log")).unwrap();
     assert_eq!(s.exports.len(), 1);
     assert_eq!(s.locals.len(), 1);
 }
@@ -53,22 +53,22 @@ fn module_summary_round_trips_through_builder() {
 #[test]
 fn external_call_creates_module_edge() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("caller"), ModuleSummary::default());
-    g.insert_module(mname("callee"), ModuleSummary::default());
-    g.insert_external_call(mfa("caller", "do", 0), mfa("callee", "work", 1));
+    g.insert_module(mname("ra_server"), ModuleSummary::default());
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_external_call(mfa("ra_server", "process", 0), mfa("ra_log", "append", 1));
     let g = g.finish();
     let me = g.module_edges();
     assert!(me.contains(
-        &Vertex::Module(mname("caller")),
-        &Vertex::Module(mname("callee"))
+        &Vertex::Module(mname("ra_server")),
+        &Vertex::Module(mname("ra_log"))
     ));
 }
 
 #[test]
 fn external_call_within_same_module_does_not_create_module_edge() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("m"), ModuleSummary::default());
-    g.insert_external_call(mfa("m", "a", 0), mfa("m", "b", 0));
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_external_call(mfa("ra_log", "append", 0), mfa("ra_log", "fold", 0));
     let g = g.finish();
     assert!(g.module_edges().is_empty());
 }
@@ -76,23 +76,26 @@ fn external_call_within_same_module_does_not_create_module_edge() {
 #[test]
 fn external_call_across_applications_creates_app_edge() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    let app1 = ApplicationName::new("app1".to_owned()).unwrap();
-    let app2 = ApplicationName::new("app2".to_owned()).unwrap();
+    let ra = ApplicationName::new("ra".to_owned()).unwrap();
+    let khepri = ApplicationName::new("khepri".to_owned()).unwrap();
     let s1 = ModuleSummary {
-        application: Some(app1.clone()),
+        application: Some(ra.clone()),
         ..ModuleSummary::default()
     };
     let s2 = ModuleSummary {
-        application: Some(app2.clone()),
+        application: Some(khepri.clone()),
         ..ModuleSummary::default()
     };
-    g.insert_module(mname("a"), s1);
-    g.insert_module(mname("b"), s2);
-    g.insert_external_call(mfa("a", "f", 0), mfa("b", "g", 0));
+    g.insert_module(mname("ra_server"), s1);
+    g.insert_module(mname("khepri_machine"), s2);
+    g.insert_external_call(
+        mfa("ra_server", "handle", 0),
+        mfa("khepri_machine", "get", 0),
+    );
     let g = g.finish();
     assert!(
         g.application_edges()
-            .contains(&Vertex::Application(app1), &Vertex::Application(app2))
+            .contains(&Vertex::Application(ra), &Vertex::Application(khepri))
     );
 }
 
@@ -102,36 +105,36 @@ fn behaviour_declaration_creates_module_to_behaviour_edge() {
     let mut summary = ModuleSummary::default();
     let b = BehaviourName::new("gen_server".to_owned()).unwrap();
     summary.behaviours.insert(b.clone());
-    g.insert_module(mname("my_server"), summary);
+    g.insert_module(mname("ra_server_proc"), summary);
     let g = g.finish();
-    assert!(
-        g.behaviour_edges()
-            .contains(&Vertex::Module(mname("my_server")), &Vertex::Behaviour(b))
-    );
+    assert!(g.behaviour_edges().contains(
+        &Vertex::Module(mname("ra_server_proc")),
+        &Vertex::Behaviour(b)
+    ));
 }
 
 #[test]
 fn deprecation_round_trips() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    let f = mfa("m", "f", 0);
+    let f = mfa("ra_lib", "dump", 0);
     g.record_deprecation(
         f.clone(),
         Deprecation {
             tier: DeprecationTier::Next,
-            message: Some("use g/0".to_owned()),
+            message: Some("use ra_lib:id/1".to_owned()),
         },
     );
     let g = g.finish();
     let d = g.deprecation(&f).unwrap();
     assert_eq!(d.tier, DeprecationTier::Next);
-    assert_eq!(d.message.as_deref(), Some("use g/0"));
+    assert_eq!(d.message.as_deref(), Some("use ra_lib:id/1"));
     assert_eq!(g.deprecated_mfas().count(), 1);
 }
 
 #[test]
 fn on_load_round_trips() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    let f = mfa("m", "init", 0);
+    let f = mfa("ra_counters", "init", 0);
     g.record_on_load(f.clone());
     let g = g.finish();
     assert!(g.on_load_functions().contains(&f));
@@ -140,7 +143,7 @@ fn on_load_round_trips() {
 #[test]
 fn definitions_carry_location() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    let f = mfa("m", "f", 0);
+    let f = mfa("ra_log", "append", 0);
     let loc = point();
     g.record_definition(f.clone(), loc.clone());
     let g = g.finish();
@@ -151,9 +154,9 @@ fn definitions_carry_location() {
 fn defined_functions_combines_exports_and_locals() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
     let mut summary = ModuleSummary::default();
-    summary.exports.insert(sig("a", 0));
-    summary.locals.insert(sig("b", 1));
-    g.insert_module(mname("m"), summary);
+    summary.exports.insert(sig("append", 0));
+    summary.locals.insert(sig("fold", 1));
+    g.insert_module(mname("ra_log"), summary);
     let g = g.finish();
     let d = g.defined_functions();
     assert_eq!(d.len(), 2);
@@ -162,8 +165,8 @@ fn defined_functions_combines_exports_and_locals() {
 #[test]
 fn local_calls_kept_separate_from_external() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("m"), ModuleSummary::default());
-    g.insert_local_call(mfa("m", "a", 0), mfa("m", "b", 0));
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_local_call(mfa("ra_log", "append", 0), mfa("ra_log", "fold", 0));
     let g = g.finish();
     assert_eq!(g.local_calls().len(), 1);
     assert!(g.external_calls().is_empty());
@@ -172,10 +175,10 @@ fn local_calls_kept_separate_from_external() {
 #[test]
 fn all_calls_unions_local_and_external() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("m"), ModuleSummary::default());
-    g.insert_module(mname("n"), ModuleSummary::default());
-    g.insert_local_call(mfa("m", "a", 0), mfa("m", "b", 0));
-    g.insert_external_call(mfa("m", "a", 0), mfa("n", "c", 0));
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_module(mname("ra_machine"), ModuleSummary::default());
+    g.insert_local_call(mfa("ra_log", "append", 0), mfa("ra_log", "fold", 0));
+    g.insert_external_call(mfa("ra_log", "append", 0), mfa("ra_machine", "apply", 0));
     let g = g.finish();
     assert_eq!(g.all_calls().len(), 2);
 }
@@ -183,20 +186,20 @@ fn all_calls_unions_local_and_external() {
 #[test]
 fn module_summary_iteration_is_sorted() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("z"), ModuleSummary::default());
-    g.insert_module(mname("a"), ModuleSummary::default());
-    g.insert_module(mname("m"), ModuleSummary::default());
+    g.insert_module(mname("ra_server"), ModuleSummary::default());
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_module(mname("ra_machine"), ModuleSummary::default());
     let g = g.finish();
     let names: Vec<&str> = g.modules().map(|(m, _)| m.as_str()).collect();
-    assert_eq!(names, vec!["a", "m", "z"]);
+    assert_eq!(names, vec!["ra_log", "ra_machine", "ra_server"]);
 }
 
 #[test]
 fn deprecated_set_iteration_is_sorted() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    for n in ["c", "a", "b"] {
+    for n in ["id", "ceiling", "dump"] {
         g.record_deprecation(
-            mfa("m", n, 0),
+            mfa("ra_lib", n, 0),
             Deprecation {
                 tier: DeprecationTier::Eventual,
                 message: None,
@@ -208,13 +211,13 @@ fn deprecated_set_iteration_is_sorted() {
         .deprecated_mfas()
         .map(|(m, _)| m.function.as_str())
         .collect();
-    assert_eq!(names, vec!["a", "b", "c"]);
+    assert_eq!(names, vec!["ceiling", "dump", "id"]);
 }
 
 #[test]
 fn definition_set_handles_empty_module_summary() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("m"), ModuleSummary::default());
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
     let g = g.finish();
     assert!(g.defined_functions().is_empty());
 }
@@ -229,7 +232,7 @@ fn behaviour_with_application_creates_app_to_behaviour_edge() {
         ..ModuleSummary::default()
     };
     s.behaviours.insert(beh.clone());
-    g.insert_module(mname("rabbit_handler"), s);
+    g.insert_module(mname("rabbit_channel"), s);
     let g = g.finish();
     assert!(
         g.application_edges()
@@ -246,11 +249,11 @@ fn unresolved_set_starts_empty() {
 #[test]
 fn modules_iteration_via_module_accessor() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    g.insert_module(mname("m1"), ModuleSummary::default());
-    g.insert_module(mname("m2"), ModuleSummary::default());
+    g.insert_module(mname("ra_log"), ModuleSummary::default());
+    g.insert_module(mname("ra_machine"), ModuleSummary::default());
     let g = g.finish();
-    assert!(g.module(&mname("m1")).is_some());
-    assert!(g.module(&mname("m3")).is_none());
+    assert!(g.module(&mname("ra_log")).is_some());
+    assert!(g.module(&mname("ra_server")).is_none());
 }
 
 #[test]
@@ -262,7 +265,7 @@ fn building_then_finishing_yields_built_phase() {
 #[test]
 fn modules_count_matches_insert_count() {
     let mut g: CallGraph<Functions, _> = CallGraph::new();
-    for name in &["a", "b", "c", "d", "e"] {
+    for name in &["ra", "ra_log", "ra_machine", "ra_server", "ra_directory"] {
         g.insert_module(mname(name), ModuleSummary::default());
     }
     let g = g.finish();
@@ -276,7 +279,13 @@ fn callbacks_required_round_trips() {
     let mut required = BTreeSet::new();
     required.insert(sig("handle_call", 3));
     s.callbacks_required = required;
-    g.insert_module(mname("b"), s);
+    g.insert_module(mname("ra_server_proc"), s);
     let g = g.finish();
-    assert_eq!(g.module(&mname("b")).unwrap().callbacks_required.len(), 1);
+    assert_eq!(
+        g.module(&mname("ra_server_proc"))
+            .unwrap()
+            .callbacks_required
+            .len(),
+        1
+    );
 }

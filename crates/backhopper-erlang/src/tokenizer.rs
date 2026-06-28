@@ -12,7 +12,7 @@
 //!
 //! A sibling lexer in `backhopper_xref_reader::scanner` is cursor-based with
 //! position tracking; this one is block-oriented and drives `attributes.rs`.
-//! Consolidation is plausible but defers until a third consumer needs it.
+//! Consolidation is deferred until a third consumer needs it.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributeBlock {

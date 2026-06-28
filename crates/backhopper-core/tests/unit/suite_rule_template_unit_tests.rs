@@ -10,7 +10,7 @@ use backhopper_core::suites::rules::{expand_template, validate_template_placehol
 fn expand_substitutes_named_captures() {
     let re = Regex::new(r"^deps/(?P<plugin>[^/]+)/priv/schema/.*\.schema$").unwrap();
     let caps = re
-        .captures("deps/rabbitmq_web_amqp/priv/schema/foo.schema")
+        .captures("deps/rabbitmq_web_amqp/priv/schema/rabbitmq_web_amqp.schema")
         .unwrap();
     let out = expand_template("{plugin}_config_schema_SUITE", &caps).unwrap();
     assert_eq!(out, "rabbitmq_web_amqp_config_schema_SUITE");

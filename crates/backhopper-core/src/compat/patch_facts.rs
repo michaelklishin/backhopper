@@ -190,9 +190,10 @@ fn contains_named_branch(text: &str, suffix: &str) -> bool {
         return false;
     }
     let mut i = 0usize;
-    while i + needle.len() < bytes.len() {
+    while i + needle.len() <= bytes.len() {
         if &bytes[i..i + needle.len()] == needle {
-            let next = bytes[i + needle.len()] as char;
+            // end-of-text is a valid right boundary, the same as a non-ident byte
+            let next = bytes.get(i + needle.len()).map_or(' ', |&b| b as char);
             let prev = if i == 0 { ' ' } else { bytes[i - 1] as char };
             let preceded_by_ident = prev.is_ascii_alphanumeric() || prev == '_';
             let bounded_after = !(next.is_ascii_alphanumeric() || next == '_');

@@ -332,7 +332,7 @@ impl<M: Mode> Xref<M> {
     /// Strongly connected components of the module call graph that contain
     /// more than one module.
     pub fn module_cycles(&self) -> Vec<Vec<ModuleName>> {
-        let closure = self.graph().module_edges().reflexive_transitive_closure();
+        let closure = self.graph().module_edges().transitive_closure();
         let mut groups: BTreeMap<ModuleName, BTreeSet<ModuleName>> = BTreeMap::new();
         for (s, t) in closure.iter() {
             if s == t {

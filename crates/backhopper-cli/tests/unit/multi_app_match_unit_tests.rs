@@ -52,7 +52,7 @@ fn excluded_app_drops_its_files() {
 fn excluded_subdir_drops_test_and_examples() {
     let p = otp_project();
     assert!(multi_app_match("lib/stdlib/test/lists_SUITE.erl", &p).is_none());
-    assert!(multi_app_match("lib/stdlib/examples/foo.erl", &p).is_none());
+    assert!(multi_app_match("lib/stdlib/examples/dict.erl", &p).is_none());
     // src is kept
     assert!(multi_app_match("lib/stdlib/src/lists.erl", &p).is_some());
 }
@@ -115,7 +115,7 @@ fn literal_root_does_not_swallow_sibling_paths() {
     // `erts/preloaded` is a literal root; `erts/emulator/...` shares the
     // `erts/` prefix but is NOT under preloaded and must be rejected.
     let p = otp_project();
-    assert!(multi_app_match("erts/emulator/beam/foo.erl", &p).is_none());
+    assert!(multi_app_match("erts/emulator/beam/erl_message.erl", &p).is_none());
     assert!(multi_app_match("erts/preloaded/src/erlang.erl", &p).is_some());
 }
 

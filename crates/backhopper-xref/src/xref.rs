@@ -14,17 +14,14 @@ use backhopper_xref_reader::ReadWarning;
 #[derive(Debug, Clone)]
 pub struct Xref<M: Mode> {
     pub(crate) graph: Arc<CallGraph<M, Built>>,
-    pub(crate) reverse_module_calls: Arc<Relation>,
     pub(crate) warnings: Arc<Vec<ReadWarning>>,
     pub(crate) closure_memo: OnceLock<Arc<Relation>>,
 }
 
 impl<M: Mode> Xref<M> {
     pub(crate) fn from_graph(graph: CallGraph<M, Built>, warnings: Vec<ReadWarning>) -> Self {
-        let reverse_module_calls = graph.module_edges().reversed();
         Self {
             graph: Arc::new(graph),
-            reverse_module_calls: Arc::new(reverse_module_calls),
             warnings: Arc::new(warnings),
             closure_memo: OnceLock::new(),
         }
@@ -32,10 +29,6 @@ impl<M: Mode> Xref<M> {
 
     pub fn graph(&self) -> &CallGraph<M, Built> {
         &self.graph
-    }
-
-    pub fn reverse_module_calls(&self) -> &Relation {
-        &self.reverse_module_calls
     }
 
     pub fn warnings(&self) -> &[ReadWarning] {

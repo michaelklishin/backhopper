@@ -25,7 +25,7 @@ fn advance_tracks_line_breaks() {
 
 #[test]
 fn skip_trivia_advances_through_whitespace_and_comments() {
-    let mut sc = Scanner::new("  % comment\n   foo");
+    let mut sc = Scanner::new("  % comment\n   follower");
     sc.skip_trivia();
     assert_eq!(sc.peek(), Some(b'f'));
 }

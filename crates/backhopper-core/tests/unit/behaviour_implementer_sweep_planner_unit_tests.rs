@@ -42,8 +42,8 @@ fn empty_index_does_not_emit_sweep_reasons() {
     );
     touch(
         root,
-        "apps/rabbit/test/foo_SUITE.erl",
-        "-module(foo_SUITE).\nfoo() -> rabbit_variable_queue:bar().\n",
+        "apps/rabbit/test/variable_queue_SUITE.erl",
+        "-module(variable_queue_SUITE).\nrun() -> rabbit_variable_queue:len().\n",
     );
     let apps = vec![app(
         "rabbit",
@@ -80,7 +80,7 @@ fn modified_behaviour_module_pulls_in_suites_referencing_implementer() {
     touch(
         root,
         "apps/rabbit/test/queue_behaviour_SUITE.erl",
-        "-module(queue_behaviour_SUITE).\nfoo() -> rabbit_variable_queue:init().\n",
+        "-module(queue_behaviour_SUITE).\nrun() -> rabbit_variable_queue:init().\n",
     );
     let apps = vec![app(
         "rabbit",
@@ -132,7 +132,7 @@ fn suite_without_implementer_reference_is_skipped() {
     touch(
         root,
         "apps/rabbit/test/unrelated_SUITE.erl",
-        "-module(unrelated_SUITE).\nfoo() -> some_other:thing().\n",
+        "-module(unrelated_SUITE).\nrun() -> rabbit_amqqueue:lookup().\n",
     );
     let apps = vec![app(
         "rabbit",

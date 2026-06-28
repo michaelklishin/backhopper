@@ -19,12 +19,12 @@ diff --git a/deps/rabbit/priv/schema/rabbit.schema b/deps/rabbit/priv/schema/rab
 ";
 
 const SNIPPETS_DIFF: &str = "\
-diff --git a/test/snippets/foo.snippets b/test/snippets/foo.snippets
---- a/test/snippets/foo.snippets
-+++ b/test/snippets/foo.snippets
+diff --git a/test/snippets/definitions.snippets b/test/snippets/definitions.snippets
+--- a/test/snippets/definitions.snippets
++++ b/test/snippets/definitions.snippets
 @@ -1,1 +1,2 @@
- some.key = value
-+other.key.translates_via = rabbit_cuttlefish:optionally_tagged_binary(\"x\", Conf)
+ definitions.tls.certfile = value
++definitions.tls.password.translates_via = rabbit_cuttlefish:optionally_tagged_binary(\"definitions.tls.password\", Conf)
 ";
 
 #[test]
@@ -118,9 +118,9 @@ fn analyze_picks_up_snippets_mfa_references() {
 #[test]
 fn schema_analyzer_skips_removed_lines() {
     let diff = "\
-diff --git a/x.schema b/x.schema
---- a/x.schema
-+++ b/x.schema
+diff --git a/rabbit.schema b/rabbit.schema
+--- a/rabbit.schema
++++ b/rabbit.schema
 @@ -1,2 +1,1 @@
 -fun(C) -> stale_module:gone_function(C) end.
  % keep

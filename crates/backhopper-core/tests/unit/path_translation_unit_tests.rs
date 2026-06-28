@@ -47,9 +47,9 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "x"
+name = "fed_split"
 source_prefix = ""
-target_prefix = "deps/a/"
+target_prefix = "deps/rabbitmq_federation/"
 "#,
     )
     .unwrap_err();
@@ -68,9 +68,9 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "x"
-source_prefix = "deps/a"
-target_prefix = "deps/b/"
+name = "stomp_split"
+source_prefix = "deps/rabbitmq_stomp"
+target_prefix = "deps/rabbitmq_stomp_common/"
 "#,
     )
     .unwrap_err();
@@ -89,14 +89,14 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "x"
-source_prefix = "deps/a/"
-target_prefix = "deps/b/"
+name = "fed_split"
+source_prefix = "deps/rabbitmq_federation_common/"
+target_prefix = "deps/rabbitmq_federation/"
 
 [[path_translation]]
-name = "x"
-source_prefix = "deps/c/"
-target_prefix = "deps/d/"
+name = "fed_split"
+source_prefix = "deps/rabbitmq_mqtt_common/"
+target_prefix = "deps/rabbitmq_mqtt/"
 "#,
     )
     .unwrap_err();
@@ -112,14 +112,14 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "a"
-source_prefix = "deps/x/"
-target_prefix = "deps/y/"
+name = "fed_split"
+source_prefix = "deps/rabbitmq_common/"
+target_prefix = "deps/rabbitmq_federation/"
 
 [[path_translation]]
-name = "b"
-source_prefix = "deps/x/"
-target_prefix = "deps/z/"
+name = "mqtt_split"
+source_prefix = "deps/rabbitmq_common/"
+target_prefix = "deps/rabbitmq_mqtt/"
 "#,
     )
     .unwrap_err();
@@ -138,12 +138,12 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "a"
+name = "all_deps"
 source_prefix = "deps/"
 target_prefix = "deps/legacy/"
 
 [[path_translation]]
-name = "b"
+name = "fed_split"
 source_prefix = "deps/rabbitmq_federation_common/"
 target_prefix = "deps/rabbitmq_federation/"
 "#,
@@ -164,10 +164,10 @@ config_version = 1
 fallback_branch = "main"
 
 [[path_translation]]
-name = "x"
+name = "fed_split"
 direction = "target_to_source"
-source_prefix = "deps/a/"
-target_prefix = "deps/b/"
+source_prefix = "deps/rabbitmq_federation_common/"
+target_prefix = "deps/rabbitmq_federation/"
 "#,
     )
     .unwrap_err();
@@ -192,11 +192,11 @@ target_prefix = "deps/rabbitmq_federation/"
     let cfg = parse(body).unwrap();
     let (rewritten, entry) = cfg
         .path_translations
-        .translate("deps/rabbitmq_federation_common/src/foo.erl")
+        .translate("deps/rabbitmq_federation_common/src/rabbit_federation_link.erl")
         .expect("matches");
     assert_eq!(
         rewritten.to_string_lossy(),
-        "deps/rabbitmq_federation/src/foo.erl"
+        "deps/rabbitmq_federation/src/rabbit_federation_link.erl"
     );
     assert_eq!(entry.name, "fed_split");
 }
@@ -230,19 +230,19 @@ fn external_file_missing_is_hard_error() {
 fn merge_external_combines_distinct_entries() {
     let mut pt = PathTranslations::default();
     let raw_a = vec![PathTranslationRaw {
-        name: "a".to_string(),
+        name: "fed_split".to_string(),
         direction: "source_to_target".to_string(),
-        source_prefix: "deps/x/".to_string(),
-        target_prefix: "deps/y/".to_string(),
+        source_prefix: "deps/rabbitmq_federation_common/".to_string(),
+        target_prefix: "deps/rabbitmq_federation/".to_string(),
     }];
     let a = PathTranslations::from_config_stanzas(raw_a).unwrap();
     pt.entries.extend(a.entries);
 
     let body = r#"
 [[path_translation]]
-name = "b"
-source_prefix = "deps/p/"
-target_prefix = "deps/q/"
+name = "mqtt_split"
+source_prefix = "deps/rabbitmq_mqtt_common/"
+target_prefix = "deps/rabbitmq_mqtt/"
 "#;
     let f = NamedTempFile::new().unwrap();
     fs::write(f.path(), body).unwrap();
@@ -250,8 +250,8 @@ target_prefix = "deps/q/"
     pt.merge_external(external).unwrap();
 
     assert_eq!(pt.entries.len(), 2);
-    assert!(pt.entries.iter().any(|e| e.name == "a"));
-    assert!(pt.entries.iter().any(|e| e.name == "b"));
+    assert!(pt.entries.iter().any(|e| e.name == "fed_split"));
+    assert!(pt.entries.iter().any(|e| e.name == "mqtt_split"));
 }
 
 #[test]
@@ -259,15 +259,15 @@ fn merge_external_rejects_duplicate_name() {
     let raw_a = vec![PathTranslationRaw {
         name: "fed_split".to_string(),
         direction: "source_to_target".to_string(),
-        source_prefix: "deps/x/".to_string(),
-        target_prefix: "deps/y/".to_string(),
+        source_prefix: "deps/rabbitmq_federation_common/".to_string(),
+        target_prefix: "deps/rabbitmq_federation/".to_string(),
     }];
     let mut pt = PathTranslations::from_config_stanzas(raw_a).unwrap();
     let body = r#"
 [[path_translation]]
 name = "fed_split"
-source_prefix = "deps/p/"
-target_prefix = "deps/q/"
+source_prefix = "deps/rabbitmq_stream_common/"
+target_prefix = "deps/rabbitmq_stream/"
 "#;
     let f = NamedTempFile::new().unwrap();
     fs::write(f.path(), body).unwrap();

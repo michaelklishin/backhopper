@@ -9,7 +9,7 @@
 //! sites. Not a full Erlang tokenizer: just what the v1 xref reader needs.
 //!
 //! A sibling block-oriented tokenizer lives in `backhopper_erlang::tokenizer`.
-//! Consolidation is plausible but deferred.
+//! Consolidation is deferred until a third consumer needs it.
 
 #[derive(Debug, Clone, Copy)]
 pub struct Pos {

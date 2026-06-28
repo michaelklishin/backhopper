@@ -2,7 +2,13 @@
 
 ## v0.20.0 (in development)
 
-No changes yet.
+### Enhancements
+
+ * Ambiguous SHA-prefix resolution disambiguates through gix's indexed
+   `lookup_prefix` (a binary search over the pack and loose object
+   indices) instead of scanning the whole object database
+ * `GitRepo::has_commit` checks the object header instead of decoding
+   the full commit
 
 ## v0.19.0
 

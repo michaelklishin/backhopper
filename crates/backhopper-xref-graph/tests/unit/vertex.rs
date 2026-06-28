@@ -15,15 +15,15 @@ fn mfa(m: &str, f: &str, a: u8) -> Mfa {
 
 #[test]
 fn function_vertex_extracts_mfa() {
-    let v = Vertex::Function(mfa("foo", "bar", 2));
-    assert_eq!(v.as_function().unwrap().function.as_str(), "bar");
+    let v = Vertex::Function(mfa("ra_log", "append", 2));
+    assert_eq!(v.as_function().unwrap().function.as_str(), "append");
     assert!(v.as_module().is_none());
 }
 
 #[test]
 fn module_vertex_extracts_module_name() {
-    let v = Vertex::Module(ModuleName::new("foo".to_owned()).unwrap());
-    assert_eq!(v.as_module().unwrap().as_str(), "foo");
+    let v = Vertex::Module(ModuleName::new("ra_log".to_owned()).unwrap());
+    assert_eq!(v.as_module().unwrap().as_str(), "ra_log");
     assert!(v.as_function().is_none());
 }
 
@@ -41,8 +41,8 @@ fn behaviour_vertex_extracts_behaviour() {
 
 #[test]
 fn display_function_vertex_matches_mfa() {
-    let v = Vertex::Function(mfa("foo", "bar", 2));
-    assert_eq!(v.to_string(), "foo:bar/2");
+    let v = Vertex::Function(mfa("ra_log", "append", 2));
+    assert_eq!(v.to_string(), "ra_log:append/2");
 }
 
 #[test]
@@ -65,8 +65,8 @@ fn display_behaviour_vertex_carries_kind_prefix() {
 
 #[test]
 fn vertices_sort_function_before_module_alphabetically() {
-    let a = Vertex::Function(mfa("zz", "a", 0));
-    let b = Vertex::Module(ModuleName::new("aa".to_owned()).unwrap());
+    let a = Vertex::Function(mfa("ra_server", "handle", 0));
+    let b = Vertex::Module(ModuleName::new("ra_log".to_owned()).unwrap());
     let mut vs = [b.clone(), a.clone()];
     vs.sort();
     // Enum discriminant ordering: Function < Module < Application < Behaviour.
@@ -84,7 +84,7 @@ fn vertex_serializes_with_kind_tag() {
 
 #[test]
 fn vertex_round_trips_through_json() {
-    let v = Vertex::Function(mfa("foo", "bar", 2));
+    let v = Vertex::Function(mfa("ra_log", "append", 2));
     let json = serde_json::to_string(&v).unwrap();
     let back: Vertex = serde_json::from_str(&json).unwrap();
     assert_eq!(back, v);
@@ -94,6 +94,6 @@ fn vertex_round_trips_through_json() {
 fn vertex_hash_matches_eq() {
     use std::collections::HashSet;
     let mut s = HashSet::new();
-    s.insert(Vertex::Function(mfa("a", "b", 0)));
-    assert!(s.contains(&Vertex::Function(mfa("a", "b", 0))));
+    s.insert(Vertex::Function(mfa("ra_log", "append", 0)));
+    assert!(s.contains(&Vertex::Function(mfa("ra_log", "append", 0))));
 }

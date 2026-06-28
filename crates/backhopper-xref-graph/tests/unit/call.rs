@@ -24,7 +24,7 @@ fn function_sig_display_uses_slash_arity() {
 
 #[test]
 fn concrete_ref_is_not_unresolved() {
-    let r = FunctionRef::Concrete(mfa("foo", "bar", 2));
+    let r = FunctionRef::Concrete(mfa("ra_log", "append", 2));
     assert!(!r.is_unresolved());
     assert_eq!(r.as_concrete().unwrap().arity, Arity::new(2));
 }
@@ -60,26 +60,26 @@ fn unresolved_both_carries_only_arity() {
 
 #[test]
 fn display_concrete_ref_is_module_function_arity() {
-    let r = FunctionRef::Concrete(mfa("foo", "bar", 2));
-    assert_eq!(r.to_string(), "foo:bar/2");
+    let r = FunctionRef::Concrete(mfa("ra_log", "append", 2));
+    assert_eq!(r.to_string(), "ra_log:append/2");
 }
 
 #[test]
 fn display_unresolved_module_uses_placeholder() {
     let r = FunctionRef::UnresolvedModule {
-        function: FunctionName::new("f".to_owned()).unwrap(),
+        function: FunctionName::new("append".to_owned()).unwrap(),
         arity: Some(Arity::new(1)),
     };
-    assert_eq!(r.to_string(), "'$M_EXPR':f/1");
+    assert_eq!(r.to_string(), "'$M_EXPR':append/1");
 }
 
 #[test]
 fn display_unresolved_function_uses_placeholder() {
     let r = FunctionRef::UnresolvedFunction {
-        module: ModuleName::new("m".to_owned()).unwrap(),
+        module: ModuleName::new("osiris_log".to_owned()).unwrap(),
         arity: Some(Arity::new(0)),
     };
-    assert_eq!(r.to_string(), "m:'$F_EXPR'/0");
+    assert_eq!(r.to_string(), "osiris_log:'$F_EXPR'/0");
 }
 
 #[test]
@@ -90,9 +90,15 @@ fn display_unresolved_both_uses_both_placeholders_and_negative_arity() {
 
 #[test]
 fn function_sig_orders_by_name_then_arity() {
-    let a0 = FunctionSig::new(FunctionName::new("a".to_owned()).unwrap(), Arity::new(0));
-    let a1 = FunctionSig::new(FunctionName::new("a".to_owned()).unwrap(), Arity::new(1));
-    let b0 = FunctionSig::new(FunctionName::new("b".to_owned()).unwrap(), Arity::new(0));
+    let a0 = FunctionSig::new(
+        FunctionName::new("append".to_owned()).unwrap(),
+        Arity::new(0),
+    );
+    let a1 = FunctionSig::new(
+        FunctionName::new("append".to_owned()).unwrap(),
+        Arity::new(1),
+    );
+    let b0 = FunctionSig::new(FunctionName::new("fold".to_owned()).unwrap(), Arity::new(0));
     let mut v = [b0.clone(), a1.clone(), a0.clone()];
     v.sort();
     assert_eq!(v, [a0, a1, b0]);
@@ -102,11 +108,11 @@ fn function_sig_orders_by_name_then_arity() {
 fn local_function_ref_concrete_carries_function_and_arity() {
     use backhopper_xref_graph::LocalFunctionRef;
     let r = LocalFunctionRef::Concrete {
-        function: FunctionName::new("foo".to_owned()).unwrap(),
+        function: FunctionName::new("handle".to_owned()).unwrap(),
         arity: Arity::new(2),
     };
     if let LocalFunctionRef::Concrete { function, arity } = r {
-        assert_eq!(function.as_str(), "foo");
+        assert_eq!(function.as_str(), "handle");
         assert_eq!(arity.get(), 2);
     } else {
         panic!();
@@ -126,9 +132,9 @@ fn call_kind_round_trips_through_json() {
 #[test]
 fn call_target_external_and_local_serialize_distinctly() {
     use backhopper_xref_graph::{CallTarget, LocalFunctionRef};
-    let ext = CallTarget::External(FunctionRef::Concrete(mfa("m", "f", 0)));
+    let ext = CallTarget::External(FunctionRef::Concrete(mfa("ra_machine", "apply", 0)));
     let local = CallTarget::Local(LocalFunctionRef::Concrete {
-        function: FunctionName::new("g".to_owned()).unwrap(),
+        function: FunctionName::new("tick".to_owned()).unwrap(),
         arity: Arity::new(0),
     });
     let ext_json = serde_json::to_string(&ext).unwrap();

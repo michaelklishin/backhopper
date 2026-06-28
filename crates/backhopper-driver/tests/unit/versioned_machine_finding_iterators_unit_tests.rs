@@ -100,7 +100,7 @@ fn iterators_skip_unrelated_reason_variants() {
         {
             "kind": "header_file_missing",
             "source_path": "deps/rabbit/src/x.erl",
-            "include_directive": { "form": "include", "path": "foo.hrl" },
+            "include_directive": { "form": "include", "path": "ra.hrl" },
             "attempted_paths": []
         }
     ])));

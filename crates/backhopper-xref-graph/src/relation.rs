@@ -252,8 +252,8 @@ impl Relation {
 
     /// Irreflexive transitive closure (E+).
     ///
-    /// Implementation: Tarjan SCC, then DAG reachability propagation.
-    /// O(V + E + sum(component-size^2)): far better than naive Floyd-Warshall.
+    /// Tarjan's Strongly Connected Component algorithm, then DAG
+    /// reachability propagation: O(V + E + sum(component-size^2)).
     pub fn transitive_closure(&self) -> Relation {
         closure::compute(self, false)
     }

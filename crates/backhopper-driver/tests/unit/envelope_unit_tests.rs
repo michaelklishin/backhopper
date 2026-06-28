@@ -73,7 +73,9 @@ fn global_options_default_does_not_inject_anything() {
 
 #[test]
 fn env_overlay_with_overrides_appends_keys() {
-    let overlay = EnvOverlay::inherit().with("FOO", "bar").with("BAZ", "qux");
+    let overlay = EnvOverlay::inherit()
+        .with("RABBITMQ_NODENAME", "rabbit@localhost")
+        .with("RABBITMQ_BASE", "/var/lib/rabbitmq");
     assert_eq!(overlay.overrides.len(), 2);
 }
 

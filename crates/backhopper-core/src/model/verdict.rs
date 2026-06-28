@@ -640,8 +640,7 @@ impl Reason {
         }
     }
 
-    // Wildcard-free on purpose: a new variant fails compilation here
-    // until it is classified.
+    // wildcard-free so a new variant fails to compile until classified
     pub fn is_blocking(&self) -> bool {
         match self {
             // A symbol that exists at a later tag is adaptable: land
@@ -836,12 +835,14 @@ impl TouchedKinds {
     pub fn classify(path: &Path) -> FileKind {
         let p = path.to_string_lossy();
         let lower = p.to_ascii_lowercase();
+        let is_erl_source = lower.ends_with(".erl") || lower.ends_with(".hrl");
+        // a docs/ path component must not reclassify real Erlang source as
+        // docs: that would vacuously skip an API-affecting change
         if lower.ends_with(".md")
             || lower.ends_with(".adoc")
             || lower.ends_with(".rst")
             || lower.ends_with(".txt")
-            || lower.contains("/docs/")
-            || lower.starts_with("docs/")
+            || (!is_erl_source && (lower.contains("/docs/") || lower.starts_with("docs/")))
         {
             return FileKind::Docs;
         }

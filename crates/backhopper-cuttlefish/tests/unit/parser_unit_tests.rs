@@ -102,7 +102,7 @@ fn empty_input_returns_no_fragments() {
 #[test]
 fn unrelated_top_level_tuples_are_skipped() {
     let body = r#"
-{some_other_directive, foo, bar}.
+{some_other_directive, queue, binding}.
 {mapping, "x", "y", []}.
 "#;
     let frags = parse_schema(body, p()).unwrap();

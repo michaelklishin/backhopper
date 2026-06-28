@@ -28,15 +28,15 @@ fn the_target_tree_reasons_map_one_to_one() {
     let cases = [
         (
             Reason::MacroUndefinedOnTarget {
-                source_path: rp("src/x.erl"),
-                macro_name: "FOO".to_owned(),
+                source_path: rp("src/ra_server.erl"),
+                macro_name: "RA_LOG".to_owned(),
                 line: 1,
             },
             ResolverClass::Macro,
         ),
         (
             Reason::RecordUndefinedOnTarget {
-                source_path: rp("src/x.erl"),
+                source_path: rp("src/ra_server.erl"),
                 record_name: RecordName::from_str("state").unwrap(),
                 line: 1,
             },
@@ -44,8 +44,8 @@ fn the_target_tree_reasons_map_one_to_one() {
         ),
         (
             Reason::LocalCallUndefinedOnTarget {
-                source_path: rp("src/x.erl"),
-                function: FunctionName::from_str("helper").unwrap(),
+                source_path: rp("src/ra_server.erl"),
+                function: FunctionName::from_str("init_state").unwrap(),
                 arity: Arity::new(1),
                 line: 1,
             },
@@ -53,7 +53,7 @@ fn the_target_tree_reasons_map_one_to_one() {
         ),
         (
             Reason::QualifiedCallUndefinedOnTarget {
-                source_path: rp("src/x.erl"),
+                source_path: rp("src/ra_server.erl"),
                 module: module("rabbit_misc"),
                 function: FunctionName::from_str("queue_resource").unwrap(),
                 arity: Arity::new(2),
@@ -63,18 +63,18 @@ fn the_target_tree_reasons_map_one_to_one() {
         ),
         (
             Reason::HeaderFileMissing {
-                source_path: rp("src/x.erl"),
+                source_path: rp("src/ra_server.erl"),
                 include_directive: IncludeDirective::Include {
-                    path: "defs.hrl".to_owned(),
+                    path: "rabbit.hrl".to_owned(),
                 },
-                attempted_paths: vec![rp("src/defs.hrl")],
+                attempted_paths: vec![rp("src/rabbit.hrl")],
             },
             ResolverClass::Include,
         ),
         (
             Reason::BehaviourModuleMissing {
-                source_path: rp("src/x.erl"),
-                behaviour: module("custom_hook"),
+                source_path: rp("src/ra_server.erl"),
+                behaviour: module("ra_machine"),
             },
             ResolverClass::Behaviour,
         ),
@@ -108,7 +108,7 @@ fn snapshot_reasons_follow_the_symbol_kind() {
     );
 
     let prereq = Reason::MissingPrereq {
-        symbol: SymbolRef::macro_use("FOO"),
+        symbol: SymbolRef::macro_use("RA_LOG"),
         self_branch: GitRef::new("main").unwrap(),
         suggested_source_for_prereq: None,
     };
@@ -118,7 +118,7 @@ fn snapshot_reasons_follow_the_symbol_kind() {
 #[test]
 fn a_non_symbol_reason_has_no_class() {
     let drift = Reason::PreimageMissing {
-        path: "src/x.erl".into(),
+        path: "src/ra_server.erl".into(),
         hunk_index: 0,
         preimage_excerpt: String::new(),
     };
@@ -131,31 +131,31 @@ fn a_non_symbol_reason_has_no_class() {
 fn every_resolver_class_is_reachable_from_some_reason() {
     let reasons = [
         Reason::MacroUndefinedOnTarget {
-            source_path: rp("src/x.erl"),
-            macro_name: "FOO".to_owned(),
+            source_path: rp("src/ra_server.erl"),
+            macro_name: "RA_LOG".to_owned(),
             line: 1,
         },
         Reason::RecordUndefinedOnTarget {
-            source_path: rp("src/x.erl"),
+            source_path: rp("src/ra_server.erl"),
             record_name: RecordName::from_str("state").unwrap(),
             line: 1,
         },
         Reason::LocalCallUndefinedOnTarget {
-            source_path: rp("src/x.erl"),
-            function: FunctionName::from_str("helper").unwrap(),
+            source_path: rp("src/ra_server.erl"),
+            function: FunctionName::from_str("init_state").unwrap(),
             arity: Arity::new(1),
             line: 1,
         },
         Reason::HeaderFileMissing {
-            source_path: rp("src/x.erl"),
+            source_path: rp("src/ra_server.erl"),
             include_directive: IncludeDirective::Include {
                 path: "defs.hrl".to_owned(),
             },
             attempted_paths: vec![],
         },
         Reason::BehaviourModuleMissing {
-            source_path: rp("src/x.erl"),
-            behaviour: module("custom_hook"),
+            source_path: rp("src/ra_server.erl"),
+            behaviour: module("ra_machine"),
         },
         Reason::MissingType {
             module: module("ra"),

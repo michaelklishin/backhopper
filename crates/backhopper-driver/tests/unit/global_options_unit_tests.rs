@@ -54,10 +54,15 @@ fn env_overlay_allow_list_carries_static_names() {
 
 #[test]
 fn env_overlay_with_replaces_existing_key() {
-    let overlay = EnvOverlay::inherit().with("FOO", "1").with("FOO", "2");
+    let overlay = EnvOverlay::inherit()
+        .with("RABBITMQ_NODENAME", "1")
+        .with("RABBITMQ_NODENAME", "2");
     assert_eq!(overlay.overrides.len(), 1);
     assert_eq!(
-        overlay.overrides.get(OsStr::new("FOO")).unwrap(),
+        overlay
+            .overrides
+            .get(OsStr::new("RABBITMQ_NODENAME"))
+            .unwrap(),
         OsStr::new("2"),
     );
 }

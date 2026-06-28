@@ -56,33 +56,33 @@ fn facts_for(diff: &str) -> backhopper_core::model::verdict::PatchFacts {
 }
 
 const RABBIT_LOG_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/rabbit_amqqueue.erl b/src/rabbit_amqqueue.erl
+--- a/src/rabbit_amqqueue.erl
++++ b/src/rabbit_amqqueue.erl
 @@ -1,1 +1,3 @@
- -module(foo).
-+do() -> rabbit_log:info(\"hi\", []).
-+other() -> rabbit_log:warning(\"bye\", []).
+ -module(rabbit_amqqueue).
++start() -> rabbit_log:info(\"starting up\", []).
++stop() -> rabbit_log:warning(\"shutting down\", []).
 ";
 
 const LOGGER_MACRO_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/rabbit_amqqueue.erl b/src/rabbit_amqqueue.erl
+--- a/src/rabbit_amqqueue.erl
++++ b/src/rabbit_amqqueue.erl
 @@ -1,1 +1,3 @@
- -module(foo).
-+do() -> ?LOG_INFO(\"hi\", []).
-+other() -> ?LOG_WARNING(\"bye\", []).
+ -module(rabbit_amqqueue).
++start() -> ?LOG_INFO(\"starting up\", []).
++stop() -> ?LOG_WARNING(\"shutting down\", []).
 ";
 
 const MIXED_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/rabbit_amqqueue.erl b/src/rabbit_amqqueue.erl
+--- a/src/rabbit_amqqueue.erl
++++ b/src/rabbit_amqqueue.erl
 @@ -1,1 +1,3 @@
- -module(foo).
-+do() -> ?LOG_INFO(\"hi\", []).
-+other() -> rabbit_log:warning(\"bye\", []).
+ -module(rabbit_amqqueue).
++start() -> ?LOG_INFO(\"starting up\", []).
++stop() -> rabbit_log:warning(\"shutting down\", []).
 ";
 
 const KHEPRI_ONLY_DIFF: &str = "\
@@ -91,7 +91,7 @@ diff --git a/src/rabbit_khepri.erl b/src/rabbit_khepri.erl
 +++ b/src/rabbit_khepri.erl
 @@ -1,1 +1,2 @@
  -module(rabbit_khepri).
-+do_in_khepri() -> ok.
++lookup_in_khepri() -> ok.
 ";
 
 const DUAL_BRANCH_DIFF: &str = "\
@@ -100,25 +100,34 @@ diff --git a/src/rabbit_db_binding.erl b/src/rabbit_db_binding.erl
 +++ b/src/rabbit_db_binding.erl
 @@ -1,1 +1,3 @@
  -module(rabbit_db_binding).
-+do_in_khepri(X) -> X.
-+do_in_mnesia(X) -> X.
++create_in_khepri(X) -> X.
++create_in_mnesia(X) -> X.
+";
+
+const KHEPRI_BRANCH_AT_EOL_DIFF: &str = "\
+diff --git a/src/rabbit_db_binding.erl b/src/rabbit_db_binding.erl
+--- a/src/rabbit_db_binding.erl
++++ b/src/rabbit_db_binding.erl
+@@ -1,1 +1,2 @@
+ -module(rabbit_db_binding).
++exists(Binding) -> lookup_in_khepri
 ";
 
 const VERSIONED_RECORD_DIFF: &str = "\
-diff --git a/include/foo.hrl b/include/foo.hrl
---- a/include/foo.hrl
-+++ b/include/foo.hrl
+diff --git a/include/rabbit.hrl b/include/rabbit.hrl
+--- a/include/rabbit.hrl
++++ b/include/rabbit.hrl
 @@ -1,0 +1,1 @@
 +-record(topic_trie_edge_v2, {trie_edge, node_id, child_count}).
 ";
 
 const KHEPRI_MACRO_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/rabbit_db_exchange.erl b/src/rabbit_db_exchange.erl
+--- a/src/rabbit_db_exchange.erl
++++ b/src/rabbit_db_exchange.erl
 @@ -1,1 +1,2 @@
- -module(foo).
-+handle() -> ?khepri_error(name, #{}).
+ -module(rabbit_db_exchange).
++lookup() -> ?khepri_error(name, #{}).
 ";
 
 #[test]
@@ -126,7 +135,7 @@ fn logging_style_pure_rabbit_log_module() {
     let facts = facts_for(RABBIT_LOG_DIFF);
     let entry = facts
         .logging_style
-        .get(&PathBuf::from("src/foo.erl"))
+        .get(&PathBuf::from("src/rabbit_amqqueue.erl"))
         .expect("logging style should be classified");
     assert_eq!(entry.dominant, LoggingStyle::RabbitLogModule);
     assert_eq!(entry.rabbit_log_sites, 2);
@@ -138,7 +147,7 @@ fn logging_style_pure_logger_macros() {
     let facts = facts_for(LOGGER_MACRO_DIFF);
     let entry = facts
         .logging_style
-        .get(&PathBuf::from("src/foo.erl"))
+        .get(&PathBuf::from("src/rabbit_amqqueue.erl"))
         .unwrap();
     assert_eq!(entry.dominant, LoggingStyle::LoggerMacros);
     assert_eq!(entry.logger_macro_sites, 2);
@@ -150,7 +159,7 @@ fn logging_style_mixed_detected() {
     let facts = facts_for(MIXED_DIFF);
     let entry = facts
         .logging_style
-        .get(&PathBuf::from("src/foo.erl"))
+        .get(&PathBuf::from("src/rabbit_amqqueue.erl"))
         .unwrap();
     assert_eq!(entry.dominant, LoggingStyle::Mixed);
     assert_eq!(entry.logger_macro_sites, 1);
@@ -175,6 +184,15 @@ fn khepri_signals_dual_branch_overrides_only() {
 }
 
 #[test]
+fn khepri_branch_name_at_end_of_line_is_detected() {
+    let facts = facts_for(KHEPRI_BRANCH_AT_EOL_DIFF);
+    assert!(
+        facts.khepri_signals.touches_only_khepri_branch,
+        "a _in_khepri name ending the added line must count: end-of-line is a boundary"
+    );
+}
+
+#[test]
 fn khepri_macros_grep_detected() {
     let facts = facts_for(KHEPRI_MACRO_DIFF);
     assert!(facts.khepri_signals.uses_khepri_macros);
@@ -194,11 +212,11 @@ fn versioned_record_detection_picks_up_v2_suffix() {
 #[test]
 fn versioned_record_ignores_unversioned_decls() {
     let diff = "\
-diff --git a/include/foo.hrl b/include/foo.hrl
---- a/include/foo.hrl
-+++ b/include/foo.hrl
+diff --git a/include/rabbit.hrl b/include/rabbit.hrl
+--- a/include/rabbit.hrl
++++ b/include/rabbit.hrl
 @@ -1,0 +1,1 @@
-+-record(plain, {a, b, c}).
++-record(binding, {source, destination, key, args}).
 ";
     let facts = facts_for(diff);
     assert!(facts.introduces_versioned_record.is_empty());

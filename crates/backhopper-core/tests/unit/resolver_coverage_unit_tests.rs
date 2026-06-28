@@ -36,7 +36,7 @@ fn of_symbol_kind_maps_each_kind() {
     let cases = [
         (
             SymbolKind::Macro {
-                name: "FOO".to_owned(),
+                name: "MACHINE_VERSION".to_owned(),
             },
             ResolverClass::Macro,
         ),

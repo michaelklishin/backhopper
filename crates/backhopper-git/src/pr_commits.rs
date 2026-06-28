@@ -123,9 +123,10 @@ pub(crate) fn commit_subject(commit: &gix::Commit<'_>) -> Result<String, GitErro
 
 fn commit_author_date(commit: &gix::Commit<'_>) -> Result<OffsetDateTime, GitError> {
     let actor = commit.author().map_err(gix_err)?;
-    let parsed = gix::date::parse(actor.time, None)
+    let time = actor
+        .time()
         .map_err(|e| GitError::Gix(format!("author time unparseable: {e}")))?;
-    OffsetDateTime::from_unix_timestamp(parsed.seconds)
+    OffsetDateTime::from_unix_timestamp(time.seconds)
         .map_err(|e| GitError::Gix(format!("author time out of range: {e}")))
 }
 

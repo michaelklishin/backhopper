@@ -18,7 +18,7 @@ fn fa(name: &str, arity: u8) -> FunArity {
 
 #[test]
 fn single_clause_zero_arity() {
-    let src = "-module(m).\nhello() -> ok.\n";
+    let src = "-module(ra).\nhello() -> ok.\n";
     let out = extract(src);
     let heads = out.get(&fa("hello", 0)).expect("hello/0");
     assert_eq!(heads.len(), 1);
@@ -27,7 +27,7 @@ fn single_clause_zero_arity() {
 
 #[test]
 fn single_clause_with_variable_arg() {
-    let src = "-module(m).\ngreet(Name) -> Name.\n";
+    let src = "-module(ra_server).\ngreet(Name) -> Name.\n";
     let out = extract(src);
     let heads = out.get(&fa("greet", 1)).expect("greet/1");
     assert_eq!(heads.len(), 1);
@@ -37,7 +37,7 @@ fn single_clause_with_variable_arg() {
 #[test]
 fn multiple_clauses_collected_for_same_function() {
     let src = "\
--module(m).
+-module(rabbit_fifo).
 which_module(0) -> rabbit_fifo_v0;
 which_module(1) -> rabbit_fifo_v1;
 which_module(2) -> rabbit_fifo_v3.
@@ -53,7 +53,7 @@ which_module(2) -> rabbit_fifo_v3.
 
 #[test]
 fn tagged_tuple_arg_recognised_as_tuple_size() {
-    let src = "-module(m).\nhandle({ok, X}) -> X.\n";
+    let src = "-module(khepri).\nhandle({ok, X}) -> X.\n";
     let out = extract(src);
     let heads = out.get(&fa("handle", 1)).expect("handle/1");
     assert_eq!(heads[0], vec![ArgShape::Tuple { size: 2 }]);
@@ -61,7 +61,7 @@ fn tagged_tuple_arg_recognised_as_tuple_size() {
 
 #[test]
 fn atom_argument_collapses_to_atom_shape() {
-    let src = "-module(m).\nflag(true) -> 1.\n";
+    let src = "-module(ra_machine).\nflag(true) -> 1.\n";
     let out = extract(src);
     let heads = out.get(&fa("flag", 1)).expect("flag/1");
     assert_eq!(
@@ -74,30 +74,38 @@ fn atom_argument_collapses_to_atom_shape() {
 
 #[test]
 fn when_guard_does_not_split_the_clause_head() {
-    let src = "-module(m).\nf(X) when is_integer(X) -> X.\n";
+    let src = "-module(ra_lib).\ndump(X) when is_integer(X) -> X.\n";
     let out = extract(src);
-    let heads = out.get(&fa("f", 1)).expect("f/1");
+    let heads = out.get(&fa("dump", 1)).expect("dump/1");
+    assert_eq!(heads[0], vec![ArgShape::Variable]);
+}
+
+#[test]
+fn when_guard_wrapped_onto_the_next_line_is_still_a_clause() {
+    let src = "-module(ra_lib).\nceiling(N)\n  when is_integer(N) -> N.\n";
+    let out = extract(src);
+    let heads = out.get(&fa("ceiling", 1)).expect("ceiling/1");
     assert_eq!(heads[0], vec![ArgShape::Variable]);
 }
 
 #[test]
 fn semicolon_inside_body_does_not_create_phantom_clause() {
     let src = "\
--module(m).
-f(X) ->
+-module(osiris_log).
+id(X) ->
     case X of
         0 -> zero;
         _ -> nonzero
     end.
 ";
     let out = extract(src);
-    let heads = out.get(&fa("f", 1)).expect("f/1");
+    let heads = out.get(&fa("id", 1)).expect("id/1");
     assert_eq!(heads.len(), 1, "case-branch ; should not split clauses");
 }
 
 #[test]
 fn ignores_attributes_at_column_zero() {
-    let src = "-module(m).\n-export([hello/0]).\nhello() -> ok.\n";
+    let src = "-module(ra_directory).\n-export([hello/0]).\nhello() -> ok.\n";
     let out = extract(src);
     assert!(out.contains_key(&fa("hello", 0)));
     assert!(
@@ -108,14 +116,15 @@ fn ignores_attributes_at_column_zero() {
 
 #[test]
 fn ignores_comments() {
-    let src = "%% top-level comment\n-module(m).\n%% another comment\nfoo() -> ok.\n";
+    let src =
+        "%% top-level comment\n-module(khepri_machine).\n%% another comment\nis_empty() -> ok.\n";
     let out = extract(src);
-    assert!(out.contains_key(&fa("foo", 0)));
+    assert!(out.contains_key(&fa("is_empty", 0)));
 }
 
 #[test]
 fn record_argument_recognised() {
-    let src = "-module(m).\nhandle(#state{}) -> ok.\n";
+    let src = "-module(ra_log).\nhandle(#state{}) -> ok.\n";
     let out = extract(src);
     let heads = out.get(&fa("handle", 1)).expect("handle/1");
     match &heads[0][0] {
@@ -127,20 +136,20 @@ fn record_argument_recognised() {
 #[test]
 fn multi_arity_distinguished() {
     let src = "\
--module(m).
-foo() -> ok.
-foo(X) -> X.
-foo(X, Y) -> {X, Y}.
+-module(seshat).
+fetch() -> ok.
+fetch(X) -> X.
+fetch(X, Y) -> {X, Y}.
 ";
     let out = extract(src);
-    assert!(out.contains_key(&fa("foo", 0)));
-    assert!(out.contains_key(&fa("foo", 1)));
-    assert!(out.contains_key(&fa("foo", 2)));
+    assert!(out.contains_key(&fa("fetch", 0)));
+    assert!(out.contains_key(&fa("fetch", 1)));
+    assert!(out.contains_key(&fa("fetch", 2)));
 }
 
 #[test]
 fn exported_function_with_only_export_is_not_in_clause_heads() {
-    let src = "-module(m).\n-export([missing/1]).\n";
+    let src = "-module(osiris).\n-export([missing/1]).\n";
     let out = extract(src);
     assert!(!out.contains_key(&fa("missing", 1)));
 }
@@ -150,7 +159,7 @@ fn exported_function_with_only_export_is_not_in_clause_heads() {
 #[test]
 fn char_literal_delimiter_in_body_does_not_eat_later_clauses() {
     let src = "\
--module(m).
+-module(rabbit_db_queue).
 first(X) ->
     Y = $\",
     {X, Y};
@@ -165,7 +174,8 @@ second(Z) -> Z.
 // A `$(` char literal in a clause guard must not unbalance the head parens.
 #[test]
 fn char_literal_paren_in_guard_keeps_arity() {
-    let src = "-module(m).\nclassify(C) when C =:= $( -> open.\nclassify(_) -> other.\n";
+    let src =
+        "-module(rabbit_db_binding).\nclassify(C) when C =:= $( -> open.\nclassify(_) -> other.\n";
     let out = extract(src);
     assert!(out.contains_key(&fa("classify", 1)));
 }

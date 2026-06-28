@@ -20,10 +20,10 @@ use crate::helpers::fixture::FixtureRepo;
 fn make_source_repo() -> FixtureRepo {
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
     );
-    repo.commit("add foo");
+    repo.commit("add federation link");
     repo.tag("source-v1");
     repo
 }
@@ -38,8 +38,8 @@ fn make_target_repo_without_path() -> FixtureRepo {
 fn make_target_repo_with_translated_path() -> FixtureRepo {
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/rabbitmq_federation/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/rabbitmq_federation/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("seed");
     repo
@@ -133,7 +133,7 @@ fn missing_target_path_with_translation_emits_path_rename() {
     let rename = reasons.iter().find(|r| r["kind"] == "path_rename").unwrap();
     assert_eq!(
         rename["target_path"],
-        "deps/rabbitmq_federation/src/foo.erl"
+        "deps/rabbitmq_federation/src/rabbit_federation_link.erl"
     );
     assert_eq!(rename["translation"]["name"], "fed_split");
 }
@@ -182,15 +182,15 @@ fn already_present_via_x_pick_lands_in_diagnostics() {
     let snapshot_dir = workdir.path().join("snap");
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("base");
     repo.checkout_new_branch("v1");
     repo.checkout("main");
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> fixed.\n",
     );
     repo.commit("the fix");
     let cand = repo.head_sha();
@@ -234,15 +234,15 @@ fn skip_already_present_flag_suppresses_the_probe() {
     let snapshot_dir = workdir.path().join("snap");
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("base");
     repo.checkout_new_branch("v1");
     repo.checkout("main");
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> fixed.\n",
     );
     repo.commit("the fix");
     let cand = repo.head_sha();
@@ -284,15 +284,15 @@ fn batch_rows_carry_already_present_diagnostics() {
     let snapshot_dir = workdir.path().join("snap");
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("base");
     repo.checkout_new_branch("v1");
     repo.checkout("main");
     repo.write_file(
-        "deps/rabbitmq_federation_common/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+        "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
+        "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> fixed.\n",
     );
     repo.commit("the fix");
     let cand = repo.head_sha();
@@ -379,8 +379,8 @@ fn build_dep_pin_fixture() -> (FixtureRepo, String) {
         "{application, web_dispatch, [{applications, [kernel, cowboy]}]}.",
     );
     repo.write_file(
-        "deps/mgmt/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/mgmt/src/rabbit_mgmt_db.erl",
+        "-module(rabbit_mgmt_db).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("base");
     repo.checkout_new_branch("v1");
@@ -388,8 +388,8 @@ fn build_dep_pin_fixture() -> (FixtureRepo, String) {
     repo.write_file("rabbitmq-components.mk", "dep_cowboy = hex 2.16.0\n");
     repo.commit("bump cowboy");
     repo.write_file(
-        "deps/mgmt/src/foo.erl",
-        "-module(foo).\n-export([go/0]).\ngo() -> fixed.\n",
+        "deps/mgmt/src/rabbit_mgmt_db.erl",
+        "-module(rabbit_mgmt_db).\n-export([status/0]).\nstatus() -> fixed.\n",
     );
     repo.commit("mgmt fix");
     let sha = repo.head_sha();
@@ -448,8 +448,8 @@ fn dep_pin_divergence_is_silent_for_unrelated_apps() {
         "{application, standalone, [{applications, [kernel]}]}.",
     );
     repo.write_file(
-        "deps/standalone/src/bar.erl",
-        "-module(bar).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/standalone/src/standalone_worker.erl",
+        "-module(standalone_worker).\n-export([status/0]).\nstatus() -> ok.\n",
     );
     repo.commit("standalone change");
     let sha = repo.head_sha();
@@ -538,14 +538,14 @@ fn missing_translations_file_is_hard_error() {
 fn make_macro_source_repo() -> FixtureRepo {
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/demo/src/x.erl",
-        "-module(x).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/demo/src/rabbit_oauth2_resource.erl",
+        "-module(rabbit_oauth2_resource).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([init/0]).\ninit() -> ok.\n",
     );
     repo.commit("seed with the macro defined");
     repo.tag("source-v1");
     repo.write_file(
-        "deps/demo/src/x.erl",
-        "-module(x).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([go/0, cookie/0]).\ngo() -> ok.\ncookie() -> ?OAUTH2_BOOTSTRAP_PATH.\n",
+        "deps/demo/src/rabbit_oauth2_resource.erl",
+        "-module(rabbit_oauth2_resource).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([init/0, bootstrap_path/0]).\ninit() -> ok.\nbootstrap_path() -> ?OAUTH2_BOOTSTRAP_PATH.\n",
     );
     repo.commit("reference the macro from a new function");
     repo
@@ -555,8 +555,8 @@ fn make_macro_target_repo() -> FixtureRepo {
     let repo = FixtureRepo::new();
     // same module, but the branch never had the macro
     repo.write_file(
-        "deps/demo/src/x.erl",
-        "-module(x).\n-export([go/0]).\ngo() -> ok.\n",
+        "deps/demo/src/rabbit_oauth2_resource.erl",
+        "-module(rabbit_oauth2_resource).\n-export([init/0]).\ninit() -> ok.\n",
     );
     repo.commit("seed without the macro");
     repo
@@ -603,24 +603,24 @@ fn macro_undefined_on_target_is_flagged_through_the_cli() {
 fn make_preimage_source_repo() -> FixtureRepo {
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/demo/src/y.erl",
-        "-module(y).\n-export([f/0]).\nf() -> original.\n",
+        "deps/demo/src/ra_log.erl",
+        "-module(ra_log).\n-export([state/0]).\nstate() -> original.\n",
     );
     repo.commit("seed");
     repo.tag("source-v1");
     repo.write_file(
-        "deps/demo/src/y.erl",
-        "-module(y).\n-export([f/0]).\nf() -> changed.\n",
+        "deps/demo/src/ra_log.erl",
+        "-module(ra_log).\n-export([state/0]).\nstate() -> changed.\n",
     );
-    repo.commit("change f");
+    repo.commit("change state");
     repo
 }
 
 fn make_preimage_target_repo() -> FixtureRepo {
     let repo = FixtureRepo::new();
     repo.write_file(
-        "deps/demo/src/y.erl",
-        "-module(y).\n-export([f/0]).\nf() -> diverged.\n",
+        "deps/demo/src/ra_log.erl",
+        "-module(ra_log).\n-export([state/0]).\nstate() -> diverged.\n",
     );
     repo.commit("seed diverged");
     repo
@@ -668,20 +668,20 @@ fn record_undefined_on_target_is_flagged_through_the_cli() {
     let snapshot_dir = workdir.path().join("snap");
     let source = FixtureRepo::new();
     source.write_file(
-        "deps/demo/src/z.erl",
-        "-module(z).\n-record(newrec, {field}).\n-export([f/1]).\nf(S) -> S.\n",
+        "deps/demo/src/ra_machine.erl",
+        "-module(ra_machine).\n-record(cfg, {field}).\n-export([init/1]).\ninit(S) -> S.\n",
     );
     source.commit("seed with the record");
     source.tag("source-v1");
     source.write_file(
-        "deps/demo/src/z.erl",
-        "-module(z).\n-record(newrec, {field}).\n-export([f/1]).\nf(S) -> S#newrec.field.\n",
+        "deps/demo/src/ra_machine.erl",
+        "-module(ra_machine).\n-record(cfg, {field}).\n-export([init/1]).\ninit(S) -> S#cfg.field.\n",
     );
     source.commit("use the record");
     let target = FixtureRepo::new();
     target.write_file(
-        "deps/demo/src/z.erl",
-        "-module(z).\n-export([f/1]).\nf(S) -> S.\n",
+        "deps/demo/src/ra_machine.erl",
+        "-module(ra_machine).\n-export([init/1]).\ninit(S) -> S.\n",
     );
     target.commit("seed without the record");
 
@@ -711,7 +711,7 @@ fn record_undefined_on_target_is_flagged_through_the_cli() {
         .iter()
         .find(|r| r["kind"] == "record_undefined_on_target")
         .unwrap_or_else(|| panic!("expected record_undefined_on_target in {reasons:?}"));
-    assert_eq!(r["record_name"], "newrec");
+    assert_eq!(r["record_name"], "cfg");
 }
 
 // A local call to a function a sibling commit added that the target lacks.

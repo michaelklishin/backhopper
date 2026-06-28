@@ -6,8 +6,8 @@ use backhopper_erlang::specs::{parse_callable_signature, parse_type_decl};
 
 #[test]
 fn parses_simple_spec() {
-    let s = parse_callable_signature("foo(X) -> ok").unwrap();
-    assert_eq!(s.name, "foo");
+    let s = parse_callable_signature("register(X) -> ok").unwrap();
+    assert_eq!(s.name, "register");
     assert_eq!(s.arity, 1);
 }
 

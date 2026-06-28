@@ -30,7 +30,7 @@ fn rp(s: &str) -> RelativePath {
 #[test]
 fn test_module_symbol_missing_is_non_blocking() {
     let r = Reason::TestModuleSymbolMissing {
-        suite_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        suite_path: rp("deps/rabbit/test/amqp_client_SUITE.erl"),
         missing_module: mn("amqp_utils"),
         call_sites: vec![TestCallSite {
             function: fnm("connection_config"),
@@ -44,7 +44,7 @@ fn test_module_symbol_missing_is_non_blocking() {
 #[test]
 fn behaviour_module_missing_is_non_blocking() {
     let r = Reason::BehaviourModuleMissing {
-        source_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        source_path: rp("deps/rabbit/test/rabbit_ct_hook_SUITE.erl"),
         behaviour: mn("custom_ct_hook"),
     };
     assert!(!r.is_blocking());
@@ -53,11 +53,11 @@ fn behaviour_module_missing_is_non_blocking() {
 #[test]
 fn header_file_missing_is_non_blocking() {
     let r = Reason::HeaderFileMissing {
-        source_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        source_path: rp("deps/rabbit/test/amqp_system_SUITE.erl"),
         include_directive: IncludeDirective::IncludeLib {
-            path: "rabbitmq_amqp_client/include/foo.hrl".to_owned(),
+            path: "rabbitmq_amqp_client/include/amqp_client.hrl".to_owned(),
         },
-        attempted_paths: vec![rp("deps/rabbitmq_amqp_client/include/foo.hrl")],
+        attempted_paths: vec![rp("deps/rabbitmq_amqp_client/include/amqp_client.hrl")],
     };
     assert!(!r.is_blocking());
 }
@@ -79,7 +79,7 @@ fn macro_undefined_on_target_is_non_blocking() {
 #[test]
 fn postimage_collision_is_non_blocking_and_path_scoped() {
     let r = Reason::PostimageCollision {
-        path: "deps/rabbit/src/x.erl".into(),
+        path: "deps/rabbit/src/rabbit_amqqueue.erl".into(),
         hunk_index: 2,
     };
     assert!(!r.is_blocking());
@@ -93,7 +93,7 @@ fn postimage_collision_is_non_blocking_and_path_scoped() {
 #[test]
 fn postimage_collision_round_trips_through_serde() {
     let r = Reason::PostimageCollision {
-        path: "deps/rabbit/src/x.erl".into(),
+        path: "deps/rabbit/src/rabbit_amqqueue.erl".into(),
         hunk_index: 2,
     };
     let s = serde_json::to_string(&r).unwrap();
@@ -105,12 +105,12 @@ fn postimage_collision_round_trips_through_serde() {
 #[test]
 fn record_and_local_call_undefined_are_non_blocking() {
     let record = Reason::RecordUndefinedOnTarget {
-        source_path: rp("deps/rabbit/src/x.erl"),
+        source_path: rp("deps/rabbit/src/rabbit_fifo.erl"),
         record_name: RecordName::new("state").unwrap(),
         line: 5,
     };
     let call = Reason::LocalCallUndefinedOnTarget {
-        source_path: rp("deps/rabbit/src/x.erl"),
+        source_path: rp("deps/rabbit/src/rabbit_fifo.erl"),
         function: fnm("reader_options"),
         arity: Arity::new(1),
         line: 9,
@@ -126,13 +126,13 @@ fn record_and_local_call_undefined_are_non_blocking() {
 #[test]
 fn macro_undefined_on_target_round_trips_through_serde() {
     let r = Reason::MacroUndefinedOnTarget {
-        source_path: rp("deps/rabbit/src/x.erl"),
-        macro_name: "FOO".to_owned(),
+        source_path: rp("deps/rabbit/src/ra_server.erl"),
+        macro_name: "MACHINE_VERSION".to_owned(),
         line: 3,
     };
     let s = serde_json::to_string(&r).unwrap();
     assert!(s.contains("\"kind\":\"macro_undefined_on_target\""));
-    assert!(s.contains("\"macro_name\":\"FOO\""));
+    assert!(s.contains("\"macro_name\":\"MACHINE_VERSION\""));
     let back: Reason = serde_json::from_str(&s).unwrap();
     assert_eq!(back, r);
 }
@@ -140,8 +140,8 @@ fn macro_undefined_on_target_round_trips_through_serde() {
 #[test]
 fn three_new_variants_promote_to_requires_adaptation_not_incompatible() {
     let v = Verdict::from_reasons(vec![Reason::TestModuleSymbolMissing {
-        suite_path: rp("a/x_SUITE.erl"),
-        missing_module: mn("foo"),
+        suite_path: rp("deps/ra/test/ra_machine_SUITE.erl"),
+        missing_module: mn("ra_lib"),
         call_sites: vec![],
     }]);
     assert!(matches!(v, Verdict::RequiresAdaptation { .. }));
@@ -150,7 +150,7 @@ fn three_new_variants_promote_to_requires_adaptation_not_incompatible() {
 #[test]
 fn test_module_symbol_missing_round_trips_through_serde() {
     let r = Reason::TestModuleSymbolMissing {
-        suite_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        suite_path: rp("deps/rabbit/test/amqp_client_SUITE.erl"),
         missing_module: mn("amqp_utils"),
         call_sites: vec![TestCallSite {
             function: fnm("connection_config"),
@@ -168,11 +168,11 @@ fn test_module_symbol_missing_round_trips_through_serde() {
 #[test]
 fn header_file_missing_serializes_with_include_form_tag() {
     let r = Reason::HeaderFileMissing {
-        source_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        source_path: rp("deps/rabbit/test/rabbit_stream_SUITE.erl"),
         include_directive: IncludeDirective::Include {
-            path: "rel/x.hrl".to_owned(),
+            path: "rel/rabbit_stream.hrl".to_owned(),
         },
-        attempted_paths: vec![rp("deps/rabbit/test/rel/x.hrl")],
+        attempted_paths: vec![rp("deps/rabbit/test/rel/rabbit_stream.hrl")],
     };
     let s = serde_json::to_string(&r).unwrap();
     assert!(s.contains("\"form\":\"include\""));
@@ -183,7 +183,7 @@ fn header_file_missing_serializes_with_include_form_tag() {
 #[test]
 fn behaviour_module_missing_round_trips() {
     let r = Reason::BehaviourModuleMissing {
-        source_path: rp("deps/rabbit/test/x_SUITE.erl"),
+        source_path: rp("deps/rabbit/test/rabbit_ct_hook_SUITE.erl"),
         behaviour: mn("custom_ct_hook"),
     };
     let s = serde_json::to_string(&r).unwrap();
@@ -195,11 +195,11 @@ fn behaviour_module_missing_round_trips() {
 #[test]
 fn include_directive_path_accessor_strips_form_variant() {
     let inc = IncludeDirective::Include {
-        path: "a.hrl".to_owned(),
+        path: "ra_machine.hrl".to_owned(),
     };
     let lib = IncludeDirective::IncludeLib {
-        path: "app/include/a.hrl".to_owned(),
+        path: "osiris/include/osiris_log.hrl".to_owned(),
     };
-    assert_eq!(inc.path(), "a.hrl");
-    assert_eq!(lib.path(), "app/include/a.hrl");
+    assert_eq!(inc.path(), "ra_machine.hrl");
+    assert_eq!(lib.path(), "osiris/include/osiris_log.hrl");
 }

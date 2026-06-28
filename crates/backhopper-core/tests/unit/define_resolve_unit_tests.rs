@@ -87,12 +87,15 @@ fn macro_undefined_on_target_is_flagged() {
 
 #[test]
 fn macro_defined_in_the_target_file_is_clean() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> ?FOO.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-define(FOO, 1).\n")],
+        "init() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-define(DEFAULT_TIMEOUT, 1).\n",
+        )],
     );
     assert!(reasons.is_empty());
 }
@@ -101,17 +104,20 @@ fn macro_defined_in_the_target_file_is_clean() {
 // `-include` to find it.
 #[test]
 fn macro_defined_via_an_included_header_is_clean() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> ?FOO.\n",
-        &index(&["deps/rabbit/src/x.erl", "deps/rabbit/src/defs.hrl"]),
+        "init() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&[
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "deps/rabbit/src/defs.hrl",
+        ]),
         &[
             (
-                "deps/rabbit/src/x.erl",
-                "-module(x).\n-include(\"defs.hrl\").\n",
+                "deps/rabbit/src/rabbit_amqqueue.erl",
+                "-module(rabbit_amqqueue).\n-include(\"defs.hrl\").\n",
             ),
-            ("deps/rabbit/src/defs.hrl", "-define(FOO, 1).\n"),
+            ("deps/rabbit/src/defs.hrl", "-define(DEFAULT_TIMEOUT, 1).\n"),
         ],
     );
     assert!(reasons.is_empty());
@@ -121,14 +127,14 @@ fn macro_defined_via_an_included_header_is_clean() {
 // incomplete, so the symbol is suppressed rather than false-flagged.
 #[test]
 fn an_unresolved_include_suppresses_flagging() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> ?FOO.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
+        "init() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
         &[(
-            "deps/rabbit/src/x.erl",
-            "-module(x).\n-include(\"absent.hrl\").\n",
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-include(\"absent.hrl\").\n",
         )],
     );
     assert!(reasons.is_empty());
@@ -136,14 +142,14 @@ fn an_unresolved_include_suppresses_flagging() {
 
 #[test]
 fn a_stdlib_include_lib_suppresses_macro_flagging() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> ?FOO.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
+        "init() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
         &[(
-            "deps/rabbit/src/x.erl",
-            "-module(x).\n-include_lib(\"kernel/include/logger.hrl\").\n",
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-include_lib(\"kernel/include/logger.hrl\").\n",
         )],
     );
     assert!(reasons.is_empty());
@@ -152,14 +158,14 @@ fn a_stdlib_include_lib_suppresses_macro_flagging() {
 // The eunit assert family lives in the skipped eunit.hrl.
 #[test]
 fn an_eunit_assert_macro_is_not_flagged() {
-    let path = rp("deps/rabbit/test/x_SUITE.erl");
+    let path = rp("deps/rabbit/test/rabbit_amqqueue_SUITE.erl");
     let reasons = analyse(
         &path,
-        "t() -> ?assertEqual(1, 1).\n",
-        &index(&["deps/rabbit/test/x_SUITE.erl"]),
+        "verify() -> ?assertEqual(1, 1).\n",
+        &index(&["deps/rabbit/test/rabbit_amqqueue_SUITE.erl"]),
         &[(
-            "deps/rabbit/test/x_SUITE.erl",
-            "-module(x_SUITE).\n-include_lib(\"eunit/include/eunit.hrl\").\n",
+            "deps/rabbit/test/rabbit_amqqueue_SUITE.erl",
+            "-module(rabbit_amqqueue_SUITE).\n-include_lib(\"eunit/include/eunit.hrl\").\n",
         )],
     );
     assert!(reasons.is_empty());
@@ -168,14 +174,14 @@ fn an_eunit_assert_macro_is_not_flagged() {
 // Records use the same completeness flag as macros.
 #[test]
 fn a_stdlib_include_lib_suppresses_record_flagging() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f(S) -> S#state.field.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
+        "init(S) -> S#state.field.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
         &[(
-            "deps/rabbit/src/x.erl",
-            "-module(x).\n-include_lib(\"kernel/include/file.hrl\").\n",
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-include_lib(\"kernel/include/file.hrl\").\n",
         )],
     );
     assert!(reasons.is_empty());
@@ -183,48 +189,60 @@ fn a_stdlib_include_lib_suppresses_record_flagging() {
 
 #[test]
 fn macro_defined_by_the_patch_is_clean() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "-define(FOO, 1).\nf() -> ?FOO.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-module(x).\n")],
+        "-define(DEFAULT_TIMEOUT, 1).\ninit() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n",
+        )],
     );
     assert!(reasons.is_empty());
 }
 
 #[test]
 fn predefined_macros_are_never_flagged() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> ?MODULE:g(?LINE).\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-module(x).\n")],
+        "init() -> ?MODULE:members(?LINE).\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n",
+        )],
     );
     assert!(reasons.is_empty());
 }
 
 #[test]
 fn a_record_undefined_on_target_is_flagged() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f(S) -> S#state.field.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-module(x).\n")],
+        "init(S) -> S#state.field.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n",
+        )],
     );
     assert_eq!(records_flagged(&reasons), ["state"]);
 }
 
 #[test]
 fn a_record_defined_on_target_is_clean() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> #state{}.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-record(state, {field}).\n")],
+        "init() -> #state{}.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-record(state, {field}).\n",
+        )],
     );
     assert!(reasons.is_empty());
 }
@@ -232,12 +250,15 @@ fn a_record_defined_on_target_is_clean() {
 // `#{...}` is a map, not a record use: never flagged.
 #[test]
 fn a_map_literal_is_not_a_record_use() {
-    let path = rp("deps/rabbit/src/x.erl");
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
     let reasons = analyse(
         &path,
-        "f() -> #{key => value}.\n",
-        &index(&["deps/rabbit/src/x.erl"]),
-        &[("deps/rabbit/src/x.erl", "-module(x).\n")],
+        "init() -> #{key => value}.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n",
+        )],
     );
     assert!(reasons.is_empty());
 }

@@ -272,7 +272,7 @@ fn unsupported_file_type_reason_renders_in_table() {
             pin_for("demo"),
             Verdict::RequiresAdaptation {
                 reasons: vec![Reason::UnsupportedFileType {
-                    path: PathBuf::from("lib/foo.ex"),
+                    path: PathBuf::from("lib/rabbitmq/cli/ctl/commands/status_command.ex"),
                 }],
             },
         )]),
@@ -283,7 +283,10 @@ fn unsupported_file_type_reason_renders_in_table() {
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UnsupportedFileType"), "table: {text}");
-    assert!(text.contains("lib/foo.ex"), "table: {text}");
+    assert!(
+        text.contains("lib/rabbitmq/cli/ctl/commands/status_command.ex"),
+        "table: {text}"
+    );
 }
 
 #[test]

@@ -8,7 +8,7 @@
     "reasons": [
       {
         "kind": "unsupported_file_type",
-        "path": "lib/foo.ex"
+        "path": "lib/rabbitmq/cli/ctl/commands/status_command.ex"
       }
     ]
   },

@@ -18,26 +18,26 @@ fn read(source: &str) -> backhopper_xref_reader::ModuleData {
 #[test]
 fn external_call_is_recorded() {
     let m = read(
-        "-module(caller).\n\
-         -export([go/0]).\n\
-         go() -> callee:work(1, 2, 3).\n",
+        "-module(ra_server).\n\
+         -export([tick/0]).\n\
+         tick() -> ra_machine:apply(1, 2, 3).\n",
     );
     assert_eq!(m.external_calls.len(), 1);
     let CallTarget::External(FunctionRef::Concrete(mfa)) = &m.external_calls[0].callee else {
         panic!("expected external concrete");
     };
-    assert_eq!(mfa.module.as_str(), "callee");
-    assert_eq!(mfa.function.as_str(), "work");
+    assert_eq!(mfa.module.as_str(), "ra_machine");
+    assert_eq!(mfa.function.as_str(), "apply");
     assert_eq!(mfa.arity.get(), 3);
 }
 
 #[test]
 fn local_call_is_recorded() {
     let m = read(
-        "-module(m).\n\
-         -export([a/0]).\n\
-         a() -> helper(1).\n\
-         helper(X) -> X.\n",
+        "-module(ra_log).\n\
+         -export([init/0]).\n\
+         init() -> next_index(1).\n\
+         next_index(X) -> X.\n",
     );
     assert_eq!(m.local_calls.len(), 1);
     let CallTarget::Local(LocalFunctionRef::Concrete { function, arity }) =
@@ -45,36 +45,36 @@ fn local_call_is_recorded() {
     else {
         panic!("expected local concrete");
     };
-    assert_eq!(function.as_str(), "helper");
+    assert_eq!(function.as_str(), "next_index");
     assert_eq!(arity.get(), 1);
 }
 
 #[test]
 fn module_macro_self_call_resolves_to_self_module() {
     let m = read(
-        "-module(m).\n\
-         -export([a/0, b/0]).\n\
-         a() -> ?MODULE:b().\n\
-         b() -> ok.\n",
+        "-module(ra_server).\n\
+         -export([enter/0, handle/0]).\n\
+         enter() -> ?MODULE:handle().\n\
+         handle() -> ok.\n",
     );
     let ext = m
         .external_calls
         .iter()
-        .find(|c| matches!(&c.callee, CallTarget::External(FunctionRef::Concrete(mfa)) if mfa.function.as_str() == "b"))
-        .expect("expected ?MODULE:b/0 to be recorded");
+        .find(|c| matches!(&c.callee, CallTarget::External(FunctionRef::Concrete(mfa)) if mfa.function.as_str() == "handle"))
+        .expect("expected ?MODULE:handle/0 to be recorded");
     let CallTarget::External(FunctionRef::Concrete(mfa)) = &ext.callee else {
         unreachable!();
     };
-    assert_eq!(mfa.module.as_str(), "m");
+    assert_eq!(mfa.module.as_str(), "ra_server");
 }
 
 #[test]
 fn imported_function_resolves_to_external_call() {
     let m = read(
-        "-module(m).\n\
+        "-module(ra_server).\n\
          -import(lists, [map/2]).\n\
-         -export([go/1]).\n\
-         go(L) -> map(fun (X) -> X end, L).\n",
+         -export([transform/1]).\n\
+         transform(L) -> map(fun (X) -> X end, L).\n",
     );
     let ext = m
         .external_calls
@@ -89,39 +89,39 @@ fn imported_function_resolves_to_external_call() {
 #[test]
 fn variable_module_produces_unresolved_module_call() {
     let m = read(
-        "-module(m).\n\
-         -export([go/2]).\n\
-         go(Mod, X) -> Mod:foo(X).\n",
+        "-module(ra_server).\n\
+         -export([fetch/2]).\n\
+         fetch(Mod, X) -> Mod:get(X).\n",
     );
     assert!(!m.unresolved.is_empty());
     let any = m
         .unresolved
         .iter()
-        .any(|u| matches!(&u.partial, FunctionRef::UnresolvedModule { function, .. } if function.as_str() == "foo"));
+        .any(|u| matches!(&u.partial, FunctionRef::UnresolvedModule { function, .. } if function.as_str() == "get"));
     assert!(any);
 }
 
 #[test]
 fn variable_function_produces_unresolved_function_call() {
     let m = read(
-        "-module(m).\n\
-         -export([go/1]).\n\
-         go(F) -> m1:F().\n",
+        "-module(ra_server).\n\
+         -export([lookup/1]).\n\
+         lookup(F) -> khepri:F().\n",
     );
     let any = m
         .unresolved
         .iter()
-        .any(|u| matches!(&u.partial, FunctionRef::UnresolvedFunction { module, .. } if module.as_str() == "m1"));
+        .any(|u| matches!(&u.partial, FunctionRef::UnresolvedFunction { module, .. } if module.as_str() == "khepri"));
     assert!(any);
 }
 
 #[test]
 fn local_call_with_zero_arity_records_arity_zero() {
     let m = read(
-        "-module(m).\n\
-         -export([a/0]).\n\
-         a() -> helper().\n\
-         helper() -> ok.\n",
+        "-module(ra_log).\n\
+         -export([init/0]).\n\
+         init() -> reset().\n\
+         reset() -> ok.\n",
     );
     let CallTarget::Local(LocalFunctionRef::Concrete { arity, .. }) = &m.local_calls[0].callee
     else {

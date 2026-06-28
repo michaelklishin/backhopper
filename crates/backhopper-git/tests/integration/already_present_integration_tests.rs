@@ -196,7 +196,7 @@ fn walk_limit_truncates_and_reports_it() {
 #[test]
 fn merge_base_of_unrelated_commits_is_none_and_missing_object_errors() {
     let fake = FakeRepo::new();
-    fake.write_file("src/a.erl", "x\n");
+    fake.write_file("src/ra_server.erl", "x\n");
     fake.commit("only");
     let tip = fake.head_sha();
     let repo = open(&fake);
@@ -204,4 +204,42 @@ fn merge_base_of_unrelated_commits_is_none_and_missing_object_errors() {
     assert!(repo.merge_base(&missing, &sha(&tip)).is_err());
     assert!(repo.has_commit(&sha(&tip)).unwrap());
     assert!(!repo.has_commit(&missing).unwrap());
+}
+
+#[test]
+fn merge_base_returns_the_common_ancestor() {
+    let fake = FakeRepo::new();
+    fake.write_file("src/ra_log.erl", "base\n");
+    fake.commit("base");
+    let base = fake.head_sha();
+    fake.checkout_new_branch("v1");
+    fake.write_file("src/ra_log.erl", "stable change\n");
+    fake.commit("stable work");
+    let v1_tip = fake.head_sha();
+    fake.checkout("main");
+    fake.write_file("src/ra_log.erl", "main change\n");
+    fake.commit("main work");
+    let main_tip = fake.head_sha();
+
+    let repo = open(&fake);
+    let merge_base = repo.merge_base(&sha(&main_tip), &sha(&v1_tip)).unwrap();
+    assert_eq!(merge_base, Some(sha(&base)));
+}
+
+#[test]
+fn has_commit_is_false_for_tree_and_blob_objects() {
+    let fake = FakeRepo::new();
+    fake.write_file("src/ra_machine.erl", "x\n");
+    fake.commit("only");
+    let tree = fake.rev_parse("HEAD^{tree}");
+    let blob = fake.rev_parse("HEAD:src/ra_machine.erl");
+    let repo = open(&fake);
+    assert!(
+        !repo.has_commit(&sha(&tree)).unwrap(),
+        "a tree is not a commit"
+    );
+    assert!(
+        !repo.has_commit(&sha(&blob)).unwrap(),
+        "a blob is not a commit"
+    );
 }

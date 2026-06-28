@@ -59,7 +59,7 @@ fn classifies_behaviour_and_behavior_spellings() {
 fn classifies_callback_and_spec() {
     let cb = classify_first("-callback init(Conf :: term()) -> state().\n");
     assert!(matches!(cb, ParsedAttribute::Callback(_)));
-    let sp = classify_first("-spec foo(X :: integer()) -> ok | {error, term()}.\n");
+    let sp = classify_first("-spec id(X :: integer()) -> ok | {error, term()}.\n");
     assert!(matches!(sp, ParsedAttribute::Spec(_)));
 }
 

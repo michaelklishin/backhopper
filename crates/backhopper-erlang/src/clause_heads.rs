@@ -176,7 +176,7 @@ fn take_balanced(bytes: &[u8], open_at: usize) -> Option<((usize, usize), usize)
 /// Returns the cursor just after the `->` arrow that ends a clause
 /// head, skipping any `when` guard. `None` when no arrow is found.
 fn skip_when_then_arrow(bytes: &[u8], from: usize) -> Option<usize> {
-    let mut cursor = skip_ws(bytes, from);
+    let mut cursor = skip_inline_ws_and_newlines(bytes, from);
     if cursor + 4 <= bytes.len() && &bytes[cursor..cursor + 4] == b"when" {
         let after_word = cursor + 4;
         if after_word == bytes.len() || !is_ident_byte(bytes[after_word]) {

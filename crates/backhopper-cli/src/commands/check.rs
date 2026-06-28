@@ -1588,7 +1588,7 @@ fn apply_suggestions_to_config(
     let updated =
         append_suggestions_to_config(&existing, suggestions).map_err(CliError::InvalidInput)?;
     fs::write(config_path, updated).map_err(CliError::Io)?;
-    // `tracing::info!` honors `--quiet` / `--verbose` levels via the global subscriber.
+    // tracing::info! honors --quiet and --verbose levels via the global subscriber
     tracing::info!(
         appended = suggestions.len(),
         config_path = %config_path.display(),

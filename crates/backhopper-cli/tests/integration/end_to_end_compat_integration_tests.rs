@@ -11,26 +11,26 @@ use tempfile::{NamedTempFile, TempDir};
 use crate::helpers::fixture::{FixtureRepo, write_config};
 
 const ERL_OLD: &str = r#"
--module(demo_mod).
--export([greet/1]).
-greet(Name) -> Name.
+-module(ra_lib).
+-export([id/1]).
+id(Name) -> Name.
 "#;
 
 const PATCH_REFERENCING_MISSING: &str = "\
-diff --git a/src/demo_mod.erl b/src/demo_mod.erl
---- a/src/demo_mod.erl
-+++ b/src/demo_mod.erl
+diff --git a/src/ra_lib.erl b/src/ra_lib.erl
+--- a/src/ra_lib.erl
++++ b/src/ra_lib.erl
 @@ -1,3 +1,4 @@
- -module(demo_mod).
- -export([greet/1]).
-+greet(N, Extra) -> demo_mod:does_not_exist(N, Extra).
- greet(Name) -> Name.
+ -module(ra_lib).
+ -export([id/1]).
++id(N, Extra) -> ra_lib:does_not_exist(N, Extra).
+ id(Name) -> Name.
 ";
 
 fn build_repo() -> (FixtureRepo, TempDir) {
     let workdir = TempDir::new().unwrap();
     let repo = FixtureRepo::new();
-    repo.write_file("src/demo_mod.erl", ERL_OLD);
+    repo.write_file("src/ra_lib.erl", ERL_OLD);
     repo.commit("first");
     repo.tag("v1.0.0");
     (repo, workdir)
@@ -165,14 +165,14 @@ fn compat_patch_compatible_when_only_existing_calls() {
         .assert()
         .success();
     let body = "\
-diff --git a/src/demo_mod.erl b/src/demo_mod.erl
---- a/src/demo_mod.erl
-+++ b/src/demo_mod.erl
+diff --git a/src/ra_lib.erl b/src/ra_lib.erl
+--- a/src/ra_lib.erl
++++ b/src/ra_lib.erl
 @@ -1,3 +1,4 @@
- -module(demo_mod).
- -export([greet/1]).
-+example() -> demo_mod:greet(<<\"x\">>).
- greet(Name) -> Name.
+ -module(ra_lib).
+ -export([id/1]).
++example() -> ra_lib:id(<<\"x\">>).
+ id(Name) -> Name.
 ";
     let mut patch_file = NamedTempFile::new().unwrap();
     patch_file.write_all(body.as_bytes()).unwrap();
@@ -197,14 +197,14 @@ diff --git a/src/demo_mod.erl b/src/demo_mod.erl
 }
 
 const PATCH_REFERENCING_WRONG_ARITY: &str = "\
-diff --git a/src/demo_mod.erl b/src/demo_mod.erl
---- a/src/demo_mod.erl
-+++ b/src/demo_mod.erl
+diff --git a/src/ra_lib.erl b/src/ra_lib.erl
+--- a/src/ra_lib.erl
++++ b/src/ra_lib.erl
 @@ -1,3 +1,4 @@
- -module(demo_mod).
- -export([greet/1]).
-+caller() -> demo_mod:greet(a, b, c).
- greet(Name) -> Name.
+ -module(ra_lib).
+ -export([id/1]).
++caller() -> ra_lib:id(leader, follower, candidate).
+ id(Name) -> Name.
 ";
 
 #[test]
@@ -228,28 +228,28 @@ fn compat_patch_flags_arity_change_as_incompatible() {
 }
 
 const ERL_INTERNAL_MODULE: &str = r#"
--module(internal_mod).
--export([secret/0]).
-secret() -> ok.
+-module(ra_directory).
+-export([init/0]).
+init() -> ok.
 "#;
 
 const PATCH_REFERENCING_HIDDEN: &str = "\
-diff --git a/src/demo_mod.erl b/src/demo_mod.erl
---- a/src/demo_mod.erl
-+++ b/src/demo_mod.erl
+diff --git a/src/ra_lib.erl b/src/ra_lib.erl
+--- a/src/ra_lib.erl
++++ b/src/ra_lib.erl
 @@ -1,3 +1,4 @@
- -module(demo_mod).
- -export([greet/1]).
-+caller() -> internal_mod:secret().
- greet(Name) -> Name.
+ -module(ra_lib).
+ -export([id/1]).
++caller() -> ra_directory:init().
+ id(Name) -> Name.
 ";
 
 #[test]
 fn compat_patch_flags_now_hidden_module() {
     let workdir = TempDir::new().unwrap();
     let repo = FixtureRepo::new();
-    repo.write_file("src/demo_mod.erl", ERL_OLD);
-    repo.write_file("src/internal_mod.erl", ERL_INTERNAL_MODULE);
+    repo.write_file("src/ra_lib.erl", ERL_OLD);
+    repo.write_file("src/ra_directory.erl", ERL_INTERNAL_MODULE);
     repo.commit("first");
     repo.tag("v1.0.0");
     let snap = workdir.path().join("snapshots");
@@ -257,7 +257,7 @@ fn compat_patch_flags_now_hidden_module() {
         workdir.path(),
         repo.dir.path(),
         &snap,
-        r#"internal_modules = ["internal_mod"]"#,
+        r#"internal_modules = ["ra_directory"]"#,
     );
     generate_snapshot(&cfg);
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_HIDDEN);
@@ -274,33 +274,33 @@ fn compat_patch_flags_now_hidden_module() {
     );
 }
 
-const ERL_MULTI_HUNK: &str = r#"-module(demo_mod).
--export([greet/1, a/0, b/0, c/0, d/0]).
+const ERL_MULTI_HUNK: &str = r#"-module(ra_lib).
+-export([id/1, init/0, start/0, status/0, stop/0]).
 
-a() -> ok.
+init() -> ok.
 
-b() -> ok.
+start() -> ok.
 
-c() -> ok.
+status() -> ok.
 
-d() -> ok.
+stop() -> ok.
 
-greet(Name) -> Name.
+id(Name) -> Name.
 "#;
 
 const PATCH_DRIFTS_AT_SECOND_HUNK: &str = concat!(
-    "diff --git a/src/demo_mod.erl b/src/demo_mod.erl\n",
-    "--- a/src/demo_mod.erl\n",
-    "+++ b/src/demo_mod.erl\n",
+    "diff --git a/src/ra_lib.erl b/src/ra_lib.erl\n",
+    "--- a/src/ra_lib.erl\n",
+    "+++ b/src/ra_lib.erl\n",
     "@@ -3,3 +3,4 @@\n",
     "\n",
-    " a() -> ok.\n",
+    " init() -> ok.\n",
     "\n",
-    "+new_a_helper() -> ok.\n",
+    "+new_init_helper() -> ok.\n",
     "@@ -9,3 +10,4 @@\n",
     " wrong_function_text_one\n",
     " wrong_function_text_two\n",
-    "+new_b_helper() -> ok.\n",
+    "+new_start_helper() -> ok.\n",
     " wrong_function_text_three\n",
 );
 
@@ -308,7 +308,7 @@ const PATCH_DRIFTS_AT_SECOND_HUNK: &str = concat!(
 fn compat_patch_detects_drift_at_non_zero_hunk_index() {
     let workdir = TempDir::new().unwrap();
     let repo = FixtureRepo::new();
-    repo.write_file("src/demo_mod.erl", ERL_MULTI_HUNK);
+    repo.write_file("src/ra_lib.erl", ERL_MULTI_HUNK);
     repo.commit("first");
     repo.tag("v1.0.0");
     let snap = workdir.path().join("snapshots");
@@ -333,14 +333,14 @@ fn compat_patch_detects_drift_at_non_zero_hunk_index() {
 }
 
 const PATCH_REFERENCING_UNTRACKED: &str = "\
-diff --git a/src/demo_mod.erl b/src/demo_mod.erl
---- a/src/demo_mod.erl
-+++ b/src/demo_mod.erl
+diff --git a/src/ra_lib.erl b/src/ra_lib.erl
+--- a/src/ra_lib.erl
++++ b/src/ra_lib.erl
 @@ -1,3 +1,4 @@
- -module(demo_mod).
- -export([greet/1]).
-+caller() -> amqp_utils:foo().
- greet(Name) -> Name.
+ -module(ra_lib).
+ -export([id/1]).
++caller() -> amqp_utils:info().
+ id(Name) -> Name.
 ";
 
 #[test]
@@ -352,8 +352,8 @@ fn resolve_untracked_modules_flips_verdict_when_file_absent_in_repo() {
     let target_checkout = TempDir::new().unwrap();
     std::fs::create_dir_all(target_checkout.path().join("src")).unwrap();
     std::fs::write(
-        target_checkout.path().join("src/demo_mod.erl"),
-        "-module(demo_mod).\n",
+        target_checkout.path().join("src/ra_lib.erl"),
+        "-module(ra_lib).\n",
     )
     .unwrap();
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_UNTRACKED);
@@ -397,13 +397,13 @@ fn resolve_untracked_modules_stays_compatible_when_file_present() {
     let target_checkout = TempDir::new().unwrap();
     std::fs::create_dir_all(target_checkout.path().join("src")).unwrap();
     std::fs::write(
-        target_checkout.path().join("src/demo_mod.erl"),
-        "-module(demo_mod).\n",
+        target_checkout.path().join("src/ra_lib.erl"),
+        "-module(ra_lib).\n",
     )
     .unwrap();
     std::fs::write(
         target_checkout.path().join("src/amqp_utils.erl"),
-        "-module(amqp_utils).\n-export([foo/0]).\nfoo() -> ok.\n",
+        "-module(amqp_utils).\n-export([info/0]).\ninfo() -> ok.\n",
     )
     .unwrap();
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_UNTRACKED);

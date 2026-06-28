@@ -53,25 +53,35 @@ where
 {
     let mut stdout = io::stdout().lock();
     match out.formatter {
-        Formatter::Json => {
-            let body = json!({
-                "schema_version": out.schema_version,
-                "command":        out.command,
-                "data":           payload,
-                "exit_code":      exit_code,
-            });
-            serde_json::to_writer_pretty(&mut stdout, &body)
-                .map_err(|e| CliError::OutputError(e.to_string()))?;
-            writeln!(stdout)?;
-        }
+        // markdown and summary fall back to text; bespoke summary projection runs before this call
+        Formatter::Json => write_json_envelope(&mut stdout, out, payload, exit_code)?,
         Formatter::Text | Formatter::Markdown | Formatter::Summary | Formatter::TextSummary => {
-            // commands without a dedicated markdown form fall back to text;
-            // summary modes that need bespoke projection emit BEFORE
-            // calling into this dispatcher.
             text_render(&mut stdout)?;
         }
     }
     Ok(exit_code)
+}
+
+fn write_json_envelope<T, W>(
+    stdout: &mut W,
+    out: &OutputContext,
+    payload: &T,
+    exit_code: i32,
+) -> CliResult<()>
+where
+    T: Serialize,
+    W: Write,
+{
+    let body = json!({
+        "schema_version": out.schema_version,
+        "command":        out.command,
+        "data":           payload,
+        "exit_code":      exit_code,
+    });
+    serde_json::to_writer_pretty(&mut *stdout, &body)
+        .map_err(|e| CliError::OutputError(e.to_string()))?;
+    writeln!(stdout)?;
+    Ok(())
 }
 
 /// Variant that lets a command supply a markdown-specific closure. The
@@ -91,17 +101,7 @@ where
 {
     let mut stdout = io::stdout().lock();
     match out.formatter {
-        Formatter::Json => {
-            let body = json!({
-                "schema_version": out.schema_version,
-                "command":        out.command,
-                "data":           payload,
-                "exit_code":      exit_code,
-            });
-            serde_json::to_writer_pretty(&mut stdout, &body)
-                .map_err(|e| CliError::OutputError(e.to_string()))?;
-            writeln!(stdout)?;
-        }
+        Formatter::Json => write_json_envelope(&mut stdout, out, payload, exit_code)?,
         Formatter::Text | Formatter::Summary | Formatter::TextSummary => {
             text_render(&mut stdout)?;
         }

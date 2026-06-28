@@ -228,7 +228,7 @@ fn non_erl_file_path_yields_n_a() {
 [[entry]]
 file = "deps/rabbit/src/rabbit_khepri.hrl"
 variant = "a"
-functions = ["foo/0"]
+functions = ["is_empty/0"]
 "#,
     );
     let a = run([

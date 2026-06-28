@@ -14,8 +14,8 @@ use time::OffsetDateTime;
 
 fn snap() -> Snapshot<state::Canonical> {
     let header = SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new("v").unwrap(),
+        project: ProjectName::new("rabbit").unwrap(),
+        tag: TagName::new("v4.0.0").unwrap(),
         branch: None,
         commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
         scanned_paths: Vec::new(),
@@ -27,7 +27,7 @@ fn snap() -> Snapshot<state::Canonical> {
     };
     Snapshot::from_extracted(
         header,
-        vec![Module::new(ModuleName::new("u").unwrap())],
+        vec![Module::new(ModuleName::new("rabbit_db_queue").unwrap())],
         Vec::new(),
     )
     .into_canonical()
@@ -36,10 +36,10 @@ fn snap() -> Snapshot<state::Canonical> {
 fn suggested(diff: &str) -> Vec<String> {
     let patch = Patch::parse(diff.as_bytes()).unwrap().analyze();
     let s = snap();
-    let scope = PinScope::from_snapshot(ProjectName::new("p").unwrap(), &s, Vec::new());
+    let scope = PinScope::from_snapshot(ProjectName::new("rabbit").unwrap(), &s, Vec::new());
     let ctx = EvaluationContext::for_pin(
         Pin::new(
-            ProjectName::new("p").unwrap(),
+            ProjectName::new("rabbit").unwrap(),
             TagName::new("target").unwrap(),
         ),
         s,
@@ -54,26 +54,26 @@ diff --git a/deps/rabbitmq_management/priv/schema/rabbitmq_management.schema b/d
 --- a/deps/rabbitmq_management/priv/schema/rabbitmq_management.schema
 +++ b/deps/rabbitmq_management/priv/schema/rabbitmq_management.schema
 @@ -1,1 +1,1 @@
--{mapping, \"x\", \"y\", []}.
-+{mapping, \"x\", \"z\", []}.
+-{mapping, \"management.tcp.port\", \"rabbitmq_management.tcp_config.port\", []}.
++{mapping, \"management.tcp.port\", \"rabbitmq_management.listener.port\", []}.
 ";
 
 const NON_SCHEMA_DIFF: &str = "\
-diff --git a/src/foo.erl b/src/foo.erl
---- a/src/foo.erl
-+++ b/src/foo.erl
+diff --git a/src/rabbit_db_queue.erl b/src/rabbit_db_queue.erl
+--- a/src/rabbit_db_queue.erl
++++ b/src/rabbit_db_queue.erl
 @@ -1,1 +1,2 @@
- -module(foo).
-+do() -> ok.
+ -module(rabbit_db_queue).
++is_empty() -> ok.
 ";
 
 const SNIPPETS_DIFF: &str = "\
-diff --git a/deps/rabbit/priv/schema/foo.snippets b/deps/rabbit/priv/schema/foo.snippets
---- a/deps/rabbit/priv/schema/foo.snippets
-+++ b/deps/rabbit/priv/schema/foo.snippets
+diff --git a/deps/rabbit/priv/schema/advanced.snippets b/deps/rabbit/priv/schema/advanced.snippets
+--- a/deps/rabbit/priv/schema/advanced.snippets
++++ b/deps/rabbit/priv/schema/advanced.snippets
 @@ -1,1 +1,2 @@
- a.b = c
-+x.y = z
+ listeners.tcp.default = 5672
++vm_memory_high_watermark.relative = 0.6
 ";
 
 #[test]
@@ -106,15 +106,18 @@ fn schema_diff_suggestions_survive_inapplicable_promotion() {
     // The suggested suites must still be populated.
     let patch = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap().analyze();
     let s = snap();
-    let scope = PinScope::from_snapshot(ProjectName::new("p").unwrap(), &s, Vec::new());
+    let scope = PinScope::from_snapshot(ProjectName::new("rabbit").unwrap(), &s, Vec::new());
     let mut files = EvaluationFiles::new();
     files = files.with(
         PathBuf::from("deps/rabbitmq_management/priv/schema/rabbitmq_management.schema"),
-        Some(b"{mapping, \"x\", \"y\", []}.\n".to_vec()),
+        Some(
+            b"{mapping, \"management.tcp.port\", \"rabbitmq_management.tcp_config.port\", []}.\n"
+                .to_vec(),
+        ),
     );
     let ctx = EvaluationContext::for_pin(
         Pin::new(
-            ProjectName::new("p").unwrap(),
+            ProjectName::new("rabbit").unwrap(),
             TagName::new("target").unwrap(),
         ),
         s,

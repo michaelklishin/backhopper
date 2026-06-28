@@ -28,9 +28,9 @@ fn make_snapshot(project: &str, tag: &str) -> Snapshot<state::Canonical> {
         extractor_version: String::new(),
         dep_pins: Vec::new(),
     };
-    let mut m = Module::new(ModuleName::new("foo").unwrap());
+    let mut m = Module::new(ModuleName::new("ra_server").unwrap());
     m.exports.push(FunArity {
-        name: FunctionName::new("bar").unwrap(),
+        name: FunctionName::new("members").unwrap(),
         arity: Arity::new(1),
     });
     Snapshot::from_extracted(header, vec![m], vec![]).into_canonical()

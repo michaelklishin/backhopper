@@ -24,7 +24,7 @@ fn no_reasons_means_compatible() {
 #[test]
 fn missing_symbol_is_incompatible() {
     let r = Reason::FileAbsent {
-        path: PathBuf::from("foo.erl"),
+        path: PathBuf::from("ra_log.erl"),
     };
     let v = Verdict::from_reasons(vec![r]);
     assert!(matches!(v, Verdict::Incompatible { .. }));
@@ -33,7 +33,7 @@ fn missing_symbol_is_incompatible() {
 #[test]
 fn deprecated_only_is_requires_adaptation() {
     let r = Reason::DeprecatedUsage {
-        symbol: SymbolRef::macro_use("X"),
+        symbol: SymbolRef::macro_use("MACHINE_VERSION"),
         since: None,
         replacement: None,
     };
@@ -44,7 +44,7 @@ fn deprecated_only_is_requires_adaptation() {
 #[test]
 fn deprecated_only_does_not_block() {
     let r = Reason::DeprecatedUsage {
-        symbol: SymbolRef::macro_use("X"),
+        symbol: SymbolRef::macro_use("RA_PROTO_VERSION"),
         since: None,
         replacement: None,
     };
@@ -63,7 +63,7 @@ fn context_drift_only_does_not_block() {
 #[test]
 fn missing_symbol_blocks() {
     let r = Reason::MissingSymbol {
-        symbol: SymbolRef::macro_use("X"),
+        symbol: SymbolRef::macro_use("OAUTH2_BOOTSTRAP_PATH"),
         first_seen_at_tag: None,
         needs_pin_at_least: None,
         suggested_replacement: None,
@@ -84,7 +84,7 @@ fn record_fields_changed_blocks() {
 #[test]
 fn requires_adaptation_only_has_non_blocking_reasons() {
     let r = Reason::DeprecatedUsage {
-        symbol: SymbolRef::macro_use("X"),
+        symbol: SymbolRef::macro_use("FORCED_MDS_KEY"),
         since: None,
         replacement: None,
     };
@@ -100,15 +100,21 @@ fn compatible_has_no_reasons_accessor() {
 
 #[test]
 fn series_verdict_summarizes_results() {
-    let pin1 = Pin::new(ProjectName::new("a").unwrap(), TagName::new("v1").unwrap());
-    let pin2 = Pin::new(ProjectName::new("b").unwrap(), TagName::new("v1").unwrap());
+    let pin1 = Pin::new(
+        ProjectName::new("ra").unwrap(),
+        TagName::new("v2.8.0").unwrap(),
+    );
+    let pin2 = Pin::new(
+        ProjectName::new("khepri").unwrap(),
+        TagName::new("v0.17.0").unwrap(),
+    );
     let r1 = PinVerdict::new(pin1, Verdict::Compatible);
     let r2 = PinVerdict::new(
         pin2,
         Verdict::Incompatible {
             reasons: vec![Reason::ArityChanged {
-                module: ModuleName::new("foo").unwrap(),
-                function: FunctionName::new("bar").unwrap(),
+                module: ModuleName::new("ra").unwrap(),
+                function: FunctionName::new("process_command").unwrap(),
                 expected: Arity::new(2),
                 found: vec![Arity::new(3)],
                 expected_available_at: None,
@@ -194,16 +200,16 @@ fn new_diagnostics_fields_round_trip_through_serde() {
             identical: Some(TargetMatch {
                 commit: CommitSha::new("b".repeat(40)).unwrap(),
                 via: TargetMatchKind::PatchId,
-                subject: "the fix".to_owned(),
+                subject: "Backport osiris bloom filter fix".to_owned(),
             }),
             content: Some(ContentPresence {
-                pin: ProjectName::new("demo").unwrap(),
+                pin: ProjectName::new("osiris").unwrap(),
                 hunks_already_applied: 2,
                 hunks_considered: 3,
                 hunks_ambiguous: 1,
                 hunks_low_confidence: 0,
                 per_file: BTreeMap::from([(
-                    "src/demo.erl".parse().unwrap(),
+                    "src/osiris_log.erl".parse().unwrap(),
                     HunkTally {
                         applied: 2,
                         considered: 3,

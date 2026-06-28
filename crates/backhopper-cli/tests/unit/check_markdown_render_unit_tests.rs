@@ -74,7 +74,7 @@ fn inapplicable_pin_carries_reason_label() {
 fn incompatible_pin_lists_reasons() {
     let reason = Reason::MissingSymbol {
         symbol: SymbolRef::function(
-            backhopper_core::model::names::Mfa::from_str("rabbit:foo/2").unwrap(),
+            backhopper_core::model::names::Mfa::from_str("rabbit:start_apps/2").unwrap(),
         ),
         first_seen_at_tag: None,
         needs_pin_at_least: None,
@@ -88,7 +88,7 @@ fn incompatible_pin_lists_reasons() {
     )]);
     let s = render(&eval);
     assert!(s.contains("Incompatible"));
-    assert!(s.contains("MissingSymbol rabbit:foo/2"));
+    assert!(s.contains("MissingSymbol rabbit:start_apps/2"));
 }
 
 #[test]

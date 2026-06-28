@@ -55,9 +55,9 @@ init(_) -> ok.
 #[test]
 fn non_test_export_is_not_recorded_as_test_only() {
     let src = r#"
--module(x).
--export([foo/0]).
-foo() -> ok.
+-module(rabbit_db_exchange).
+-export([is_empty/0]).
+is_empty() -> ok.
 "#;
     let m = extract(src);
     assert!(
@@ -70,14 +70,14 @@ foo() -> ok.
 #[test]
 fn ifdef_define_inside_test_block_is_recorded() {
     let src = r#"
--module(x).
+-module(rabbit_khepri).
 
 -ifdef(TEST).
 -define(FORCED_MDS_KEY, {?MODULE, forced_mds}).
 -define(PT_OVERRIDDEN_NODES, {?MODULE, overridden_nodes}).
 -endif.
 
-foo() -> ok.
+init() -> ok.
 "#;
     let m = extract(src);
     let names: Vec<_> = m.ifdef_macros.iter().map(|im| im.name.as_str()).collect();
@@ -92,9 +92,9 @@ foo() -> ok.
 #[test]
 fn define_outside_test_block_is_not_recorded() {
     let src = r#"
--module(x).
+-module(osiris_log).
 -define(SOFT_LIMIT, 256).
-foo() -> ok.
+init() -> ok.
 "#;
     let m = extract(src);
     assert!(m.ifdef_macros.is_empty(), "got: {:?}", m.ifdef_macros);
@@ -103,12 +103,12 @@ foo() -> ok.
 #[test]
 fn ifndef_test_else_endif_block_is_recorded_as_variant_c() {
     let src = r#"
--module(x).
+-module(ra_server).
 
 -ifndef(TEST).
-foo() -> production_body.
+init() -> production_body.
 -else.
-foo() -> test_body.
+init() -> test_body.
 -endif.
 "#;
     let m = extract(src);
@@ -124,7 +124,7 @@ foo() -> test_body.
 #[test]
 fn ifndef_test_without_else_is_recorded() {
     let src = r#"
--module(x).
+-module(osiris_writer).
 -ifndef(TEST).
 production_only() -> ok.
 -endif.
@@ -137,9 +137,9 @@ production_only() -> ok.
 #[test]
 fn ifndef_non_test_does_not_emit_variant_c() {
     let src = r#"
--module(x).
+-module(khepri_cluster).
 -ifndef(OTHER_FLAG).
-foo() -> ok.
+init() -> ok.
 -endif.
 "#;
     let m = extract(src);
@@ -149,12 +149,12 @@ foo() -> ok.
 #[test]
 fn nested_ifndef_test_inside_ifdef_is_recorded() {
     let src = r#"
--module(x).
+-module(ra_log_segment).
 -ifdef(OTHER).
 -ifndef(TEST).
-foo() -> prod.
+init() -> prod.
 -else.
-foo() -> test.
+init() -> test.
 -endif.
 -endif.
 "#;

@@ -19,38 +19,40 @@ fn parses_a_canonical_pr_url() {
 
 #[test]
 fn http_scheme_is_also_accepted() {
-    let c = parse_pr_url("http://github.com/foo/bar/pull/1").unwrap();
+    let c = parse_pr_url("http://github.com/rabbitmq/rabbitmq-server/pull/1").unwrap();
     assert_eq!(c.number, 1);
 }
 
 #[test]
 fn trailing_segments_after_number_are_ignored() {
-    let c = parse_pr_url("https://github.com/foo/bar/pull/42/files").unwrap();
+    let c = parse_pr_url("https://github.com/rabbitmq/rabbitmq-server/pull/42/files").unwrap();
     assert_eq!(c.number, 42);
-    assert_eq!(c.repo, "bar");
+    assert_eq!(c.repo, "rabbitmq-server");
 }
 
 #[test]
 fn non_github_url_is_rejected() {
-    assert!(parse_pr_url("https://gitlab.com/foo/bar/-/merge_requests/1").is_err());
+    assert!(
+        parse_pr_url("https://gitlab.com/rabbitmq/rabbitmq-server/-/merge_requests/1").is_err()
+    );
 }
 
 #[test]
 fn missing_pull_segment_is_rejected() {
-    assert!(parse_pr_url("https://github.com/foo/bar/issues/42").is_err());
+    assert!(parse_pr_url("https://github.com/rabbitmq/rabbitmq-server/issues/42").is_err());
 }
 
 #[test]
 fn missing_pr_number_is_rejected() {
-    assert!(parse_pr_url("https://github.com/foo/bar/pull/").is_err());
+    assert!(parse_pr_url("https://github.com/rabbitmq/rabbitmq-server/pull/").is_err());
 }
 
 #[test]
 fn non_integer_pr_number_is_rejected() {
-    assert!(parse_pr_url("https://github.com/foo/bar/pull/abc").is_err());
+    assert!(parse_pr_url("https://github.com/rabbitmq/rabbitmq-server/pull/abc").is_err());
 }
 
 #[test]
 fn empty_owner_is_rejected() {
-    assert!(parse_pr_url("https://github.com//bar/pull/1").is_err());
+    assert!(parse_pr_url("https://github.com//rabbitmq-server/pull/1").is_err());
 }

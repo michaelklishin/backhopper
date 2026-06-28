@@ -227,7 +227,8 @@ Suites (`src/suites/`):
  * `src/vertex.rs`, `src/call.rs`: `Vertex`, `FunctionRef`,
    `FunctionSig`, `CallKind`, `CallTarget`
  * `src/relation.rs`: `Relation` and `VertexSet` algebra; transitive
-   closure via Tarjan SCC plus DAG reachability
+   closure via Tarjan's Strongly Connected Component algorithm plus DAG
+   reachability
  * `src/graph.rs`: `CallGraph<M, P>`, `ModuleSummary`, `Deprecation`
  * `src/loc.rs`: `Loc`, `Position`, `PathId`, `PathInterner`
 

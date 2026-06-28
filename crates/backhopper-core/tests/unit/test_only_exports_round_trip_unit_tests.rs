@@ -15,7 +15,7 @@ use backhopper_core::snapshot::{format, parser};
 
 fn header() -> SnapshotHeader {
     SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
+        project: ProjectName::new("khepri").unwrap(),
         tag: TagName::new("v1.0.0").unwrap(),
         branch: None,
         commit: CommitSha::new("0".repeat(40)).unwrap(),
@@ -76,9 +76,9 @@ fn module_extensions_round_trip_through_text_format() {
 
 #[test]
 fn variant_a_omits_body_line_in_wire_format() {
-    let mut m = Module::new(ModuleName::new("x").unwrap());
+    let mut m = Module::new(ModuleName::new("ra_lib").unwrap());
     m.test_only_exports.push(TestOnlyExport {
-        function: FunctionName::new("foo").unwrap(),
+        function: FunctionName::new("id").unwrap(),
         arity: Arity::new(1),
         export_line: 10,
         body_line: None,
@@ -88,7 +88,7 @@ fn variant_a_omits_body_line_in_wire_format() {
         Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], vec![]).into_canonical();
     let text = format::to_string(&snap).expect("write");
     assert!(
-        text.contains("test_only_export a foo/1 export_line=10"),
+        text.contains("test_only_export a id/1 export_line=10"),
         "text was:\n{text}"
     );
     assert!(
@@ -99,7 +99,7 @@ fn variant_a_omits_body_line_in_wire_format() {
 
 #[test]
 fn variant_b_requires_body_line_in_wire_format() {
-    let mut m = Module::new(ModuleName::new("x").unwrap());
+    let mut m = Module::new(ModuleName::new("ra_machine").unwrap());
     m.test_only_exports.push(TestOnlyExport {
         function: FunctionName::new("init").unwrap(),
         arity: Arity::new(1),
@@ -118,19 +118,19 @@ fn variant_b_requires_body_line_in_wire_format() {
 
 #[test]
 fn ifdef_macro_guard_kinds_round_trip() {
-    let mut m = Module::new(ModuleName::new("x").unwrap());
+    let mut m = Module::new(ModuleName::new("osiris_log").unwrap());
     m.ifdef_macros.push(IfdefMacro {
-        name: "A".to_owned(),
+        name: "DEBUG".to_owned(),
         line: 10,
         guard_kind: IfdefGuardKind::Test,
     });
     m.ifdef_macros.push(IfdefMacro {
-        name: "B".to_owned(),
+        name: "MAX_CHUNK_SIZE".to_owned(),
         line: 20,
         guard_kind: IfdefGuardKind::NotTest,
     });
     m.ifdef_macros.push(IfdefMacro {
-        name: "C".to_owned(),
+        name: "TRACING".to_owned(),
         line: 30,
         guard_kind: IfdefGuardKind::Other,
     });
@@ -139,14 +139,14 @@ fn ifdef_macro_guard_kinds_round_trip() {
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("parse");
     let parsed = reparsed
-        .module_named(&ModuleName::new("x").unwrap())
+        .module_named(&ModuleName::new("osiris_log").unwrap())
         .unwrap();
     assert_eq!(parsed.ifdef_macros, m.ifdef_macros);
 }
 
 #[test]
 fn variant_c_block_without_else_round_trips() {
-    let mut m = Module::new(ModuleName::new("x").unwrap());
+    let mut m = Module::new(ModuleName::new("khepri_machine").unwrap());
     m.variant_c_blocks.push(VariantCBlock {
         guard: "TEST".to_owned(),
         start_line: 50,
@@ -158,14 +158,14 @@ fn variant_c_block_without_else_round_trips() {
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("parse");
     let parsed = reparsed
-        .module_named(&ModuleName::new("x").unwrap())
+        .module_named(&ModuleName::new("khepri_machine").unwrap())
         .unwrap();
     assert_eq!(parsed.variant_c_blocks, m.variant_c_blocks);
 }
 
 const HEADER: &str = "# backhopper snapshot
 # format-version: 3
-# project: p
+# project: khepri
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -175,30 +175,30 @@ const HEADER: &str = "# backhopper snapshot
 ";
 
 fn snapshot_with_module_body(body: &str) -> String {
-    format!("{HEADER}module x\n{body}")
+    format!("{HEADER}module rabbit_fifo\n{body}")
 }
 
 #[test]
 fn parser_rejects_test_only_export_with_unknown_variant() {
-    let text = snapshot_with_module_body("  test_only_export c foo/1 export_line=10\n");
+    let text = snapshot_with_module_body("  test_only_export c purge/1 export_line=10\n");
     assert!(parser::parse(&text).is_err());
 }
 
 #[test]
 fn parser_rejects_test_only_export_missing_export_line() {
-    let text = snapshot_with_module_body("  test_only_export a foo/1 body_line=20\n");
+    let text = snapshot_with_module_body("  test_only_export a overview/1 body_line=20\n");
     assert!(parser::parse(&text).is_err());
 }
 
 #[test]
 fn parser_rejects_variant_b_without_body_line() {
-    let text = snapshot_with_module_body("  test_only_export b foo/1 export_line=10\n");
+    let text = snapshot_with_module_body("  test_only_export b init/1 export_line=10\n");
     assert!(parser::parse(&text).is_err());
 }
 
 #[test]
 fn parser_rejects_ifdef_macro_with_unknown_guard() {
-    let text = snapshot_with_module_body("  ifdef_macro M guard=cosmic line=10\n");
+    let text = snapshot_with_module_body("  ifdef_macro DEBUG guard=cosmic line=10\n");
     assert!(parser::parse(&text).is_err());
 }
 
@@ -210,7 +210,7 @@ fn parser_rejects_variant_c_block_missing_end_line() {
 
 #[test]
 fn empty_extensions_emit_no_lines() {
-    let m = Module::new(ModuleName::new("x").unwrap());
+    let m = Module::new(ModuleName::new("ra_directory").unwrap());
     let snap =
         Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], vec![]).into_canonical();
     let text = format::to_string(&snap).expect("write");

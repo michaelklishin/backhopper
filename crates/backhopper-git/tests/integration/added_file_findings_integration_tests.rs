@@ -87,7 +87,7 @@ fn header_file_missing_emitted_for_unresolved_include_lib() {
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
-    let content = "-module(x).\n-include_lib(\"foo/include/bar.hrl\").\n";
+    let content = "-module(x).\n-include_lib(\"khepri/include/khepri.hrl\").\n";
     let findings = analyse_added_file(
         &rp("deps/rabbit/src/x.erl"),
         content,

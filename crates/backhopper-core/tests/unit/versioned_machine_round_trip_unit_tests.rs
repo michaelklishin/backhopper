@@ -103,7 +103,7 @@ fn snapshot_with_versioned_machine_macro_body_without_defined_in_round_trips() {
     let m = rabbit_fifo_module(
         9,
         Provenance::MacroBody {
-            macro_name: MacroName::new("MV").unwrap(),
+            macro_name: MacroName::new("FIFO_MACHINE_VERSION").unwrap(),
             defined_in: None,
         },
     );
@@ -111,7 +111,7 @@ fn snapshot_with_versioned_machine_macro_body_without_defined_in_round_trips() {
     let text = format::to_string(&snap).unwrap();
     let back = parser::parse(&text).unwrap();
     assert_eq!(snap, back);
-    assert!(text.contains("versioned_machine version/0 = 9 macro_body MV\n"));
+    assert!(text.contains("versioned_machine version/0 = 9 macro_body FIFO_MACHINE_VERSION\n"));
 }
 
 #[test]
@@ -194,18 +194,20 @@ fn parser_accepts_v3_snapshot_without_new_fields() {
     let v3 = "\
 # backhopper snapshot
 # format-version: 3
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
 # generated-by: test
 # generated-at: 1970-01-01T00:00:00Z
 
-module foo
-  export f/0
+module khepri
+  export is_empty/0
 ";
     let snap = parser::parse(v3).expect("v3 snapshot parses with v4 binary");
-    let m = snap.module_named(&ModuleName::new("foo").unwrap()).unwrap();
+    let m = snap
+        .module_named(&ModuleName::new("khepri").unwrap())
+        .unwrap();
     assert_eq!(m.versioned_machine_version, None);
     assert!(m.wire_constants.is_empty());
     assert!(snap.header().dep_pins.is_empty());
@@ -216,7 +218,7 @@ fn parser_rejects_duplicate_versioned_machine_entry() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -235,7 +237,7 @@ fn parser_rejects_wire_constants_out_of_canonical_order() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -254,7 +256,7 @@ fn parser_rejects_unknown_dep_pin_source() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -271,7 +273,7 @@ fn parser_rejects_dep_pin_missing_equals() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -288,7 +290,7 @@ fn parser_rejects_versioned_machine_missing_equals() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -306,7 +308,7 @@ fn parser_rejects_wire_constant_unknown_kind() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -314,7 +316,7 @@ fn parser_rejects_wire_constant_unknown_kind() {
 # generated-at: 1970-01-01T00:00:00Z
 
 module ra
-  wire_constant FOO = i64 -1
+  wire_constant RA_PROTO_VERSION = i64 -1
 ";
     assert!(parser::parse(text).is_err());
 }
@@ -324,7 +326,7 @@ fn parser_rejects_versioned_machine_after_wire_constant() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -332,7 +334,7 @@ fn parser_rejects_versioned_machine_after_wire_constant() {
 # generated-at: 1970-01-01T00:00:00Z
 
 module rabbit_fifo
-  wire_constant FOO = u64 1
+  wire_constant RA_PROTO_VERSION = u64 1
   versioned_machine version/0 = 7 literal
 ";
     assert!(parser::parse(text).is_err());
@@ -343,7 +345,7 @@ fn parser_accepts_macro_body_without_defined_in() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -351,7 +353,7 @@ fn parser_accepts_macro_body_without_defined_in() {
 # generated-at: 1970-01-01T00:00:00Z
 
 module rabbit_fifo
-  versioned_machine version/0 = 7 macro_body MV
+  versioned_machine version/0 = 7 macro_body MACHINE_VERSION
 ";
     let snap = parser::parse(text).expect("valid v4 snapshot parses");
     let m = snap
@@ -373,7 +375,7 @@ fn parser_rejects_unknown_provenance_keyword() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -391,7 +393,7 @@ fn parser_rejects_wire_constant_u64_with_non_integer_value() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -399,7 +401,7 @@ fn parser_rejects_wire_constant_u64_with_non_integer_value() {
 # generated-at: 1970-01-01T00:00:00Z
 
 module ra
-  wire_constant FOO = u64 abc
+  wire_constant RA_PROTO_VERSION = u64 abc
 ";
     assert!(parser::parse(text).is_err());
 }
@@ -409,7 +411,7 @@ fn parser_rejects_versioned_machine_with_negative_value() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src
@@ -427,7 +429,7 @@ fn parser_round_trips_wire_constant_with_defined_in() {
     let text = "\
 # backhopper snapshot
 # format-version: 4
-# project: p
+# project: rabbitmq-server
 # tag: v1.0.0
 # commit: 0000000000000000000000000000000000000000
 # scanned-paths: src

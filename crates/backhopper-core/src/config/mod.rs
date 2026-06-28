@@ -149,8 +149,7 @@ pub struct CacheRaw {
 
 /// Expiration policy for the workspace's on-disk caches. Time-based
 /// expiry is the whole policy: no LRU, no size caps. Expiration is
-/// hygiene, never correctness — the cache key components own
-/// correctness.
+/// hygiene, never correctness: the cache key components own correctness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheSettings {
     /// Entries older than this many days expire. `0` disables expiry

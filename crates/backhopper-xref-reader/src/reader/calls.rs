@@ -741,6 +741,10 @@ fn count_top_level_commas(s: &str) -> u32 {
                 depth -= 1;
                 i += 1;
             }
+            // $c char literal: skip the quoted char so $, $[ $" do not miscount
+            b'$' if !in_str && !in_atom => {
+                i += 1;
+            }
             b',' if depth == 0 && !in_str && !in_atom => commas += 1,
             _ => {}
         }

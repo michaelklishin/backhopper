@@ -759,10 +759,7 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
                 });
             }
             "reason" => {
-                // The reason is the last field and the only quoted one, so it
-                // spans the first quote to the last quote of the original input.
-                // Decode from there, not from whitespace-split tokens, to keep
-                // internal spacing and unescape the quote and backslash escapes.
+                // decode the reason from its first to last quote, preserving internal spacing and escapes
                 let open = rest.find('"').ok_or("reason must be a quoted string")?;
                 let close = rest.rfind('"').ok_or("reason must be a quoted string")?;
                 if close <= open {
@@ -784,8 +781,7 @@ fn parse_deprecation(rest: &str) -> Result<Deprecation, String> {
     })
 }
 
-// Reverse the Rust debug quoting the writer applies to a deprecation reason.
-// Unknown escapes are kept verbatim so the decode never loses bytes.
+// reverse the writer's Rust-debug quoting; unknown escapes pass through so no bytes are lost
 fn unescape_reason(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();

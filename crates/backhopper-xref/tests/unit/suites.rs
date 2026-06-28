@@ -51,47 +51,53 @@ fn suites_referencing_returns_suite_that_calls_modified_module() {
 #[test]
 fn suites_referencing_filters_non_suite_callers() {
     let x = build(&[
-        ("lib.erl", "-module(lib).\n-export([f/0]).\nf() -> ok.\n"),
         (
-            "consumer.erl",
-            "-module(consumer).\n-export([go/0]).\ngo() -> lib:f().\n",
+            "rabbit_db_binding.erl",
+            "-module(rabbit_db_binding).\n-export([get/0]).\nget() -> ok.\n",
         ),
         (
-            "lib_SUITE.erl",
-            "-module(lib_SUITE).\n-export([t/0]).\nt() -> lib:f().\n",
+            "rabbit_channel.erl",
+            "-module(rabbit_channel).\n-export([go/0]).\ngo() -> rabbit_db_binding:get().\n",
+        ),
+        (
+            "binding_SUITE.erl",
+            "-module(binding_SUITE).\n-export([t/0]).\nt() -> rabbit_db_binding:get().\n",
         ),
     ]);
     let modified: BTreeSet<ModuleName> =
-        std::iter::once(ModuleName::new("lib".to_owned()).unwrap()).collect();
+        std::iter::once(ModuleName::new("rabbit_db_binding".to_owned()).unwrap()).collect();
     let suites = suites_referencing(&x, &modified, is_suite_module);
     let names: Vec<&str> = suites.iter().map(|s| s.module.as_str()).collect();
-    assert_eq!(names, vec!["lib_SUITE"]);
+    assert_eq!(names, vec!["binding_SUITE"]);
 }
 
 #[test]
 fn suites_referencing_finds_only_suite_modules() {
     let x = build(&[
-        ("lib.erl", "-module(lib).\n-export([f/0]).\nf() -> ok.\n"),
         (
-            "lib_helper.erl",
-            "-module(lib_helper).\n-export([go/0]).\ngo() -> lib:f().\n",
+            "rabbit_db_queue.erl",
+            "-module(rabbit_db_queue).\n-export([get/0]).\nget() -> ok.\n",
         ),
         (
-            "lib_SUITE.erl",
-            "-module(lib_SUITE).\n-export([t/0]).\nt() -> lib:f().\n",
+            "rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-export([go/0]).\ngo() -> rabbit_db_queue:get().\n",
         ),
         (
-            "other_SUITE.erl",
-            "-module(other_SUITE).\n-export([t/0]).\nt() -> ok.\n",
+            "queue_SUITE.erl",
+            "-module(queue_SUITE).\n-export([t/0]).\nt() -> rabbit_db_queue:get().\n",
+        ),
+        (
+            "stream_SUITE.erl",
+            "-module(stream_SUITE).\n-export([t/0]).\nt() -> ok.\n",
         ),
     ]);
     let modified: BTreeSet<ModuleName> =
-        std::iter::once(ModuleName::new("lib".to_owned()).unwrap()).collect();
+        std::iter::once(ModuleName::new("rabbit_db_queue".to_owned()).unwrap()).collect();
     let suites = suites_referencing(&x, &modified, is_suite_module);
     let names: Vec<&str> = suites.iter().map(|s| s.module.as_str()).collect();
-    // lib_helper is dropped because it doesn't end with _SUITE,
-    // other_SUITE is dropped because it doesn't call lib.
-    assert_eq!(names, vec!["lib_SUITE"]);
+    // rabbit_amqqueue is dropped because it doesn't end with _SUITE,
+    // stream_SUITE is dropped because it doesn't call rabbit_db_queue.
+    assert_eq!(names, vec!["queue_SUITE"]);
 }
 
 #[test]
@@ -111,47 +117,47 @@ fn suites_referencing_mfas_finds_only_suites_that_call_target_mfa() {
     use backhopper_xref::suites_referencing_mfas;
     let x = build(&[
         (
-            "lib.erl",
-            "-module(lib).\n-export([f/0, g/0]).\nf() -> ok.\ng() -> ok.\n",
+            "rabbit_db_exchange.erl",
+            "-module(rabbit_db_exchange).\n-export([get/0, exists/0]).\nget() -> ok.\nexists() -> ok.\n",
         ),
         (
-            "lib_SUITE.erl",
-            "-module(lib_SUITE).\n-export([t/0]).\nt() -> lib:f().\n",
+            "exchange_SUITE.erl",
+            "-module(exchange_SUITE).\n-export([t/0]).\nt() -> rabbit_db_exchange:get().\n",
         ),
         (
-            "lib_g_SUITE.erl",
-            "-module(lib_g_SUITE).\n-export([t/0]).\nt() -> lib:g().\n",
+            "exchange_exists_SUITE.erl",
+            "-module(exchange_exists_SUITE).\n-export([t/0]).\nt() -> rabbit_db_exchange:exists().\n",
         ),
     ]);
     let target = Mfa::new(
-        ModuleName::new("lib".to_owned()).unwrap(),
-        FunctionName::new("f".to_owned()).unwrap(),
+        ModuleName::new("rabbit_db_exchange".to_owned()).unwrap(),
+        FunctionName::new("get".to_owned()).unwrap(),
         Arity::new(0),
     );
     let mut targets = BTreeSet::new();
     targets.insert(target);
     let suites = suites_referencing_mfas(&x, &targets, is_suite_module);
     let names: Vec<&str> = suites.iter().map(|s| s.module.as_str()).collect();
-    assert_eq!(names, vec!["lib_SUITE"]);
+    assert_eq!(names, vec!["exchange_SUITE"]);
 }
 
 #[test]
 fn suites_referencing_multiple_modules_unions_results() {
     let x = build(&[
         (
-            "lib_a.erl",
-            "-module(lib_a).\n-export([f/0]).\nf() -> ok.\n",
+            "rabbit_db_queue.erl",
+            "-module(rabbit_db_queue).\n-export([get/0]).\nget() -> ok.\n",
         ),
         (
-            "lib_b.erl",
-            "-module(lib_b).\n-export([g/0]).\ng() -> ok.\n",
+            "rabbit_db_binding.erl",
+            "-module(rabbit_db_binding).\n-export([lookup/0]).\nlookup() -> ok.\n",
         ),
         (
-            "ab_SUITE.erl",
-            "-module(ab_SUITE).\n-export([t/0]).\nt() -> lib_a:f(), lib_b:g().\n",
+            "queue_binding_SUITE.erl",
+            "-module(queue_binding_SUITE).\n-export([t/0]).\nt() -> rabbit_db_queue:get(), rabbit_db_binding:lookup().\n",
         ),
     ]);
-    let modified: BTreeSet<ModuleName> = ["lib_a", "lib_b"]
+    let modified: BTreeSet<ModuleName> = ["rabbit_db_queue", "rabbit_db_binding"]
         .iter()
         .map(|n| ModuleName::new((*n).to_owned()).unwrap())
         .collect();
@@ -163,16 +169,16 @@ fn suites_referencing_multiple_modules_unions_results() {
 fn is_suite_module_only_matches_uppercase_suite_suffix() {
     use backhopper_core::ModuleName;
     assert!(is_suite_module(
-        &ModuleName::new("foo_SUITE".to_owned()).unwrap()
+        &ModuleName::new("binding_SUITE".to_owned()).unwrap()
     ));
     assert!(!is_suite_module(
-        &ModuleName::new("foo_suite".to_owned()).unwrap()
+        &ModuleName::new("binding_suite".to_owned()).unwrap()
     ));
     assert!(!is_suite_module(
-        &ModuleName::new("SUITE_foo".to_owned()).unwrap()
+        &ModuleName::new("SUITE_binding".to_owned()).unwrap()
     ));
     assert!(!is_suite_module(
-        &ModuleName::new("foo".to_owned()).unwrap()
+        &ModuleName::new("binding".to_owned()).unwrap()
     ));
 }
 
@@ -185,19 +191,20 @@ fn suite_ref_carries_application_when_known() {
         app,
         vec![
             (
-                PathBuf::from("deps/rabbit/src/lib.erl"),
-                b"-module(lib).\n-export([f/0]).\nf() -> ok.\n".to_vec(),
+                PathBuf::from("deps/rabbit/src/rabbit_db_vhost.erl"),
+                b"-module(rabbit_db_vhost).\n-export([exists/0]).\nexists() -> ok.\n".to_vec(),
             ),
             (
-                PathBuf::from("deps/rabbit/test/lib_SUITE.erl"),
-                b"-module(lib_SUITE).\n-export([t/0]).\nt() -> lib:f().\n".to_vec(),
+                PathBuf::from("deps/rabbit/test/vhost_SUITE.erl"),
+                b"-module(vhost_SUITE).\n-export([t/0]).\nt() -> rabbit_db_vhost:exists().\n"
+                    .to_vec(),
             ),
         ],
     )
     .unwrap();
     let x = b.build().unwrap();
     let modified: BTreeSet<ModuleName> =
-        std::iter::once(ModuleName::new("lib".to_owned()).unwrap()).collect();
+        std::iter::once(ModuleName::new("rabbit_db_vhost".to_owned()).unwrap()).collect();
     let suites = suites_referencing(&x, &modified, is_suite_module);
     let suite = suites.iter().next().unwrap();
     assert_eq!(suite.application.as_ref().unwrap().as_str(), "rabbit");

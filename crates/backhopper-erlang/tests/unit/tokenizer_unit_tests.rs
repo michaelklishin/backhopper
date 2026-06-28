@@ -14,7 +14,7 @@ fn picks_up_module_and_export() {
 
 #[test]
 fn skips_line_comments_and_keeps_attributes() {
-    let src = "%% top comment\n-module(ra). %% end\n%% mid\n-export([f/1]).\n";
+    let src = "%% top comment\n-module(ra). %% end\n%% mid\n-export([init/1]).\n";
     let blocks = iterate_attributes(src);
     assert_eq!(blocks.len(), 2);
     assert_eq!(blocks[0].name, "module");
@@ -33,7 +33,7 @@ fn handles_multi_line_export_lists() {
 
 #[test]
 fn handles_quoted_atoms_in_attribute_bodies() {
-    let src = "-module(some_mod).\n-record(state, {name :: 'tagged_value'}).\n";
+    let src = "-module(osiris_log).\n-record(state, {name :: 'tagged_value'}).\n";
     let blocks = iterate_attributes(src);
     assert_eq!(blocks.len(), 2);
     assert!(blocks[1].body.contains("'tagged_value'"));
@@ -41,7 +41,7 @@ fn handles_quoted_atoms_in_attribute_bodies() {
 
 #[test]
 fn ignores_dash_minus_in_function_bodies() {
-    let src = "-module(m).\nfoo(X) -> -X.\n-export([foo/1]).\n";
+    let src = "-module(ra_lib).\nid(X) -> -X.\n-export([id/1]).\n";
     let blocks = iterate_attributes(src);
     let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(names, vec!["module", "export"]);
@@ -49,7 +49,7 @@ fn ignores_dash_minus_in_function_bodies() {
 
 #[test]
 fn char_literal_paren_does_not_close_attribute_body() {
-    let src = "-define(SEP, $)).\n-export([foo/1]).\n";
+    let src = "-define(SEP, $)).\n-export([init/1]).\n";
     let blocks = iterate_attributes(src);
     let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(
@@ -66,7 +66,7 @@ fn char_literal_paren_does_not_close_attribute_body() {
 
 #[test]
 fn char_literal_dot_does_not_terminate_form() {
-    let src = "-define(DOT, $.).\n-export([foo/1]).\n";
+    let src = "-define(DOT, $.).\n-export([init/1]).\n";
     let blocks = iterate_attributes(src);
     let names: Vec<_> = blocks.iter().map(|b| b.name.as_str()).collect();
     assert_eq!(

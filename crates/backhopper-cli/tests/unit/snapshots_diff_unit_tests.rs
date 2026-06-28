@@ -113,7 +113,7 @@ fn callbacks_diff_is_module_qualified() {
     let cb = |name: &str, arity: u8| CallbackSig {
         name: FunctionName::new(name).unwrap(),
         arity: Arity::new(arity),
-        signature: "foo".into(),
+        signature: "(_) -> state()".into(),
     };
     let a = snap(
         "p",

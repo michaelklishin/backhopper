@@ -84,12 +84,12 @@ fn header_file_missing_iterator_extracts_include_directive() {
             "source_path": "deps/rabbit/src/x.erl",
             "include_directive": {
                 "form": "include_lib",
-                "path": "rabbitmq_amqp_client/include/foo.hrl"
+                "path": "rabbitmq_amqp_client/include/amqp_client.hrl"
             },
             "attempted_paths": [
-                "deps/rabbitmq_amqp_client/include/foo.hrl",
-                "apps/rabbitmq_amqp_client/include/foo.hrl",
-                "lib/rabbitmq_amqp_client/include/foo.hrl"
+                "deps/rabbitmq_amqp_client/include/amqp_client.hrl",
+                "apps/rabbitmq_amqp_client/include/amqp_client.hrl",
+                "lib/rabbitmq_amqp_client/include/amqp_client.hrl"
             ]
         }
     ])));
@@ -98,7 +98,7 @@ fn header_file_missing_iterator_extracts_include_directive() {
     assert_eq!(findings[0].source_path.as_str(), "deps/rabbit/src/x.erl");
     assert_eq!(
         findings[0].include_directive.path(),
-        "rabbitmq_amqp_client/include/foo.hrl"
+        "rabbitmq_amqp_client/include/amqp_client.hrl"
     );
     assert_eq!(findings[0].attempted_paths.len(), 3);
 }
