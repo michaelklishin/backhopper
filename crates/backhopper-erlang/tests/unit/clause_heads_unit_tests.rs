@@ -179,3 +179,87 @@ fn char_literal_paren_in_guard_keeps_arity() {
     let out = extract(src);
     assert!(out.contains_key(&fa("classify", 1)));
 }
+
+// Taken from ra_server: the argument list and the guard each span several
+// lines, with map and record patterns. The head parser must find each
+// clause arrow across the newlines to recover the two clauses.
+#[test]
+fn multi_line_head_and_guard_from_ra_server() {
+    let src = "\
+-module(ra_server).
+handle_leader({PeerId, #append_entries_reply{term = Term}},
+              #{current_term := CurTerm,
+                cfg := #cfg{log_id = LogId}} = State0)
+  when Term > CurTerm ->
+    {follower, update_term(Term, State0), []};
+handle_leader({PeerId, #append_entries_reply{success = false}},
+              State0 = #{cluster := Nodes})
+  when not is_map_key(PeerId, Nodes) ->
+    {leader, State0, []}.
+";
+    let out = extract(src);
+    let heads = out.get(&fa("handle_leader", 2)).expect("handle_leader/2");
+    assert_eq!(heads.len(), 2);
+}
+
+// A comment inside a clause body carries a semicolon that is not a clause
+// separator; the body scanner must skip to end of line or it would split
+// `append/2` into the wrong number of clauses.
+#[test]
+fn semicolon_in_body_comment_does_not_split_clause() {
+    let src = "\
+-module(ra_log).
+append(Entry, State) ->
+    %% write the entry; then continue
+    write(Entry, State);
+append([], State) ->
+    State.
+";
+    let out = extract(src);
+    let heads = out.get(&fa("append", 2)).expect("append/2");
+    assert_eq!(heads.len(), 2);
+}
+
+// A `$(` char literal in the argument list is data, not an opening paren:
+// it must not unbalance the head, so the arity is 2.
+#[test]
+fn char_literal_open_paren_in_args_keeps_arity() {
+    let src = "-module(rabbit_binary_parser).\nclassify($(, Rest) -> {paren, Rest}.\n";
+    let out = extract(src);
+    assert!(out.contains_key(&fa("classify", 2)));
+}
+
+// A `$;` char literal in a body is data, not a clause separator, and a
+// trailing `$.` is the dot character, not a form terminator: both clauses
+// of `format/1` survive intact.
+#[test]
+fn char_literal_semicolon_and_dot_in_body_are_data() {
+    let src = "\
+-module(rabbit_misc).
+format(X) ->
+    Sep = $;,
+    join(X, Sep);
+format([]) ->
+    $..
+";
+    let out = extract(src);
+    assert_eq!(out.get(&fa("format", 1)).map(|v| v.len()), Some(2));
+}
+
+// A multi-line guard containing a tuple and a list literal: the arrow
+// search must track `{}` and `[]` depth so the `->` after the guard is the
+// one that ends the head, recovering both clauses of apply/3.
+#[test]
+fn multi_line_guard_with_tuple_and_list_brackets() {
+    let src = "\
+-module(ra_machine).
+apply(Meta, Cmd, State)
+  when Cmd =:= {down, normal}, element(1, State) =/= [] ->
+    {State, ok};
+apply(_Meta, _Cmd, State) ->
+    {State, error}.
+";
+    let out = extract(src);
+    let heads = out.get(&fa("apply", 3)).expect("apply/3");
+    assert_eq!(heads.len(), 2);
+}

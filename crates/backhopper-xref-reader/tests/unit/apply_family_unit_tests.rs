@@ -337,3 +337,56 @@ fn apply_family_resolution_recorded_with_outer_caller_signature() {
     assert_eq!(resolved.caller.name.as_str(), "dispatch");
     assert_eq!(resolved.caller.arity.get(), 1);
 }
+
+// osiris writes a chunk as a single multi-segment binary literal; the
+// commas inside `<<...>>` are bit-syntax field separators, not list
+// element separators, so apply resolves osiris_log:write to arity 1.
+#[test]
+fn apply_3_binary_argument_counts_as_one_element() {
+    let m = read(
+        "-module(osiris_writer).\n\
+         -export([write/1]).\n\
+         write(ChId) -> apply(osiris_log, write, [<<ChId:64/unsigned, 0:32/unsigned>>]).\n",
+    );
+    let calls = external_calls(&m);
+    assert!(
+        calls.iter().any(|(s, _)| s == "osiris_log:write/1"),
+        "calls={calls:?}"
+    );
+}
+
+// Quoted atoms for the module and function in an apply still resolve to the
+// concrete m:f/a.
+#[test]
+fn apply_3_with_quoted_atom_module_and_function_resolves() {
+    let m = read(
+        "-module(dispatcher).\n\
+         -export([store/0]).\n\
+         store() -> apply('khepri', 'put', [k, v]).\n",
+    );
+    let calls = external_calls(&m);
+    assert!(
+        calls.iter().any(|(s, _)| s == "khepri:put/2"),
+        "calls={calls:?}"
+    );
+}
+
+// An apply nested in another call's argument list is still recorded; the
+// outer ra_lib:id/1 and the inner spawned target both surface.
+#[test]
+fn apply_nested_in_call_argument_is_recorded() {
+    let m = read(
+        "-module(ra_server).\n\
+         -export([boot/0]).\n\
+         boot() -> ra_lib:id(apply(osiris_log, init, [cfg])).\n",
+    );
+    let calls = external_calls(&m);
+    assert!(
+        calls.iter().any(|(s, _)| s == "ra_lib:id/1"),
+        "calls={calls:?}"
+    );
+    assert!(
+        calls.iter().any(|(s, _)| s == "osiris_log:init/1"),
+        "calls={calls:?}"
+    );
+}

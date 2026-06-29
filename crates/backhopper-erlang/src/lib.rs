@@ -13,7 +13,6 @@ pub mod clause_heads;
 pub mod cond_compile;
 pub mod deprecated;
 pub mod extractor;
-pub mod macros;
 pub mod records;
 pub mod specs;
 pub mod tokenizer;

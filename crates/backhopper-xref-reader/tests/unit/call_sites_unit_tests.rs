@@ -402,3 +402,81 @@ fn external_call_carries_kind_direct() {
     );
     assert_eq!(m.external_calls[0].kind, CallKind::Direct);
 }
+
+// A fun reference to another module's function records the exact
+// m:f/arity, with the trailing `/3` parsed as the arity. ra passes such
+// references into fold and map helpers.
+#[test]
+fn external_fun_reference_records_arity() {
+    let m = read(
+        "-module(ra_server).\n\
+         -export([fold_all/2]).\n\
+         fold_all(State, Acc) -> lists:foldl(fun ra_log:fold/3, Acc, State).\n",
+    );
+    let found = m.external_calls.iter().any(|c| {
+        matches!(
+            &c.callee,
+            CallTarget::External(FunctionRef::Concrete(mfa))
+                if mfa.module.as_str() == "ra_log"
+                    && mfa.function.as_str() == "fold"
+                    && mfa.arity.get() == 3
+        )
+    });
+    assert!(found, "external={:?}", m.external_calls);
+}
+
+// A macro that expands to a module name turns a qualified call through it
+// into a concrete module:function. `-define(STORE, khepri)` is the
+// module-abstraction shape RabbitMQ uses to swap a backing store.
+#[test]
+fn macro_expanding_to_module_resolves_qualified_call() {
+    let m = read(
+        "-module(ra_server).\n\
+         -define(STORE, khepri).\n\
+         -export([store/2]).\n\
+         store(K, V) -> ?STORE:put(K, V).\n",
+    );
+    let found = m.external_calls.iter().any(|c| {
+        matches!(
+            &c.callee,
+            CallTarget::External(FunctionRef::Concrete(mfa))
+                if mfa.module.as_str() == "khepri"
+                    && mfa.function.as_str() == "put"
+                    && mfa.arity.get() == 2
+        )
+    });
+    assert!(found, "external={:?}", m.external_calls);
+}
+
+// `function_mfa` lifts one of the module's own signatures to a fully
+// qualified m:f/a.
+#[test]
+fn function_mfa_qualifies_a_local_signature() {
+    let m = read(
+        "-module(ra_log).\n\
+         -export([append/2]).\n\
+         append(_, _) -> ok.\n",
+    );
+    let sig = m.exports.iter().next().expect("one export");
+    let mfa = m.function_mfa(sig);
+    assert_eq!(mfa.module.as_str(), "ra_log");
+    assert_eq!(mfa.function.as_str(), "append");
+    assert_eq!(mfa.arity.get(), 2);
+}
+
+// `?MODULE` used as a value (not before a `:`) is an atom, not a call, so
+// it records no call site. ra modules embed it in overview maps.
+#[test]
+fn module_macro_as_value_records_no_call() {
+    let m = read(
+        "-module(ra_machine).\n\
+         -export([overview/0]).\n\
+         overview() -> #{module => ?MODULE, version => 0}.\n",
+    );
+    assert!(
+        m.external_calls.is_empty(),
+        "external={:?}",
+        m.external_calls
+    );
+    assert!(m.local_calls.is_empty(), "local={:?}", m.local_calls);
+}

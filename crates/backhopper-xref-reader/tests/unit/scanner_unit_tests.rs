@@ -155,3 +155,30 @@ fn skip_balanced_parens_handles_close_paren_inside_string_in_nested_brackets() {
     assert_eq!(commas, 1);
     assert_eq!(sc.peek(), Some(b't'));
 }
+
+#[test]
+fn skip_balanced_parens_handles_char_literal_paren_in_nested_brackets() {
+    // `$)` inside the list is the close-paren char, not a closing paren.
+    let mut sc = Scanner::new("([$)], x)trail");
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_quoted_atom_in_nested_braces() {
+    // A quoted atom carrying a close paren inside a tuple in the args.
+    let mut sc = Scanner::new("({'a)b'}, x)trail");
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
+
+#[test]
+fn skip_balanced_parens_handles_comment_in_nested_brackets() {
+    // A `%` comment inside the list runs to end of line; its `)` is inert.
+    let mut sc = Scanner::new("([a % )c\n], x)trail");
+    let commas = sc.skip_balanced_parens();
+    assert_eq!(commas, 1);
+    assert_eq!(sc.peek(), Some(b't'));
+}
