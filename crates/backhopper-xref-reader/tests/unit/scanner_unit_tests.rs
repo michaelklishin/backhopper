@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_xref_reader::scanner::{Pos, Scanner};
+use backhopper_xref_graph::Position;
+use backhopper_xref_reader::scanner::Scanner;
 
 #[test]
 fn pos_start_is_one_indexed() {
-    let p = Pos::start();
+    let p = Position::zero();
     assert_eq!(p.line, 1);
     assert_eq!(p.column, 1);
     assert_eq!(p.byte_offset, 0);

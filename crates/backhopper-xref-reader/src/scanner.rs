@@ -11,28 +11,13 @@
 //! A sibling block-oriented tokenizer lives in `backhopper_erlang::tokenizer`.
 //! Consolidation is deferred until a third consumer needs it.
 
-#[derive(Debug, Clone, Copy)]
-pub struct Pos {
-    pub line: u32,
-    pub column: u32,
-    pub byte_offset: u32,
-}
-
-impl Pos {
-    pub const fn start() -> Self {
-        Self {
-            line: 1,
-            column: 1,
-            byte_offset: 0,
-        }
-    }
-}
+use backhopper_xref_graph::Position;
 
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
     src: &'a str,
     bytes: &'a [u8],
-    pos: Pos,
+    pos: Position,
 }
 
 impl<'a> Scanner<'a> {
@@ -40,11 +25,11 @@ impl<'a> Scanner<'a> {
         Self {
             src,
             bytes: src.as_bytes(),
-            pos: Pos::start(),
+            pos: Position::zero(),
         }
     }
 
-    pub fn pos(&self) -> Pos {
+    pub fn pos(&self) -> Position {
         self.pos
     }
 
@@ -57,7 +42,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Set position. Used for backtracking when a heuristic match fails.
-    pub fn set_pos(&mut self, pos: Pos) {
+    pub fn set_pos(&mut self, pos: Position) {
         self.pos = pos;
     }
 
@@ -257,6 +242,107 @@ impl<'a> Scanner<'a> {
             }
         }
         top_level_commas
+    }
+}
+
+/// Outcome of a `walk_paren_group` pass over a `(...)` group.
+#[derive(Debug, Clone, Copy)]
+pub struct ParenWalk {
+    pub commas: u32,
+    pub had_content: bool,
+    pub closed: bool,
+}
+
+/// Walks the balanced `(...)` group at the current `(`, which must be the
+/// next byte. Tracks nested `()`, `[]`, `{}`, and `<<>>`; skips strings,
+/// quoted atoms, char literals, and `%` comments. At each byte that can
+/// begin an identifier or `?macro` use, `on_ident` runs with the cursor on
+/// that byte so callers can surface nested call sites; if it returns false
+/// the byte is consumed and the walk continues. Reports the top-level comma
+/// count, whether any non-whitespace content appeared, and whether the
+/// matching `)` was reached.
+pub fn walk_paren_group(
+    sc: &mut Scanner<'_>,
+    mut on_ident: impl FnMut(&mut Scanner<'_>) -> bool,
+) -> ParenWalk {
+    debug_assert_eq!(sc.peek(), Some(b'('));
+    sc.advance();
+    let mut depth = 1i32;
+    let mut commas: u32 = 0;
+    let mut had_content = false;
+    let mut closed = false;
+    while let Some(byte) = sc.peek() {
+        match byte {
+            b'(' => {
+                depth += 1;
+                had_content = true;
+                sc.advance();
+            }
+            b')' => {
+                depth -= 1;
+                sc.advance();
+                if depth == 0 {
+                    closed = true;
+                    break;
+                }
+            }
+            b'[' | b'{' => {
+                depth += 1;
+                had_content = true;
+                sc.advance();
+            }
+            b']' | b'}' => {
+                depth -= 1;
+                sc.advance();
+            }
+            // << and >> are binary delimiters: nest like brackets so the commas
+            // inside a binary literal are not counted as arguments.
+            b'<' if sc.peek_at(1) == Some(b'<') => {
+                depth += 1;
+                had_content = true;
+                sc.advance();
+                sc.advance();
+            }
+            b'>' if sc.peek_at(1) == Some(b'>') => {
+                depth -= 1;
+                sc.advance();
+                sc.advance();
+            }
+            b',' if depth == 1 => {
+                commas += 1;
+                sc.advance();
+            }
+            b'"' => {
+                sc.consume_string();
+                had_content = true;
+            }
+            b'\'' => {
+                sc.consume_quoted_atom();
+                had_content = true;
+            }
+            b'$' => {
+                sc.consume_char_literal();
+                had_content = true;
+            }
+            b'%' => sc.skip_line(),
+            b'?' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
+                had_content = true;
+                if !on_ident(sc) {
+                    sc.advance();
+                }
+            }
+            _ => {
+                if !byte.is_ascii_whitespace() {
+                    had_content = true;
+                }
+                sc.advance();
+            }
+        }
+    }
+    ParenWalk {
+        commas,
+        had_content,
+        closed,
     }
 }
 

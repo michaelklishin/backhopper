@@ -16,28 +16,18 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
-use crate::compat::added_lines::file_line;
+use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::source_attributes::{
     FunctionSignature, declares_parse_transform, extract_function_signatures, extract_imports,
 };
 use crate::model::names::{Arity, FunctionName, RelativePath};
 use crate::model::verdict::Reason;
 
-/// One touched `.erl` file: its path, the text of its added lines where
-/// new local calls appear, and the blob-line to file-line map for the
-/// reported line.
-#[derive(Debug, Clone, Copy)]
-pub struct LocalCallSubject<'a> {
-    pub source_path: &'a RelativePath,
-    pub added_text: &'a str,
-    pub line_map: &'a [u32],
-}
-
 /// Flag each added unqualified call whose `f/arity` the target module
 /// neither defines, imports, nor inherits as a BIF, and that the patch
 /// does not define. One reason per `(file, function, arity)`.
 pub fn analyse_local_calls(
-    subjects: &[LocalCallSubject<'_>],
+    subjects: &[AddedLinesSubject<'_>],
     read_target: &dyn Fn(&RelativePath) -> Option<String>,
 ) -> Vec<Reason> {
     let mut reasons = Vec::new();
@@ -68,7 +58,7 @@ pub fn analyse_local_calls(
             }
             let (Ok(function), Ok(arity)) = (
                 FunctionName::from_str(&call.name),
-                u8::try_from(call.arity).map(Arity::new),
+                Arity::try_from(call.arity),
             ) else {
                 continue;
             };

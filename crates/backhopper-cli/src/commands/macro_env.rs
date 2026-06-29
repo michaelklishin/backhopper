@@ -51,10 +51,10 @@ pub fn macro_environment_hash(
     diff_base: &CommitSha,
     files: &[PatchedFile],
 ) -> Option<String> {
-    let mut seeded: Vec<(&PathBuf, BTreeSet<String>)> = Vec::new();
+    let mut seeded: Vec<(&Path, BTreeSet<String>)> = Vec::new();
     for file in files {
         // the same path preference the analyzer uses for its lookup
-        let Some(path) = file.new_path.as_ref().or(file.old_path.as_ref()) else {
+        let Some(path) = file.primary_path() else {
             continue;
         };
         // None marks a quoted-atom macro reference the seed cannot model
@@ -73,7 +73,7 @@ pub fn macro_environment_hash(
         for (path, seed) in seeded {
             // a path absent from the parent tree (added by the patch)
             // has no macro table, same as FileMap.get returning None
-            if !resolver.exact.contains(path.as_path()) {
+            if !resolver.exact.contains(path) {
                 continue;
             }
             let Some(body) = resolver.read_utf8(path) else {

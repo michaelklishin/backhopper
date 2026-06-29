@@ -8,7 +8,7 @@ use std::io::Write;
 use assert_cmd::Command;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const HOST_MOD_V1: &str = "-module(host_mod).\n-export([util/1]).\nutil(X) -> X.\n";
 
@@ -61,9 +61,9 @@ pins = [{{ project = "host", branch = "main" }}]
     cfg
 }
 
-fn setup_self_repo() -> (FixtureRepo, TempDir, std::path::PathBuf) {
+fn setup_self_repo() -> (GitRepoFixture, TempDir, std::path::PathBuf) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/host_mod.erl", HOST_MOD_V1);
     repo.write_file("src/feature.erl", FEATURE_V1);
     repo.commit("seed");

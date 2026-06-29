@@ -18,7 +18,7 @@ use serde_json::Value;
 use tempfile::{NamedTempFile, TempDir};
 
 use crate::helpers::cli::{run, run_succeeds, run_with_env, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const ERL_V1: &str = r#"
 -module(demo_mod).
@@ -61,9 +61,9 @@ pins = [
     p
 }
 
-fn build_repo() -> (FixtureRepo, TempDir, String) {
+fn build_repo() -> (GitRepoFixture, TempDir, String) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_V1);
     repo.commit("v1");
     repo.tag("v1.0.0");

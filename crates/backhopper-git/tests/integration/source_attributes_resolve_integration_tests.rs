@@ -13,7 +13,7 @@ use backhopper_core::model::names::{GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::IncludeDirective;
 use backhopper_git::{GitRepo, build_target_tree_index};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
@@ -23,7 +23,7 @@ fn mn(s: &str) -> ModuleName {
     ModuleName::new(s).unwrap()
 }
 
-fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
+fn build_target(repo: &GitRepoFixture) -> TargetTreeIndex {
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let head = GitRef::new("HEAD").unwrap();
     build_target_tree_index(&g, &head).unwrap()
@@ -31,7 +31,7 @@ fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
 
 #[test]
 fn behaviour_present_under_wildcard_root_resolves() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbit/src/custom_ct_hook.erl",
         "-module(custom_ct_hook).\n",
@@ -44,7 +44,7 @@ fn behaviour_present_under_wildcard_root_resolves() {
 
 #[test]
 fn behaviour_absent_does_not_resolve() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/README.md", "hi\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -54,7 +54,7 @@ fn behaviour_absent_does_not_resolve() {
 
 #[test]
 fn include_relative_to_source_dir_resolves() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/rabbit/test/x.hrl", "%% header\n");
     repo.commit("hdr");
     let target = build_target(&repo);
@@ -67,7 +67,7 @@ fn include_relative_to_source_dir_resolves() {
 
 #[test]
 fn include_absent_returns_attempted_paths() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/README.md", "hi\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -82,7 +82,7 @@ fn include_absent_returns_attempted_paths() {
 
 #[test]
 fn include_lib_resolves_under_deps_app_path() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_amqp_client/include/amqp_client.hrl",
         "%% hdr\n",
@@ -101,7 +101,7 @@ fn include_lib_resolves_under_deps_app_path() {
 
 #[test]
 fn include_lib_absent_attempts_deps_apps_lib_in_order() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/README.md", "hi\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -124,7 +124,7 @@ fn include_lib_absent_attempts_deps_apps_lib_in_order() {
 
 #[test]
 fn include_with_no_directory_lives_next_to_source() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/rabbit/include/api.hrl", "%% hdr\n");
     repo.commit("hdr");
     let target = build_target(&repo);

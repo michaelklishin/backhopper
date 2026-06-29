@@ -31,7 +31,7 @@ pub mod xref;
 
 pub use bisect::BisectCmd;
 pub use cache::CacheCmd;
-pub use check::{CheckCmd, CheckFlags, SourcePinArgs};
+pub use check::{CheckCmd, CheckFlags, PinSelectorArgs, SourcePinArgs};
 pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
 pub use init::InitCmd;
@@ -45,6 +45,19 @@ pub use snapshots::SnapshotsCmd;
 pub use suites::SuitesCmd;
 pub use tree_source::TreeSource;
 pub use xref::XrefCmd;
+
+/// The repository commit-shaped inputs are read from. One definition
+/// so the default and the env override cannot drift across verbs.
+#[derive(Debug, Args, Clone)]
+pub struct RepoDirPathArg {
+    #[arg(
+        long,
+        default_value = ".",
+        env = "BACKHOPPER_REPO_DIR_PATH",
+        help = "Repository the commits are read from"
+    )]
+    pub repo_dir_path: PathBuf,
+}
 
 // CARGO_PKG_NAME is "backhopper-cli"; the user-facing binary is "backhopper".
 #[derive(Debug, Parser)]

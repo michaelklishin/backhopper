@@ -13,13 +13,13 @@ use backhopper_core::model::names::{GitRef, RelativePath};
 use backhopper_core::model::verdict::Reason;
 use backhopper_git::{GitRepo, build_target_tree_index};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
 }
 
-fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
+fn build_target(repo: &GitRepoFixture) -> TargetTreeIndex {
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let head = GitRef::new("HEAD").unwrap();
     build_target_tree_index(&g, &head).unwrap()
@@ -27,7 +27,7 @@ fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
 
 #[test]
 fn unresolved_helper_emits_test_module_symbol_missing() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/rabbit/src/rabbit_app.erl", "-module(rabbit_app).\n");
     repo.commit("rabbit only");
     let target = build_target(&repo);
@@ -70,7 +70,7 @@ fn unresolved_helper_emits_test_module_symbol_missing() {
 
 #[test]
 fn helper_present_under_wildcard_root_is_resolved() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbit/test/amqp_utils.erl",
         "-module(amqp_utils).\n-export([connection_config/1]).\n\
@@ -93,7 +93,7 @@ fn helper_present_under_wildcard_root_is_resolved() {
 
 #[test]
 fn helper_present_under_literal_root_is_resolved() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_ct_helpers/src/rabbit_ct_broker_helpers.erl",
         "-module(rabbit_ct_broker_helpers).\n",
@@ -111,7 +111,7 @@ fn helper_present_under_literal_root_is_resolved() {
 
 #[test]
 fn stdlib_modules_skipped_even_when_absent() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/README.md", "hi\n");
     repo.commit("docs only");
     let target = build_target(&repo);
@@ -126,7 +126,7 @@ fn stdlib_modules_skipped_even_when_absent() {
 
 #[test]
 fn diagnostic_entry_captures_call_site_count() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("nothing");
     let target = build_target(&repo);
@@ -150,7 +150,7 @@ fn diagnostic_entry_captures_call_site_count() {
 
 #[test]
 fn empty_globs_means_every_non_stdlib_module_is_missing() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/rabbit/src/rabbit_app.erl", "-module(rabbit_app).\n");
     repo.commit("rabbit");
     let target = build_target(&repo);
@@ -166,7 +166,7 @@ fn empty_globs_means_every_non_stdlib_module_is_missing() {
 
 #[test]
 fn invalid_multi_wildcard_glob_is_silently_dropped() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("nothing");
     let target = build_target(&repo);

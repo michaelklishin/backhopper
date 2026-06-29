@@ -13,10 +13,11 @@ use serde::Serialize;
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix};
 use backhopper_git::{GitError, GitRepo, ObjectKind};
 
-use crate::cli::{Formatter, GlobalArgs, RevCmd};
+use crate::cli::{GlobalArgs, RevCmd};
 use crate::commands::sha_prefix::resolve_with_kind;
+use crate::commands::summary::SummaryFormatter;
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render_with_exit};
+use crate::output::{OutputContext, emit_jsonl, render_with_exit};
 
 // envelope renders first; the typed `CliError` below sets the non-zero exit.
 const ENVELOPE_ONLY_EXIT: i32 = 0;
@@ -110,16 +111,15 @@ fn render_resolved(
         object_kind: kind.to_string(),
         subject,
     };
-    if matches!(args.formatter, Formatter::TextSummary) {
+    if let Some(fmt) = SummaryFormatter::from_cli(args.formatter) {
         let mut stdout = io::stdout().lock();
-        writeln!(stdout, "{commit}").map_err(|e| CliError::OutputError(e.to_string()))?;
-        return Ok(0);
-    }
-    if matches!(args.formatter, Formatter::Summary) {
-        let mut stdout = io::stdout().lock();
-        let line =
-            serde_json::to_string(&payload).map_err(|e| CliError::OutputError(e.to_string()))?;
-        writeln!(stdout, "{line}").map_err(|e| CliError::OutputError(e.to_string()))?;
+        match fmt {
+            // the text-summary body is just the resolved SHA
+            SummaryFormatter::Text => {
+                writeln!(stdout, "{commit}").map_err(|e| CliError::OutputError(e.to_string()))?;
+            }
+            SummaryFormatter::Jsonl => emit_jsonl(&mut stdout, &[payload])?,
+        }
         return Ok(0);
     }
     let ctx = OutputContext::new(args.formatter, "rev resolve");

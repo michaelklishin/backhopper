@@ -4,7 +4,7 @@
 
 use assert_cmd::Command;
 
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const OLD_COMPONENTS_MK: &str = "\
 PROJECT = rabbit
@@ -19,8 +19,8 @@ dep_ra = hex 2.15.4
 dep_gun = git https://github.com/ninenines/gun 2.2.0
 ";
 
-fn build_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn build_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file("rabbitmq-components.mk", OLD_COMPONENTS_MK);
     repo.commit("old pins");
     repo.tag("old");
@@ -29,7 +29,7 @@ fn build_repo() -> FixtureRepo {
     repo
 }
 
-fn run_fmt(repo: &FixtureRepo, formatter: &str, extra: &[&str]) -> assert_cmd::assert::Assert {
+fn run_fmt(repo: &GitRepoFixture, formatter: &str, extra: &[&str]) -> assert_cmd::assert::Assert {
     let mut args: Vec<&str> = vec![
         "--formatter",
         formatter,
@@ -45,7 +45,7 @@ fn run_fmt(repo: &FixtureRepo, formatter: &str, extra: &[&str]) -> assert_cmd::a
         .assert()
 }
 
-fn run(repo: &FixtureRepo, extra: &[&str]) -> assert_cmd::assert::Assert {
+fn run(repo: &GitRepoFixture, extra: &[&str]) -> assert_cmd::assert::Assert {
     run_fmt(repo, "text", extra)
 }
 
@@ -161,7 +161,7 @@ fn pins_distinguishes_missing_branch_from_missing_file() {
     let err = String::from_utf8(missing_branch.stderr).unwrap();
     assert!(err.contains("could not resolve"), "got: {err}");
 
-    let bare = FixtureRepo::new();
+    let bare = GitRepoFixture::new();
     bare.write_file("README.md", "x");
     bare.commit("no components file");
     let missing_file = Command::cargo_bin("backhopper")

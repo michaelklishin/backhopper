@@ -261,7 +261,7 @@ struct PinsDivergence {
 }
 
 fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<i32> {
-    let repo = GitRepo::open(pins_args.repo_dir_path.clone()).map_err(CliError::Git)?;
+    let repo = GitRepo::open(pins_args.repo_dir_path.clone())?;
     let branch_pins = read_sorted_pins(&repo, &pins_args.branch)?;
     let Some(against) = &pins_args.against_branch else {
         let payload = BranchPins {
@@ -427,7 +427,7 @@ fn resolved_series_name(common: &SyncCommon) -> CliResult<SeriesName> {
 
 fn build_payload(cfg: &Config, common: &SyncCommon) -> CliResult<SyncOutput> {
     let series_name = resolved_series_name(common)?;
-    let repo = GitRepo::open(&common.repo_dir_path).map_err(CliError::Git)?;
+    let repo = GitRepo::open(&common.repo_dir_path)?;
     let text = read_components_mk_at(&repo, &common.from_branch)?;
     Ok(build_sync_output_for_branch(
         &text,
@@ -440,9 +440,7 @@ fn build_payload(cfg: &Config, common: &SyncCommon) -> CliResult<SyncOutput> {
 fn read_components_mk_at(repo: &GitRepo, branch: &str) -> CliResult<String> {
     let commit = resolve_branch(repo, branch)
         .map_err(|e| CliError::InvalidInput(format!("could not resolve {branch:?}: {e}")))?;
-    let blobs = repo
-        .read_paths_at_commit(&commit, |p| p == COMPONENTS_MK_PATH)
-        .map_err(CliError::Git)?;
+    let blobs = repo.read_paths_at_commit(&commit, |p| p == COMPONENTS_MK_PATH)?;
     let Some(blob) = blobs.into_iter().next() else {
         return Err(CliError::InvalidInput(format!(
             "{COMPONENTS_MK_PATH} not found at {branch} ({commit})"
@@ -478,7 +476,7 @@ pub fn resolve_branch(repo: &GitRepo, branch: &str) -> Result<CommitSha, String>
 fn sync_preview(args: &GlobalArgs, cfg: &Config, preview: PreviewArgs) -> CliResult<i32> {
     let targets = preview_targets(&preview)?;
     let multi_branch = targets.len() > 1;
-    let repo = GitRepo::open(&preview.repo_dir_path).map_err(CliError::Git)?;
+    let repo = GitRepo::open(&preview.repo_dir_path)?;
     let mut series_outputs: Vec<SyncOutput> = Vec::new();
     for branch in &targets {
         let series_name = preview_series_name(&preview, branch, targets.len())?;
@@ -689,20 +687,17 @@ pub fn merge_sync_into_config_text(
     for pin in &payload.pins {
         match existing_by_project.get(pin.project.as_str()) {
             None if all_existing_projects.contains(pin.project.as_str()) => {
-                outcome.skipped_non_literal.push(
-                    ProjectName::new(pin.project.clone()).map_err(|e| CliError::Core(e.into()))?,
-                );
+                outcome
+                    .skipped_non_literal
+                    .push(ProjectName::new(pin.project.clone())?);
             }
             None => outcome.added.push(pin.clone()),
             Some(t) if *t == pin.tag.as_str() => outcome.unchanged.push(pin.clone()),
             Some(t) => {
                 let conflict = MergeConflict {
-                    project: ProjectName::new(pin.project.clone())
-                        .map_err(|e| CliError::Core(e.into()))?,
-                    existing_tag: TagName::new((*t).to_owned())
-                        .map_err(|e| CliError::Core(e.into()))?,
-                    inferred_tag: TagName::new(pin.tag.clone())
-                        .map_err(|e| CliError::Core(e.into()))?,
+                    project: ProjectName::new(pin.project.clone())?,
+                    existing_tag: TagName::new((*t).to_owned())?,
+                    inferred_tag: TagName::new(pin.tag.clone())?,
                 };
                 if overwrite_existing {
                     outcome.updated.push(conflict);
@@ -997,9 +992,7 @@ fn pin_payload_for(pin: &DepPin, project: &Project) -> Result<PinPayload, String
 }
 
 fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<i32> {
-    let s = cfg
-        .series_by_name(&series)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let s = cfg.series_by_name(&series)?;
     let payload = SeriesShow {
         name: s.name.to_string(),
         pins: s.pins.iter().map(pin_spec_to_payload).collect(),

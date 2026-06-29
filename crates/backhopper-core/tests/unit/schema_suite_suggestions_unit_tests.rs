@@ -3,34 +3,19 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{Module, Snapshot, SnapshotHeader, state};
-use time::OffsetDateTime;
+use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, module, snapshot_header};
 
 fn snap() -> Snapshot<state::Canonical> {
-    let header = SnapshotHeader {
-        project: ProjectName::new("rabbit").unwrap(),
-        tag: TagName::new("v4.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    };
-    Snapshot::from_extracted(
-        header,
-        vec![Module::new(ModuleName::new("rabbit_db_queue").unwrap())],
-        Vec::new(),
+    canonical_snapshot(
+        snapshot_header("rabbit", "v4.0.0"),
+        vec![module("rabbit_db_queue")],
     )
-    .into_canonical()
 }
 
 fn suggested(diff: &str) -> Vec<String> {

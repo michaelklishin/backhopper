@@ -120,9 +120,9 @@ fn init_output_is_a_loadable_config() {
 
 #[test]
 fn init_with_rabbitmq_reports_skipped_branches_that_have_no_components_mk() {
-    use crate::helpers::fixture::FixtureRepo;
+    use backhopper_test_support::GitRepoFixture;
 
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("README.md", "no components.mk here\n");
     repo.commit("seed");
 
@@ -147,14 +147,14 @@ fn init_with_rabbitmq_reports_skipped_branches_that_have_no_components_mk() {
 
 #[test]
 fn init_with_rabbitmq_repo_writes_inferred_series_and_project_stubs() {
-    use crate::helpers::fixture::FixtureRepo;
+    use backhopper_test_support::GitRepoFixture;
 
     let components_mk = "\
 dep_ra = hex 2.16.13
 dep_khepri = hex 0.17.0
 dep_osiris = hex 1.8.6
 ";
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("rabbitmq-components.mk", components_mk);
     repo.commit("seed");
 
@@ -190,10 +190,10 @@ dep_osiris = hex 1.8.6
 
 #[test]
 fn init_with_rabbitmq_repo_emits_self_project_block() {
-    use crate::helpers::fixture::FixtureRepo;
+    use backhopper_test_support::GitRepoFixture;
 
     let components_mk = "dep_ra = hex 2.16.13\n";
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("rabbitmq-components.mk", components_mk);
     repo.commit("seed");
 

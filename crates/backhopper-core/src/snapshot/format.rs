@@ -14,9 +14,8 @@ use time::format_description::well_known::Rfc3339;
 use crate::errors::SnapshotError;
 use crate::model::names::ModuleName;
 use crate::model::snapshot::{
-    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, IfdefGuardKind, Module, Provenance, Snapshot,
-    SnapshotHeader, TestExportVariant, VendoredDep, VendoredDepSource, VersionedMachineVersion,
-    Visibility, WireConstantBinding, WireValue, state,
+    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, Module, Provenance, Snapshot, SnapshotHeader,
+    VendoredDep, VersionedMachineVersion, Visibility, WireConstantBinding, WireValue, state,
 };
 
 pub const HEADER_PREFIX: &str = "# ";
@@ -98,11 +97,7 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
 }
 
 fn write_dep_pin<W: Write>(w: &mut W, pin: &VendoredDep) -> io::Result<()> {
-    let label = match pin.source {
-        VendoredDepSource::Hex => "hex",
-        VendoredDepSource::Git => "git",
-        VendoredDepSource::GitRmq => "git_rmq",
-    };
+    let label = pin.source.as_label();
     writeln!(w, "# dep-pin: {} = {} {}", pin.name, label, pin.version)
 }
 
@@ -161,10 +156,7 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
         }
     }
     for t in &m.test_only_exports {
-        let variant = match t.variant {
-            TestExportVariant::A => "a",
-            TestExportVariant::B => "b",
-        };
+        let variant = t.variant.as_label();
         match t.body_line {
             Some(body) => writeln!(
                 w,
@@ -179,11 +171,7 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
         }
     }
     for im in &m.ifdef_macros {
-        let guard = match im.guard_kind {
-            IfdefGuardKind::Test => "test",
-            IfdefGuardKind::NotTest => "not_test",
-            IfdefGuardKind::Other => "other",
-        };
+        let guard = im.guard_kind.as_label();
         writeln!(
             w,
             "  ifdef_macro {} guard={} line={}",

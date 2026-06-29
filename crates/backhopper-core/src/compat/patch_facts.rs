@@ -23,7 +23,7 @@ use crate::model::verdict::{FileLoggingStyle, KhepriSignals, LoggingStyle, Patch
 pub(crate) fn suggest_suites(files: &[PatchedFile]) -> Vec<String> {
     let mut out: BTreeSet<String> = BTreeSet::new();
     for file in files {
-        let Some(path) = file.new_path.as_ref().or(file.old_path.as_ref()) else {
+        let Some(path) = file.primary_path() else {
             continue;
         };
         let path_str = path.to_string_lossy();
@@ -58,7 +58,7 @@ pub(crate) fn classify(files: &[PatchedFile]) -> PatchFacts {
     let mut saw_khepri_branch = false;
     let mut introduces_versioned_record: BTreeSet<RecordName> = BTreeSet::new();
     for file in files {
-        let Some(path) = file.new_path.as_ref().or(file.old_path.as_ref()) else {
+        let Some(path) = file.primary_path() else {
             continue;
         };
         let path_str = path.to_string_lossy();
@@ -100,7 +100,7 @@ pub(crate) fn classify(files: &[PatchedFile]) -> PatchFacts {
         };
         if dominant != LoggingStyle::None {
             logging_style.insert(
-                path.clone(),
+                path.to_path_buf(),
                 FileLoggingStyle {
                     dominant,
                     logger_macro_sites,

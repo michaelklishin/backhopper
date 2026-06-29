@@ -2,54 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::Patch;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
-use backhopper_core::model::pin::Pin;
+use backhopper_core::model::names::{Arity, FunctionName};
 use backhopper_core::model::snapshot::{
-    ArityMatch, Deprecation, FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
+    ArityMatch, Deprecation, Module, Snapshot, Visibility, state,
 };
 use backhopper_core::model::verdict::{Reason, Verdict};
-
-fn header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("ra").unwrap(),
-        tag: TagName::new("v3.1.6").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_test_support::{canonical_snapshot, module_with, pin, snapshot_header};
 
 fn module(name: &str, visibility: Visibility, exports: &[(&str, u8)]) -> Module {
-    let mut m = Module::new(ModuleName::new(name).unwrap());
+    let mut m = module_with(name, exports);
     m.visibility = visibility;
-    for (n, a) in exports {
-        m.exports.push(FunArity {
-            name: FunctionName::new(*n).unwrap(),
-            arity: Arity::new(*a),
-        });
-    }
     m
 }
 
 fn snapshot_with(modules: Vec<Module>) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(header(), modules, vec![]).into_canonical()
-}
-
-fn pin() -> Pin {
-    Pin::new(
-        ProjectName::new("ra").unwrap(),
-        TagName::new("v3.1.6").unwrap(),
-    )
+    canonical_snapshot(snapshot_header("ra", "v3.1.6"), modules)
 }
 
 #[test]
@@ -70,7 +38,7 @@ diff --git a/ra_server.erl b/ra_server.erl
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against_series(&[(pin(), snap)]);
+        .against_series(&[(pin("ra", "v3.1.6"), snap)]);
     let r0 = &v.results[0];
     assert!(matches!(
         r0.verdict,
@@ -109,7 +77,7 @@ diff --git a/ra_directory.erl b/ra_directory.erl
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against_series(&[(pin(), snap)]);
+        .against_series(&[(pin("ra", "v3.1.6"), snap)]);
     let r0 = &v.results[0];
     assert!(
         r0.verdict
@@ -137,7 +105,7 @@ diff --git a/ra_server_proc.erl b/ra_server_proc.erl
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against_series(&[(pin(), snap)]);
+        .against_series(&[(pin("ra", "v3.1.6"), snap)]);
     let r0 = &v.results[0];
     assert!(
         r0.verdict.reasons().iter().any(
@@ -161,7 +129,7 @@ diff --git a/ra_machine.erl b/ra_machine.erl
     let v = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against_series(&[(pin(), snap)]);
+        .against_series(&[(pin("ra", "v3.1.6"), snap)]);
     let r0 = &v.results[0];
     assert!(r0.verdict.is_compatible() || matches!(r0.verdict, Verdict::Compatible));
 }

@@ -1102,6 +1102,15 @@ pub struct SeriesSummary {
     pub inapplicable: u32,
 }
 
+impl SeriesSummary {
+    /// True when any pin needs attention: the one rule both the series
+    /// exit code and the round clearance gate on.
+    #[must_use]
+    pub fn is_blocking(&self) -> bool {
+        self.incompatible > 0 || self.requires_adaptation > 0
+    }
+}
+
 // 0 every pin clean; 3 partial-success when any pin needs attention
 pub mod exit {
     pub const OK: i32 = 0;
@@ -1144,7 +1153,7 @@ impl SeriesVerdict {
 
     // 0 when every pin is Compatible or Inapplicable; 3 otherwise
     pub fn worst_exit_code(&self) -> i32 {
-        if self.summary.incompatible > 0 || self.summary.requires_adaptation > 0 {
+        if self.summary.is_blocking() {
             exit::NEEDS_ATTENTION
         } else {
             exit::OK
@@ -1451,7 +1460,10 @@ impl AvailabilityQuery {
                 function: function.clone(),
             }),
             SymbolKind::Record { name } => Some(Self::Record { name: name.clone() }),
-            _ => None,
+            SymbolKind::Behaviour { .. }
+            | SymbolKind::Callback { .. }
+            | SymbolKind::Macro { .. }
+            | SymbolKind::Type { .. } => None,
         }
     }
 }

@@ -12,10 +12,10 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn make_demo_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_demo_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "src/demo.erl",
         "-module(demo).\n-export([go/0]).\ngo() -> ok.\n",
@@ -25,7 +25,11 @@ fn make_demo_repo() -> FixtureRepo {
     repo
 }
 
-fn write_series_config(workdir: &TempDir, repo: &FixtureRepo, snapshot_dir: &PathBuf) -> PathBuf {
+fn write_series_config(
+    workdir: &TempDir,
+    repo: &GitRepoFixture,
+    snapshot_dir: &PathBuf,
+) -> PathBuf {
     fs::create_dir_all(snapshot_dir).unwrap();
     let body = format!(
         r#"

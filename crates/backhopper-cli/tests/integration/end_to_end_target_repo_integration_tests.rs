@@ -15,10 +15,10 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn make_source_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_source_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
         "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
@@ -28,15 +28,15 @@ fn make_source_repo() -> FixtureRepo {
     repo
 }
 
-fn make_target_repo_without_path() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_target_repo_without_path() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file("README.md", "target branch\n");
     repo.commit("seed");
     repo
 }
 
-fn make_target_repo_with_translated_path() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_target_repo_with_translated_path() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_federation/src/rabbit_federation_link.erl",
         "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
@@ -45,7 +45,7 @@ fn make_target_repo_with_translated_path() -> FixtureRepo {
     repo
 }
 
-fn write_config(workdir: &TempDir, repo: &FixtureRepo, snapshot_dir: &Path) -> PathBuf {
+fn write_config(workdir: &TempDir, repo: &GitRepoFixture, snapshot_dir: &Path) -> PathBuf {
     fs::create_dir_all(snapshot_dir).unwrap();
     let body = format!(
         r#"
@@ -180,7 +180,7 @@ fn missing_target_path_without_translation_emits_inapplicable() {
 fn already_present_via_x_pick_lands_in_diagnostics() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
         "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
@@ -232,7 +232,7 @@ fn already_present_via_x_pick_lands_in_diagnostics() {
 fn skip_already_present_flag_suppresses_the_probe() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
         "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
@@ -282,7 +282,7 @@ fn skip_already_present_flag_suppresses_the_probe() {
 fn batch_rows_carry_already_present_diagnostics() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbitmq_federation_common/src/rabbit_federation_link.erl",
         "-module(rabbit_federation_link).\n-export([status/0]).\nstatus() -> ok.\n",
@@ -367,8 +367,8 @@ fn unrelated_target_repo_yields_a_skipped_note() {
 /// Builds one repo where v1 pins cowboy 2.13 and main pins 2.16,
 /// with an `.app.src` chain mgmt → web_dispatch → cowboy. Returns
 /// the repo and the SHA of a commit touching mgmt source.
-fn build_dep_pin_fixture() -> (FixtureRepo, String) {
-    let repo = FixtureRepo::new();
+fn build_dep_pin_fixture() -> (GitRepoFixture, String) {
+    let repo = GitRepoFixture::new();
     repo.write_file("rabbitmq-components.mk", "dep_cowboy = hex 2.13.0\n");
     repo.write_file(
         "deps/mgmt/src/mgmt.app.src",
@@ -398,7 +398,7 @@ fn build_dep_pin_fixture() -> (FixtureRepo, String) {
     (repo, sha)
 }
 
-fn check_commit_json(repo: &FixtureRepo, cfg_path: &Path, sha: &str) -> Value {
+fn check_commit_json(repo: &GitRepoFixture, cfg_path: &Path, sha: &str) -> Value {
     let a = run([
         "--formatter",
         "json",
@@ -535,8 +535,8 @@ fn missing_translations_file_is_hard_error() {
 
 // A cleanly-applying hunk references a macro the target branch never
 // had: flagged pre-pick rather than at the build.
-fn make_macro_source_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_macro_source_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/demo/src/rabbit_oauth2_resource.erl",
         "-module(rabbit_oauth2_resource).\n-define(OAUTH2_BOOTSTRAP_PATH, \"/oauth\").\n-export([init/0]).\ninit() -> ok.\n",
@@ -551,8 +551,8 @@ fn make_macro_source_repo() -> FixtureRepo {
     repo
 }
 
-fn make_macro_target_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_macro_target_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     // same module, but the branch never had the macro
     repo.write_file(
         "deps/demo/src/rabbit_oauth2_resource.erl",
@@ -600,8 +600,8 @@ fn macro_undefined_on_target_is_flagged_through_the_cli() {
 
 // A modified region the target branch diverged on: the preimage block
 // is absent on target, so the pick will conflict. Flagged pre-pick.
-fn make_preimage_source_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_preimage_source_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/demo/src/ra_log.erl",
         "-module(ra_log).\n-export([state/0]).\nstate() -> original.\n",
@@ -616,8 +616,8 @@ fn make_preimage_source_repo() -> FixtureRepo {
     repo
 }
 
-fn make_preimage_target_repo() -> FixtureRepo {
-    let repo = FixtureRepo::new();
+fn make_preimage_target_repo() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/demo/src/ra_log.erl",
         "-module(ra_log).\n-export([state/0]).\nstate() -> diverged.\n",
@@ -666,7 +666,7 @@ fn target_preimage_divergence_is_flagged_through_the_cli() {
 fn record_undefined_on_target_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let source = FixtureRepo::new();
+    let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/ra_machine.erl",
         "-module(ra_machine).\n-record(cfg, {field}).\n-export([init/1]).\ninit(S) -> S.\n",
@@ -678,7 +678,7 @@ fn record_undefined_on_target_is_flagged_through_the_cli() {
         "-module(ra_machine).\n-record(cfg, {field}).\n-export([init/1]).\ninit(S) -> S#cfg.field.\n",
     );
     source.commit("use the record");
-    let target = FixtureRepo::new();
+    let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/ra_machine.erl",
         "-module(ra_machine).\n-export([init/1]).\ninit(S) -> S.\n",
@@ -719,7 +719,7 @@ fn record_undefined_on_target_is_flagged_through_the_cli() {
 fn local_call_undefined_on_target_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let source = FixtureRepo::new();
+    let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/w.erl",
         "-module(w).\n-export([g/0]).\nhelper() -> ok.\ng() -> ok.\n",
@@ -731,7 +731,7 @@ fn local_call_undefined_on_target_is_flagged_through_the_cli() {
         "-module(w).\n-export([g/0]).\nhelper() -> ok.\ng() -> helper().\n",
     );
     source.commit("call helper");
-    let target = FixtureRepo::new();
+    let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/w.erl",
         "-module(w).\n-export([g/0]).\ng() -> ok.\n",
@@ -778,7 +778,7 @@ fn local_call_undefined_on_target_is_flagged_through_the_cli() {
 fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let source = FixtureRepo::new();
+    let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/caller.erl",
         "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
@@ -794,7 +794,7 @@ fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
         "-module(helper).\n-export([fresh/1]).\nfresh(X) -> X.\n",
     );
     source.commit("add helper:fresh/1 and call it");
-    let target = FixtureRepo::new();
+    let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/caller.erl",
         "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
@@ -843,7 +843,7 @@ fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
 fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let source = FixtureRepo::new();
+    let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/caller.erl",
         "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
@@ -855,7 +855,7 @@ fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
         "-module(caller).\n-export([go/0]).\ngo() -> ok.\nf() -> helper:missing(x).\n",
     );
     source.commit("call helper:missing/1");
-    let target = FixtureRepo::new();
+    let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/caller.erl",
         "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
@@ -929,7 +929,7 @@ fn partial_target_absence_emits_target_path_absent() {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
     // mgmt.erl exists on the source pin but not the target tree.
-    let source = FixtureRepo::new();
+    let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/core.erl",
         "-module(core).\n-export([go/0]).\ngo() -> ok.\n",
@@ -949,7 +949,7 @@ fn partial_target_absence_emits_target_path_absent() {
         "-module(mgmt).\n-export([m/0]).\nm() -> core:go().\n",
     );
     source.commit("edit both bodies");
-    let target = FixtureRepo::new();
+    let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/core.erl",
         "-module(core).\n-export([go/0]).\ngo() -> ok.\n",

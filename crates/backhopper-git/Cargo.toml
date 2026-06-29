@@ -23,6 +23,7 @@ time        = { workspace = true }
 tracing     = { workspace = true }
 
 [dev-dependencies]
+backhopper-test-support = { path = "../backhopper-test-support" }
 tempfile    = { workspace = true }
 
 [[test]]

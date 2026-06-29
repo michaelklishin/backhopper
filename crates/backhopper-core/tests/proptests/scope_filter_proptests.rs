@@ -3,45 +3,20 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use proptest::prelude::*;
-use time::OffsetDateTime;
 
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
-};
+use backhopper_core::model::snapshot::{Module, Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 fn arb_lower_atom() -> impl Strategy<Value = String> {
     "[a-z][a-z0-9_]{0,7}".prop_map(|s| s)
 }
 
-fn header(project: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src/**/*.erl".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "proptest".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
-
 fn module_with_export(name: &str, fun: &str, arity: u8) -> Module {
-    let mut m = Module::new(ModuleName::new(name).unwrap());
-    m.visibility = Visibility::Public;
-    m.exports.push(FunArity {
-        name: FunctionName::new(fun).unwrap(),
-        arity: Arity::new(arity),
-    });
-    m
+    module_with(name, &[(fun, arity)])
 }
 
 proptest! {
@@ -65,7 +40,7 @@ proptest! {
             .map(|m| module_with_export(m, "noop", 0))
             .collect();
         let snap: Snapshot<state::Canonical> =
-            Snapshot::from_extracted(header(project), modules, vec![]).into_canonical();
+            canonical_snapshot(snapshot_header(project, "v1.0.0"), modules);
         let scope = PinScope::from_snapshot(ProjectName::new(project).unwrap(), &snap, []);
         let context = EvaluationContext::new(
             Pin::new(

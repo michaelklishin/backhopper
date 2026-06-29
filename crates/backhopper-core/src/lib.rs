@@ -10,6 +10,7 @@ pub mod config;
 pub mod envelope_version;
 pub mod erlang_macros;
 pub mod errors;
+pub mod extract;
 pub mod model;
 #[cfg(feature = "schemars")]
 pub mod schema;
@@ -20,6 +21,7 @@ pub mod suites;
 pub mod versions;
 
 pub use errors::{Error, Result};
+pub use extract::{ExtractError, ExtractedSource, classify_visibility};
 pub use model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 pub use model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FieldName,

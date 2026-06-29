@@ -13,13 +13,13 @@ use backhopper_core::model::names::{GitRef, RelativePath};
 use backhopper_core::model::verdict::Reason;
 use backhopper_git::{GitRepo, build_target_tree_index};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
 }
 
-fn build_target(repo: &FakeRepo) -> TargetTreeIndex {
+fn build_target(repo: &GitRepoFixture) -> TargetTreeIndex {
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let head = GitRef::new("HEAD").unwrap();
     build_target_tree_index(&g, &head).unwrap()
@@ -35,7 +35,7 @@ fn rabbit_globs() -> Vec<String> {
 
 #[test]
 fn suite_with_missing_helper_emits_test_module_symbol_missing_and_diagnostic() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/rabbit/src/rabbit_app.erl", "-module(rabbit_app).\n");
     repo.commit("rabbit only");
     let target = build_target(&repo);
@@ -62,7 +62,7 @@ fn suite_with_missing_helper_emits_test_module_symbol_missing_and_diagnostic() {
 
 #[test]
 fn behaviour_module_missing_emitted_for_unresolved_attribute() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -83,7 +83,7 @@ fn behaviour_module_missing_emitted_for_unresolved_attribute() {
 
 #[test]
 fn header_file_missing_emitted_for_unresolved_include_lib() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -104,7 +104,7 @@ fn header_file_missing_emitted_for_unresolved_include_lib() {
 
 #[test]
 fn behaviour_resolved_against_target_does_not_fire() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "deps/rabbit/src/custom_ct_hook.erl",
         "-module(custom_ct_hook).\n",
@@ -128,7 +128,7 @@ fn behaviour_resolved_against_target_does_not_fire() {
 
 #[test]
 fn stdlib_behaviour_never_flagged() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -144,7 +144,7 @@ fn stdlib_behaviour_never_flagged() {
 
 #[test]
 fn hrl_file_only_runs_include_resolver() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -164,7 +164,7 @@ fn hrl_file_only_runs_include_resolver() {
 
 #[test]
 fn analyse_added_files_merges_per_file_diagnostics() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -192,7 +192,7 @@ fn analyse_added_files_merges_per_file_diagnostics() {
 
 #[test]
 fn stdlib_include_lib_not_flagged_even_when_absent() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -219,7 +219,7 @@ fn relative_include_still_flagged_even_when_app_name_matches_stdlib() {
     // `-include("kernel.hrl")` is project-local, not a stdlib library
     // include. The stdlib-include-lib filter must not leak into the
     // relative-include path.
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -240,7 +240,7 @@ fn relative_include_still_flagged_even_when_app_name_matches_stdlib() {
 
 #[test]
 fn non_erl_non_hrl_path_short_circuits_every_resolver() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);
@@ -256,7 +256,7 @@ fn non_erl_non_hrl_path_short_circuits_every_resolver() {
 
 #[test]
 fn non_suite_erl_does_not_run_test_helper_resolver() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");
     let target = build_target(&repo);

@@ -19,7 +19,6 @@ use bel7_cli::{
 };
 use serde::Serialize;
 
-use backhopper_core::Error as CoreError;
 use backhopper_core::app_src::{AppSrcSpec, application_of_path, parse as app_src_parse};
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
@@ -57,7 +56,7 @@ use backhopper_git::{
 };
 
 use crate::cli::check::TargetRepoArgs;
-use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
+use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, PinSelectorArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
 };
@@ -82,7 +81,7 @@ use crate::commands::target_repo;
 use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
-use crate::tables::render_evaluation_table;
+use crate::tables::{format_symbol, render_evaluation_table};
 
 #[derive(Debug, Serialize)]
 struct CompatPayload {
@@ -146,7 +145,7 @@ fn resolve_commit_input(
     merges: MergePolicy,
     pr: PrCommitPolicy,
 ) -> CliResult<ResolvedForCheck> {
-    let repo = GitRepo::open(repo_dir_path.to_path_buf()).map_err(CliError::Git)?;
+    let repo = GitRepo::open(repo_dir_path.to_path_buf())?;
     let sha =
         expand_prefix_with(&repo, prefix).map_err(|e| enrich_with_repo_path(e, repo_dir_path))?;
     let input = ResolvedPatchInput::for_commit(&repo, &sha, merges, pr)?;
@@ -193,8 +192,8 @@ impl SourceFilesInput<'_> {
                 repo_dir,
                 diff_base,
             } => {
-                let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
-                load_files_at(&repo, &diff_base).map_err(CliError::Git)
+                let repo = GitRepo::open(repo_dir.to_path_buf())?;
+                Ok(load_files_at(&repo, &diff_base)?)
             }
         }
     }
@@ -204,9 +203,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
     let cfg = load_config(args)?;
     match cmd {
         CheckCmd::Patch {
-            project,
-            tag,
-            series,
+            selector,
             repo_dir_path,
             source,
             target,
@@ -218,9 +215,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 args,
                 &cfg,
                 &bytes,
-                project,
-                tag,
-                series,
+                &selector,
                 Some(&repo_dir_path),
                 SourceFilesInput::Eager(FileMap::new()),
                 &source,
@@ -230,9 +225,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             )
         }
         CheckCmd::Commit {
-            project,
-            tag,
-            series,
+            selector,
             repo,
             source,
             target,
@@ -250,9 +243,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 args,
                 &cfg,
                 &resolved.bytes,
-                project,
-                tag,
-                series,
+                &selector,
                 Some(&repo_dir_path),
                 SourceFilesInput::AtDiffBase {
                     repo_dir: &repo_dir_path,
@@ -265,9 +256,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             )
         }
         CheckCmd::Range {
-            project,
-            tag,
-            series,
+            selector,
             repo,
             range,
             merge_commit,
@@ -287,9 +276,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                     args,
                     &cfg,
                     &resolved.bytes,
-                    project,
-                    tag,
-                    series,
+                    &selector,
                     Some(&repo_dir_path),
                     SourceFilesInput::AtDiffBase {
                         repo_dir: &repo_dir_path,
@@ -307,9 +294,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                     args,
                     &cfg,
                     &bytes,
-                    project,
-                    tag,
-                    series,
+                    &selector,
                     Some(&repo_dir_path),
                     SourceFilesInput::Eager(source_files),
                     &source,
@@ -320,9 +305,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             }
         }
         CheckCmd::Merge {
-            project,
-            tag,
-            series,
+            selector,
             repo,
             source,
             target,
@@ -340,9 +323,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 args,
                 &cfg,
                 &resolved.bytes,
-                project,
-                tag,
-                series,
+                &selector,
                 Some(&repo_dir_path),
                 SourceFilesInput::AtDiffBase {
                     repo_dir: &repo_dir_path,
@@ -355,9 +336,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             )
         }
         CheckCmd::Pr {
-            project,
-            tag,
-            series,
+            selector,
             repo,
             source,
             target,
@@ -370,9 +349,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
                 args,
                 &cfg,
                 &bytes,
-                project,
-                tag,
-                series,
+                &selector,
                 Some(&repo_dir_path),
                 SourceFilesInput::Eager(FileMap::new()),
                 &source,
@@ -508,24 +485,19 @@ fn build_pin_files(
         // pin.tag for self-pins is the resolved commit SHA.
         let commit = CommitSha::new(pin.tag.as_str())
             .map_err(|e| CliError::Other(format!("self-pin tag is not a SHA: {e}")))?;
-        let repo = GitRepo::open(repo_path).map_err(CliError::Git)?;
+        let repo = GitRepo::open(repo_path)?;
         (repo, commit)
     } else {
-        let git_url = project
-            .require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf();
-        let repo = GitRepo::open(git_url).map_err(CliError::Git)?;
-        let commit = repo.resolve_tag(&pin.tag).map_err(CliError::Git)?;
+        let git_url = project.require_git_url()?.to_path_buf();
+        let repo = GitRepo::open(git_url)?;
+        let commit = repo.resolve_tag(&pin.tag)?;
         (repo, commit)
     };
     let needed: BTreeSet<String> = in_scope
         .iter()
         .map(|(_, project_path)| project_path.to_string_lossy().into_owned())
         .collect();
-    let blobs = repo
-        .read_paths_at_commit(&commit, |p| needed.contains(p))
-        .map_err(CliError::Git)?;
+    let blobs = repo.read_paths_at_commit(&commit, |p| needed.contains(p))?;
     let mut present: BTreeMap<String, Vec<u8>> = blobs
         .into_iter()
         .map(|b| (b.path.to_string_lossy().into_owned(), b.bytes))
@@ -655,7 +627,7 @@ fn resolve_rev_with_hint(g: &GitRepo, repo: &Path, rev: &str) -> CliResult<Commi
 }
 
 fn range_source_files(repo: &Path, range: Option<&str>) -> CliResult<FileMap> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let g = GitRepo::open(repo.to_path_buf())?;
     let Some(r) = range else {
         return Err(CliError::InvalidInput(
             "specify either --range BASE..HEAD or --merge-commit SHA".into(),
@@ -665,9 +637,7 @@ fn range_source_files(repo: &Path, range: Option<&str>) -> CliResult<FileMap> {
         .split_once("..")
         .ok_or_else(|| CliError::InvalidInput("--range expects BASE..HEAD".into()))?;
     let from = resolve_rev_with_hint(&g, repo, a)?;
-    let blobs = g
-        .read_paths_at_commit(&from, |p| p.ends_with(".erl") || p.ends_with(".hrl"))
-        .map_err(CliError::Git)?;
+    let blobs = g.read_paths_at_commit(&from, |p| p.ends_with(".erl") || p.ends_with(".hrl"))?;
     let mut map = FileMap::new();
     for blob in blobs {
         if let Ok(text) = String::from_utf8(blob.bytes) {
@@ -678,7 +648,7 @@ fn range_source_files(repo: &Path, range: Option<&str>) -> CliResult<FileMap> {
 }
 
 fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
-    let g = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let g = GitRepo::open(repo.to_path_buf())?;
     let Some(r) = range else {
         return Err(CliError::InvalidInput(
             "specify either --range BASE..HEAD or --merge-commit SHA".into(),
@@ -691,9 +661,7 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
         resolve_rev_with_hint(&g, repo, a)?,
         resolve_rev_with_hint(&g, repo, b)?,
     );
-    let text = g
-        .diff_commits_unified(&from, &to, analyzable_diff_path)
-        .map_err(CliError::Git)?;
+    let text = g.diff_commits_unified(&from, &to, analyzable_diff_path)?;
     Ok(text.into_bytes())
 }
 
@@ -710,8 +678,8 @@ fn commit_macro_env(repo_dir: &Path, diff_base: &CommitSha, bytes: &[u8]) -> Cli
     if bytes.is_empty() {
         return Ok(MacroEnv::Resolved("no-touched-files".to_owned()));
     }
-    let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
-    let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
+    let patch = Patch::parse(bytes)?;
+    let repo = GitRepo::open(repo_dir.to_path_buf())?;
     Ok(
         match macro_environment_hash(&repo, diff_base, &patch.files) {
             Some(hash) => MacroEnv::Resolved(hash),
@@ -727,7 +695,7 @@ fn apply_target_context(
     covered_modules: &BTreeSet<ModuleName>,
     evaluation: &mut SeriesEvaluation,
 ) -> CliResult<()> {
-    let parsed = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
+    let parsed = Patch::parse(bytes)?;
     let touched: Vec<target_repo::TouchedPath<'_>> = parsed
         .files
         .iter()
@@ -766,9 +734,7 @@ fn apply_target_context(
 fn covered_module_set(cache: &SnapshotCache<'_>, pins: &[Pin]) -> CliResult<BTreeSet<ModuleName>> {
     let mut modules = BTreeSet::new();
     for pin in pins {
-        let snap = cache
-            .get(&pin.project, &pin.tag)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let snap = cache.get(&pin.project, &pin.tag)?;
         modules.extend(snap.modules().iter().map(|m| m.name.clone()));
     }
     Ok(modules)
@@ -1066,9 +1032,7 @@ fn run_check_patch(
     args: &GlobalArgs,
     cfg: &Config,
     bytes: &[u8],
-    project: Option<ProjectName>,
-    tag: Option<TagName>,
-    series: Option<SeriesName>,
+    selector: &PinSelectorArgs,
     repo_dir_path: Option<&Path>,
     source_files: SourceFilesInput<'_>,
     source: &SourcePinArgs,
@@ -1081,12 +1045,10 @@ fn run_check_patch(
         "commit-shaped inputs always carry a repo path"
     );
     let store = open_store_read(args, cfg)?;
-    let pin_specs: Vec<PinSpec> = match (&project, &tag, &series) {
+    let pin_specs: Vec<PinSpec> = match (&selector.project, &selector.tag, &selector.series) {
         (Some(p), Some(t), None) => vec![PinSpec::literal(p.clone(), t.clone())],
         (None, None, Some(s)) => {
-            let s = cfg
-                .series_by_name_with_coverage_check(s)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let s = cfg.series_by_name_with_coverage_check(s)?;
             s.pins.clone()
         }
         _ => {
@@ -1102,9 +1064,9 @@ fn run_check_patch(
         cfg,
         &store,
         &pins,
-        project.as_ref(),
-        tag.as_ref(),
-        series.as_ref(),
+        selector.project.as_ref(),
+        selector.tag.as_ref(),
+        selector.series.as_ref(),
         source,
     )?;
     let target_ctx = target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?;
@@ -1119,7 +1081,7 @@ fn run_check_patch(
             cfg,
             &store,
             &p.sha,
-            series.as_ref(),
+            selector.series.as_ref(),
             &pins,
             &pin_specs,
             &source_pins,
@@ -1210,7 +1172,7 @@ fn run_check_patch(
         repo_dir_path,
         diagnostics.suggest_prereqs,
     );
-    let queried = match (&project, &tag, &series) {
+    let queried = match (&selector.project, &selector.tag, &selector.series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
             project: p.to_string(),
             tag: t.to_string(),
@@ -1259,7 +1221,7 @@ fn run_check_patch(
             &self_project_names(cfg),
             sha,
             subject,
-            series.clone(),
+            selector.series.clone(),
             provenance.as_ref().map(|p| p.parent_count),
         );
         emit_rows(summary_fmt, &[row])?;
@@ -1336,29 +1298,10 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
 }
 
 fn reason_md_label(r: &Reason) -> String {
-    let sym = |k: &SymbolKind| -> String {
-        match k {
-            SymbolKind::Function { mfa } => mfa.to_string(),
-            SymbolKind::FunctionAnyArity { module, function } => format!("{module}:{function}/?"),
-            SymbolKind::Type {
-                module,
-                name,
-                arity,
-            } => format!("{module}:{name}/{arity}"),
-            SymbolKind::Record { name } => format!("#{name}"),
-            SymbolKind::Macro { name } => format!("?{name}"),
-            SymbolKind::Behaviour { module } => format!("behaviour {module}"),
-            SymbolKind::Callback {
-                module,
-                function,
-                arity,
-            } => {
-                format!("callback {module}:{function}/{arity}")
-            }
-        }
-    };
     match r {
-        Reason::MissingSymbol { symbol, .. } => format!("MissingSymbol {}", sym(&symbol.kind)),
+        Reason::MissingSymbol { symbol, .. } => {
+            format!("MissingSymbol {}", format_symbol(&symbol.kind))
+        }
         Reason::ArityChanged {
             module, function, ..
         } => {
@@ -1374,7 +1317,9 @@ fn reason_md_label(r: &Reason) -> String {
         Reason::ContextDrift { path, hunk_index } => {
             format!("ContextDrift {} hunk {}", path.display(), hunk_index)
         }
-        Reason::DeprecatedUsage { symbol, .. } => format!("Deprecated {}", sym(&symbol.kind)),
+        Reason::DeprecatedUsage { symbol, .. } => {
+            format!("Deprecated {}", format_symbol(&symbol.kind))
+        }
         Reason::NowHidden { module } => format!("NowHidden {module}"),
         Reason::RecordFieldsChanged { record, .. } => format!("RecordFieldsChanged #{record}"),
         Reason::UnsupportedFileType { path } => format!("Unsupported {}", path.display()),
@@ -1385,7 +1330,9 @@ fn reason_md_label(r: &Reason) -> String {
             arity,
             ..
         } => format!("ClauseMismatch {module}:{function}/{arity}"),
-        Reason::MissingPrereq { symbol, .. } => format!("MissingPrereq {}", sym(&symbol.kind)),
+        Reason::MissingPrereq { symbol, .. } => {
+            format!("MissingPrereq {}", format_symbol(&symbol.kind))
+        }
         Reason::SyntacticArtifact { path, line, .. } => {
             format!("SyntacticArtifact {}:{line}", path.display())
         }
@@ -1931,7 +1878,7 @@ fn evaluate_one(
     source_files: &FileMap,
     self_repo: Option<&Path>,
 ) -> CliResult<SeriesEvaluation> {
-    let patch = Patch::parse(bytes).map_err(|e| CliError::Core(CoreError::Patch(e)))?;
+    let patch = Patch::parse(bytes)?;
     // patch-pure, so it may join the cached evaluation; assessed post-cache
     let pin_bumps = detect_pin_bumps(&patch.files);
     let touched_paths: Vec<PathBuf> = patch
@@ -1952,17 +1899,13 @@ fn evaluate_one(
     let mut contexts = Vec::with_capacity(pins.len());
     let mut routings: Vec<PathRouting> = Vec::with_capacity(pins.len());
     for (idx, pin) in pins.iter().enumerate() {
-        let project = cfg
-            .project(&pin.project)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let project = cfg.project(&pin.project)?;
         routings.push(classify_paths_for_pin(
             &touched_paths,
             project,
             &sibling_projects,
         ));
-        let snap_arc = cache
-            .get(&pin.project, &pin.tag)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let snap_arc = cache.get(&pin.project, &pin.tag)?;
         let scope = build_pin_scope(project, &snap_arc);
         let pin_self_override = pin_specs.get(idx).and_then(PinSpec::self_repo_override);
         let files = build_pin_files(
@@ -1977,9 +1920,7 @@ fn evaluate_one(
             .with_files(files)
             .with_family_defaults(project.family.defaults());
         if let Some(Some(source_pin)) = source_pins.get(idx) {
-            let source_snap_arc = cache
-                .get(&source_pin.project, &source_pin.tag)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let source_snap_arc = cache.get(&source_pin.project, &source_pin.tag)?;
             ctx = ctx.with_source_snapshot(source_snap_arc);
         }
         contexts.push(ctx);
@@ -2036,7 +1977,7 @@ fn is_self_only_evaluation(cfg: &Config, results: &[PinVerdict]) -> bool {
 }
 
 fn resolve_pin_specs(specs: &[PinSpec], store: &SnapshotStore<ReadOnly>) -> CliResult<Vec<Pin>> {
-    pin::resolve_all(specs, store).map_err(|e| CliError::Core(e.into()))
+    Ok(pin::resolve_all(specs, store)?)
 }
 
 fn promote_self_missing_to_prereq(
@@ -2137,13 +2078,11 @@ fn resolve_all_pin_specs(
     for spec in specs {
         if spec.is_self() {
             let pin = resolve_self_pin(self_repo, spec)?;
-            let project = cfg
-                .project(spec.project())
-                .map_err(|e| CliError::Core(e.into()))?;
+            let project = cfg.project(spec.project())?;
             ensure_self_snapshot_present(args, cfg, store, project, spec, self_repo, &pin)?;
             pins.push(pin);
         } else {
-            pins.push(spec.resolve(store).map_err(|e| CliError::Core(e.into()))?);
+            pins.push(spec.resolve(store)?);
         }
     }
     Ok(pins)
@@ -2177,9 +2116,7 @@ fn resolve_source_pins(
             Ok(vec![Some(Pin::new(p.clone(), src_tag.clone()))])
         }
         (None, None, Some(_), None, Some(src_series_name)) => {
-            let src_series = cfg
-                .series_by_name(src_series_name)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let src_series = cfg.series_by_name(src_series_name)?;
             let src_pins = resolve_pin_specs(&src_series.pins, store)?;
             let mut queues: BTreeMap<ProjectName, VecDeque<Pin>> = BTreeMap::new();
             for sp in src_pins {
@@ -2220,7 +2157,7 @@ fn run_batch(
             "no commits supplied (empty file or stdin)".into(),
         ));
     }
-    let git_repo = GitRepo::open(repo.to_path_buf()).map_err(CliError::Git)?;
+    let git_repo = GitRepo::open(repo.to_path_buf())?;
     let probe = AlreadyPresentProbe::maybe_open(target_ctx.as_ref(), Some(repo));
     let dep_pin_probe = DepPinProbe::maybe_open(target_ctx.as_ref(), Some(repo));
     let plan = BatchPlan::resolve(&git_repo, repo, &entries)?;
@@ -2299,8 +2236,7 @@ fn run_batch(
             let evaluate = |source_files: &mut Option<FileMap>| -> CliResult<SeriesEvaluation> {
                 let input = input.as_ref().expect("resolved before any evaluation");
                 if source_files.is_none() {
-                    *source_files =
-                        Some(input.load_source_files(&git_repo).map_err(CliError::Git)?);
+                    *source_files = Some(input.load_source_files(&git_repo)?);
                 }
                 let files = source_files.as_ref().expect("loaded above");
                 let mut evaluation = evaluate_one(
@@ -2418,9 +2354,7 @@ fn resolve_series_set(
 ) -> CliResult<Vec<ResolvedSeries>> {
     let mut resolved = Vec::with_capacity(series_names.len());
     for name in series_names {
-        let s = cfg
-            .series_by_name_with_coverage_check(name)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let s = cfg.series_by_name_with_coverage_check(name)?;
         let pins = resolve_all_pin_specs(args, cfg, store, &s.pins, Some(repo))?;
         warn_on_stale_extractors(&coverage_report(cfg, store, &pins));
         ensure_pin_snapshots_present(args, cfg, store, &pins, diagnostics.auto_generate)?;

@@ -9,7 +9,6 @@
 
 use std::path::Path;
 
-use backhopper_core::Error as CoreError;
 use backhopper_core::config::{Config, Project};
 use backhopper_core::model::names::{CommitSha, TagName};
 use backhopper_core::model::pin::{Pin, PinSpec};
@@ -50,8 +49,8 @@ pub fn resolve_self_pin(cli_fallback: Option<&Path>, spec: &PinSpec) -> CliResul
         _ => unreachable!("resolve_self_pin called on non-self pin"),
     };
     let self_repo = effective_self_repo(spec, cli_fallback)?;
-    let repo = GitRepo::open(self_repo.to_path_buf()).map_err(CliError::Git)?;
-    let commit = repo.resolve_rev(git_ref.as_str()).map_err(CliError::Git)?;
+    let repo = GitRepo::open(self_repo.to_path_buf())?;
+    let commit = repo.resolve_rev(git_ref.as_str())?;
     let tag = TagName::new(commit.as_str()).map_err(|e| {
         CliError::Other(format!(
             "self pin {project}@{git_ref} resolved to invalid sha {}: {e}",
@@ -77,12 +76,10 @@ pub fn ensure_self_snapshot_present(
         return Ok(());
     }
     let self_repo = effective_self_repo(spec, cli_fallback)?;
-    let repo = GitRepo::open(self_repo.to_path_buf()).map_err(CliError::Git)?;
+    let repo = GitRepo::open(self_repo.to_path_buf())?;
     let commit = CommitSha::new(pin.tag.as_str()).map_err(|e| CliError::Other(e.to_string()))?;
     let snapshot = build_snapshot_at_commit(project, &repo, &commit, &pin.tag)?;
     let mut_store: SnapshotStore<Mutable> = open_store_mut(args, cfg)?;
-    mut_store
-        .write(&snapshot)
-        .map_err(|e| CliError::Core(CoreError::Store(e)))?;
+    mut_store.write(&snapshot)?;
     Ok(())
 }

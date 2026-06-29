@@ -128,6 +128,25 @@ impl<'a> Invocation<'a> {
     }
 }
 
+/// Build the argv a backend reports in `RawOutcome::argv`: the program,
+/// the verb's CLI path segments, then the argument list. One shape so
+/// the subprocess backend and the mock cannot drift.
+pub(crate) fn assemble_argv(
+    program: &OsStr,
+    verb: &VerbId<'_>,
+    args: &[Cow<'_, OsStr>],
+) -> Vec<OsString> {
+    let mut argv = Vec::with_capacity(2 + args.len());
+    argv.push(program.to_owned());
+    for seg in verb.cli_path() {
+        argv.push(OsString::from(seg));
+    }
+    for arg in args {
+        argv.push(arg.to_os_string());
+    }
+    argv
+}
+
 /// How much output to buffer from one of the child's streams.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

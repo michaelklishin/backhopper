@@ -8,13 +8,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, run_fails, run_succeeds, stderr, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const ERL_BASE: &str = r#"
 -module(demo_mod).
@@ -36,7 +35,7 @@ greet(_, _) -> demo_mod:greet(<<"x">>).
 "#;
 
 struct MergeFixture {
-    repo: FixtureRepo,
+    repo: GitRepoFixture,
     workdir: TempDir,
     cfg: PathBuf,
     plain_sha: String,
@@ -47,7 +46,7 @@ struct MergeFixture {
 /// `--no-ff` merge of a one-commit feature branch.
 fn merge_fixture() -> MergeFixture {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_BASE);
     repo.commit("base");
     repo.tag("v1.0.0");
@@ -282,7 +281,7 @@ fn batch_rejects_terse_with_a_summary_hint() {
 #[test]
 fn batch_reports_every_bad_line_before_evaluating_anything() {
     let fixture = merge_fixture();
-    let root_sha = root_sha(&fixture.repo);
+    let root_sha = fixture.repo.root_sha();
     let commits = write_commits_file(
         &fixture,
         &[&fixture.plain_sha, "deadbeefdeadbeef", &root_sha],
@@ -404,19 +403,4 @@ fn pin_targeted_text_summary_renders_a_dash_for_the_series_column() {
     assert_eq!(fields.len(), 6);
     assert_eq!(fields[4], "-");
     assert_eq!(fields[5], "plain change");
-}
-
-fn root_sha(repo: &FixtureRepo) -> String {
-    let out = Command::new("git")
-        .args(["rev-list", "--max-parents=0", "HEAD"])
-        .current_dir(repo.dir.path())
-        .output()
-        .unwrap();
-    String::from_utf8(out.stdout)
-        .unwrap()
-        .lines()
-        .next()
-        .unwrap()
-        .trim()
-        .to_owned()
 }

@@ -7,7 +7,7 @@ use std::process::Command as Std;
 use assert_cmd::Command;
 use tempfile::TempDir;
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_BASE: &str = r#"
 -module(demo_mod).
@@ -37,9 +37,9 @@ fn run_git(repo: &std::path::Path, args: &[&str]) -> String {
     String::from_utf8(out.stdout).unwrap().trim().to_owned()
 }
 
-fn build_repo_with_merge() -> (FixtureRepo, TempDir, String) {
+fn build_repo_with_merge() -> (GitRepoFixture, TempDir, String) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_BASE);
     repo.commit("base");
     repo.tag("v1.0.0");

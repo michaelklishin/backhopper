@@ -6,8 +6,8 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::TempDir;
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 #[test]
 fn version_json_payload_has_expected_shape() {
@@ -26,7 +26,7 @@ fn version_json_payload_has_expected_shape() {
 #[test]
 fn config_validate_json_returns_ok_true() {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     let snap = work.path().join("snapshots");
     let cfg = write_config(work.path(), repo.dir.path(), &snap);
     let assert = Command::cargo_bin("backhopper")

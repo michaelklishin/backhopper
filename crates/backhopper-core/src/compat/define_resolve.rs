@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use crate::compat::added_file::is_stdlib_include_lib;
-use crate::compat::added_lines::file_line;
+use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::source_attributes::{
     extract_defined_macros, extract_defined_records, extract_includes, extract_macro_uses,
     extract_record_uses, is_predefined_macro, resolve_include,
@@ -25,21 +25,11 @@ use crate::model::verdict::Reason;
 /// `-include` follow depth bound: real header chains are a handful deep.
 const MAX_INCLUDE_DEPTH: usize = 16;
 
-/// One touched file: its source-relative path, the text of its added
-/// lines where new `?MACRO` and `#record` uses appear, and the
-/// blob-line to file-line map for the reported line.
-#[derive(Debug, Clone, Copy)]
-pub struct DefineSubject<'a> {
-    pub source_path: &'a RelativePath,
-    pub added_text: &'a str,
-    pub line_map: &'a [u32],
-}
-
 /// Flag each added macro or record use that resolves to no definition on
 /// the target and is neither predefined nor defined by the patch. One
 /// reason per `(file, symbol)`.
 pub fn analyse_define_symbols(
-    subjects: &[DefineSubject<'_>],
+    subjects: &[AddedLinesSubject<'_>],
     target: &TargetTreeIndex,
     read_target: &dyn Fn(&RelativePath) -> Option<String>,
 ) -> Vec<Reason> {

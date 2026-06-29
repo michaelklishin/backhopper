@@ -23,10 +23,20 @@ struct ReasonRow {
     detail: String,
 }
 
+/// Build a styled `tabled::Table`: one place owns table construction so
+/// every renderer applies the global `--table-style` identically.
+pub fn styled_table<I, R>(rows: I, style: TableStyle) -> Table
+where
+    I: IntoIterator<Item = R>,
+    R: Tabled,
+{
+    let mut table = Table::new(rows);
+    style.apply(&mut table);
+    table
+}
+
 pub fn render_evaluation_table(evaluation: &SeriesEvaluation, style: TableStyle) -> String {
-    let mut t = Table::new(collect_rows(&evaluation.verdict.results));
-    style.apply(&mut t);
-    t.to_string()
+    styled_table(collect_rows(&evaluation.verdict.results), style).to_string()
 }
 
 fn collect_rows(results: &[PinVerdict]) -> Vec<ReasonRow> {
@@ -432,7 +442,7 @@ fn format_arg_shape(a: &ArgShape) -> String {
     }
 }
 
-fn format_symbol(kind: &SymbolKind) -> String {
+pub(crate) fn format_symbol(kind: &SymbolKind) -> String {
     match kind {
         SymbolKind::Function { mfa } => mfa.to_string(),
         SymbolKind::FunctionAnyArity { module, function } => format!("{module}:{function}/?"),

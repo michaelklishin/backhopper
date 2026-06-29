@@ -7,7 +7,7 @@ use std::io::Write;
 use assert_cmd::Command;
 use tempfile::NamedTempFile;
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_V1: &str = "-module(demo_mod).\n-export([greet/1]).\ngreet(Name) -> Name.\n";
 
@@ -22,9 +22,9 @@ diff --git a/src/demo_mod.erl b/src/demo_mod.erl
  greet(Name) -> Name.
 ";
 
-fn fresh_repo_with_snapshot() -> (FixtureRepo, tempfile::TempDir, std::path::PathBuf) {
+fn fresh_repo_with_snapshot() -> (GitRepoFixture, tempfile::TempDir, std::path::PathBuf) {
     let work = tempfile::TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_V1);
     repo.commit("v1");
     repo.tag("v1.0.0");

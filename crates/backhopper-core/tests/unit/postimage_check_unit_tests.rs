@@ -4,14 +4,13 @@
 
 use std::path::PathBuf;
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{Module, Snapshot, SnapshotHeader, Visibility, state};
+use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::verdict::{ContentPresence, Reason, SeriesEvaluation};
+use backhopper_test_support::{canonical_snapshot, module, snapshot_header};
 
 fn pin() -> Pin {
     Pin::new(
@@ -21,21 +20,7 @@ fn pin() -> Pin {
 }
 
 fn snapshot() -> Snapshot<state::Canonical> {
-    let header = SnapshotHeader {
-        project: ProjectName::new("demo").unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    };
-    let mut m = Module::new(ModuleName::new("demo").unwrap());
-    m.visibility = Visibility::Public;
-    Snapshot::from_extracted(header, vec![m], vec![]).into_canonical()
+    canonical_snapshot(snapshot_header("demo", "v1.0.0"), vec![module("demo")])
 }
 
 fn evaluate(patch: &str, pin_file: &[u8]) -> SeriesEvaluation {

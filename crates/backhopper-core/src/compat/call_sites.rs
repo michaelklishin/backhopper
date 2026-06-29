@@ -453,38 +453,23 @@ fn resolve_apply_family(name: &str, args: &[&str], macros: &MacroTable) -> Optio
         }
         _ => return None,
     };
-    let module = atom_or_macro_to_module(m_raw, macros)?;
-    let function = atom_or_macro_to_function(f_raw, macros)?;
+    let module = atom_or_macro_to::<ModuleName>(m_raw, macros)?;
+    let function = atom_or_macro_to::<FunctionName>(f_raw, macros)?;
     let arity = literal_list_length(a_raw)?;
     Some(Mfa::new(module, function, Arity::new(arity)))
 }
 
-fn atom_or_macro_to_module(raw: &str, macros: &MacroTable) -> Option<ModuleName> {
+// Both `ModuleName` and `FunctionName` are atoms: one resolver, two targets.
+fn atom_or_macro_to<T: FromStr>(raw: &str, macros: &MacroTable) -> Option<T> {
     let s = raw.trim();
     if let Some(name) = s.strip_prefix('?') {
-        return expand_value_macro_to_atom(macros, name)
-            .and_then(|a| ModuleName::from_str(&a).ok());
+        return expand_value_macro_to_atom(macros, name).and_then(|a| T::from_str(&a).ok());
     }
     if looks_like_lowercase_atom(s) {
-        return ModuleName::from_str(s).ok();
+        return T::from_str(s).ok();
     }
     if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
-        return ModuleName::from_str(&s[1..s.len() - 1]).ok();
-    }
-    None
-}
-
-fn atom_or_macro_to_function(raw: &str, macros: &MacroTable) -> Option<FunctionName> {
-    let s = raw.trim();
-    if let Some(name) = s.strip_prefix('?') {
-        return expand_value_macro_to_atom(macros, name)
-            .and_then(|a| FunctionName::from_str(&a).ok());
-    }
-    if looks_like_lowercase_atom(s) {
-        return FunctionName::from_str(s).ok();
-    }
-    if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
-        return FunctionName::from_str(&s[1..s.len() - 1]).ok();
+        return T::from_str(&s[1..s.len() - 1]).ok();
     }
     None
 }

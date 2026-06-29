@@ -607,6 +607,18 @@ impl FromStr for Arity {
     }
 }
 
+impl TryFrom<usize> for Arity {
+    type Error = NameError;
+
+    fn try_from(value: usize) -> Result<Self, NameError> {
+        u8::try_from(value)
+            .map(Self)
+            .map_err(|_| NameError::InvalidArity {
+                value: i64::try_from(value).unwrap_or(i64::MAX),
+            })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]

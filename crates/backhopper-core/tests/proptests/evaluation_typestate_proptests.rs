@@ -11,32 +11,16 @@
 use std::path::PathBuf;
 
 use proptest::prelude::*;
-use time::OffsetDateTime;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, EvaluationInput};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 fn make_snap(project: &str) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(
-        SnapshotHeader {
-            project: ProjectName::new(project).unwrap(),
-            tag: TagName::new("v1.0.0").unwrap(),
-            branch: None,
-            commit: CommitSha::new("0".repeat(40)).unwrap(),
-            scanned_paths: vec!["src/**/*.erl".into()],
-            apps_scanned: Vec::new(),
-            generated_by: "test".into(),
-            generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-            extractor_version: String::new(),
-            dep_pins: Vec::new(),
-        },
-        vec![],
-        vec![],
-    )
-    .into_canonical()
+    canonical_snapshot(snapshot_header(project, "v1.0.0"), vec![])
 }
 
 fn make_pin(project: &str) -> Pin {

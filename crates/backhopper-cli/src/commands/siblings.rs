@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use bel7_cli::PARTIAL_SUCCESS_I32;
 use serde::{Deserialize, Serialize};
-use tabled::{Table, Tabled};
+use tabled::Tabled;
 use time::OffsetDateTime;
 
 use backhopper_cache::{CacheDir, CacheMode, content_hash, ttl_from_days};
@@ -39,8 +39,10 @@ use crate::cli::{Formatter, GlobalArgs, SiblingsCmd, SiblingsDoctorArgs};
 use crate::commands::context::{load_config, snapshot_dir};
 use crate::commands::self_snapshot::effective_self_repo;
 use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
+use crate::commands::summary::SummaryFormatter;
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render_with_exit};
+use crate::output::{OutputContext, emit_jsonl, render_with_exit};
+use crate::tables::styled_table;
 
 const CACHE_DIR_NAME: &str = ".siblings_doctor_cache";
 
@@ -52,14 +54,10 @@ pub fn handle(args: &GlobalArgs, cmd: SiblingsCmd) -> CliResult<i32> {
 
 fn run_doctor(global: &GlobalArgs, args: &SiblingsDoctorArgs) -> CliResult<i32> {
     let cfg = load_config(global)?;
-    let series = cfg
-        .series_by_name(&args.series)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let series = cfg.series_by_name(&args.series)?;
     let target = resolve_target(series, args)?;
-    let repo = GitRepo::open(target.repo_dir.clone()).map_err(CliError::Git)?;
-    let target_tip = repo
-        .resolve_rev(target.branch.as_str())
-        .map_err(CliError::Git)?;
+    let repo = GitRepo::open(target.repo_dir.clone())?;
+    let target_tip = repo.resolve_rev(target.branch.as_str())?;
     let self_project = cfg.projects.iter().find(|p| p.is_self());
     let since = resolve_since(&repo, self_project, &target.branch, &target_tip, args)?;
     let (vocabulary, vocabulary_source) =
@@ -171,7 +169,7 @@ fn resolve_since(
         return Ok(SinceDerivation::ExplicitSha { sha });
     }
 
-    let listing = repo.list_tag_refs().map_err(CliError::Git)?;
+    let listing = repo.list_tag_refs()?;
     let mut by_sha: Vec<(TagName, CommitSha)> = Vec::new();
     for tag in listing.tags {
         if let Some(project) = self_project {
@@ -189,9 +187,7 @@ fn resolve_since(
         }
     }
     let candidates: BTreeSet<CommitSha> = by_sha.iter().map(|(_, sha)| sha.clone()).collect();
-    let reachable = repo
-        .ancestors_among(target_tip, &candidates)
-        .map_err(CliError::Git)?;
+    let reachable = repo.ancestors_among(target_tip, &candidates)?;
     // list_tag_refs sorts newest-first by version_cmp, so the first
     // reachable hit is the last release
     let newest_reachable = by_sha.into_iter().find(|(_, sha)| reachable.contains(sha));
@@ -361,7 +357,7 @@ fn compute_candidates(
         // count the window so the report stays meaningful, but skip
         // the target index, the suppression walk, and every diff
         for (_, tip) in source_tips {
-            let window = first_parent_walk_since(repo, tip, since.sha()).map_err(CliError::Git)?;
+            let window = first_parent_walk_since(repo, tip, since.sha())?;
             walked_count = walked_count.saturating_add(window.len() as u32);
         }
         return Ok(DoctorComputation {
@@ -372,7 +368,7 @@ fn compute_candidates(
         });
     }
 
-    let target_index = build_target_tree_index(repo, &target.branch).map_err(CliError::Git)?;
+    let target_index = build_target_tree_index(repo, &target.branch)?;
     let suppression = build_suppression_set(repo, target_tip, since.sha())?;
     let weights = ScoreWeights::default();
     let thresholds = ActionThresholds::default();
@@ -380,7 +376,7 @@ fn compute_candidates(
     let mut seen_patch_ids: BTreeSet<PatchId> = BTreeSet::new();
 
     for (_, tip) in source_tips {
-        let window = first_parent_walk_since(repo, tip, since.sha()).map_err(CliError::Git)?;
+        let window = first_parent_walk_since(repo, tip, since.sha())?;
         walked_count = walked_count.saturating_add(window.len() as u32);
         for commit in window {
             if commit.parents.is_empty() || !seen_shas.insert(commit.sha.clone()) {
@@ -404,8 +400,7 @@ fn compute_candidates(
             if !on_target {
                 continue;
             }
-            let candidate_patch_id =
-                patch_id(repo, &input.diff_base, &commit.sha).map_err(CliError::Git)?;
+            let candidate_patch_id = patch_id(repo, &input.diff_base, &commit.sha)?;
             if suppression.shas.contains(&commit.sha)
                 || candidate_patch_id
                     .as_ref()
@@ -466,11 +461,11 @@ fn build_suppression_set(
 ) -> CliResult<SuppressionSet> {
     let mut shas: BTreeSet<CommitSha> = BTreeSet::new();
     let mut patch_ids: BTreeSet<PatchId> = BTreeSet::new();
-    let window = first_parent_walk_since(repo, target_tip, since_sha).map_err(CliError::Git)?;
+    let window = first_parent_walk_since(repo, target_tip, since_sha)?;
     for commit in window {
         shas.extend(cherry_pick_trailers(&commit.message));
         if let Some(base) = commit.parents.first()
-            && let Some(id) = patch_id(repo, base, &commit.sha).map_err(CliError::Git)?
+            && let Some(id) = patch_id(repo, base, &commit.sha)?
         {
             patch_ids.insert(id);
         }
@@ -483,12 +478,12 @@ fn patch_facts(bytes: &[u8]) -> CliResult<(Vec<RelativePath>, u32, u32)> {
     if bytes.is_empty() {
         return Ok((Vec::new(), 0, 0));
     }
-    let patch = Patch::parse(bytes).map_err(|e| CliError::Core(e.into()))?;
+    let patch = Patch::parse(bytes)?;
     let mut paths: Vec<RelativePath> = Vec::new();
     let mut added: u32 = 0;
     let mut removed: u32 = 0;
     for file in &patch.files {
-        let path = file.new_path.as_ref().or(file.old_path.as_ref());
+        let path = file.primary_path();
         if let Some(p) = path
             && let Some(s) = p.to_str()
             && let Ok(rel) = RelativePath::new(s.to_owned())
@@ -548,47 +543,38 @@ fn emit_report(
     report: &SiblingDoctorReport,
     exit: i32,
 ) -> CliResult<i32> {
-    match global.formatter {
-        Formatter::Summary => {
-            let mut stdout = io::stdout().lock();
-            for candidate in &report.candidates {
-                let bytes = serde_json::to_vec(candidate)
-                    .map_err(|e| CliError::OutputError(e.to_string()))?;
-                stdout.write_all(&bytes)?;
-                stdout.write_all(b"\n")?;
+    if let Some(fmt) = SummaryFormatter::from_cli(global.formatter) {
+        let mut stdout = io::stdout().lock();
+        match fmt {
+            SummaryFormatter::Jsonl => emit_jsonl(&mut stdout, &report.candidates)?,
+            SummaryFormatter::Text => {
+                for candidate in &report.candidates {
+                    writeln!(
+                        stdout,
+                        "{}\t{}\t{}\t{}",
+                        candidate.sha.abbreviated(),
+                        candidate.action().as_str(),
+                        candidate.confidence(),
+                        candidate.subject.replace('\t', " "),
+                    )?;
+                }
             }
-            Ok(exit)
         }
-        Formatter::TextSummary => {
-            let mut stdout = io::stdout().lock();
-            for candidate in &report.candidates {
-                writeln!(
-                    stdout,
-                    "{}\t{}\t{}\t{}",
-                    candidate.sha.abbreviated(),
-                    candidate.action().as_str(),
-                    candidate.confidence(),
-                    candidate.subject.replace('\t', " "),
-                )?;
-            }
-            Ok(exit)
-        }
-        _ => {
-            // the column only renders in the table forms; skip the
-            // per-branch ancestry walks under the JSON formatter
-            let wants_table = matches!(global.formatter, Formatter::Text | Formatter::Markdown);
-            let branch_columns = if args.with_branches && wants_table {
-                Some(branch_containment(repo, &report.candidates)?)
-            } else {
-                None
-            };
-            let style = global.table_style;
-            let ctx = OutputContext::new(global.formatter, "siblings doctor");
-            render_with_exit(&ctx, report, exit, |w| {
-                render_doctor_text(w, report, branch_columns.as_ref(), style)
-            })
-        }
+        return Ok(exit);
     }
+    // the column only renders in the table forms; skip the per-branch
+    // ancestry walks under the JSON formatter
+    let wants_table = matches!(global.formatter, Formatter::Text | Formatter::Markdown);
+    let branch_columns = if args.with_branches && wants_table {
+        Some(branch_containment(repo, &report.candidates)?)
+    } else {
+        None
+    };
+    let style = global.table_style;
+    let ctx = OutputContext::new(global.formatter, "siblings doctor");
+    render_with_exit(&ctx, report, exit, |w| {
+        render_doctor_text(w, report, branch_columns.as_ref(), style)
+    })
 }
 
 /// Local branches containing each surfaced candidate: one ancestry
@@ -599,9 +585,9 @@ fn branch_containment(
 ) -> CliResult<BTreeMap<CommitSha, Vec<String>>> {
     let shas: BTreeSet<CommitSha> = candidates.iter().map(|c| c.sha.clone()).collect();
     let mut out: BTreeMap<CommitSha, Vec<String>> = BTreeMap::new();
-    for branch in repo.local_branch_tips().map_err(CliError::Git)? {
+    for branch in repo.local_branch_tips()? {
         let (name, tip) = branch;
-        let contained = repo.ancestors_among(&tip, &shas).map_err(CliError::Git)?;
+        let contained = repo.ancestors_among(&tip, &shas)?;
         for sha in contained {
             out.entry(sha).or_default().push(name.clone());
         }
@@ -662,9 +648,7 @@ fn render_doctor_text(
                     .map_or_else(|| "-".to_owned(), |b| b.join(", ")),
             })
             .collect();
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
     } else {
         let rows: Vec<CandidateRow> = report
             .candidates
@@ -677,9 +661,7 @@ fn render_doctor_text(
                 age: format_age(c.age_days),
             })
             .collect();
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
     }
     let branches = report.source_branches.len();
     writeln!(

@@ -9,31 +9,19 @@ use std::path::PathBuf;
 use std::str::{self, FromStr};
 use std::sync::OnceLock;
 
+pub use backhopper_core::extract::{ExtractError, ExtractedSource};
+
+use backhopper_core::extract::classify_visibility;
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, TypeName};
-use backhopper_core::model::snapshot::{
-    CallbackSig, FunArity, HrlFile, Module, SpecSig, TypeDecl, Visibility,
-};
+use backhopper_core::model::snapshot::{CallbackSig, FunArity, Module, SpecSig, TypeDecl};
 use backhopper_core::snapshot::spec_normalize::normalize_signature;
 use regex::Regex;
-use thiserror::Error;
 use tracing::warn;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExtractedSource {
-    pub modules: Vec<Module>,
-    pub headers: Vec<HrlFile>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ElixirExtractor {
     pub public_modules: Vec<String>,
     pub internal_modules: Vec<String>,
-}
-
-#[derive(Debug, Error)]
-pub enum ExtractError {
-    #[error("invalid utf-8 in {path:?} at byte offset {offset}")]
-    InvalidUtf8 { path: PathBuf, offset: usize },
 }
 
 const ELIXIR_FILE_EXTS: &[&str] = &[".ex", ".exs"];
@@ -241,14 +229,13 @@ fn collect_module_recursive(
     module.callbacks = callbacks;
     module.specs = specs;
     module.types = types;
-    let name_str = module.name.as_str();
-    module.visibility = if ex.internal_modules.iter().any(|n| n == name_str)
-        || (hidden && !ex.public_modules.iter().any(|n| n == name_str))
-    {
-        Visibility::Hidden
-    } else {
-        Visibility::Public
-    };
+    module.visibility = classify_visibility(
+        &module.name,
+        hidden,
+        false,
+        &ex.public_modules,
+        &ex.internal_modules,
+    );
     out.push(module);
 }
 

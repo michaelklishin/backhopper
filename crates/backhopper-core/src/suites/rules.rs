@@ -391,9 +391,18 @@ fn read_matched_lines(
     out
 }
 
-fn expand_template_named(
+#[derive(Debug)]
+pub struct TemplateError {
+    pub placeholder: String,
+}
+
+/// Walk `{name}` placeholders in `template`, calling `push_value` to
+/// append each replacement to the output. Literal text and an unmatched
+/// `{` pass through. `push_value` errors when a placeholder cannot be
+/// resolved.
+fn substitute_placeholders(
     template: &str,
-    captures: &BTreeMap<String, String>,
+    mut push_value: impl FnMut(&str, &mut String) -> Result<(), TemplateError>,
 ) -> Result<String, TemplateError> {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
@@ -406,21 +415,24 @@ fn expand_template_named(
             continue;
         };
         let name = &after[..end];
-        let Some(v) = captures.get(name) else {
-            return Err(TemplateError {
-                placeholder: name.to_owned(),
-            });
-        };
-        out.push_str(v);
+        push_value(name, &mut out)?;
         rest = &after[end + 1..];
     }
     out.push_str(rest);
     Ok(out)
 }
 
-#[derive(Debug)]
-pub struct TemplateError {
-    pub placeholder: String,
+fn expand_template_named(
+    template: &str,
+    captures: &BTreeMap<String, String>,
+) -> Result<String, TemplateError> {
+    substitute_placeholders(template, |name, out| {
+        let v = captures.get(name).ok_or_else(|| TemplateError {
+            placeholder: name.to_owned(),
+        })?;
+        out.push_str(v);
+        Ok(())
+    })
 }
 
 /// Substitute every `{name}` in `template` with the value of regex capture
@@ -429,27 +441,13 @@ pub fn expand_template(
     template: &str,
     captures: &regex::Captures<'_>,
 ) -> Result<String, TemplateError> {
-    let mut out = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some(start) = rest.find('{') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('}') else {
-            out.push('{');
-            rest = after;
-            continue;
-        };
-        let name = &after[..end];
-        let Some(m) = captures.name(name) else {
-            return Err(TemplateError {
-                placeholder: name.to_owned(),
-            });
-        };
+    substitute_placeholders(template, |name, out| {
+        let m = captures.name(name).ok_or_else(|| TemplateError {
+            placeholder: name.to_owned(),
+        })?;
         out.push_str(m.as_str());
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    Ok(out)
+        Ok(())
+    })
 }
 
 /// Validate that every `{name}` placeholder in `template` appears in
@@ -459,20 +457,14 @@ pub fn validate_template_placeholders(
     template: &str,
     allowed_captures: &[String],
 ) -> Result<(), TemplateError> {
-    let mut rest = template;
-    while let Some(start) = rest.find('{') {
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('}') else {
-            rest = after;
-            continue;
-        };
-        let name = &after[..end];
-        if !allowed_captures.iter().any(|c| c == name) {
-            return Err(TemplateError {
+    substitute_placeholders(template, |name, _out| {
+        if allowed_captures.iter().any(|c| c == name) {
+            Ok(())
+        } else {
+            Err(TemplateError {
                 placeholder: name.to_owned(),
-            });
+            })
         }
-        rest = &after[end + 1..];
-    }
-    Ok(())
+    })
+    .map(|_| ())
 }

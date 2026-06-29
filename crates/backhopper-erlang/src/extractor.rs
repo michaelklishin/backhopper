@@ -7,13 +7,15 @@
 use std::path::PathBuf;
 use std::str::{self, FromStr};
 
+pub use backhopper_core::extract::{ExtractError, ExtractedSource};
+
+use backhopper_core::extract::classify_visibility;
 use backhopper_core::model::names::{Arity, FieldName, FunctionName, RecordName, TypeName};
 use backhopper_core::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl,
     RecordField, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl, VariantCBlock,
 };
 use backhopper_core::snapshot::spec_normalize::normalize_signature;
-use thiserror::Error;
 use tracing::warn;
 
 use crate::attributes::{ParsedAttribute, classify};
@@ -21,26 +23,12 @@ use crate::cond_compile::CondStack;
 use crate::deprecated::ParsedDeprecation;
 use crate::specs::ParsedSignature;
 use crate::tokenizer::iterate_attributes;
-use crate::visibility::{
-    VisibilityHints, classify as classify_visibility, detect_visibility_hints,
-};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExtractedSource {
-    pub modules: Vec<Module>,
-    pub headers: Vec<HrlFile>,
-}
+use crate::visibility::detect_visibility_hints;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ErlangExtractor {
     pub public_modules: Vec<String>,
     pub internal_modules: Vec<String>,
-}
-
-#[derive(Debug, Error)]
-pub enum ExtractError {
-    #[error("invalid utf-8 in {path:?} at byte offset {offset}")]
-    InvalidUtf8 { path: PathBuf, offset: usize },
 }
 
 impl ErlangExtractor {
@@ -177,9 +165,7 @@ impl ErlangExtractor {
         let test_only = has_only_test_exports && !has_non_test_export;
         m.visibility = classify_visibility(
             &m.name,
-            VisibilityHints {
-                hidden: hidden_via_attr || hints.hidden,
-            },
+            hidden_via_attr || hints.hidden,
             test_only,
             &self.public_modules,
             &self.internal_modules,

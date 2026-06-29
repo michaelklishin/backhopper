@@ -9,15 +9,15 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run_succeeds, stdout};
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_V1: &str = "-module(demo_mod).\n-export([greet/1]).\ngreet(N) -> N.\n";
 const ERL_V2: &str =
     "-module(demo_mod).\n-export([greet/1, farewell/1]).\ngreet(N) -> N.\nfarewell(N) -> N.\n";
 
-fn build_two_tag_repo() -> (FixtureRepo, TempDir, String) {
+fn build_two_tag_repo() -> (GitRepoFixture, TempDir, String) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_V1);
     repo.commit("v1");
     repo.tag("v1.0.0");

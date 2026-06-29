@@ -19,7 +19,7 @@ use std::time::SystemTime;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::backend::{Backend, Invocation, OutputPolicy, RawOutcome};
+use crate::backend::{Backend, Invocation, RawOutcome};
 use crate::builder::check::{Check, SeriesEvaluation};
 use crate::builder::siblings::Siblings;
 use crate::builder::snapshots::Snapshots;
@@ -179,17 +179,12 @@ impl<B: Backend> Backhopper<B> {
         for arg in args {
             owned_args.push(Cow::Owned(arg.as_ref().to_os_string()));
         }
-        let invocation = Invocation {
-            verb,
-            args: Cow::Owned(owned_args),
-            stdin,
-            stdout_policy: OutputPolicy::default(),
-            stderr_policy: OutputPolicy::default(),
-            timeout: self.options.timeout,
-            cancellation: self.options.cancellation.as_ref(),
-            working_directory: self.options.working_directory.as_deref(),
-            env: &self.options.env,
-        };
+        let invocation = Invocation::new(verb, &self.options.env)
+            .with_args(Cow::Owned(owned_args))
+            .with_stdin(stdin)
+            .with_timeout(self.options.timeout)
+            .with_cancellation(self.options.cancellation.as_ref())
+            .with_working_directory(self.options.working_directory.as_deref());
         self.backend.invoke(invocation)
     }
 
@@ -259,22 +254,16 @@ impl<B: Backend> Backhopper<B> {
     ) -> Result<Envelope<T>, DriverError> {
         let owned_verb_for_record = verb.clone().into_owned();
         let started = SystemTime::now();
-        let stdin_snapshot = match &stdin {
-            StdinPayload::None => StdinSnapshot::None,
-            StdinPayload::Bytes(b) => StdinSnapshot::Bytes(b.len()),
-            StdinPayload::Reader(_) => StdinSnapshot::Reader,
+        let stdin_bytes = match &stdin {
+            StdinPayload::Bytes(b) => Some(b.len()),
+            _ => None,
         };
-        let invocation = Invocation {
-            verb,
-            args: Cow::Owned(args),
-            stdin,
-            stdout_policy: OutputPolicy::default(),
-            stderr_policy: OutputPolicy::default(),
-            timeout: self.options.timeout,
-            cancellation: self.options.cancellation.as_ref(),
-            working_directory: self.options.working_directory.as_deref(),
-            env: &self.options.env,
-        };
+        let invocation = Invocation::new(verb, &self.options.env)
+            .with_args(Cow::Owned(args))
+            .with_stdin(stdin)
+            .with_timeout(self.options.timeout)
+            .with_cancellation(self.options.cancellation.as_ref())
+            .with_working_directory(self.options.working_directory.as_deref());
         let mut outcome = self.backend.invoke(invocation)?;
 
         let exit_class = ExitClass::from_code(outcome.exit_code);
@@ -283,10 +272,7 @@ impl<B: Backend> Backhopper<B> {
         let executed = ExecutedInvocation {
             verb: owned_verb_for_record.clone(),
             argv: mem::take(&mut outcome.argv),
-            stdin_bytes: match stdin_snapshot {
-                StdinSnapshot::None | StdinSnapshot::Reader => None,
-                StdinSnapshot::Bytes(n) => Some(n),
-            },
+            stdin_bytes,
             exit_code: outcome.exit_code,
             exit_class,
             duration: outcome.duration,
@@ -501,11 +487,4 @@ fn parse_envelope<T: DeserializeOwned>(
         wire.warnings,
         executed,
     ))
-}
-
-#[derive(Debug, Clone, Copy)]
-enum StdinSnapshot {
-    None,
-    Bytes(usize),
-    Reader,
 }

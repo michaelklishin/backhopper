@@ -27,6 +27,22 @@ fn parses_two_arg_with_typed_args() {
 }
 
 #[test]
+fn bitstring_type_arg_does_not_inflate_arity() {
+    // `<<_:8, _:_*8>>` is one argument; its inner comma belongs to the
+    // bitstring type, not the argument list.
+    let s = parse_callable_signature("encode(<<_:8, _:_*8>>) -> binary()").unwrap();
+    assert_eq!(s.name, "encode");
+    assert_eq!(s.arity, 1);
+}
+
+#[test]
+fn bitstring_type_among_other_args_counts_correctly() {
+    let s =
+        parse_callable_signature("write(Fd :: file:io_device(), <<_:8, _:_*8>>) -> ok").unwrap();
+    assert_eq!(s.arity, 2);
+}
+
+#[test]
 fn parses_type_declaration() {
     let (name, arity, rhs) =
         parse_type_decl("range() :: undefined | {ra:index(), ra:index()}").unwrap();

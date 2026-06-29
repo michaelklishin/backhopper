@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use backhopper_core::{Arity, BehaviourName, FunctionName, ModuleName};
+use backhopper_erlang::tokenizer::skip_char_literal_span;
 use backhopper_xref_graph::{Deprecation, DeprecationTier, FunctionSig};
 
 use crate::errors::ReadWarning;
@@ -173,7 +174,7 @@ fn extract_balanced_arg_list(after_open: &str) -> Option<&str> {
     while i < bytes.len() {
         let c = bytes[i];
         if !in_string && !in_quote && c == b'$' && i + 1 < bytes.len() {
-            i += skip_char_literal_bytes(bytes, i);
+            i += skip_char_literal_span(bytes, i);
             continue;
         }
         match c {
@@ -191,24 +192,6 @@ fn extract_balanced_arg_list(after_open: &str) -> Option<&str> {
         i += 1;
     }
     None
-}
-
-fn skip_char_literal_bytes(bytes: &[u8], at: usize) -> usize {
-    debug_assert_eq!(bytes[at], b'$');
-    let next = at + 1;
-    if next >= bytes.len() {
-        return 1;
-    }
-    if bytes[next] == b'\\' {
-        let mut span = 2;
-        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
-            span = 4;
-        } else if next + 1 < bytes.len() {
-            span = 3;
-        }
-        return span;
-    }
-    2
 }
 
 fn parse_import(body: &str) -> Option<(ModuleName, Vec<FunctionSig>)> {
@@ -286,7 +269,19 @@ pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
     while i < bytes.len() {
         let c = bytes[i];
         if !in_string && !in_quote && c == b'$' && i + 1 < bytes.len() {
-            i += skip_char_literal_bytes(bytes, i);
+            i += skip_char_literal_span(bytes, i);
+            continue;
+        }
+        // `<<...>>` bitstring types carry commas that are not argument
+        // separators, e.g. a `-callback` argument typed `<<_:8, _:_*8>>`.
+        if !in_string && !in_quote && c == b'<' && bytes.get(i + 1) == Some(&b'<') {
+            depth += 1;
+            i += 2;
+            continue;
+        }
+        if !in_string && !in_quote && c == b'>' && bytes.get(i + 1) == Some(&b'>') {
+            depth -= 1;
+            i += 2;
             continue;
         }
         match c {

@@ -15,15 +15,15 @@ use backhopper_git::{
     CommitDiffSource, GitRepo, MergePolicy, PatchInputError, PrCommitPolicy, ResolvedPatchInput,
 };
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 fn sha(raw: &str) -> CommitSha {
     CommitSha::new(raw.to_owned()).unwrap()
 }
 
 /// One plain commit on top of the root: `src/a.erl` changes.
-fn repo_with_plain_commit() -> (FakeRepo, CommitSha) {
-    let repo = FakeRepo::new();
+fn repo_with_plain_commit() -> (GitRepoFixture, CommitSha) {
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n-export([f/0]).\nf() -> ok.\n");
     repo.commit("base");
     repo.write_file(
@@ -37,8 +37,8 @@ fn repo_with_plain_commit() -> (FakeRepo, CommitSha) {
 
 /// A `--no-ff` merge of a 2-commit feature branch (second commit is a
 /// fixup of the first).
-fn repo_with_two_parent_merge() -> (FakeRepo, CommitSha) {
-    let repo = FakeRepo::new();
+fn repo_with_two_parent_merge() -> (GitRepoFixture, CommitSha) {
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n-export([f/0]).\nf() -> ok.\n");
     repo.commit("base");
     repo.checkout_new_branch("feature");
@@ -148,7 +148,7 @@ fn require_merge_rejects_plain_commit_with_parent_count() {
 
 #[test]
 fn root_commit_is_rejected_under_every_policy() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let root = sha(&repo.head_sha());
     for merges in [
@@ -165,7 +165,7 @@ fn root_commit_is_rejected_under_every_policy() {
 
 #[test]
 fn octopus_merge_takes_first_parent_diff_with_no_pr_commits() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.commit("base");
     repo.checkout_new_branch("b1");
@@ -196,7 +196,7 @@ fn octopus_merge_takes_first_parent_diff_with_no_pr_commits() {
 
 #[test]
 fn ours_merge_yields_empty_patch_bytes() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.commit("base");
     repo.checkout_new_branch("dropped");
@@ -245,7 +245,7 @@ fn from_parents_matches_for_commit() {
 
 #[test]
 fn load_source_files_reads_erl_and_hrl_at_diff_base() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.write_file("include/h.hrl", "-define(H, 1).\n");
     repo.write_file("docs/readme.md", "prose\n");

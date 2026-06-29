@@ -10,11 +10,11 @@ use backhopper_core::model::names::CommitShaPrefix;
 use backhopper_git::GitError;
 use backhopper_git::{GitRepo, ObjectKind};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 #[test]
 fn resolves_prefix_at_seven_ten_twenty_and_forty_characters() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("a.txt", "hello\n");
     repo.commit("first");
     let head = repo.head_sha();
@@ -29,7 +29,7 @@ fn resolves_prefix_at_seven_ten_twenty_and_forty_characters() {
 
 #[test]
 fn full_form_prefix_short_circuits_to_commit_sha() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("a.txt", "x\n");
     repo.commit("a");
     let head = repo.head_sha();
@@ -41,7 +41,7 @@ fn full_form_prefix_short_circuits_to_commit_sha() {
 
 #[test]
 fn nonexistent_prefix_returns_commit_not_found() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("a.txt", "x\n");
     repo.commit("a");
     let g = GitRepo::open(repo.dir.path()).unwrap();
@@ -52,7 +52,7 @@ fn nonexistent_prefix_returns_commit_not_found() {
 
 #[test]
 fn ambiguous_prefix_surfaces_typed_error_with_candidates() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     let mut shas: Vec<String> = Vec::new();
     let mut i = 0u32;
     let mut shared_prefix: Option<String> = None;
@@ -90,7 +90,7 @@ fn ambiguous_prefix_surfaces_typed_error_with_candidates() {
 
 #[test]
 fn annotated_tag_prefix_peels_to_underlying_commit() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("a.txt", "annotated tag fixture\n");
     repo.commit("c");
     let commit_sha = repo.head_sha();
@@ -108,7 +108,7 @@ fn annotated_tag_prefix_peels_to_underlying_commit() {
 
 #[test]
 fn blob_prefix_returns_not_a_commit() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("file.txt", "blob body\n");
     repo.commit("c");
     let blob_sha = repo.rev_parse("HEAD:file.txt");
@@ -120,7 +120,7 @@ fn blob_prefix_returns_not_a_commit() {
 
 #[test]
 fn tree_prefix_returns_not_a_commit() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("file.txt", "x\n");
     repo.commit("c");
     let tree_sha = repo.rev_parse("HEAD^{tree}");
@@ -146,7 +146,7 @@ fn missing_path_returns_not_a_git_repository() {
 
 #[test]
 fn many_commits_round_trip_through_every_prefix_length() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     let mut shas: Vec<String> = Vec::new();
     for i in 0..6 {
         repo.write_file("a.txt", &format!("v{i}\n"));

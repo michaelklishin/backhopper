@@ -2,35 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::str::FromStr;
-
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, SpecSig, state,
-};
+use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SpecSig, state};
 use backhopper_core::model::verdict::{Reason, Verdict};
-
-fn header(tag: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new(tag).unwrap(),
-        branch: None,
-        commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 fn module_with_spec(module: &str, fn_name: &str, arity: u8, signature: &str) -> Module {
     let mut m = Module::new(ModuleName::new(module).unwrap());
@@ -47,7 +25,7 @@ fn module_with_spec(module: &str, fn_name: &str, arity: u8, signature: &str) -> 
 }
 
 fn canonical(tag: &str, modules: Vec<Module>) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(header(tag), modules, Vec::new()).into_canonical()
+    canonical_snapshot(snapshot_header("p", tag), modules)
 }
 
 fn evaluate(

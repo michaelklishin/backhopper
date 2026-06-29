@@ -8,7 +8,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use backhopper_core::compat::define_resolve::{DefineSubject, analyse_define_symbols};
+use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::define_resolve::analyse_define_symbols;
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::model::names::{CommitSha, GitRef, RelativePath};
 use backhopper_core::model::verdict::Reason;
@@ -61,7 +62,7 @@ fn analyse(
     idx: &TargetTreeIndex,
     files: &[(&str, &str)],
 ) -> Vec<Reason> {
-    let subjects = [DefineSubject {
+    let subjects = [AddedLinesSubject {
         source_path: path,
         added_text: added,
         line_map: &[],

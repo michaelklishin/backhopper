@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+//! A temp git repository built by shelling out to the `git` binary.
+//! Test helpers may shell out; production code uses `gix`.
+
 use std::path::Path;
 use std::process::Command;
 
 use tempfile::TempDir;
 
-pub(crate) struct FakeRepo {
-    pub(crate) dir: TempDir,
+#[derive(Debug)]
+pub struct GitRepoFixture {
+    pub dir: TempDir,
 }
 
-impl FakeRepo {
-    pub(crate) fn new() -> Self {
+impl GitRepoFixture {
+    pub fn new() -> Self {
         let dir = TempDir::new().expect("tempdir");
         run(dir.path(), &["git", "init", "-q", "-b", "main"]);
         run(
@@ -32,7 +36,11 @@ impl FakeRepo {
         Self { dir }
     }
 
-    pub(crate) fn write_file(&self, rel: &str, body: &str) {
+    pub fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    pub fn write_file(&self, rel: &str, body: &str) {
         let path = self.dir.path().join(rel);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
@@ -43,11 +51,11 @@ impl FakeRepo {
 
     /// Stage everything, deletions included. `write_file` only adds
     /// the written path, so tests that remove files call this.
-    pub(crate) fn stage_all(&self) {
+    pub fn stage_all(&self) {
         run(self.dir.path(), &["git", "add", "-A"]);
     }
 
-    pub(crate) fn commit(&self, message: &str) {
+    pub fn commit(&self, message: &str) {
         run(
             self.dir.path(),
             &[
@@ -65,7 +73,7 @@ impl FakeRepo {
 
     /// Commit with explicit author and committer dates, for tests
     /// that exercise time-bounded walks.
-    pub(crate) fn commit_dated(&self, message: &str, date: &str) {
+    pub fn commit_dated(&self, message: &str, date: &str) {
         run_with_dates(
             self.dir.path(),
             &[
@@ -84,7 +92,7 @@ impl FakeRepo {
 
     /// `git cherry-pick -x <sha>`: records the source SHA trailer the
     /// suppression filter keys on.
-    pub(crate) fn cherry_pick_x(&self, sha: &str) {
+    pub fn cherry_pick_x(&self, sha: &str) {
         run(
             self.dir.path(),
             &[
@@ -100,20 +108,63 @@ impl FakeRepo {
         );
     }
 
-    pub(crate) fn tag(&self, name: &str) {
+    // Ground truth for the recall-superset check: attempt the real
+    // cherry-pick, report whether it conflicted, then restore the
+    // branch either way so the caller reads a clean target tree.
+    pub fn cherry_pick_conflicts(&self, sha: &str) -> bool {
+        let status = Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "cherry-pick",
+                sha,
+            ])
+            .current_dir(self.dir.path())
+            .status()
+            .expect("git cherry-pick");
+        if status.success() {
+            run(self.dir.path(), &["git", "reset", "--hard", "-q", "HEAD~1"]);
+            false
+        } else {
+            run(self.dir.path(), &["git", "cherry-pick", "--abort"]);
+            true
+        }
+    }
+
+    pub fn tag(&self, name: &str) {
         run(self.dir.path(), &["git", "tag", name]);
     }
 
-    pub(crate) fn checkout_new_branch(&self, name: &str) {
+    pub fn annotated_tag(&self, name: &str, message: &str) {
+        run(
+            self.dir.path(),
+            &[
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@e",
+                "tag",
+                "-a",
+                name,
+                "-m",
+                message,
+            ],
+        );
+    }
+
+    pub fn checkout_new_branch(&self, name: &str) {
         run(self.dir.path(), &["git", "checkout", "-q", "-b", name]);
     }
 
-    pub(crate) fn checkout(&self, name: &str) {
+    pub fn checkout(&self, name: &str) {
         run(self.dir.path(), &["git", "checkout", "-q", name]);
     }
 
     /// Merge with `--no-ff` so a 2-parent merge object always exists.
-    pub(crate) fn merge_no_ff(&self, branch: &str, message: &str) {
+    pub fn merge_no_ff(&self, branch: &str, message: &str) {
         run(
             self.dir.path(),
             &[
@@ -133,7 +184,7 @@ impl FakeRepo {
 
     /// Merge that keeps the current tree (`-s ours`): a 2-parent merge
     /// whose first-parent diff is empty.
-    pub(crate) fn merge_ours(&self, branch: &str, message: &str) {
+    pub fn merge_ours(&self, branch: &str, message: &str) {
         run(
             self.dir.path(),
             &[
@@ -153,7 +204,7 @@ impl FakeRepo {
     }
 
     /// Octopus merge of two branches: a 3-parent commit.
-    pub(crate) fn merge_octopus(&self, first: &str, second: &str, message: &str) {
+    pub fn merge_octopus(&self, first: &str, second: &str, message: &str) {
         run(
             self.dir.path(),
             &[
@@ -171,30 +222,35 @@ impl FakeRepo {
         );
     }
 
-    pub(crate) fn annotated_tag(&self, name: &str, message: &str) {
-        run(
-            self.dir.path(),
-            &[
-                "git",
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@e",
-                "tag",
-                "-a",
-                name,
-                "-m",
-                message,
-            ],
-        );
-    }
-
-    pub(crate) fn head_sha(&self) -> String {
+    pub fn head_sha(&self) -> String {
         rev_parse_output(self.dir.path(), "HEAD")
     }
 
-    pub(crate) fn rev_parse(&self, spec: &str) -> String {
+    pub fn rev_parse(&self, spec: &str) -> String {
         rev_parse_output(self.dir.path(), spec)
+    }
+
+    /// The SHA of the repository's root (parentless) commit.
+    pub fn root_sha(&self) -> String {
+        let output = Command::new("git")
+            .args(["rev-list", "--max-parents=0", "HEAD"])
+            .current_dir(self.dir.path())
+            .output()
+            .expect("git rev-list");
+        assert!(output.status.success(), "rev-list root failed");
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .trim()
+            .to_owned()
+    }
+}
+
+impl Default for GitRepoFixture {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

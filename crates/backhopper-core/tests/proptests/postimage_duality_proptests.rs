@@ -14,31 +14,19 @@ use std::path::PathBuf;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
-use time::OffsetDateTime;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::verdict::{ContentPresence, Reason, SeriesEvaluation};
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 const INJECTED: &str = "%% injected marker line";
 
 fn snapshot() -> Snapshot<state::Canonical> {
-    let header = SnapshotHeader {
-        project: ProjectName::new("demo").unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    };
-    Snapshot::from_extracted(header, vec![], vec![]).into_canonical()
+    canonical_snapshot(snapshot_header("demo", "v1.0.0"), vec![])
 }
 
 /// Full-context insertion diff: every base line is context, one

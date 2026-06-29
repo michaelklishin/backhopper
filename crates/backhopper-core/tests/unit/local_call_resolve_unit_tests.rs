@@ -6,7 +6,8 @@
 
 use std::collections::BTreeMap;
 
-use backhopper_core::compat::local_call_resolve::{LocalCallSubject, analyse_local_calls};
+use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::local_call_resolve::analyse_local_calls;
 use backhopper_core::model::names::RelativePath;
 use backhopper_core::model::verdict::Reason;
 
@@ -35,7 +36,7 @@ fn flagged(reasons: &[Reason]) -> Vec<(&str, u8)> {
 }
 
 fn analyse(path: &RelativePath, added: &str, target: &[(&str, &str)]) -> Vec<Reason> {
-    let subjects = [LocalCallSubject {
+    let subjects = [AddedLinesSubject {
         source_path: path,
         added_text: added,
         line_map: &[],

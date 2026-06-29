@@ -5,11 +5,11 @@
 use backhopper_core::model::names::TagName;
 use backhopper_git::GitRepo;
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 #[test]
 fn list_tags_returns_known_tags() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.commit("a");
     repo.tag("v1.0.0");
@@ -26,7 +26,7 @@ fn list_tags_returns_known_tags() {
 
 #[test]
 fn read_paths_at_tag_returns_blobs() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n-export([f/1]).\nf(X) -> X.\n");
     repo.commit("first");
     repo.tag("v1.0.0");
@@ -40,7 +40,7 @@ fn read_paths_at_tag_returns_blobs() {
 
 #[test]
 fn resolve_tag_returns_commit_sha() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("README.md", "hi\n");
     repo.commit("readme");
     repo.tag("vX");
@@ -51,7 +51,7 @@ fn resolve_tag_returns_commit_sha() {
 
 #[test]
 fn missing_tag_yields_error() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     let g = GitRepo::open(repo.dir.path()).unwrap();
     let r = g.resolve_tag(&TagName::new("nope").unwrap());
     assert!(r.is_err());
@@ -59,7 +59,7 @@ fn missing_tag_yields_error() {
 
 #[test]
 fn list_tag_refs_separates_parseable_tags_from_skipped_refs() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.commit("a");
     repo.tag("v1.0.0");
@@ -76,7 +76,7 @@ fn list_tag_refs_separates_parseable_tags_from_skipped_refs() {
 
 #[test]
 fn diff_commits_unified_covers_added_modified_and_deleted_files() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\nold().\n");
     repo.write_file("src/gone.erl", "-module(gone).\n");
     repo.write_file("src/untouched.erl", "-module(untouched).\n");
@@ -115,7 +115,7 @@ fn diff_commits_unified_covers_added_modified_and_deleted_files() {
 
 #[test]
 fn diff_commits_unified_honours_the_path_filter() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.write_file("README.md", "before\n");
     repo.commit("before");
@@ -137,7 +137,7 @@ fn diff_commits_unified_honours_the_path_filter() {
 
 #[test]
 fn list_paths_at_commit_returns_sorted_paths_without_contents() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/b.erl", "-module(b).\n");
     repo.write_file("src/a.erl", "-module(a).\n");
     repo.write_file("include/h.hrl", "-define(H, 1).\n");

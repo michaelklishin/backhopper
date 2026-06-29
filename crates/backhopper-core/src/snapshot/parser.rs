@@ -8,6 +8,7 @@
 //! canonical order. Non-canonical input is a hard error so we never
 //! silently accept a hand-edited snapshot that has drifted out of order.
 
+use std::fmt::Debug;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
@@ -222,7 +223,7 @@ impl<'a> Parser<'a> {
 
     fn parse_module_body(&mut self, name: ModuleName) -> Result<Module, SnapshotError> {
         let mut module = Module::new(name);
-        let mut state = ClassOrder::default();
+        let mut state = ClassOrder::new("entry-class order");
         loop {
             let Some((lineno, line)) = self.peek() else {
                 break;
@@ -234,17 +235,12 @@ impl<'a> Parser<'a> {
             self.advance();
             if let Some(rest) = trimmed.strip_prefix("visibility ") {
                 state.advance(EntryClass::Visibility, lineno)?;
-                module.visibility = match rest.trim() {
-                    "public" => Visibility::Public,
-                    "hidden" => Visibility::Hidden,
-                    "test_only" => Visibility::TestOnly,
-                    other => {
-                        return Err(SnapshotError::UnexpectedToken {
-                            line: lineno,
-                            detail: format!("unknown visibility {other:?}"),
-                        });
-                    }
-                };
+                let kw = rest.trim();
+                module.visibility =
+                    Visibility::from_keyword(kw).ok_or_else(|| SnapshotError::UnexpectedToken {
+                        line: lineno,
+                        detail: format!("unknown visibility {kw:?}"),
+                    })?;
             } else if let Some(rest) = trimmed.strip_prefix("path ") {
                 state.advance(EntryClass::Path, lineno)?;
                 module.path = Some(rest.trim().to_owned());
@@ -411,7 +407,7 @@ impl<'a> Parser<'a> {
 
     fn parse_header_body(&mut self, path: String) -> Result<HrlFile, SnapshotError> {
         let mut hrl = HrlFile::new(path);
-        let mut state = HrlClassOrder::default();
+        let mut state = ClassOrder::new("hrl-entry-class order");
         loop {
             let Some((lineno, line)) = self.peek() else {
                 break;
@@ -570,11 +566,8 @@ fn parse_test_only_export(s: &str) -> Result<TestOnlyExport, String> {
     let variant_token = parts
         .next()
         .ok_or_else(|| format!("missing variant in test_only_export {s:?}"))?;
-    let variant = match variant_token {
-        "a" => TestExportVariant::A,
-        "b" => TestExportVariant::B,
-        other => return Err(format!("unknown test_only_export variant {other:?}")),
-    };
+    let variant = TestExportVariant::from_label(variant_token)
+        .ok_or_else(|| format!("unknown test_only_export variant {variant_token:?}"))?;
     let fa_token = parts
         .next()
         .ok_or_else(|| format!("missing function/arity in test_only_export {s:?}"))?;
@@ -630,12 +623,10 @@ fn parse_ifdef_macro(s: &str) -> Result<IfdefMacro, String> {
             .ok_or_else(|| format!("expected key=value in ifdef_macro, got {token:?}"))?;
         match key {
             "guard" => {
-                guard_kind = Some(match value {
-                    "test" => IfdefGuardKind::Test,
-                    "not_test" => IfdefGuardKind::NotTest,
-                    "other" => IfdefGuardKind::Other,
-                    other => return Err(format!("unknown ifdef_macro guard {other:?}")),
-                });
+                guard_kind = Some(
+                    IfdefGuardKind::from_label(value)
+                        .ok_or_else(|| format!("unknown ifdef_macro guard {value:?}"))?,
+                );
             }
             "line" => {
                 line = Some(
@@ -861,17 +852,13 @@ fn parse_dep_pin_line(line: usize, value: &str) -> Result<VendoredDep, SnapshotE
                 line,
                 detail: format!("dep-pin missing version after source: {value:?}"),
             })?;
-    let source = match source_label.trim() {
-        "hex" => VendoredDepSource::Hex,
-        "git" => VendoredDepSource::Git,
-        "git_rmq" => VendoredDepSource::GitRmq,
-        other => {
-            return Err(SnapshotError::MalformedHeader {
-                line,
-                detail: format!("unknown dep-pin source {other:?}"),
-            });
+    let source_label = source_label.trim();
+    let source = VendoredDepSource::from_label(source_label).ok_or_else(|| {
+        SnapshotError::MalformedHeader {
+            line,
+            detail: format!("unknown dep-pin source {source_label:?}"),
         }
-    };
+    })?;
     let name = DependencyName::from_str(name_str).map_err(SnapshotError::Name)?;
     let version = DependencyVersion::from_str(version_str.trim()).map_err(SnapshotError::Name)?;
     Ok(VendoredDep {
@@ -956,9 +943,29 @@ fn parse_wire_constant(rest: &str) -> Result<WireConstantBinding, String> {
     })
 }
 
-#[derive(Debug, Default)]
-struct ClassOrder {
-    last: Option<EntryClass>,
+#[derive(Debug)]
+struct ClassOrder<T> {
+    label: &'static str,
+    last: Option<T>,
+}
+
+impl<T: Copy + Ord + Debug> ClassOrder<T> {
+    fn new(label: &'static str) -> Self {
+        Self { label, last: None }
+    }
+
+    fn advance(&mut self, c: T, line: usize) -> Result<(), SnapshotError> {
+        if let Some(prev) = self.last
+            && c < prev
+        {
+            return Err(SnapshotError::NotCanonical {
+                line,
+                detail: format!("{}: {c:?} after {prev:?}", self.label),
+            });
+        }
+        self.last = Some(c);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -983,44 +990,9 @@ enum EntryClass {
     WireConstant,
 }
 
-impl ClassOrder {
-    fn advance(&mut self, c: EntryClass, line: usize) -> Result<(), SnapshotError> {
-        if let Some(prev) = self.last
-            && c < prev
-        {
-            return Err(SnapshotError::NotCanonical {
-                line,
-                detail: format!("entry-class order: {c:?} after {prev:?}"),
-            });
-        }
-        self.last = Some(c);
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default)]
-struct HrlClassOrder {
-    last: Option<HrlEntryClass>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum HrlEntryClass {
     Type,
     Opaque,
     Record,
-}
-
-impl HrlClassOrder {
-    fn advance(&mut self, c: HrlEntryClass, line: usize) -> Result<(), SnapshotError> {
-        if let Some(prev) = self.last
-            && c < prev
-        {
-            return Err(SnapshotError::NotCanonical {
-                line,
-                detail: format!("hrl-entry-class order: {c:?} after {prev:?}"),
-            });
-        }
-        self.last = Some(c);
-        Ok(())
-    }
 }

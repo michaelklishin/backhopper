@@ -18,7 +18,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, run_succeeds, run_with_env, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const DEP_V1: &str = r#"
 -module(dep_mod).
@@ -53,7 +53,7 @@ go(X) ->
     F(Y).
 "#;
 
-fn head_sha(repo: &FixtureRepo) -> String {
+fn head_sha(repo: &GitRepoFixture) -> String {
     let out = Std::new("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo.dir.path())
@@ -63,8 +63,8 @@ fn head_sha(repo: &FixtureRepo) -> String {
 }
 
 struct Fixture {
-    _dep: FixtureRepo,
-    user: FixtureRepo,
+    _dep: GitRepoFixture,
+    user: GitRepoFixture,
     _work: TempDir,
     cfg: PathBuf,
     snapshots: PathBuf,
@@ -73,7 +73,7 @@ struct Fixture {
 
 fn build_fixture() -> Fixture {
     let work = TempDir::new().unwrap();
-    let dep = FixtureRepo::new();
+    let dep = GitRepoFixture::new();
     dep.write_file("src/dep_mod.erl", DEP_V1);
     dep.commit("dep v1");
     dep.tag("v1.0.0");
@@ -81,7 +81,7 @@ fn build_fixture() -> Fixture {
     dep.commit("dep v2");
     dep.tag("v2.0.0");
 
-    let user = FixtureRepo::new();
+    let user = GitRepoFixture::new();
     user.write_file("deps/myapp/src/user_mod.erl", USER_V1);
     user.commit("base");
     user.write_file("deps/myapp/src/user_mod.erl", USER_V2);

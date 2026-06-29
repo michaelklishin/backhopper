@@ -30,6 +30,7 @@ use backhopper_core::model::verdict::{Diagnostics, PinVerdict, Reason, SeriesVer
 use serde::Deserialize;
 
 use crate::backend::Backend;
+use crate::builder::list_input::ListInput;
 use crate::builder::state::{InputState, NoInput, NoTarget, TargetState, WithInput, WithTarget};
 use crate::driver::Backhopper;
 use crate::envelope::ExecutedInvocation;
@@ -395,15 +396,13 @@ impl<B: Backend> CheckCommitBuilder<'_, B, WithTarget, WithInput> {
     pub fn run_with_diagnostics(
         self,
     ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        let mut args = Vec::new();
-        push_target(&mut args, self.target.as_ref().expect("target set"));
-        push_options(&mut args, &self.options);
-        args.push(OsString::from(
-            self.commit.as_ref().expect("commit set").to_string(),
-        ));
-        self.api
-            .driver
-            .dispatch_check(Verb::CheckCommit, args, StdinPayload::None)
+        run_target_positional(
+            self.api,
+            self.target.as_ref().expect("target set"),
+            &self.options,
+            Verb::CheckCommit,
+            OsString::from(self.commit.as_ref().expect("commit set").to_string()),
+        )
     }
 }
 
@@ -485,13 +484,13 @@ impl<B: Backend> CheckRangeBuilder<'_, B, WithTarget, WithInput> {
     pub fn run_with_diagnostics(
         self,
     ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        let mut args = Vec::new();
-        push_target(&mut args, self.target.as_ref().expect("target set"));
-        push_options(&mut args, &self.options);
-        args.push(OsString::from(self.range.as_ref().expect("range set")));
-        self.api
-            .driver
-            .dispatch_check(Verb::CheckRange, args, StdinPayload::None)
+        run_target_positional(
+            self.api,
+            self.target.as_ref().expect("target set"),
+            &self.options,
+            Verb::CheckRange,
+            OsString::from(self.range.as_ref().expect("range set")),
+        )
     }
 }
 
@@ -570,28 +569,19 @@ impl<B: Backend> CheckMergeBuilder<'_, B, WithTarget, WithInput> {
     pub fn run_with_diagnostics(
         self,
     ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        let mut args = Vec::new();
-        push_target(&mut args, self.target.as_ref().expect("target set"));
-        push_options(&mut args, &self.options);
-        args.push(OsString::from(
-            self.merge_commit
-                .as_ref()
-                .expect("merge_commit set")
-                .to_string(),
-        ));
-        self.api
-            .driver
-            .dispatch_check(Verb::CheckMerge, args, StdinPayload::None)
+        run_target_positional(
+            self.api,
+            self.target.as_ref().expect("target set"),
+            &self.options,
+            Verb::CheckMerge,
+            OsString::from(
+                self.merge_commit
+                    .as_ref()
+                    .expect("merge_commit set")
+                    .to_string(),
+            ),
+        )
     }
-}
-
-/// Where the batch's commit list comes from.
-#[derive(Debug, Clone)]
-enum CommitsSource {
-    // Newline-framed SHAs sent on stdin; the CLI reads `-`.
-    Bytes(Vec<u8>),
-    // A file of one SHA per line, passed as the flag value.
-    File(PathBuf),
 }
 
 /// `check batch` builder. Series-only (the verb takes no pin target)
@@ -601,7 +591,7 @@ enum CommitsSource {
 pub struct CheckBatchBuilder<'a, B: Backend, T: TargetState, I: InputState> {
     api: &'a Check<'a, B>,
     series: Vec<SeriesName>,
-    commits: Option<CommitsSource>,
+    commits: Option<ListInput>,
     target_repo_dir_path: Option<PathBuf>,
     target_ref: Option<String>,
     options: CheckOptions,
@@ -700,7 +690,7 @@ impl<'a, B: Backend, T: TargetState> CheckBatchBuilder<'a, B, T, NoInput> {
                 buf.push(b'\n');
             }
         }
-        self.with_commits(CommitsSource::Bytes(buf))
+        self.with_commits(ListInput::Bytes(buf))
     }
 
     /// Pass a file of one SHA per line as `--commits-file-path`.
@@ -708,7 +698,7 @@ impl<'a, B: Backend, T: TargetState> CheckBatchBuilder<'a, B, T, NoInput> {
         self,
         path: impl Into<PathBuf>,
     ) -> CheckBatchBuilder<'a, B, T, WithInput> {
-        self.with_commits(CommitsSource::File(path.into()))
+        self.with_commits(ListInput::File(path.into()))
     }
 
     /// Escape hatch: send pre-framed stdin bytes verbatim. The
@@ -717,10 +707,10 @@ impl<'a, B: Backend, T: TargetState> CheckBatchBuilder<'a, B, T, NoInput> {
         self,
         bytes: impl Into<Vec<u8>>,
     ) -> CheckBatchBuilder<'a, B, T, WithInput> {
-        self.with_commits(CommitsSource::Bytes(bytes.into()))
+        self.with_commits(ListInput::Bytes(bytes.into()))
     }
 
-    fn with_commits(self, commits: CommitsSource) -> CheckBatchBuilder<'a, B, T, WithInput> {
+    fn with_commits(self, commits: ListInput) -> CheckBatchBuilder<'a, B, T, WithInput> {
         CheckBatchBuilder {
             api: self.api,
             series: self.series,
@@ -758,21 +748,27 @@ impl<B: Backend> CheckBatchBuilder<'_, B, WithTarget, WithInput> {
                 args.push(OsString::from(git_ref));
             }
         }
-        args.push(OsString::from("--commits-file-path"));
-        let stdin = match commits {
-            CommitsSource::Bytes(b) => {
-                args.push(OsString::from("-"));
-                StdinPayload::Bytes(b.as_slice())
-            }
-            CommitsSource::File(p) => {
-                args.push(p.as_os_str().to_owned());
-                StdinPayload::None
-            }
-        };
+        let stdin = commits.apply("--commits-file-path", &mut args);
         self.api
             .driver
             .dispatch_typed::<BatchPayload>(Verb::CheckBatch, args, stdin)
     }
+}
+
+// The commit, range, and merge builders share one dispatch contract:
+// target flags, then options, then a single positional, no stdin.
+fn run_target_positional<B: Backend>(
+    api: &Check<'_, B>,
+    target: &PinSelector,
+    options: &CheckOptions,
+    verb: Verb,
+    positional: OsString,
+) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+    let mut args = Vec::new();
+    push_target(&mut args, target);
+    push_options(&mut args, options);
+    args.push(positional);
+    api.driver.dispatch_check(verb, args, StdinPayload::None)
 }
 
 fn push_target(args: &mut Vec<OsString>, target: &PinSelector) {

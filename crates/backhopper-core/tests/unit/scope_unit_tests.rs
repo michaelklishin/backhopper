@@ -4,48 +4,20 @@
 
 use std::path::Path;
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::scope::{PinScope, UntrackedTally, parse_module_names};
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
-};
-
-fn header(project: &str, tag: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new(tag).unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src/**/*.erl".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_core::model::names::{ModuleName, ProjectName};
+use backhopper_core::model::snapshot::{Module, Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 fn module(name: &str) -> Module {
-    let mut m = Module::new(ModuleName::new(name).unwrap());
-    m.visibility = Visibility::Public;
-    m.exports.push(FunArity {
-        name: FunctionName::new("noop").unwrap(),
-        arity: Arity::new(0),
-    });
-    m
+    module_with(name, &[("noop", 0)])
 }
 
 fn snapshot_with(project: &str, modules: &[&str]) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(
-        header(project, "v1.0.0"),
+    canonical_snapshot(
+        snapshot_header(project, "v1.0.0"),
         modules.iter().map(|n| module(n)).collect(),
-        vec![],
     )
-    .into_canonical()
 }
 
 #[test]

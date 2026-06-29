@@ -8,6 +8,17 @@
 //! shows.
 
 use crate::compat::patch::{Hunk, HunkLine};
+use crate::model::names::RelativePath;
+
+/// One touched source file projected for the target-axis resolvers: its
+/// source-relative path, the text of its added lines where new symbols
+/// appear, and the blob-line to file-line map for the reported line.
+#[derive(Debug, Clone, Copy)]
+pub struct AddedLinesSubject<'a> {
+    pub source_path: &'a RelativePath,
+    pub added_text: &'a str,
+    pub line_map: &'a [u32],
+}
 
 /// Added lines joined into one `\n`-terminated blob, paired with a map
 /// from blob line (1-based) to new-file line, derived from each hunk's

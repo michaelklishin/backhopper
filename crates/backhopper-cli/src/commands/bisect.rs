@@ -53,7 +53,7 @@ pub fn handle(args: &GlobalArgs, cmd: BisectCmd) -> CliResult<i32> {
             no_cache,
             commit,
         } => {
-            let repo = GitRepo::open(repo_dir_path.clone()).map_err(CliError::Git)?;
+            let repo = GitRepo::open(repo_dir_path.clone())?;
             let commit = expand_prefix_with(&repo, &commit)
                 .map_err(|e| enrich_with_repo_path(e, &repo_dir_path))?;
             run_commit(args, &cfg, project, &repo, &commit, no_cache)
@@ -69,13 +69,9 @@ fn run_commit(
     commit: &CommitSha,
     no_cache: bool,
 ) -> CliResult<i32> {
-    let p = cfg
-        .project(&project)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let p = cfg.project(&project)?;
     let store = open_store_read(args, cfg)?;
-    let mut tags = store
-        .list_tags(&project)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let mut tags = store.list_tags(&project)?;
     if tags.is_empty() {
         return Err(CliError::InvalidInput(format!(
             "no snapshots on disk for project {project}"
@@ -84,7 +80,7 @@ fn run_commit(
     tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
     let input =
         ResolvedPatchInput::for_commit(repo, commit, MergePolicy::Refuse, PrCommitPolicy::Skip)?;
-    let patch = Patch::parse(&input.bytes).map_err(|e| CliError::Core(e.into()))?;
+    let patch = Patch::parse(&input.bytes)?;
     let analyzed = patch.analyze();
     let session = CacheSession::open(args, cfg, no_cache, false);
     let patch_blake3 = normalized_patch_hash(&input.bytes).unwrap_or_else(|| "empty".to_owned());
@@ -93,9 +89,7 @@ fn run_commit(
     let mut verdicts: Vec<Verdict> = Vec::with_capacity(tags.len());
     for tag in &tags {
         let evaluate = || -> CliResult<SeriesEvaluation> {
-            let snap = store
-                .read(&project, tag)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let snap = store.read(&project, tag)?;
             let scope = build_pin_scope(p, &snap);
             let pin = Pin::new(project.clone(), tag.clone());
             let ctx = EvaluationContext::new(pin, snap, scope);

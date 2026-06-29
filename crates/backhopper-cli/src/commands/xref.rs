@@ -9,7 +9,7 @@ use backhopper_core::BehaviourName;
 use crate::cli::{GlobalArgs, XrefCmd};
 use crate::commands::tree_source::build_xref;
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render};
+use crate::output::{OutputContext, render, render_display};
 
 fn ctx(global: &GlobalArgs, command: &'static str) -> OutputContext {
     OutputContext::new(global.formatter, command)
@@ -24,11 +24,7 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
         } => {
             let xref = build_xref(&tree)?;
             let r = xref.called_by(&mfa, transitive);
-            render(&ctx(global, "xref list_callers"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_callers"), &r)
         }
         XrefCmd::ListCallees {
             tree,
@@ -37,56 +33,32 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
         } => {
             let xref = build_xref(&tree)?;
             let r = xref.calls_from(&mfa, transitive);
-            render(&ctx(global, "xref list_callees"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_callees"), &r)
         }
         XrefCmd::ListUndefined { tree } => {
             let xref = build_xref(&tree)?;
             let r = xref.undefined_function_calls();
-            render(&ctx(global, "xref list_undefined"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_undefined"), &r)
         }
         XrefCmd::ListUnusedExports { tree } => {
             let xref = build_xref(&tree)?;
             let r = xref.exports_not_used();
-            render(&ctx(global, "xref list_unused_exports"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_unused_exports"), &r)
         }
         XrefCmd::ListUnusedLocals { tree } => {
             let xref = build_xref(&tree)?;
             let r = xref.locals_not_used();
-            render(&ctx(global, "xref list_unused_locals"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_unused_locals"), &r)
         }
         XrefCmd::ListDeprecatedCalls { tree } => {
             let xref = build_xref(&tree)?;
             let r = xref.deprecated_function_calls();
-            render(&ctx(global, "xref list_deprecated_calls"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_deprecated_calls"), &r)
         }
         XrefCmd::ListUnresolved { tree } => {
             let xref = build_xref(&tree)?;
             let r = xref.unresolved_calls();
-            render(&ctx(global, "xref list_unresolved"), &r, |w| {
-                write!(w, "{r}")?;
-                Ok(())
-            })?;
-            Ok(0)
+            render_display(&ctx(global, "xref list_unresolved"), &r)
         }
         XrefCmd::ListModuleDeps {
             tree,
@@ -96,18 +68,11 @@ pub fn handle(global: &GlobalArgs, cmd: XrefCmd) -> CliResult<i32> {
             let xref = build_xref(&tree)?;
             if forward {
                 let r = xref.module_call(&module);
-                render(&ctx(global, "xref list_module_deps"), &r, |w| {
-                    write!(w, "{r}")?;
-                    Ok(())
-                })?;
+                render_display(&ctx(global, "xref list_module_deps"), &r)
             } else {
                 let r = xref.module_called_by(&module);
-                render(&ctx(global, "xref list_module_deps"), &r, |w| {
-                    write!(w, "{r}")?;
-                    Ok(())
-                })?;
+                render_display(&ctx(global, "xref list_module_deps"), &r)
             }
-            Ok(0)
         }
         XrefCmd::ListBehaviourUsers { tree, behaviour } => {
             let xref = build_xref(&tree)?;

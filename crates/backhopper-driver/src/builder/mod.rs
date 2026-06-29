@@ -5,6 +5,7 @@
 //! Type-state builders for the verbs the driver wraps.
 
 pub mod check;
+pub(crate) mod list_input;
 pub mod siblings;
 pub mod snapshots;
 pub mod state;

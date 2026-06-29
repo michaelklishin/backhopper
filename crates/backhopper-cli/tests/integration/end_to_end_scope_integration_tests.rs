@@ -8,7 +8,7 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_TRACKED: &str = r#"
 -module(demo_mod).
@@ -16,9 +16,9 @@ const ERL_TRACKED: &str = r#"
 greet(Name) -> Name.
 "#;
 
-fn build_repo() -> (FixtureRepo, TempDir) {
+fn build_repo() -> (GitRepoFixture, TempDir) {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_TRACKED);
     repo.commit("first");
     repo.tag("v1.0.0");

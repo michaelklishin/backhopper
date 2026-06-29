@@ -126,7 +126,7 @@ pub struct InferredPin {
 }
 
 fn infer_from_rabbitmq(repo_dir: &Path, branches: &[String]) -> CliResult<InferredWorkspace> {
-    let repo = GitRepo::open(repo_dir.to_path_buf()).map_err(CliError::Git)?;
+    let repo = GitRepo::open(repo_dir.to_path_buf())?;
     let mut workspace = InferredWorkspace::default();
     for branch in branches {
         match read_components_at_branch(&repo, branch) {

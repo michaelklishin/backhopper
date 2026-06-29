@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use assert_cmd::Command;
 use tempfile::TempDir;
 
-use crate::helpers::fixture::FixtureRepo;
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+use backhopper_test_support::GitRepoFixture;
 
 const COMPONENTS_MK: &str = r#"
 PROJECT = rabbit
@@ -16,9 +16,9 @@ dep_ra = hex 2.16.7
 dep_seshat = hex 1.0.1
 "#;
 
-fn build_repo() -> (FixtureRepo, TempDir) {
+fn build_repo() -> (GitRepoFixture, TempDir) {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("rabbitmq-components.mk", COMPONENTS_MK);
     repo.commit("v1");
     (repo, work)
@@ -336,7 +336,7 @@ fn preview_with_branches_list_emits_one_stanza_per_branch() {
 #[test]
 fn preview_with_show_skipped_surfaces_invalid_project_names() {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "rabbitmq-components.mk",
         "dep_ra = hex 2.16.7\ndep_3bad = hex 1.0.0\n",
@@ -357,7 +357,7 @@ fn preview_with_show_skipped_surfaces_invalid_project_names() {
 #[test]
 fn preview_without_show_skipped_keeps_skipped_lines_hidden() {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file(
         "rabbitmq-components.mk",
         "dep_ra = hex 2.16.7\ndep_3bad = hex 1.0.0\n",

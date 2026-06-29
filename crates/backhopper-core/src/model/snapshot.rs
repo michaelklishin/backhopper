@@ -80,6 +80,15 @@ impl Visibility {
             Self::TestOnly => "test_only",
         }
     }
+
+    pub fn from_keyword(s: &str) -> Option<Self> {
+        match s {
+            "public" => Some(Self::Public),
+            "hidden" => Some(Self::Hidden),
+            "test_only" => Some(Self::TestOnly),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +183,23 @@ pub enum TestExportVariant {
     B,
 }
 
+impl TestExportVariant {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::A => "a",
+            Self::B => "b",
+        }
+    }
+
+    pub fn from_label(s: &str) -> Option<Self> {
+        match s {
+            "a" => Some(Self::A),
+            "b" => Some(Self::B),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IfdefMacro {
     pub name: String,
@@ -191,6 +217,25 @@ pub enum IfdefGuardKind {
     NotTest,
     /// The macro is inside some other `-ifdef` or `-if` block.
     Other,
+}
+
+impl IfdefGuardKind {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::Test => "test",
+            Self::NotTest => "not_test",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn from_label(s: &str) -> Option<Self> {
+        match s {
+            "test" => Some(Self::Test),
+            "not_test" => Some(Self::NotTest),
+            "other" => Some(Self::Other),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -288,6 +333,25 @@ pub enum VendoredDepSource {
     Git,
     /// `dep_NAME = git_rmq NAME TAG` (vendored fork).
     GitRmq,
+}
+
+impl VendoredDepSource {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            Self::Hex => "hex",
+            Self::Git => "git",
+            Self::GitRmq => "git_rmq",
+        }
+    }
+
+    pub fn from_label(s: &str) -> Option<Self> {
+        match s {
+            "hex" => Some(Self::Hex),
+            "git" => Some(Self::Git),
+            "git_rmq" => Some(Self::GitRmq),
+            _ => None,
+        }
+    }
 }
 
 impl Module {
@@ -469,6 +533,14 @@ impl<S> Snapshot<S> {
 
     pub fn headers(&self) -> &[HrlFile] {
         &self.headers
+    }
+
+    /// Records live in headers (.hrl) and inline in modules (.erl): both.
+    pub fn records(&self) -> impl Iterator<Item = &RecordDecl> {
+        self.headers
+            .iter()
+            .flat_map(|h| h.records.iter())
+            .chain(self.modules.iter().flat_map(|m| m.records.iter()))
     }
 }
 

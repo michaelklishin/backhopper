@@ -5,7 +5,7 @@
 use assert_cmd::Command;
 use tempfile::TempDir;
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const V1: &str = r#"
 -module(demo_mod).
@@ -20,9 +20,9 @@ greet(Name) -> Name.
 greet(_, _) -> ok.
 "#;
 
-fn build_two_tag_repo() -> (FixtureRepo, TempDir) {
+fn build_two_tag_repo() -> (GitRepoFixture, TempDir) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", V1);
     repo.commit("v1");
     repo.tag("v1.0.0");

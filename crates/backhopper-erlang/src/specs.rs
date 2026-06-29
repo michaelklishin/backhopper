@@ -96,11 +96,15 @@ fn count_top_level_commas(s: &str) -> usize {
     let mut depth_paren = 0i32;
     let mut depth_brace = 0i32;
     let mut depth_brack = 0i32;
+    // `<<...>>` bitstring types carry commas that are not argument
+    // separators, e.g. `<<_:8, _:_*8>>` in a single spec argument.
+    let mut depth_angle = 0i32;
     let mut in_string = false;
     let mut in_atom_quote = false;
     let mut prev_back = false;
     let mut count = 0usize;
-    for ch in s.chars() {
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
         if prev_back {
             prev_back = false;
             continue;
@@ -109,18 +113,22 @@ fn count_top_level_commas(s: &str) -> usize {
             '\\' if in_string || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_string = !in_string,
             '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            ',' if !in_string
-                && !in_atom_quote
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_brack == 0 =>
-            {
+            _ if in_string || in_atom_quote => {}
+            '<' if chars.peek() == Some(&'<') => {
+                chars.next();
+                depth_angle += 1;
+            }
+            '>' if chars.peek() == Some(&'>') => {
+                chars.next();
+                depth_angle -= 1;
+            }
+            '(' => depth_paren += 1,
+            ')' => depth_paren -= 1,
+            '{' => depth_brace += 1,
+            '}' => depth_brace -= 1,
+            '[' => depth_brack += 1,
+            ']' => depth_brack -= 1,
+            ',' if depth_paren == 0 && depth_brace == 0 && depth_brack == 0 && depth_angle == 0 => {
                 count += 1;
             }
             _ => {}

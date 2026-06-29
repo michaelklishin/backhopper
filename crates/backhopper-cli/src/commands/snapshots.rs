@@ -14,7 +14,6 @@ use clap::crate_version;
 use serde::Serialize;
 use time::OffsetDateTime;
 
-use backhopper_core::Error as CoreError;
 use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project, ProjectLayout};
 use backhopper_core::model::names::{
@@ -37,6 +36,7 @@ use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
 use crate::commands::context::{load_config, open_store_mut, open_store_read};
+use crate::commands::pin_coverage::{PinCoverage, classify_pin};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render, render_with_exit};
 
@@ -165,19 +165,14 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
 
 fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> CliResult<i32> {
     let projects: Vec<&Project> = match project {
-        Some(p) => vec![cfg.project(&p).map_err(|e| CliError::Core(e.into()))?],
+        Some(p) => vec![cfg.project(&p)?],
         None => cfg.projects.iter().collect(),
     };
     let store = open_store_read(args, cfg)?;
     let mut payloads: Vec<ListTagsEntry> = Vec::new();
     for p in projects {
-        let repo = GitRepo::open(
-            p.require_git_url()
-                .map_err(|e| CliError::Core(e.into()))?
-                .to_path_buf(),
-        )
-        .map_err(CliError::Git)?;
-        let listing = repo.list_tag_refs().map_err(CliError::Git)?;
+        let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+        let listing = repo.list_tag_refs()?;
         let mut pending: Vec<String> = Vec::new();
         for tag in listing.tags {
             if !store.has(&p.name, &tag) {
@@ -220,7 +215,7 @@ fn generate(
     }
     let store = open_store_mut(args, cfg)?;
     let projects: Vec<&Project> = match project {
-        Some(p) => vec![cfg.project(&p).map_err(|e| CliError::Core(e.into()))?],
+        Some(p) => vec![cfg.project(&p)?],
         None => cfg.projects.iter().collect(),
     };
     let mut payloads = Vec::new();
@@ -262,13 +257,8 @@ fn generate_one(
     dry_run: bool,
     since: Option<&TagName>,
 ) -> CliResult<DiscoverPayload> {
-    let repo = GitRepo::open(
-        p.require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
-    let listing = repo.list_tag_refs().map_err(CliError::Git)?;
+    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+    let listing = repo.list_tag_refs()?;
     let tags = filter_tags_for_project(listing.tags, p, since);
     let mut captured = 0usize;
     let mut skipped = 0usize;
@@ -340,9 +330,7 @@ fn generate_series(
     name: &SeriesName,
     dry_run: bool,
 ) -> CliResult<i32> {
-    let series = cfg
-        .series_by_name(name)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let series = cfg.series_by_name(name)?;
     let store = open_store_mut(args, cfg)?;
     let mut payloads: Vec<DiscoverPayload> = Vec::with_capacity(series.pins.len());
     let mut self_pins_skipped: Vec<SelfPinSkip> = Vec::new();
@@ -359,14 +347,14 @@ fn generate_series(
                 });
             }
             PinSpec::Literal { project, tag } => {
-                let p = cfg.project(project).map_err(|e| CliError::Core(e.into()))?;
+                let p = cfg.project(project)?;
                 let payload = generate_pinned_tag(p, tag, &store, dry_run)?;
                 accumulate_summary(&mut summary, &payload);
                 payloads.push(payload);
             }
             PinSpec::Pattern { project, .. } => {
-                let p = cfg.project(project).map_err(|e| CliError::Core(e.into()))?;
-                let resolved = spec.resolve(&store).map_err(|e| CliError::Core(e.into()))?;
+                let p = cfg.project(project)?;
+                let resolved = spec.resolve(&store)?;
                 let payload = generate_pinned_tag(p, &resolved.tag, &store, dry_run)?;
                 accumulate_summary(&mut summary, &payload);
                 payloads.push(payload);
@@ -434,12 +422,7 @@ fn generate_pinned_tag(
             ignored_non_tag_refs: Vec::new(),
         });
     }
-    let repo = GitRepo::open(
-        p.require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
+    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
     match build_snapshot(p, &repo, tag) {
         Ok(snapshot) => {
             if !dry_run {
@@ -515,7 +498,7 @@ pub(crate) fn build_snapshot(
     repo: &GitRepo,
     tag: &TagName,
 ) -> CliResult<Snapshot<state::Canonical>> {
-    let commit = repo.resolve_tag(tag).map_err(CliError::Git)?;
+    let commit = repo.resolve_tag(tag)?;
     build_snapshot_at_commit(p, repo, &commit, tag)
 }
 
@@ -529,24 +512,22 @@ pub(crate) fn build_snapshot_at_commit(
     let (files, scanned_paths, apps_scanned) = match p.layout {
         ProjectLayout::SingleApp => {
             let scan_paths = p.scan_paths.clone();
-            let blobs = repo
-                .read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))
-                .map_err(CliError::Git)?;
+            let blobs =
+                repo.read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))?;
             let files: Vec<(PathBuf, Vec<u8>)> =
                 blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
             (files, scan_paths, Vec::new())
         }
         ProjectLayout::MultiApp | ProjectLayout::ErlangOtp => {
             let apps_set: RefCell<BTreeSet<ApplicationName>> = RefCell::new(BTreeSet::new());
-            let blobs = repo
-                .read_paths_at_commit(&commit, |path| match multi_app_match(path, p) {
+            let blobs =
+                repo.read_paths_at_commit(&commit, |path| match multi_app_match(path, p) {
                     Some(app) => {
                         apps_set.borrow_mut().insert(app);
                         true
                     }
                     None => false,
-                })
-                .map_err(CliError::Git)?;
+                })?;
             let files: Vec<(PathBuf, Vec<u8>)> =
                 blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
             let apps: Vec<ApplicationName> = apps_set.into_inner().into_iter().collect();
@@ -691,9 +672,7 @@ fn suffix_match(suffix: &str, path: &str) -> bool {
 
 fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let tags = store
-        .list_tags(&project)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let tags = store.list_tags(&project)?;
     let payload = ListPayload {
         project: project.to_string(),
         tags: tags.iter().map(|s| s.to_string()).collect(),
@@ -723,9 +702,7 @@ fn show(
     module: Option<ModuleName>,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let snapshot = store
-        .read(&project, &tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let snapshot = store.read(&project, &tag)?;
     let ctx = OutputContext::new(args.formatter, "snapshots show");
     if let Some(name) = &module {
         let module_ref = snapshot.module_named(name);
@@ -738,8 +715,7 @@ fn show(
         let exit = if found { 0 } else { PARTIAL_SUCCESS_I32 };
         render_with_exit(&ctx, &payload, exit, |w| {
             let mut buf: Vec<u8> = Vec::new();
-            format::write_module_filtered(&snapshot, name, &mut buf)
-                .map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
+            format::write_module_filtered(&snapshot, name, &mut buf)?;
             w.write_all(&buf)?;
             if !found {
                 writeln!(w, "module {name} not present in {project} {tag}")?;
@@ -749,8 +725,7 @@ fn show(
         return Ok(exit);
     }
     render(&ctx, &snapshot, |w| {
-        let text =
-            format::to_string(&snapshot).map_err(|e| CliError::Core(CoreError::Snapshot(e)))?;
+        let text = format::to_string(&snapshot)?;
         write!(w, "{text}")?;
         Ok(())
     })?;
@@ -786,20 +761,11 @@ fn verify_one(
     project: ProjectName,
     tag: TagName,
 ) -> CliResult<i32> {
-    let p = cfg
-        .project(&project)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(
-        p.require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
+    let p = cfg.project(&project)?;
+    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
     let regenerated = build_snapshot(p, &repo, &tag)?;
     let store = open_store_read(args, cfg)?;
-    let stored = store
-        .read(&project, &tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let stored = store.read(&project, &tag)?;
     // The text writer can't round-trip Module.clause_heads yet, so verify ignores them.
     let regenerated_modules: Vec<Module> = regenerated
         .modules()
@@ -864,16 +830,12 @@ struct VerifyAllPayload {
 
 fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let projects = store
-        .list_projects()
-        .map_err(|e| CliError::Core(e.into()))?;
+    let projects = store.list_projects()?;
     let mut verified = 0usize;
     let mut failed: Vec<VerifyAllFailure> = Vec::new();
     let mut stale_extractor: Vec<VerifyAllStale> = Vec::new();
     for project in projects {
-        let tags = store
-            .list_tags(&project)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let tags = store.list_tags(&project)?;
         let expected = cfg
             .project(&project)
             .ok()
@@ -962,33 +924,26 @@ fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
     for series in &cfg.series {
         for spec in &series.pins {
             pins_checked += 1;
-            let resolved = match spec {
-                PinSpec::SelfRef { .. } => {
-                    self_pins_skipped += 1;
-                    continue;
+            match classify_pin(spec, &store) {
+                PinCoverage::SelfPin => self_pins_skipped += 1,
+                PinCoverage::Resolved { present: true, .. } => covered += 1,
+                PinCoverage::Resolved {
+                    pin,
+                    present: false,
+                } => {
+                    missing_pins.push(MissingPin {
+                        series: series.name.to_string(),
+                        project: pin.project.to_string(),
+                        tag: pin.tag.to_string(),
+                    });
                 }
-                PinSpec::Literal { project, tag } => (project.clone(), tag.clone()),
-                PinSpec::Pattern { .. } => match spec.resolve(&store) {
-                    Ok(pin) => (pin.project, pin.tag),
-                    Err(_) => {
-                        missing_pins.push(MissingPin {
-                            series: series.name.to_string(),
-                            project: spec.project().to_string(),
-                            tag: "<pattern unresolved>".to_string(),
-                        });
-                        continue;
-                    }
-                },
-            };
-            let (project, tag) = resolved;
-            if store.has(&project, &tag) {
-                covered += 1;
-            } else {
-                missing_pins.push(MissingPin {
-                    series: series.name.to_string(),
-                    project: project.to_string(),
-                    tag: tag.to_string(),
-                });
+                PinCoverage::Unresolved { project } => {
+                    missing_pins.push(MissingPin {
+                        series: series.name.to_string(),
+                        project: project.to_string(),
+                        tag: "<pattern unresolved>".to_string(),
+                    });
+                }
             }
         }
     }
@@ -1063,32 +1018,25 @@ fn migrate(
     };
     let projects = match project_filter {
         Some(p) => vec![p],
-        None => store_read
-            .list_projects()
-            .map_err(|e| CliError::Core(e.into()))?,
+        None => store_read.list_projects()?,
     };
     let mut migrated = 0usize;
     let mut already_current = 0usize;
     let mut failed: Vec<MigrateFailure> = Vec::new();
     for project in projects {
-        let tags = store_read
-            .list_tags(&project)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let tags = store_read.list_tags(&project)?;
         for tag in tags {
             match store_read.read(&project, &tag) {
                 Ok(snap) => {
-                    let stored_path = store_read
-                        .snapshot_path(&project, &tag)
-                        .map_err(|e| CliError::Core(e.into()))?;
+                    let stored_path = store_read.snapshot_path(&project, &tag)?;
                     let current_text = fs::read_to_string(&stored_path).unwrap_or_default();
-                    let re_emitted = backhopper_core::snapshot::format::to_string(&snap)
-                        .map_err(|e| CliError::Core(e.into()))?;
+                    let re_emitted = backhopper_core::snapshot::format::to_string(&snap)?;
                     if current_text == re_emitted {
                         already_current += 1;
                         continue;
                     }
                     if let Some(mw) = &store_mut {
-                        mw.write(&snap).map_err(|e| CliError::Core(e.into()))?;
+                        mw.write(&snap)?;
                     }
                     migrated += 1;
                 }
@@ -1133,22 +1081,13 @@ fn rebuild(
     tag: TagName,
     dry_run: bool,
 ) -> CliResult<i32> {
-    let p = cfg
-        .project(&project)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(
-        p.require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
+    let p = cfg.project(&project)?;
+    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
     let snapshot = build_snapshot(p, &repo, &tag)?;
     let store = open_store_mut(args, cfg)?;
     if !dry_run {
         let _ = store.delete(&project, &tag);
-        store
-            .write(&snapshot)
-            .map_err(|e| CliError::Core(e.into()))?;
+        store.write(&snapshot)?;
     }
     let payload = serde_json::json!({
         "project": project.to_string(),
@@ -1172,9 +1111,7 @@ fn lookup(
     include_hidden: bool,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let snapshot = store
-        .read(&project, &tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let snapshot = store.read(&project, &tag)?;
     let mut results = Vec::with_capacity(mfas.len());
     let mut all_found = true;
     for mfa in &mfas {
@@ -1282,9 +1219,7 @@ fn walk_project_snapshots<M>(
     mfas: &[Mfa],
     include_hidden: bool,
 ) -> CliResult<Vec<TagSnapshot>> {
-    let mut tags = store
-        .list_tags(project)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let mut tags = store.list_tags(project)?;
     if tags.is_empty() {
         return Err(CliError::InvalidInput(format!(
             "no snapshots on disk for project {project}"
@@ -1294,9 +1229,7 @@ fn walk_project_snapshots<M>(
     tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
     let mut out = Vec::with_capacity(tags.len());
     for tag in tags {
-        let snapshot = store
-            .read(project, &tag)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let snapshot = store.read(project, &tag)?;
         let commit = snapshot.header().commit.clone();
         let presence: Vec<bool> = mfas
             .iter()
@@ -1420,9 +1353,7 @@ fn modules(
     include_hidden: bool,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let snapshot = store
-        .read(&project, &tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let snapshot = store.read(&project, &tag)?;
     let mut payload = ModulesPayload {
         project: project.to_string(),
         tag: tag.to_string(),
@@ -1465,9 +1396,7 @@ fn exports(
     module: ModuleName,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let snapshot = store
-        .read(&project, &tag)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let snapshot = store.read(&project, &tag)?;
     let m: Option<&Module> = snapshot.module_named(&module);
     let exports: Vec<String> = m
         .map(|m| {
@@ -1501,12 +1430,8 @@ fn diff_single_project(
     to: TagName,
 ) -> CliResult<i32> {
     let store = open_store_read(args, cfg)?;
-    let a = store
-        .read(&project, &from)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let b = store
-        .read(&project, &to)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let a = store.read(&project, &from)?;
+    let b = store.read(&project, &to)?;
     let result = compute_diff(&a, &b);
     let ctx = OutputContext::new(args.formatter, "snapshots project_diff");
     render(&ctx, &result, |w| {
@@ -1521,19 +1446,11 @@ fn diff_cross_series(
     from_series: SeriesName,
     to_series: SeriesName,
 ) -> CliResult<i32> {
-    let from = cfg
-        .series_by_name(&from_series)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let to = cfg
-        .series_by_name(&to_series)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let from = cfg.series_by_name(&from_series)?;
+    let to = cfg.series_by_name(&to_series)?;
     let store = open_store_read(args, cfg)?;
-    let from_resolved = from
-        .resolve_pins(&store)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let to_resolved = to
-        .resolve_pins(&store)
-        .map_err(|e| CliError::Core(e.into()))?;
+    let from_resolved = from.resolve_pins(&store)?;
+    let to_resolved = to.resolve_pins(&store)?;
     let mut to_by_project: BTreeMap<&ProjectName, VecDeque<&TagName>> = BTreeMap::new();
     for pin in &to_resolved {
         to_by_project
@@ -1549,12 +1466,8 @@ fn diff_cross_series(
         else {
             continue;
         };
-        let a = store
-            .read(&pin.project, &pin.tag)
-            .map_err(|e| CliError::Core(e.into()))?;
-        let b = store
-            .read(&pin.project, to_tag)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let a = store.read(&pin.project, &pin.tag)?;
+        let b = store.read(&pin.project, to_tag)?;
         projects.push(compute_diff(&a, &b));
     }
     let payload = CrossSeriesDiffPayload {

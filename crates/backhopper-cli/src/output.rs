@@ -7,6 +7,7 @@
 //! `command`, `data`, and `exit_code` so clients can parse without
 //! conditionals.
 
+use std::fmt::Display;
 use std::io::{self, Write};
 
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
@@ -39,6 +40,32 @@ where
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
 {
     render_with_exit(out, payload, 0, text_render).map(|_| ())
+}
+
+/// Write one JSON-serialized row per line (JSONL): no array wrap, a
+/// trailing newline after each row.
+pub fn emit_jsonl<T>(w: &mut dyn Write, rows: &[T]) -> CliResult<()>
+where
+    T: Serialize,
+{
+    for row in rows {
+        let bytes = serde_json::to_vec(row).map_err(|e| CliError::OutputError(e.to_string()))?;
+        w.write_all(&bytes)?;
+        w.write_all(b"\n")?;
+    }
+    Ok(())
+}
+
+/// Render a value whose text form is its `Display` impl. JSON path is
+/// unchanged; the text path writes `value` directly. Returns exit 0.
+pub fn render_display<T>(out: &OutputContext, value: &T) -> CliResult<i32>
+where
+    T: Serialize + Display,
+{
+    render_with_exit(out, value, 0, |w| {
+        write!(w, "{value}")?;
+        Ok(())
+    })
 }
 
 pub fn render_with_exit<T, FT>(

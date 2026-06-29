@@ -2,31 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use time::OffsetDateTime;
-
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::snapshot::{
-    IfdefGuardKind, IfdefMacro, Module, Snapshot, SnapshotHeader, TestExportVariant,
-    TestOnlyExport, VariantCBlock, state,
+    IfdefGuardKind, IfdefMacro, Module, Snapshot, TestExportVariant, TestOnlyExport, VariantCBlock,
+    state,
 };
 use backhopper_core::snapshot::{format, parser};
-
-fn header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("khepri").unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_test_support::snapshot_header;
 
 fn module_with_extensions() -> Module {
     let mut m = Module::new(ModuleName::new("rabbit_khepri").unwrap());
@@ -61,9 +43,12 @@ fn module_with_extensions() -> Module {
 #[test]
 fn module_extensions_round_trip_through_text_format() {
     let original = module_with_extensions();
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![original.clone()], vec![])
-            .into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![original.clone()],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("parse back");
     let parsed_module = reparsed
@@ -84,8 +69,12 @@ fn variant_a_omits_body_line_in_wire_format() {
         body_line: None,
         variant: TestExportVariant::A,
     });
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], vec![]).into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![m],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     assert!(
         text.contains("test_only_export a id/1 export_line=10"),
@@ -107,8 +96,12 @@ fn variant_b_requires_body_line_in_wire_format() {
         body_line: Some(87),
         variant: TestExportVariant::B,
     });
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], vec![]).into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![m],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     assert!(
         text.contains("test_only_export b init/1 export_line=37 body_line=87"),
@@ -134,8 +127,12 @@ fn ifdef_macro_guard_kinds_round_trip() {
         line: 30,
         guard_kind: IfdefGuardKind::Other,
     });
-    let snap = Snapshot::<state::Unsorted>::from_extracted(header(), vec![m.clone()], vec![])
-        .into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![m.clone()],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("parse");
     let parsed = reparsed
@@ -153,8 +150,12 @@ fn variant_c_block_without_else_round_trips() {
         else_line: None,
         end_line: 100,
     });
-    let snap = Snapshot::<state::Unsorted>::from_extracted(header(), vec![m.clone()], vec![])
-        .into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![m.clone()],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("parse");
     let parsed = reparsed
@@ -211,8 +212,12 @@ fn parser_rejects_variant_c_block_missing_end_line() {
 #[test]
 fn empty_extensions_emit_no_lines() {
     let m = Module::new(ModuleName::new("ra_directory").unwrap());
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], vec![]).into_canonical();
+    let snap = Snapshot::<state::Unsorted>::from_extracted(
+        snapshot_header("khepri", "v1.0.0"),
+        vec![m],
+        vec![],
+    )
+    .into_canonical();
     let text = format::to_string(&snap).expect("write");
     // None of the new sections should appear when their fields are empty.
     assert!(!text.contains("test_only_export"), "text was:\n{text}");

@@ -16,12 +16,12 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, run_succeeds, run_with_env, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const DEP_V1: &str = "-module(dep_mod).\n-export([old/1]).\nold(X) -> X.\n";
 const DEP_V2: &str = "-module(dep_mod).\n-export([old/1, new/1]).\nold(X) -> X.\nnew(X) -> X.\n";
 
-fn head_sha(repo: &FixtureRepo) -> String {
+fn head_sha(repo: &GitRepoFixture) -> String {
     let out = Std::new("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo.dir.path())
@@ -31,8 +31,8 @@ fn head_sha(repo: &FixtureRepo) -> String {
 }
 
 struct Fixture {
-    _dep: FixtureRepo,
-    user: FixtureRepo,
+    _dep: GitRepoFixture,
+    user: GitRepoFixture,
     work: TempDir,
     cfg: PathBuf,
     snapshots: PathBuf,
@@ -43,7 +43,7 @@ struct Fixture {
 
 fn build_fixture() -> Fixture {
     let work = TempDir::new().unwrap();
-    let dep = FixtureRepo::new();
+    let dep = GitRepoFixture::new();
     dep.write_file("src/dep_mod.erl", DEP_V1);
     dep.commit("dep v1");
     dep.tag("v1.0.0");
@@ -51,7 +51,7 @@ fn build_fixture() -> Fixture {
     dep.commit("dep v2");
     dep.tag("v2.0.0");
 
-    let user = FixtureRepo::new();
+    let user = GitRepoFixture::new();
     user.write_file("rabbitmq-components.mk", "dep_dep = hex 1.0.0\n");
     user.commit("base pins");
     user.write_file("rabbitmq-components.mk", "dep_dep = hex 2.0.0\n");

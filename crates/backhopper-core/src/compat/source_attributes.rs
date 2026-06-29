@@ -329,9 +329,9 @@ pub fn extract_exports(src: &str) -> ExportSet {
             }
             if let Some((name, arity)) = parse_fun_arity(entry)
                 && let (Ok(function), Ok(arity)) =
-                    (FunctionName::from_str(&name), u8::try_from(arity))
+                    (FunctionName::from_str(&name), Arity::try_from(arity))
             {
-                exports.insert((function, Arity::new(arity)));
+                exports.insert((function, arity));
             }
         }
     }

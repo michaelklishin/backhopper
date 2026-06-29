@@ -2,29 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use time::OffsetDateTime;
-
 use backhopper_core::errors::SnapshotError;
-use backhopper_core::model::names::{CommitSha, FieldName, ProjectName, RecordName, TagName};
+use backhopper_core::model::names::{FieldName, RecordName};
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
     HrlFile, RecordDecl, RecordField, Snapshot, SnapshotHeader,
 };
 use backhopper_core::snapshot::{format, parser};
+use backhopper_test_support::snapshot_header;
 
 fn minimal_header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("khepri").unwrap(),
-        tag: TagName::new("v0.16.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["include".into()],
-        apps_scanned: Vec::new(),
-        generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
+    let mut header = snapshot_header("khepri", "v0.16.0");
+    header.scanned_paths = vec!["include".into()];
+    header.generated_by = format!("backhopper {}", env!("CARGO_PKG_VERSION"));
+    header
 }
 
 fn snapshot_with_record_field(type_repr: Option<String>) -> Snapshot<Canonical> {

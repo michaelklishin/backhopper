@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 
-use backhopper_core::Error as CoreError;
 use backhopper_core::config::{Config, Language};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
@@ -46,20 +45,10 @@ pub fn ensure_pin_snapshots_present(
 }
 
 pub fn generate_one_pin(cfg: &Config, store: &SnapshotStore<Mutable>, pin: &Pin) -> CliResult<()> {
-    let project = cfg
-        .project(&pin.project)
-        .map_err(|e| CliError::Core(e.into()))?;
-    let repo = GitRepo::open(
-        project
-            .require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
+    let project = cfg.project(&pin.project)?;
+    let repo = GitRepo::open(project.require_git_url()?.to_path_buf())?;
     let snapshot = build_snapshot(project, &repo, &pin.tag)?;
-    store
-        .write(&snapshot)
-        .map_err(|e| CliError::Core(CoreError::Store(e)))?;
+    store.write(&snapshot)?;
     Ok(())
 }
 

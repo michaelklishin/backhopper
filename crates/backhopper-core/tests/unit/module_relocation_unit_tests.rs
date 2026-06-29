@@ -3,34 +3,18 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{Module, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Module, Snapshot, state};
 use backhopper_core::model::verdict::{Reason, Verdict};
-use time::OffsetDateTime;
+use backhopper_test_support::{canonical_snapshot, module, snapshot_header};
 
 fn snap_with(modules: Vec<&str>) -> Snapshot<state::Canonical> {
-    let header = SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new("v").unwrap(),
-        branch: None,
-        commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    };
-    let mods: Vec<Module> = modules
-        .into_iter()
-        .map(|n| Module::new(ModuleName::new(n).unwrap()))
-        .collect();
-    Snapshot::from_extracted(header, mods, Vec::new()).into_canonical()
+    let mods: Vec<Module> = modules.into_iter().map(module).collect();
+    canonical_snapshot(snapshot_header("p", "v"), mods)
 }
 
 fn evaluate(diff: &str, modules_on_pin: Vec<&str>, file_on_disk: bool) -> Vec<Reason> {

@@ -7,33 +7,17 @@ use std::panic;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
-use time::OffsetDateTime;
 
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::names::{ProjectName, TagName};
+use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::store::SnapshotStore;
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 fn make_snapshot(project: &str, tag: &str) -> Snapshot<state::Canonical> {
-    let header = SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new(tag).unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "backhopper 0.1.0".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    };
-    let mut m = Module::new(ModuleName::new("ra_server").unwrap());
-    m.exports.push(FunArity {
-        name: FunctionName::new("members").unwrap(),
-        arity: Arity::new(1),
-    });
-    Snapshot::from_extracted(header, vec![m], vec![]).into_canonical()
+    canonical_snapshot(
+        snapshot_header(project, tag),
+        vec![module_with("ra_server", &[("members", 1)])],
+    )
 }
 
 #[test]

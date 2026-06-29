@@ -11,7 +11,7 @@ use bel7_cli::{ExitCode, ExitCodeProvider, codes};
 use thiserror::Error;
 
 use backhopper_core::Error as CoreError;
-use backhopper_core::errors::{ConfigError, StoreError};
+use backhopper_core::errors::{ConfigError, NameError, PatchError, SnapshotError, StoreError};
 use backhopper_core::model::names::SeriesName;
 use backhopper_core::model::pin::Pin;
 use backhopper_git::{GitError, PatchInputError};
@@ -166,6 +166,37 @@ impl From<PatchInputError> for CliError {
             PatchInputError::Git(g) => Self::Git(g),
             other => Self::InvalidInput(other.to_string()),
         }
+    }
+}
+
+// Route each leaf error through its CoreError variant so ? keeps the exit-code mapping.
+impl From<StoreError> for CliError {
+    fn from(e: StoreError) -> Self {
+        Self::Core(CoreError::Store(e))
+    }
+}
+
+impl From<ConfigError> for CliError {
+    fn from(e: ConfigError) -> Self {
+        Self::Core(CoreError::Config(e))
+    }
+}
+
+impl From<SnapshotError> for CliError {
+    fn from(e: SnapshotError) -> Self {
+        Self::Core(CoreError::Snapshot(e))
+    }
+}
+
+impl From<NameError> for CliError {
+    fn from(e: NameError) -> Self {
+        Self::Core(CoreError::Name(e))
+    }
+}
+
+impl From<PatchError> for CliError {
+    fn from(e: PatchError) -> Self {
+        Self::Core(CoreError::Patch(e))
     }
 }
 

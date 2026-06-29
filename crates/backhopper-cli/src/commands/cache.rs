@@ -10,7 +10,7 @@
 use std::io::Write;
 use std::time::Duration;
 
-use tabled::{Table, Tabled};
+use tabled::Tabled;
 
 use backhopper_cache::{
     KeyLookupError, ScannedEntry, WorkspaceCaches, clear, evict_entry, find_by_key_prefix, prune,
@@ -25,6 +25,7 @@ use crate::cli::{CacheCmd, GlobalArgs};
 use crate::commands::context::{load_config, snapshot_dir};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
+use crate::tables::styled_table;
 
 /// The shortest accepted cache-key prefix, matching the commit-SHA
 /// prefix affordance.
@@ -88,9 +89,7 @@ fn run_stats(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<i32> {
                 bytes: payload.siblings.bytes,
             },
         ];
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
         writeln!(
             w,
             "aliases: {}; total bytes: {}",
@@ -171,9 +170,7 @@ fn run_list(
                 alias: if r.alias { "yes" } else { "-" }.to_owned(),
             })
             .collect();
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
         Ok(())
     })?;
     Ok(0)
@@ -273,9 +270,7 @@ fn render_show_text(
             value: serde_json::to_string(summary).unwrap_or_default(),
         });
     }
-    let mut table = Table::new(fields);
-    style.apply(&mut table);
-    writeln!(w, "{table}")?;
+    writeln!(w, "{}", styled_table(fields, style))?;
     // the pin rows of the pre-image as a nested table, one pin per row
     if let Some(pins) = payload.key_inputs.get("pins").and_then(|v| v.as_array())
         && !pins.is_empty()
@@ -289,9 +284,7 @@ fn render_show_text(
                 snapshot: json_str(p, "snapshot_blake3"),
             })
             .collect();
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
     }
     if let Some(value) = &payload.value {
         writeln!(

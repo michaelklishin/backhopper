@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! End-to-end tests for `--auto-generate` on `check commit`. We build a
-//! tiny FixtureRepo, do not generate snapshots ahead of time, and run
+//! tiny GitRepoFixture, do not generate snapshots ahead of time, and run
 //! `check commit` once without the flag (expects MissingSnapshots) and
 //! once with it (expects the snapshot to be written and the verdict to
 //! return).
@@ -13,7 +13,7 @@ use std::process::Command as Std;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stderr, stdout};
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_V1: &str = r#"
 -module(demo_mod).
@@ -28,9 +28,9 @@ greet(Name) -> Name.
 greet(_, _) -> demo_mod:greet(<<"x">>).
 "#;
 
-fn build_repo() -> (FixtureRepo, TempDir, String) {
+fn build_repo() -> (GitRepoFixture, TempDir, String) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_V1);
     repo.commit("v1");
     repo.tag("v1.0.0");

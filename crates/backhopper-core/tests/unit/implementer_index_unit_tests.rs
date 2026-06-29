@@ -2,26 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::str::FromStr;
-
-use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, TagName};
-use backhopper_core::model::snapshot::{Module, Snapshot, SnapshotHeader, state};
-use time::OffsetDateTime;
-
-fn header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new("v1").unwrap(),
-        branch: None,
-        commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_core::model::names::ModuleName;
+use backhopper_core::model::snapshot::{Module, Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 fn module_with_behaviours(name: &str, behaviours: &[&str]) -> Module {
     let mut m = Module::new(ModuleName::new(name).unwrap());
@@ -32,7 +15,7 @@ fn module_with_behaviours(name: &str, behaviours: &[&str]) -> Module {
 }
 
 fn canonical(modules: Vec<Module>) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(header(), modules, Vec::new()).into_canonical()
+    canonical_snapshot(snapshot_header("p", "v1"), modules)
 }
 
 #[test]

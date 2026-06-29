@@ -244,7 +244,10 @@ pub fn split_top_level_commas(s: &str) -> Vec<&str> {
     out.into_iter().filter(|x| !x.is_empty()).collect()
 }
 
-pub(crate) fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
+/// Byte length of the `$`-led char literal starting at `at`, covering
+/// `$x`, `$\n`, and `$\^X` control-char escapes. The one Erlang
+/// char-literal scanner the byte-level readers share.
+pub fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
     debug_assert_eq!(bytes[at], b'$');
     let next = at + 1;
     if next >= bytes.len() {

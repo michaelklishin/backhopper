@@ -20,7 +20,7 @@ use crate::driver::Backhopper;
 use crate::envelope::ExecutedInvocation;
 use crate::error::DriverError;
 use crate::stdin::StdinPayload;
-use crate::verb::{Verb, VerbId};
+use crate::verb::Verb;
 
 /// Top-level handle returned by [`Backhopper::siblings`].
 #[derive(Debug)]
@@ -137,12 +137,10 @@ impl<B: Backend> SiblingsDoctorBuilder<'_, B> {
         if self.no_cache {
             args.push("--no-cache".into());
         }
-        let envelope = self.driver.invoke::<SiblingDoctorReport, OsString>(
-            VerbId::Known(Verb::SiblingsDoctor),
-            &args,
+        self.driver.dispatch_typed::<SiblingDoctorReport>(
+            Verb::SiblingsDoctor,
+            args,
             StdinPayload::None,
-        )?;
-        let (_, _, data, _, _, executed) = envelope.into_parts();
-        Ok((data, executed))
+        )
     }
 }

@@ -13,21 +13,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use crate::compat::added_lines::file_line;
+use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::call_sites::extract_qualified_calls;
 use crate::compat::source_attributes::{ExportSet, extract_exports, extract_function_signatures};
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::verdict::Reason;
-
-/// One touched `.erl` file: its path, the text of its added lines where
-/// qualified calls appear, and the blob-line to file-line map for the
-/// reported line.
-#[derive(Debug, Clone, Copy)]
-pub struct QualifiedCallSubject<'a> {
-    pub source_path: &'a RelativePath,
-    pub added_text: &'a str,
-    pub line_map: &'a [u32],
-}
 
 /// `(function, arity)` pairs the patch adds per module: definitions and
 /// `-export` entries. A qualified call to one of these is not flagged,
@@ -79,10 +69,11 @@ pub fn patch_added_functions(per_file: &[(ModuleName, &str)]) -> PatchAddedFunct
             if !sig.is_definition {
                 continue;
             }
-            if let (Ok(function), Ok(arity)) =
-                (FunctionName::from_str(&sig.name), u8::try_from(sig.arity))
-            {
-                entry.insert((function, Arity::new(arity)));
+            if let (Ok(function), Ok(arity)) = (
+                FunctionName::from_str(&sig.name),
+                Arity::try_from(sig.arity),
+            ) {
+                entry.insert((function, arity));
             }
         }
         entry.extend(extract_exports(added_text).exports);
@@ -98,7 +89,7 @@ pub fn patch_added_functions(per_file: &[(ModuleName, &str)]) -> PatchAddedFunct
 /// modules: a call into one of them is the snapshot axis's, not this
 /// one's. One reason per `(file, module, function, arity)`.
 pub fn analyse_qualified_calls(
-    subjects: &[QualifiedCallSubject<'_>],
+    subjects: &[AddedLinesSubject<'_>],
     covered_modules: &BTreeSet<ModuleName>,
     patch_added: &PatchAddedFunctions,
     resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,

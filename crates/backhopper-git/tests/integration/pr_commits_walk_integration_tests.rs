@@ -6,85 +6,46 @@
 //! with a known 2-parent merge structure and asserts the walk
 //! enumerates exactly the PR-branch commits.
 
-use std::ffi::OsStr;
-use std::fs;
-use std::path::Path;
-use std::process::{Command, Output};
-use std::str;
-
-use tempfile::TempDir;
-
 use backhopper_core::model::names::CommitSha;
 use backhopper_core::model::pr_commit::PrCommitKind;
 use backhopper_git::{GitRepo, pr_commits_for};
+use backhopper_test_support::GitRepoFixture;
 
 struct Fixture {
-    _dir: TempDir,
+    _fixture: GitRepoFixture,
     repo: GitRepo,
 }
 
-fn git<I: IntoIterator<Item = S>, S: AsRef<OsStr>>(cwd: &Path, args: I) -> Output {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .env("GIT_AUTHOR_NAME", "Test")
-        .env("GIT_AUTHOR_EMAIL", "test@example.com")
-        .env("GIT_COMMITTER_NAME", "Test")
-        .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .output()
-        .expect("git runs");
-    assert!(
-        out.status.success(),
-        "git {} failed: {}",
-        str::from_utf8(&out.stderr).unwrap_or("(stderr not utf-8)"),
-        out.status,
-    );
-    out
-}
-
-fn write(dir: &Path, rel: &str, body: &str) {
-    let full = dir.join(rel);
-    if let Some(p) = full.parent() {
-        fs::create_dir_all(p).unwrap();
-    }
-    fs::write(&full, body).unwrap();
-}
-
-fn head_sha(dir: &Path) -> CommitSha {
-    let out = git(dir, ["rev-parse", "HEAD"]);
-    let s = String::from_utf8(out.stdout).unwrap().trim().to_owned();
-    CommitSha::new(s).unwrap()
-}
-
-fn commit(dir: &Path, subject: &str) {
-    git(dir, ["add", "-A"]);
-    git(dir, ["commit", "--no-gpg-sign", "-m", subject]);
+fn head(fixture: &GitRepoFixture) -> CommitSha {
+    CommitSha::new(fixture.head_sha()).unwrap()
 }
 
 fn fixture_with_merge() -> (Fixture, CommitSha, Vec<CommitSha>) {
-    let dir = TempDir::new().expect("tempdir");
-    let path = dir.path().to_path_buf();
-    git(&path, ["init", "--initial-branch", "main"]);
-    write(&path, "README.md", "init\n");
-    commit(&path, "initial");
-    git(&path, ["checkout", "-b", "feature"]);
-    write(&path, "src/a.txt", "a\n");
-    commit(&path, "Add src/a.txt");
-    let pr1 = head_sha(&path);
-    write(&path, "src/b.txt", "b\n");
-    commit(&path, "Add src/b.txt");
-    let pr2 = head_sha(&path);
-    write(&path, "src/a.txt", "a-fixed\n");
-    commit(&path, "Resolve conflicts");
-    let pr3 = head_sha(&path);
-    git(&path, ["checkout", "main"]);
-    git(
-        &path,
-        ["merge", "--no-ff", "--no-edit", "--no-gpg-sign", "feature"],
-    );
-    let merge = head_sha(&path);
-    let repo = GitRepo::open(&path).expect("open");
-    (Fixture { _dir: dir, repo }, merge, vec![pr1, pr2, pr3])
+    let fixture = GitRepoFixture::new();
+    fixture.write_file("README.md", "init\n");
+    fixture.commit("initial");
+    fixture.checkout_new_branch("feature");
+    fixture.write_file("src/a.txt", "a\n");
+    fixture.commit("Add src/a.txt");
+    let pr1 = head(&fixture);
+    fixture.write_file("src/b.txt", "b\n");
+    fixture.commit("Add src/b.txt");
+    let pr2 = head(&fixture);
+    fixture.write_file("src/a.txt", "a-fixed\n");
+    fixture.commit("Resolve conflicts");
+    let pr3 = head(&fixture);
+    fixture.checkout("main");
+    fixture.merge_no_ff("feature", "Merge branch 'feature'");
+    let merge = head(&fixture);
+    let repo = GitRepo::open(fixture.path()).expect("open");
+    (
+        Fixture {
+            _fixture: fixture,
+            repo,
+        },
+        merge,
+        vec![pr1, pr2, pr3],
+    )
 }
 
 #[test]

@@ -12,13 +12,13 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
-use backhopper_core::compat::added_lines::added_lines_with_offsets;
+use backhopper_core::compat::added_lines::{AddedLinesSubject, added_lines_with_offsets};
 use backhopper_core::compat::classify_hunks_against_target;
-use backhopper_core::compat::define_resolve::{DefineSubject, analyse_define_symbols};
-use backhopper_core::compat::local_call_resolve::{LocalCallSubject, analyse_local_calls};
+use backhopper_core::compat::define_resolve::analyse_define_symbols;
+use backhopper_core::compat::local_call_resolve::analyse_local_calls;
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    QualifiedCallSubject, analyse_qualified_calls, patch_added_functions,
+    analyse_qualified_calls, patch_added_functions,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
@@ -33,7 +33,7 @@ use backhopper_core::model::verdict::{
 use backhopper_git::{GitRepo, build_target_tree_index};
 
 use crate::cli::check::TargetRepoArgs;
-use crate::errors::{CliError, CliResult};
+use crate::errors::CliResult;
 
 #[derive(Debug)]
 pub struct TargetContext {
@@ -57,15 +57,12 @@ pub fn build_context(
     };
     let mut translations = base_translations.clone();
     if let Some(file) = &args.path_translations_file_path {
-        let external =
-            PathTranslations::load_external(file).map_err(|e| CliError::Core(e.into()))?;
-        translations
-            .merge_external(external)
-            .map_err(|e| CliError::Core(e.into()))?;
+        let external = PathTranslations::load_external(file)?;
+        translations.merge_external(external)?;
     }
-    let repo = GitRepo::open(target_repo.clone()).map_err(CliError::Git)?;
-    let target_ref = GitRef::new(args.target_ref.clone()).map_err(|e| CliError::Core(e.into()))?;
-    let index = build_target_tree_index(&repo, &target_ref).map_err(CliError::Git)?;
+    let repo = GitRepo::open(target_repo.clone())?;
+    let target_ref = GitRef::new(args.target_ref.clone())?;
+    let index = build_target_tree_index(&repo, &target_ref)?;
 
     if let Some(src) = source_repo {
         if same_repo(src, target_repo) {
@@ -343,9 +340,9 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
-    let subjects: Vec<DefineSubject<'_>> = subjects_text
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
         .iter()
-        .map(|(p, t, lm)| DefineSubject {
+        .map(|(p, t, lm)| AddedLinesSubject {
             source_path: p,
             added_text: t,
             line_map: lm,
@@ -372,9 +369,9 @@ pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
-    let subjects: Vec<LocalCallSubject<'_>> = subjects_text
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
         .iter()
-        .map(|(p, t, lm)| LocalCallSubject {
+        .map(|(p, t, lm)| AddedLinesSubject {
             source_path: p,
             added_text: t,
             line_map: lm,
@@ -415,9 +412,9 @@ pub fn collect_qualified_call_findings(
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
-    let subjects: Vec<QualifiedCallSubject<'_>> = subjects_text
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
         .iter()
-        .map(|(p, t, lm)| QualifiedCallSubject {
+        .map(|(p, t, lm)| AddedLinesSubject {
             source_path: p,
             added_text: t,
             line_map: lm,

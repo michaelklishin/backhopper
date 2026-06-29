@@ -7,7 +7,6 @@
 use std::env;
 use std::path::{Component, Path, PathBuf};
 
-use backhopper_core::Error as CoreError;
 use backhopper_core::config::Config;
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
 
@@ -67,7 +66,7 @@ fn walk_up_for_config(start: &Path, tried: &mut Vec<PathBuf>) -> Option<PathBuf>
 
 pub fn load_config(args: &GlobalArgs) -> CliResult<Config> {
     let path = resolve_config_path(args)?;
-    Config::load(&path).map_err(|e| CliError::Core(CoreError::Config(e)))
+    Ok(Config::load(&path)?)
 }
 
 pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
@@ -80,13 +79,13 @@ pub fn snapshot_dir(args: &GlobalArgs, cfg: &Config) -> PathBuf {
 pub fn open_store_read(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<ReadOnly>> {
     let dir = snapshot_dir(args, cfg);
     check_snapshot_dir_escape(args, cfg, &dir)?;
-    SnapshotStore::open(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
+    Ok(SnapshotStore::open(dir)?)
 }
 
 pub fn open_store_mut(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStore<Mutable>> {
     let dir = snapshot_dir(args, cfg);
     check_snapshot_dir_escape(args, cfg, &dir)?;
-    SnapshotStore::open_mut(dir).map_err(|e| CliError::Core(CoreError::Store(e)))
+    Ok(SnapshotStore::open_mut(dir)?)
 }
 
 // Trade the store's opaque `path escape` for an actionable absolute-path hint.

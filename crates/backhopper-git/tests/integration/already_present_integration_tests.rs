@@ -9,9 +9,9 @@ use backhopper_core::model::verdict::TargetMatchKind;
 use backhopper_git::walk::patch_id;
 use backhopper_git::{CandidateIdentity, GitRepo, TargetWalkIndex, trailer_origin_on_target};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn open(fake: &FakeRepo) -> GitRepo {
+fn open(fake: &GitRepoFixture) -> GitRepo {
     GitRepo::open(fake.dir.path().to_path_buf()).unwrap()
 }
 
@@ -33,7 +33,7 @@ fn candidate(commit: &str) -> CandidateIdentity {
 /// walked pick's trailer names the candidate.
 #[test]
 fn x_pick_on_target_matches_via_trailer_intersection() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "base\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -58,7 +58,7 @@ fn x_pick_on_target_matches_via_trailer_intersection() {
 /// merge, not the candidate itself.
 #[test]
 fn inner_pr_sha_named_by_target_trailer_matches() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "base\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -84,7 +84,7 @@ fn inner_pr_sha_named_by_target_trailer_matches() {
 /// normalized patch hash, gated by the touched-path pre-filter.
 #[test]
 fn hand_landed_identical_patch_matches_via_patch_id() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "line1\nline2\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -116,7 +116,7 @@ fn hand_landed_identical_patch_matches_via_patch_id() {
 /// patch hash: tier 1 stays silent and tier 2 owns the case.
 #[test]
 fn different_refactor_matches_nothing() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "line1\nline2\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -145,7 +145,7 @@ fn different_refactor_matches_nothing() {
 /// the target tip: caught by the ancestry tier, no walk involved.
 #[test]
 fn candidate_trailer_origin_ancestral_to_target_matches() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "origin work\n");
     fake.commit("origin work");
     let origin = fake.head_sha();
@@ -166,7 +166,7 @@ fn candidate_trailer_origin_ancestral_to_target_matches() {
 /// erroring.
 #[test]
 fn missing_trailer_origin_is_skipped_not_an_error() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "x\n");
     fake.commit("only");
     let tip = fake.head_sha();
@@ -178,7 +178,7 @@ fn missing_trailer_origin_is_skipped_not_an_error() {
 
 #[test]
 fn walk_limit_truncates_and_reports_it() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "0\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -195,7 +195,7 @@ fn walk_limit_truncates_and_reports_it() {
 
 #[test]
 fn merge_base_of_unrelated_commits_is_none_and_missing_object_errors() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/ra_server.erl", "x\n");
     fake.commit("only");
     let tip = fake.head_sha();
@@ -208,7 +208,7 @@ fn merge_base_of_unrelated_commits_is_none_and_missing_object_errors() {
 
 #[test]
 fn merge_base_returns_the_common_ancestor() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/ra_log.erl", "base\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -228,7 +228,7 @@ fn merge_base_returns_the_common_ancestor() {
 
 #[test]
 fn has_commit_is_false_for_tree_and_blob_objects() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/ra_machine.erl", "x\n");
     fake.commit("only");
     let tree = fake.rev_parse("HEAD^{tree}");

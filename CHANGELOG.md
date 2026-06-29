@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.20.0 (in development)
+## v0.21.0 (in development)
 
 ### Enhancements
 
@@ -9,6 +9,14 @@
    indices) instead of scanning the whole object database
  * `GitRepo::has_commit` checks the object header instead of decoding
    the full commit
+
+### Bug Fixes
+
+ * A `-spec`, `-callback`, or `-type` argument that is a bitstring type
+   with an internal comma (e.g. `<<_:8, _:_*8>>`) is no longer counted
+   as two arguments, so the recorded arity is correct. The Erlang
+   extractor version is now 4, so `snapshots verify --all` flags
+   snapshots generated before the fix
 
 ## v0.19.0
 

@@ -19,7 +19,8 @@ use backhopper_core::model::verdict::{
 };
 
 use crate::cli::Formatter;
-use crate::errors::{CliError, CliResult};
+use crate::errors::CliResult;
+use crate::output::emit_jsonl;
 
 /// The projects whose pins do not count as tracked-dep evidence: a
 /// self pin's scope spans the whole self project, so summing it in
@@ -157,15 +158,6 @@ pub fn emit_rows(formatter: SummaryFormatter, rows: &[SummaryRow]) -> CliResult<
     };
     buf.flush()?;
     result
-}
-
-fn emit_jsonl(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
-    for row in rows {
-        let bytes = serde_json::to_vec(row).map_err(|e| CliError::OutputError(e.to_string()))?;
-        w.write_all(&bytes)?;
-        w.write_all(b"\n")?;
-    }
-    Ok(())
 }
 
 fn emit_text(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {

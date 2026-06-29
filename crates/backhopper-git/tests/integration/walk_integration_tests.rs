@@ -9,9 +9,9 @@ use backhopper_core::model::names::CommitSha;
 use backhopper_git::walk::{first_parent_walk_since, patch_id};
 use backhopper_git::{GitRepo, cherry_pick_trailers};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn open(fake: &FakeRepo) -> GitRepo {
+fn open(fake: &GitRepoFixture) -> GitRepo {
     GitRepo::open(fake.dir.path().to_path_buf()).unwrap()
 }
 
@@ -21,7 +21,7 @@ fn sha(raw: &str) -> CommitSha {
 
 #[test]
 fn same_branch_window_is_pure_ancestry_newest_first() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     let since = fake.head_sha();
@@ -43,7 +43,7 @@ fn same_branch_window_is_pure_ancestry_newest_first() {
 // appear, since the cutoff only bounds the cross-branch case.
 #[test]
 fn same_branch_walk_keeps_intermediate_commit_dated_before_the_since_point() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit_dated("base", "2025-01-01T10:00:00Z");
     let since = fake.head_sha();
@@ -62,7 +62,7 @@ fn same_branch_walk_keeps_intermediate_commit_dated_before_the_since_point() {
 
 #[test]
 fn since_equal_to_tip_gives_an_empty_window() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("only");
     let tip = fake.head_sha();
@@ -73,7 +73,7 @@ fn since_equal_to_tip_gives_an_empty_window() {
 
 #[test]
 fn cross_branch_window_is_bounded_by_committer_time() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit_dated("shared base", "2025-01-01T10:00:00Z");
     // the since-point lives on a stable branch, not on main
@@ -97,7 +97,7 @@ fn cross_branch_window_is_bounded_by_committer_time() {
 
 #[test]
 fn source_branch_behind_the_since_point_gives_an_empty_window() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit_dated("old main tip", "2025-01-01T10:00:00Z");
     let main_tip = fake.head_sha();
@@ -113,7 +113,7 @@ fn source_branch_behind_the_since_point_gives_an_empty_window() {
 
 #[test]
 fn a_merge_surfaces_once_with_both_parents_and_inner_commits_stay_hidden() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     let since = fake.head_sha();
@@ -139,7 +139,7 @@ fn a_merge_surfaces_once_with_both_parents_and_inner_commits_stay_hidden() {
 
 #[test]
 fn walked_commits_carry_subject_and_full_message() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     let since = fake.head_sha();
@@ -156,7 +156,7 @@ fn walked_commits_carry_subject_and_full_message() {
 
 #[test]
 fn commit_timestamp_returns_the_committer_time() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit_dated("dated", "2025-05-01T12:00:00Z");
     let tip = fake.head_sha();
@@ -167,7 +167,7 @@ fn commit_timestamp_returns_the_committer_time() {
 
 #[test]
 fn is_ancestor_handles_self_forward_and_unrelated_cases() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -189,7 +189,7 @@ fn is_ancestor_handles_self_forward_and_unrelated_cases() {
 
 #[test]
 fn ancestors_among_screens_many_candidates_in_one_walk() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     let base = fake.head_sha();
@@ -217,7 +217,7 @@ fn ancestors_among_screens_many_candidates_in_one_walk() {
 
 #[test]
 fn local_branch_tips_lists_branches_sorted_with_tips() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     fake.checkout_new_branch("v1.x");
@@ -236,7 +236,7 @@ fn local_branch_tips_lists_branches_sorted_with_tips() {
 
 #[test]
 fn patch_id_survives_a_cherry_pick_at_a_different_offset() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     let padding: String = (1..=12).fold(String::new(), |mut acc, i| {
         let _ = writeln!(acc, "line{i}");
         acc
@@ -269,7 +269,7 @@ fn patch_id_survives_a_cherry_pick_at_a_different_offset() {
 
 #[test]
 fn patch_id_is_none_for_commits_with_no_analysable_diff() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     fake.write_file("README.md", "docs only\n");
@@ -282,7 +282,7 @@ fn patch_id_is_none_for_commits_with_no_analysable_diff() {
 
 #[test]
 fn different_changes_get_different_patch_ids() {
-    let fake = FakeRepo::new();
+    let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit("base");
     fake.write_file("src/a.erl", "a2\n");

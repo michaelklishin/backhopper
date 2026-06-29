@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use crate::backend::{Backend, Invocation, OutputChannel, OutputPolicy, RawOutcome};
+use crate::backend::{Backend, Invocation, OutputChannel, OutputPolicy, RawOutcome, assemble_argv};
 use crate::cancellation::CancellationToken;
 use crate::error::DriverError;
 use crate::options::{EnvInheritance, EnvOverlay};
@@ -72,7 +72,11 @@ impl SubprocessBackend {
 
 impl Backend for SubprocessBackend {
     fn invoke(&self, invocation: Invocation<'_>) -> Result<RawOutcome, DriverError> {
-        let argv = assemble_argv(&self.binary_path, &invocation);
+        let argv = assemble_argv(
+            self.binary_path.as_os_str(),
+            &invocation.verb,
+            &invocation.args,
+        );
         let mut command = Command::new(&self.binary_path);
         let verb_path = invocation.verb.cli_path();
         for seg in &verb_path {
@@ -106,19 +110,6 @@ impl Backend for SubprocessBackend {
             self.binary_path.clone(),
         )
     }
-}
-
-/// Assemble the argv vector the backend will report after a run.
-fn assemble_argv(binary_path: &Path, invocation: &Invocation<'_>) -> Vec<OsString> {
-    let mut argv = Vec::with_capacity(2 + invocation.args.len());
-    argv.push(binary_path.as_os_str().to_owned());
-    for seg in invocation.verb.cli_path() {
-        argv.push(OsString::from(seg));
-    }
-    for arg in invocation.args.iter() {
-        argv.push(arg.to_os_string());
-    }
-    argv
 }
 
 fn apply_env(command: &mut Command, overlay: &EnvOverlay) {

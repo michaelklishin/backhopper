@@ -17,11 +17,11 @@ use backhopper_core::model::names::ApplicationName;
 use backhopper_core::suites::SuitePlan;
 
 use crate::backend::Backend;
+use crate::builder::list_input::ListInput;
 use crate::builder::state::{InputState, NoInput, WithInput};
 use crate::driver::Backhopper;
 use crate::envelope::ExecutedInvocation;
 use crate::error::DriverError;
-use crate::stdin::StdinPayload;
 use crate::verb::Verb;
 
 /// Top-level handle returned by [`Backhopper::suites`].
@@ -45,21 +45,12 @@ impl<'a, B: Backend> Suites<'a, B> {
     }
 }
 
-/// Where the modified-path list comes from.
-#[derive(Debug, Clone)]
-enum ModifiedPaths {
-    // Newline-framed paths sent on stdin; the CLI reads `-`.
-    Bytes(Vec<u8>),
-    // A file of one path per line, passed as the flag value.
-    File(PathBuf),
-}
-
 /// `suites plan` builder. The modified-path list is the one required
 /// input; everything else is optional.
 #[must_use = "a builder has no effect until .run() is called"]
 pub struct SuitesPlanBuilder<'a, B: Backend, I: InputState> {
     driver: &'a Backhopper<B>,
-    modified_paths: Option<ModifiedPaths>,
+    modified_paths: Option<ListInput>,
     auto_library_apps: bool,
     library_apps: Vec<ApplicationName>,
     extra_rules_file_path: Option<PathBuf>,
@@ -108,7 +99,7 @@ impl<'a, B: Backend> SuitesPlanBuilder<'a, B, NoInput> {
             buf.extend_from_slice(p.into().to_string_lossy().as_bytes());
             buf.push(b'\n');
         }
-        self.with_input(ModifiedPaths::Bytes(buf))
+        self.with_input(ListInput::Bytes(buf))
     }
 
     /// Pass a file of one modified path per line as
@@ -117,10 +108,10 @@ impl<'a, B: Backend> SuitesPlanBuilder<'a, B, NoInput> {
         self,
         path: impl Into<PathBuf>,
     ) -> SuitesPlanBuilder<'a, B, WithInput> {
-        self.with_input(ModifiedPaths::File(path.into()))
+        self.with_input(ListInput::File(path.into()))
     }
 
-    fn with_input(self, modified_paths: ModifiedPaths) -> SuitesPlanBuilder<'a, B, WithInput> {
+    fn with_input(self, modified_paths: ListInput) -> SuitesPlanBuilder<'a, B, WithInput> {
         SuitesPlanBuilder {
             driver: self.driver,
             modified_paths: Some(modified_paths),
@@ -153,17 +144,7 @@ impl<B: Backend> SuitesPlanBuilder<'_, B, WithInput> {
             args.push(OsString::from("--extra-rules-file-path"));
             args.push(path.as_os_str().to_owned());
         }
-        args.push(OsString::from("--modified-paths-file-path"));
-        let stdin = match modified_paths {
-            ModifiedPaths::Bytes(b) => {
-                args.push(OsString::from("-"));
-                StdinPayload::Bytes(b.as_slice())
-            }
-            ModifiedPaths::File(p) => {
-                args.push(p.as_os_str().to_owned());
-                StdinPayload::None
-            }
-        };
+        let stdin = modified_paths.apply("--modified-paths-file-path", &mut args);
         self.driver
             .dispatch_typed::<SuitePlan>(Verb::SuitesPlan, args, stdin)
     }

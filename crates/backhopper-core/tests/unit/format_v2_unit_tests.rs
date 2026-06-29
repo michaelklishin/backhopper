@@ -2,32 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::str::FromStr;
-
-use backhopper_core::model::names::{
-    ApplicationName, CommitSha, FieldName, ModuleName, ProjectName, RecordName, TagName,
-};
+use backhopper_core::model::names::{ApplicationName, FieldName, ModuleName, RecordName};
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, Module, RecordDecl, RecordField, SUPPORTED_FORMAT_VERSIONS, Snapshot,
-    SnapshotHeader, state,
+    FORMAT_VERSION, Module, RecordDecl, RecordField, SUPPORTED_FORMAT_VERSIONS,
 };
 use backhopper_core::snapshot::{format, parser};
-use time::OffsetDateTime;
-
-fn header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new("v1").unwrap(),
-        branch: None,
-        commit: CommitSha::from_str("0000000000000000000000000000000000000000").unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 #[test]
 fn format_version_constant_is_four() {
@@ -81,12 +61,10 @@ fn parser_rejects_unknown_format_version() {
 
 #[test]
 fn writer_emits_current_format_header() {
-    let snap = Snapshot::<state::Unsorted>::from_extracted(
-        header(),
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1"),
         vec![Module::new(ModuleName::new("alpha").unwrap())],
-        Vec::new(),
-    )
-    .into_canonical();
+    );
     let text = format::to_string(&snap).expect("write");
     let expected = format!("# format-version: {FORMAT_VERSION}");
     assert!(text.contains(&expected), "text was:\n{text}");
@@ -97,8 +75,7 @@ fn module_path_and_app_round_trip_through_format() {
     let mut m = Module::new(ModuleName::new("alpha").unwrap());
     m.path = Some("deps/rabbit/src/alpha.erl".into());
     m.app = Some(ApplicationName::new("rabbit").unwrap());
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], Vec::new()).into_canonical();
+    let snap = canonical_snapshot(snapshot_header("p", "v1"), vec![m]);
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("re-parse");
     let alpha = reparsed
@@ -124,8 +101,7 @@ fn module_records_round_trip_through_format() {
             },
         ],
     });
-    let snap =
-        Snapshot::<state::Unsorted>::from_extracted(header(), vec![m], Vec::new()).into_canonical();
+    let snap = canonical_snapshot(snapshot_header("p", "v1"), vec![m]);
     let text = format::to_string(&snap).expect("write");
     let reparsed = parser::parse(&text).expect("re-parse");
     let alpha = reparsed

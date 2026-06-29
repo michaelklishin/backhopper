@@ -8,7 +8,7 @@ use std::io::Write;
 
 use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
 use serde::Serialize;
-use tabled::{Table, Tabled};
+use tabled::Tabled;
 
 use backhopper_cache::{WorkspaceCaches, stats};
 use backhopper_core::config::{Config, Project, Series};
@@ -22,9 +22,11 @@ use backhopper_git::GitRepo;
 use crate::cli::{DoctorCmd, GlobalArgs};
 use crate::commands::auto_generate::snapshot_generate_command;
 use crate::commands::context::{load_config, open_store_read, snapshot_dir};
+use crate::commands::pin_coverage::{PinCoverage, classify_pin};
 use crate::commands::snapshots::filter_tags_for_project;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
+use crate::tables::styled_table;
 
 #[derive(Debug, Serialize)]
 struct DoctorPayload {
@@ -182,13 +184,13 @@ fn build_pin_row(
     check_remote: bool,
     store_tags: &mut BTreeMap<ProjectName, Vec<TagName>>,
 ) -> CliResult<PinRow> {
-    let project = cfg
-        .project(spec.project())
-        .map_err(|e| CliError::Core(e.into()))?;
-    let resolved: Option<Pin> = spec.resolve(store).ok();
-    let snapshot_present = resolved
-        .as_ref()
-        .is_some_and(|p| store.has(&p.project, &p.tag));
+    let project = cfg.project(spec.project())?;
+    let coverage = classify_pin(spec, store);
+    let resolved: Option<Pin> = match &coverage {
+        PinCoverage::Resolved { pin, .. } => Some(pin.clone()),
+        PinCoverage::Unresolved { .. } | PinCoverage::SelfPin => None,
+    };
+    let snapshot_present = matches!(coverage, PinCoverage::Resolved { present: true, .. });
     let store_newest_tag = match spec {
         PinSpec::SelfRef { .. } => None,
         _ => {
@@ -288,14 +290,8 @@ fn build_note(spec: &PinSpec, resolved: Option<&Pin>, present: bool) -> Option<S
 }
 
 fn upstream_lead(project: &Project, resolved: Option<&TagName>) -> Result<usize, CliError> {
-    let repo = GitRepo::open(
-        project
-            .require_git_url()
-            .map_err(|e| CliError::Core(e.into()))?
-            .to_path_buf(),
-    )
-    .map_err(CliError::Git)?;
-    let listing = repo.list_tag_refs().map_err(CliError::Git)?;
+    let repo = GitRepo::open(project.require_git_url()?.to_path_buf())?;
+    let listing = repo.list_tag_refs()?;
     let filtered = filter_tags_for_project(listing.tags, project, None);
     Ok(count_newer_tags(&filtered, resolved))
 }
@@ -398,10 +394,8 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
             .iter()
             .flat_map(|s| s.pins.iter().map(|p| doctor_row(s, p)))
             .collect();
-        let mut table = Table::new(rows);
-        style.apply(&mut table);
         writeln!(w)?;
-        writeln!(w, "{table}")?;
+        writeln!(w, "{}", styled_table(rows, style))?;
     }
     if !payload.series_pin_gaps.is_empty() {
         writeln!(w)?;

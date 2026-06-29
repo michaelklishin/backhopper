@@ -2,48 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use time::OffsetDateTime;
-
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader};
+use backhopper_core::model::names::ModuleName;
 use backhopper_core::snapshot::format;
-
-fn header() -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("p").unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "backhopper".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
-
-fn module(name: &str, exports: &[(&str, u8)]) -> Module {
-    let mut m = Module::new(ModuleName::new(name).unwrap());
-    for (n, a) in exports {
-        m.exports.push(FunArity {
-            name: FunctionName::new(*n).unwrap(),
-            arity: Arity::new(*a),
-        });
-    }
-    m
-}
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 #[test]
 fn write_module_filtered_returns_true_when_module_present() {
-    let snap = Snapshot::from_extracted(
-        header(),
-        vec![module("alpha", &[("f", 1)]), module("beta", &[("g", 2)])],
-        vec![],
-    )
-    .into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1.0.0"),
+        vec![
+            module_with("alpha", &[("f", 1)]),
+            module_with("beta", &[("g", 2)]),
+        ],
+    );
     let mut buf = Vec::new();
     let found = format::write_module_filtered(&snap, &ModuleName::new("beta").unwrap(), &mut buf)
         .expect("write");
@@ -57,8 +28,10 @@ fn write_module_filtered_returns_true_when_module_present() {
 
 #[test]
 fn write_module_filtered_returns_false_when_module_absent() {
-    let snap = Snapshot::from_extracted(header(), vec![module("alpha", &[("f", 1)])], vec![])
-        .into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1.0.0"),
+        vec![module_with("alpha", &[("f", 1)])],
+    );
     let mut buf = Vec::new();
     let found = format::write_module_filtered(&snap, &ModuleName::new("nope").unwrap(), &mut buf)
         .expect("write");
@@ -71,12 +44,13 @@ fn write_module_filtered_returns_false_when_module_absent() {
 #[test]
 fn write_module_filtered_output_re_parses_as_canonical() {
     use backhopper_core::snapshot::parser;
-    let snap = Snapshot::from_extracted(
-        header(),
-        vec![module("alpha", &[("f", 1)]), module("beta", &[("g", 2)])],
-        vec![],
-    )
-    .into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1.0.0"),
+        vec![
+            module_with("alpha", &[("f", 1)]),
+            module_with("beta", &[("g", 2)]),
+        ],
+    );
     let mut buf = Vec::new();
     format::write_module_filtered(&snap, &ModuleName::new("beta").unwrap(), &mut buf)
         .expect("write");
@@ -88,12 +62,10 @@ fn write_module_filtered_output_re_parses_as_canonical() {
 
 #[test]
 fn write_module_filtered_writes_no_trailing_modules_section() {
-    let snap = Snapshot::from_extracted(
-        header(),
-        vec![module("alpha", &[]), module("beta", &[])],
-        vec![],
-    )
-    .into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1.0.0"),
+        vec![module_with("alpha", &[]), module_with("beta", &[])],
+    );
     let mut buf = Vec::new();
     format::write_module_filtered(&snap, &ModuleName::new("beta").unwrap(), &mut buf)
         .expect("write");
@@ -103,8 +75,10 @@ fn write_module_filtered_writes_no_trailing_modules_section() {
 
 #[test]
 fn write_module_filtered_preserves_header() {
-    let snap =
-        Snapshot::from_extracted(header(), vec![module("alpha", &[])], vec![]).into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header("p", "v1.0.0"),
+        vec![module_with("alpha", &[])],
+    );
     let mut buf = Vec::new();
     format::write_module_filtered(&snap, &ModuleName::new("alpha").unwrap(), &mut buf)
         .expect("write");

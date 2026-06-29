@@ -10,14 +10,14 @@ use std::path::Path;
 use backhopper_core::model::names::GitRef;
 use backhopper_git::{GitRepo, build_target_tree_index};
 
-use crate::helpers::repo::FakeRepo;
+use backhopper_test_support::GitRepoFixture;
 
 // A file present at the tagged commit but deleted at HEAD is in the index
 // built from the tag and absent from the one built from HEAD: the index
 // follows the ref, not the checked-out working tree.
 #[test]
 fn index_reflects_the_named_ref_not_the_working_tree() {
-    let repo = FakeRepo::new();
+    let repo = GitRepoFixture::new();
     // a file that survives both commits keeps HEAD's tree non-empty
     repo.write_file("src/keep.erl", "-module(keep).\n");
     repo.write_file("src/osiris_log.erl", "-module(osiris_log).\n");

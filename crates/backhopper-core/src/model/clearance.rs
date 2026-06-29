@@ -165,7 +165,7 @@ impl RoundClearance {
             }
         }
 
-        let blocking = verdicts.incompatible > 0 || verdicts.requires_adaptation > 0;
+        let blocking = verdicts.is_blocking();
         let exit_code = if blocking {
             exit::NEEDS_ATTENTION
         } else {

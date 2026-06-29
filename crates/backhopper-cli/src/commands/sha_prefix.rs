@@ -17,7 +17,7 @@ pub fn expand_prefix(repo_dir_path: &Path, prefix: &CommitShaPrefix) -> CliResul
     if let Some(full) = prefix.as_full_sha() {
         return Ok(full);
     }
-    let g = GitRepo::open(repo_dir_path.to_path_buf()).map_err(CliError::Git)?;
+    let g = GitRepo::open(repo_dir_path.to_path_buf())?;
     expand_prefix_with(&g, prefix).map_err(|e| enrich_with_repo_path(e, repo_dir_path))
 }
 
@@ -25,13 +25,13 @@ pub fn expand_prefix_with(repo: &GitRepo, prefix: &CommitShaPrefix) -> CliResult
     if let Some(full) = prefix.as_full_sha() {
         return Ok(full);
     }
-    let resolved = repo.resolve_sha_prefix(prefix).map_err(CliError::Git)?;
+    let resolved = repo.resolve_sha_prefix(prefix)?;
     Ok(resolved.commit)
 }
 
 pub fn resolve_with_kind(repo_dir_path: &Path, prefix: &CommitShaPrefix) -> CliResult<ResolvedSha> {
-    let g = GitRepo::open(repo_dir_path.to_path_buf()).map_err(CliError::Git)?;
-    g.resolve_sha_prefix(prefix).map_err(CliError::Git)
+    let g = GitRepo::open(repo_dir_path.to_path_buf())?;
+    Ok(g.resolve_sha_prefix(prefix)?)
 }
 
 pub(crate) fn enrich_with_repo_path(err: CliError, repo: &Path) -> CliError {

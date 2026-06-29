@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use assert_cmd::Command;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_OLD: &str = r#"
 -module(ra_lib).
@@ -27,9 +27,9 @@ diff --git a/src/ra_lib.erl b/src/ra_lib.erl
  id(Name) -> Name.
 ";
 
-fn build_repo() -> (FixtureRepo, TempDir) {
+fn build_repo() -> (GitRepoFixture, TempDir) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/ra_lib.erl", ERL_OLD);
     repo.commit("first");
     repo.tag("v1.0.0");
@@ -247,7 +247,7 @@ diff --git a/src/ra_lib.erl b/src/ra_lib.erl
 #[test]
 fn compat_patch_flags_now_hidden_module() {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/ra_lib.erl", ERL_OLD);
     repo.write_file("src/ra_directory.erl", ERL_INTERNAL_MODULE);
     repo.commit("first");
@@ -307,7 +307,7 @@ const PATCH_DRIFTS_AT_SECOND_HUNK: &str = concat!(
 #[test]
 fn compat_patch_detects_drift_at_non_zero_hunk_index() {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/ra_lib.erl", ERL_MULTI_HUNK);
     repo.commit("first");
     repo.tag("v1.0.0");

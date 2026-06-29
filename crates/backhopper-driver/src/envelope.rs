@@ -225,9 +225,10 @@ pub struct ExecutedInvocation {
 }
 
 impl ExecutedInvocation {
-    /// Synthesise a snapshot from a [`RawOutcome`] plus the
-    /// originating verb and stdin descriptor. Used by the driver
-    /// after the backend returns.
+    /// Synthesise a snapshot from a [`RawOutcome`] plus the originating
+    /// verb and stdin descriptor. A convenience constructor for callers
+    /// driving a backend directly; the in-tree driver builds this inline
+    /// to move `argv` without a clone.
     #[must_use]
     pub fn from_outcome(
         verb: VerbId<'static>,

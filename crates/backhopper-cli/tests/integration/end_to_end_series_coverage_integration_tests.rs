@@ -10,7 +10,7 @@ use std::process::Command as Std;
 use tempfile::{NamedTempFile, TempDir};
 
 use crate::helpers::cli::{run, stderr};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const ERL: &str = r#"
 -module(demo_mod).
@@ -51,9 +51,9 @@ pins = [
     p
 }
 
-fn build_repo() -> (FixtureRepo, TempDir, String) {
+fn build_repo() -> (GitRepoFixture, TempDir, String) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL);
     repo.commit("v1");
     repo.tag("v1.0.0");

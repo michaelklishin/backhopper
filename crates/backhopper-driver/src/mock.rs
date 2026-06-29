@@ -10,7 +10,7 @@
 //! produces a [`MockResponse`]. The backend records every
 //! invocation it sees for after-the-fact assertions.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
 
-use crate::backend::{Backend, Invocation, RawOutcome};
+use crate::backend::{Backend, Invocation, RawOutcome, assemble_argv};
 use crate::envelope::{EnvelopeWarning, SchemaVersion};
 use crate::error::DriverError;
 use crate::stdin::StdinPayload;
@@ -295,14 +295,7 @@ fn materialise(
                 "exit_code": exit_code,
                 "warnings": warnings_json,
             });
-            let mut argv = Vec::new();
-            argv.push(OsString::from("backhopper"));
-            for seg in invocation.verb.cli_path() {
-                argv.push(OsString::from(seg));
-            }
-            for a in invocation.args.iter() {
-                argv.push(a.to_os_string());
-            }
+            let argv = assemble_argv(OsStr::new("backhopper"), &invocation.verb, &invocation.args);
             Ok(RawOutcome {
                 exit_code,
                 stdout: serde_json::to_vec(&envelope).expect("envelope serialises"),
@@ -313,13 +306,8 @@ fn materialise(
         }
         MockResponse::Raw(mut outcome) => {
             if outcome.argv.is_empty() {
-                outcome.argv.push(OsString::from("backhopper"));
-                for seg in invocation.verb.cli_path() {
-                    outcome.argv.push(OsString::from(seg));
-                }
-                for a in invocation.args.iter() {
-                    outcome.argv.push(a.to_os_string());
-                }
+                outcome.argv =
+                    assemble_argv(OsStr::new("backhopper"), &invocation.verb, &invocation.args);
             }
             Ok(outcome)
         }

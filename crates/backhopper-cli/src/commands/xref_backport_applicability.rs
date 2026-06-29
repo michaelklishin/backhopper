@@ -16,7 +16,7 @@ use std::str::FromStr;
 
 use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
 use serde::{Deserialize, Serialize};
-use tabled::{Table, Tabled};
+use tabled::Tabled;
 
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::snapshot::{Module, Snapshot, TestExportVariant, state};
@@ -25,6 +25,7 @@ use backhopper_core::snapshot::parser;
 use crate::cli::GlobalArgs;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
+use crate::tables::styled_table;
 
 #[derive(Debug, Deserialize)]
 struct ReferenceFile {
@@ -87,7 +88,7 @@ pub fn handle(
     let reference: ReferenceFile = toml::from_str(&ref_bytes)
         .map_err(|e| CliError::InvalidInput(format!("reference file parse error: {e}")))?;
     let snap_bytes = fs::read_to_string(snapshot_file_path).map_err(CliError::Io)?;
-    let snapshot = parser::parse(&snap_bytes).map_err(|e| CliError::Core(e.into()))?;
+    let snapshot = parser::parse(&snap_bytes)?;
     let payload = build_payload(&reference, &snapshot);
     let exit = backport_applicability_exit_code(
         payload.totals.applies_with_adaptation,
@@ -306,9 +307,7 @@ fn render_text(
             detail: r.detail.clone().unwrap_or_default(),
         })
         .collect();
-    let mut table = Table::new(rows);
-    style.apply(&mut table);
     writeln!(w)?;
-    writeln!(w, "{table}")?;
+    writeln!(w, "{}", styled_table(rows, style))?;
     Ok(())
 }

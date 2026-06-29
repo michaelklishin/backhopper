@@ -16,9 +16,13 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn write_config(workdir: &TempDir, repo: &FixtureRepo, snapshot_dir: &Path) -> std::path::PathBuf {
+fn write_config(
+    workdir: &TempDir,
+    repo: &GitRepoFixture,
+    snapshot_dir: &Path,
+) -> std::path::PathBuf {
     fs::create_dir_all(snapshot_dir).unwrap();
     let body = format!(
         r#"
@@ -64,7 +68,7 @@ fn generate_snapshot(cfg_path: &Path) {
 fn outcome(base: &str, candidate: &str, target: &str) -> (bool, bool) {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("deps/demo/src/x.erl", base);
     repo.commit("base");
 

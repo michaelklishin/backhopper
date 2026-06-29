@@ -17,7 +17,7 @@ use crate::macros::MacroTable;
 use crate::model::{CallSite, ModuleData};
 use crate::reader::attributes::{consume_attribute_body, handle_attribute};
 use crate::reader::calls::{try_call_site, try_function_clause};
-use crate::scanner::{Pos, Scanner};
+use crate::scanner::Scanner;
 
 pub(crate) struct ModuleBuilder {
     pub path: PathBuf,
@@ -111,22 +111,18 @@ impl ModuleBuilder {
     }
 }
 
-pub(crate) fn pos_to_position(p: Pos) -> Position {
-    Position::new(p.line, p.column, p.byte_offset)
+pub(crate) fn span_loc(b: &ModuleBuilder, start: Position, end: Position) -> Loc {
+    Loc::span(b.path_id, start, end)
 }
 
-pub(crate) fn span_loc(b: &ModuleBuilder, start: Pos, end: Pos) -> Loc {
-    Loc::span(b.path_id, pos_to_position(start), pos_to_position(end))
-}
-
-/// Pass 1: walks the source for attributes only. Function bodies and
-/// non-attribute syntax are skipped. The whole-module attributes that
-/// influence later passes (`-module`, `-export`, `-define`,
-/// `-include`/`-include_lib`, ...) land in the `ModuleBuilder` here.
-pub(crate) fn scan_attributes(
+/// Top-level attribute walk shared by `scan_attributes` and
+/// `fold_header_into`. Skips trivia, `%` comments, and non-attribute
+/// syntax, then hands each `-name body.` to `dispatch`. Function bodies
+/// are not inspected: that is pass 2's job.
+fn walk_attributes(
     source: &str,
     b: &mut ModuleBuilder,
-    warnings: &mut Vec<ReadWarning>,
+    mut dispatch: impl FnMut(&str, &str, &mut ModuleBuilder),
 ) {
     let mut sc = Scanner::new(source);
     let mut at_line_start = true;
@@ -149,7 +145,7 @@ pub(crate) fn scan_attributes(
             let name = sc.consume_identifier();
             sc.skip_trivia();
             let body = consume_attribute_body(&mut sc);
-            handle_attribute(name, body, b, warnings);
+            dispatch(name, body, b);
             at_line_start = false;
             continue;
         }
@@ -165,48 +161,30 @@ pub(crate) fn scan_attributes(
     }
 }
 
+/// Pass 1: walks the source for attributes only. Function bodies and
+/// non-attribute syntax are skipped. The whole-module attributes that
+/// influence later passes (`-module`, `-export`, `-define`,
+/// `-include`/`-include_lib`, ...) land in the `ModuleBuilder` here.
+pub(crate) fn scan_attributes(
+    source: &str,
+    b: &mut ModuleBuilder,
+    warnings: &mut Vec<ReadWarning>,
+) {
+    walk_attributes(source, b, |name, body, b| {
+        handle_attribute(name, body, b, warnings);
+    });
+}
+
 /// Folds the macros and nested includes contributed by a header file
 /// into the host module's builder. Other attributes in the header are
 /// ignored: headers contribute macros and records, never call sites.
 pub(crate) fn fold_header_into(source: &str, b: &mut ModuleBuilder) {
-    let mut sc = Scanner::new(source);
-    let mut at_line_start = true;
     let mut sink: Vec<ReadWarning> = Vec::new();
-    while !sc.is_eof() {
-        let Some(byte) = sc.peek() else { break };
-        if byte == b'%' {
-            sc.skip_line();
-            at_line_start = true;
-            continue;
+    walk_attributes(source, b, |name, body, b| {
+        if matches!(name, "define" | "include" | "include_lib" | "record") {
+            handle_attribute(name, body, b, &mut sink);
         }
-        if byte.is_ascii_whitespace() {
-            if byte == b'\n' {
-                at_line_start = true;
-            }
-            sc.advance();
-            continue;
-        }
-        if at_line_start && byte == b'-' {
-            sc.advance();
-            let name = sc.consume_identifier();
-            sc.skip_trivia();
-            let body = consume_attribute_body(&mut sc);
-            if matches!(name, "define" | "include" | "include_lib" | "record") {
-                handle_attribute(name, body, b, &mut sink);
-            }
-            at_line_start = false;
-            continue;
-        }
-        at_line_start = false;
-        match byte {
-            b'\'' => sc.consume_quoted_atom(),
-            b'"' => sc.consume_string(),
-            b'$' => sc.consume_char_literal(),
-            _ => {
-                sc.advance();
-            }
-        }
-    }
+    });
 }
 
 /// Pass 2: walks the source for function clauses and call sites only.

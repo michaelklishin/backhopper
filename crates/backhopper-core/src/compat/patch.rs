@@ -16,7 +16,7 @@ use std::sync::Arc;
 use crate::compat::arg_shape::ArgShape;
 use crate::compat::call_sites::{DynamicCall, extract_into_with_macros, scan_hunk};
 use crate::compat::diff;
-use crate::compat::evaluate::{PostimageTally, evaluate_pin};
+use crate::compat::evaluate::{AnalyzedInputs, PinEvalOptions, PostimageTally, evaluate_pin};
 use crate::compat::patch_facts::{
     classify as classify_patch_facts, is_only_test_visibility_change, suggest_suites,
 };
@@ -86,6 +86,14 @@ pub struct PatchedFile {
     pub language: Language,
     pub binary: bool,
     pub hunks: Vec<Hunk>,
+}
+
+impl PatchedFile {
+    /// New path if present, else old: the file's representative path, the
+    /// new-then-old precedence a rename is reported with.
+    pub fn primary_path(&self) -> Option<&Path> {
+        self.new_path.as_deref().or(self.old_path.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,10 +186,10 @@ impl Patch<Raw> {
             if file.binary {
                 continue;
             }
-            let file_macros = match (&file.new_path, &file.old_path) {
-                (Some(p), _) | (None, Some(p)) => macros_by_path.get(p).unwrap_or(&empty),
-                (None, None) => &empty,
-            };
+            let file_macros = file
+                .primary_path()
+                .and_then(|p| macros_by_path.get(p))
+                .unwrap_or(&empty);
             match file.language {
                 Language::Erlang => {
                     for hunk in &file.hunks {
@@ -220,8 +228,8 @@ impl Patch<Raw> {
                     }
                 }
                 Language::Elixir => {
-                    if let Some(path) = file.new_path.as_ref().or(file.old_path.as_ref()) {
-                        unsupported_files.push(path.clone());
+                    if let Some(path) = file.primary_path() {
+                        unsupported_files.push(path.to_path_buf());
                     }
                 }
                 Language::Other => {}
@@ -466,19 +474,18 @@ impl Patch<Analyzed> {
         is_only_test_visibility_change(&self.files)
     }
 
+    fn analyzed_inputs(&self) -> AnalyzedInputs<'_> {
+        AnalyzedInputs {
+            files: &self.files,
+            referenced: &self.referenced,
+            defined: &self.defined,
+            unsupported_files: &self.unsupported_files,
+            call_args: &self.call_args,
+        }
+    }
+
     pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
-        let result = evaluate_pin(
-            &self.files,
-            &self.referenced,
-            &self.defined,
-            &self.unsupported_files,
-            &self.call_args,
-            snapshot,
-            None,
-            None,
-            None,
-            None,
-        );
+        let result = evaluate_pin(self.analyzed_inputs(), snapshot, PinEvalOptions::default());
         let mut verdicts = self.verdicts;
         verdicts.push(PinVerdict::new(pin, result.verdict));
         Patch {
@@ -496,18 +503,7 @@ impl Patch<Analyzed> {
     pub fn against_series(self, snapshots: &[(Pin, Snapshot<state::Canonical>)]) -> SeriesVerdict {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap) in snapshots {
-            let r = evaluate_pin(
-                &self.files,
-                &self.referenced,
-                &self.defined,
-                &self.unsupported_files,
-                &self.call_args,
-                snap,
-                None,
-                None,
-                None,
-                None,
-            );
+            let r = evaluate_pin(self.analyzed_inputs(), snap, PinEvalOptions::default());
             results.push(PinVerdict::new(pin.clone(), r.verdict));
         }
         SeriesVerdict::from_results(results)
@@ -520,16 +516,12 @@ impl Patch<Analyzed> {
         let mut results = Vec::with_capacity(snapshots.len());
         for (pin, snap, files) in snapshots {
             let r = evaluate_pin(
-                &self.files,
-                &self.referenced,
-                &self.defined,
-                &self.unsupported_files,
-                &self.call_args,
+                self.analyzed_inputs(),
                 snap,
-                None,
-                Some(files),
-                None,
-                None,
+                PinEvalOptions {
+                    pin_files: Some(files),
+                    ..PinEvalOptions::default()
+                },
             );
             results.push(PinVerdict::new(pin.clone(), r.verdict));
         }
@@ -578,16 +570,14 @@ impl Patch<Analyzed> {
         let mut best_presence: Option<ContentPresence> = None;
         for ctx in contexts {
             let r = evaluate_pin(
-                &self.files,
-                &self.referenced,
-                &self.defined,
-                &self.unsupported_files,
-                &self.call_args,
+                self.analyzed_inputs(),
                 ctx.snapshot(),
-                ctx.source_snapshot(),
-                ctx.files(),
-                Some(ctx.scope()),
-                ctx.family_defaults(),
+                PinEvalOptions {
+                    source_snapshot: ctx.source_snapshot(),
+                    pin_files: ctx.files(),
+                    scope: Some(ctx.scope()),
+                    family_defaults: ctx.family_defaults(),
+                },
             );
             if let Some(tally) = r.postimage {
                 let denser = best_presence

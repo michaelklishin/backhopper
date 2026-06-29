@@ -7,10 +7,10 @@ use std::process::Command as Std;
 use serde_json::Value;
 
 use crate::helpers::cli::{run, run_succeeds, stderr, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
-fn fixture() -> (FixtureRepo, String) {
-    let repo = FixtureRepo::new();
+fn fixture() -> (GitRepoFixture, String) {
+    let repo = GitRepoFixture::new();
     repo.write_file("a.txt", "hi\n");
     repo.commit("a");
     let head = Std::new("git")

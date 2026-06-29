@@ -16,7 +16,7 @@ use backhopper_xref_graph::{
 use crate::macros::{MacroKey, expand_value_macro_to_atom, expand_value_macro_to_mf};
 use crate::model::CallSite;
 use crate::reader::scan::{ModuleBuilder, span_loc};
-use crate::scanner::{Pos, Scanner};
+use crate::scanner::{Scanner, walk_paren_group};
 
 const APPLY_FAMILY: &[&str] = &[
     "apply",
@@ -35,7 +35,7 @@ const KEYWORDS: &[&str] = &[
 
 pub(super) fn try_function_clause(
     sc: &mut Scanner<'_>,
-    clause_pos: Pos,
+    clause_pos: Position,
     b: &mut ModuleBuilder,
 ) -> Option<FunctionSig> {
     let save_pos = sc.pos();
@@ -58,10 +58,7 @@ pub(super) fn try_function_clause(
     let arity = arity_from_parenthesised_args(sc);
     sc.skip_trivia();
     let sig = FunctionSig::new(name, Arity::new(arity));
-    let def_loc = Loc::point(
-        b.path_id,
-        Position::new(clause_pos.line, clause_pos.column, clause_pos.byte_offset),
-    );
+    let def_loc = Loc::point(b.path_id, clause_pos);
     b.definitions.entry(sig.clone()).or_insert(def_loc);
     Some(sig)
 }
@@ -73,72 +70,8 @@ pub(super) fn arity_from_parenthesised_args(sc: &mut Scanner<'_>) -> u8 {
     if sc.peek() != Some(b'(') {
         return 0;
     }
-    sc.advance();
-    let mut depth = 1i32;
-    let mut commas: u32 = 0;
-    let mut had_content = false;
-    while let Some(byte) = sc.peek() {
-        match byte {
-            b'(' => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-            }
-            b')' => {
-                depth -= 1;
-                sc.advance();
-                if depth == 0 {
-                    break;
-                }
-            }
-            b'[' | b'{' => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-            }
-            b']' | b'}' => {
-                depth -= 1;
-                sc.advance();
-            }
-            // << and >> are binary delimiters: nest like brackets so the commas
-            // inside a binary literal are not counted as arguments.
-            b'<' if sc.peek_at(1) == Some(b'<') => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-                sc.advance();
-            }
-            b'>' if sc.peek_at(1) == Some(b'>') => {
-                depth -= 1;
-                sc.advance();
-                sc.advance();
-            }
-            b',' if depth == 1 => {
-                commas += 1;
-                sc.advance();
-            }
-            b'"' => {
-                sc.consume_string();
-                had_content = true;
-            }
-            b'\'' => {
-                sc.consume_quoted_atom();
-                had_content = true;
-            }
-            b'$' => {
-                sc.consume_char_literal();
-                had_content = true;
-            }
-            b'%' => sc.skip_line(),
-            _ => {
-                if !byte.is_ascii_whitespace() {
-                    had_content = true;
-                }
-                sc.advance();
-            }
-        }
-    }
-    arity_from(commas, had_content)
+    let w = walk_paren_group(sc, |_| false);
+    arity_from(w.commas, w.had_content)
 }
 
 /// Like `arity_from_parenthesised_args`, but also runs `try_call_site` at
@@ -148,79 +81,11 @@ fn scan_args_for_calls(sc: &mut Scanner<'_>, caller: &FunctionSig, b: &mut Modul
     if sc.peek() != Some(b'(') {
         return 0;
     }
-    sc.advance();
-    let mut depth = 1i32;
-    let mut commas: u32 = 0;
-    let mut had_content = false;
-    while let Some(byte) = sc.peek() {
-        match byte {
-            b'(' => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-            }
-            b')' => {
-                depth -= 1;
-                sc.advance();
-                if depth == 0 {
-                    break;
-                }
-            }
-            b'[' | b'{' => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-            }
-            b']' | b'}' => {
-                depth -= 1;
-                sc.advance();
-            }
-            // << and >> are binary delimiters: nest like brackets so the commas
-            // inside a binary literal are not counted as arguments.
-            b'<' if sc.peek_at(1) == Some(b'<') => {
-                depth += 1;
-                had_content = true;
-                sc.advance();
-                sc.advance();
-            }
-            b'>' if sc.peek_at(1) == Some(b'>') => {
-                depth -= 1;
-                sc.advance();
-                sc.advance();
-            }
-            b',' if depth == 1 => {
-                commas += 1;
-                sc.advance();
-            }
-            b'"' => {
-                sc.consume_string();
-                had_content = true;
-            }
-            b'\'' => {
-                sc.consume_quoted_atom();
-                had_content = true;
-            }
-            b'$' => {
-                sc.consume_char_literal();
-                had_content = true;
-            }
-            b'%' => sc.skip_line(),
-            b'?' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                had_content = true;
-                let pos = sc.pos();
-                if !try_call_site(sc, pos, caller, b) {
-                    sc.advance();
-                }
-            }
-            _ => {
-                if !byte.is_ascii_whitespace() {
-                    had_content = true;
-                }
-                sc.advance();
-            }
-        }
-    }
-    arity_from(commas, had_content)
+    let w = walk_paren_group(sc, |sc| {
+        let pos = sc.pos();
+        try_call_site(sc, pos, caller, b)
+    });
+    arity_from(w.commas, w.had_content)
 }
 
 fn arity_from(commas: u32, had_content: bool) -> u8 {
@@ -230,7 +95,7 @@ fn arity_from(commas: u32, had_content: bool) -> u8 {
 
 pub(super) fn try_call_site(
     sc: &mut Scanner<'_>,
-    pos: Pos,
+    pos: Position,
     caller: &FunctionSig,
     b: &mut ModuleBuilder,
 ) -> bool {
@@ -352,7 +217,7 @@ pub(super) fn try_call_site(
 /// predates the table.
 fn try_macro_use(
     sc: &mut Scanner<'_>,
-    pos: Pos,
+    pos: Position,
     caller: &FunctionSig,
     b: &mut ModuleBuilder,
 ) -> bool {
@@ -430,64 +295,22 @@ fn peek_arg_count(sc: &Scanner<'_>) -> Option<u8> {
     if cur.peek() != Some(b'(') {
         return None;
     }
-    cur.advance();
-    let mut depth = 1i32;
-    let mut commas: u32 = 0;
-    let mut had_content = false;
-    while let Some(byte) = cur.peek() {
-        match byte {
-            b'(' | b'[' | b'{' => {
-                depth += 1;
-                had_content = true;
-                cur.advance();
-            }
-            b')' => {
-                depth -= 1;
-                cur.advance();
-                if depth == 0 {
-                    return Some(arity_from(commas, had_content));
-                }
-            }
-            b']' | b'}' => {
-                depth -= 1;
-                cur.advance();
-            }
-            // << and >> are binary delimiters: nest like brackets so the commas
-            // inside a binary literal are not counted as arguments.
-            b'<' if cur.peek_at(1) == Some(b'<') => {
-                depth += 1;
-                had_content = true;
-                cur.advance();
-                cur.advance();
-            }
-            b'>' if cur.peek_at(1) == Some(b'>') => {
-                depth -= 1;
-                cur.advance();
-                cur.advance();
-            }
-            b',' if depth == 1 => {
-                commas += 1;
-                cur.advance();
-            }
-            b'"' => cur.consume_string(),
-            b'\'' => cur.consume_quoted_atom(),
-            b'$' => cur.consume_char_literal(),
-            b'%' => cur.skip_line(),
-            _ => {
-                if !byte.is_ascii_whitespace() {
-                    had_content = true;
-                }
-                cur.advance();
-            }
-        }
+    let w = walk_paren_group(&mut cur, |_| false);
+    if !w.closed {
+        return None;
     }
-    None
+    Some(arity_from(w.commas, w.had_content))
 }
 
 /// Scans a macro body for any call sites and records them at the
 /// use-site `Loc`. Skips parameter substitution: callers we'd otherwise
 /// have resolved by substituting params land as `Unresolved*` instead.
-fn scan_macro_body_calls(b: &mut ModuleBuilder, body: &str, caller: &FunctionSig, use_site: Pos) {
+fn scan_macro_body_calls(
+    b: &mut ModuleBuilder,
+    body: &str,
+    caller: &FunctionSig,
+    use_site: Position,
+) {
     let mut sc = Scanner::new(body);
     while !sc.is_eof() {
         let Some(byte) = sc.peek() else { break };
@@ -512,7 +335,7 @@ fn try_call_in_macro_body(
     sc: &mut Scanner<'_>,
     caller: &FunctionSig,
     b: &mut ModuleBuilder,
-    use_site: Pos,
+    use_site: Position,
 ) -> bool {
     let save = sc.pos();
     let head = sc.consume_identifier().to_owned();
@@ -544,7 +367,7 @@ fn record_apply_family_call(
     name: &str,
     caller: &FunctionSig,
     b: &mut ModuleBuilder,
-    pos: Pos,
+    pos: Position,
 ) -> bool {
     let kind = if name == "apply" {
         CallKind::Apply
@@ -845,8 +668,8 @@ fn record_local_call(
     caller: &FunctionSig,
     callee_name: &str,
     arity: u8,
-    start: Pos,
-    end: Pos,
+    start: Position,
+    end: Position,
 ) {
     if b.name.is_none() {
         return;
@@ -886,8 +709,8 @@ fn record_external_call(
     module: &str,
     function: &str,
     arity: u8,
-    start: Pos,
-    end: Pos,
+    start: Position,
+    end: Position,
 ) {
     let (Ok(m), Ok(f)) = (
         ModuleName::new(module.to_owned()),
@@ -909,8 +732,8 @@ fn record_call_self_module(
     caller: &FunctionSig,
     function: &str,
     arity: u8,
-    start: Pos,
-    end: Pos,
+    start: Position,
+    end: Position,
 ) {
     let Some(module) = b.name.clone() else { return };
     let Ok(f) = FunctionName::new(function.to_owned()) else {
@@ -931,8 +754,8 @@ fn record_fun_ref_external(
     module: &str,
     function: &str,
     arity: u8,
-    start: Pos,
-    end: Pos,
+    start: Position,
+    end: Position,
 ) {
     let (Ok(m), Ok(f)) = (
         ModuleName::new(module.to_owned()),

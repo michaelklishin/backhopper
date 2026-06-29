@@ -5,7 +5,7 @@
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run_succeeds, stdout};
-use crate::helpers::fixture::FixtureRepo;
+use backhopper_test_support::GitRepoFixture;
 
 const APP_A: &str = "-module(app_a).\n-export([go/0]).\ngo() -> ok.\n";
 const APP_B: &str = "-module(app_b).\n-export([run/0]).\nrun() -> ok.\n";
@@ -38,9 +38,9 @@ excluded_subdirs = ["test"]
     cfg
 }
 
-fn build_multi_app_repo() -> (FixtureRepo, TempDir) {
+fn build_multi_app_repo() -> (GitRepoFixture, TempDir) {
     let workdir = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("lib/app_a/src/app_a.erl", APP_A);
     repo.write_file("lib/app_a/test/app_a_SUITE.erl", SUITE);
     repo.write_file("lib/app_b/src/app_b.erl", APP_B);

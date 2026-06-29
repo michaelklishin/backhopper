@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::cli::{GlobalArgs, ProjectsCmd};
 use crate::commands::context::{load_config, open_store_read};
-use crate::errors::{CliError, CliResult};
+use crate::errors::CliResult;
 use crate::output::{OutputContext, render};
 
 #[derive(Debug, Serialize)]
@@ -61,13 +61,9 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
             Ok(0)
         }
         ProjectsCmd::Show { project } => {
-            let p = cfg
-                .project(&project)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let p = cfg.project(&project)?;
             let store = open_store_read(args, &cfg)?;
-            let tags = store
-                .list_tags(&project)
-                .map_err(|e| CliError::Core(e.into()))?;
+            let tags = store.list_tags(&project)?;
             let payload = ProjectShow {
                 name: p.name.to_string(),
                 git_url: p.git_url.clone(),

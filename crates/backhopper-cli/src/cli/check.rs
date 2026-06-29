@@ -8,6 +8,8 @@ use clap::{Args, Subcommand};
 
 use backhopper_core::model::names::{CommitShaPrefix, ProjectName, SeriesName, TagName};
 
+use crate::cli::RepoDirPathArg;
+
 #[derive(Debug, Args, Clone, Copy, Default)]
 pub struct CheckFlags {
     #[arg(
@@ -107,29 +109,26 @@ pub struct SourcePinArgs {
     pub source_series: Option<SeriesName>,
 }
 
-/// The repository commit-shaped inputs are read from. One definition
-/// so the default and the env override cannot drift across verbs.
-#[derive(Debug, Args, Clone)]
-pub struct RepoDirPathArg {
-    #[arg(
-        long,
-        default_value = ".",
-        env = "BACKHOPPER_REPO_DIR_PATH",
-        help = "Repository the commits are read from"
-    )]
-    pub repo_dir_path: PathBuf,
+/// The target pin selector shared by every non-batch check verb: either
+/// a single `--project` + `--tag` or a `--series`. The arg ids `project`
+/// and `series` are load-bearing for the `conflicts_with` and `requires`
+/// relations, so the field names must not change.
+#[derive(Debug, Args, Clone, Default)]
+pub struct PinSelectorArgs {
+    #[arg(long, conflicts_with = "series")]
+    pub project: Option<ProjectName>,
+    #[arg(long, requires = "project")]
+    pub tag: Option<TagName>,
+    #[arg(long)]
+    pub series: Option<SeriesName>,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum CheckCmd {
     /// Check a unified-diff patch. The patch comes from a file or stdin.
     Patch {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
+        #[command(flatten)]
+        selector: PinSelectorArgs,
         #[arg(
             long,
             default_value = ".",
@@ -148,12 +147,8 @@ pub enum CheckCmd {
     },
     /// Check a single commit (the diff against its parent).
     Commit {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
+        #[command(flatten)]
+        selector: PinSelectorArgs,
         #[command(flatten)]
         repo: RepoDirPathArg,
         #[command(flatten)]
@@ -170,12 +165,8 @@ pub enum CheckCmd {
     },
     /// Check a commit range or the diff of a merge commit.
     Range {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
+        #[command(flatten)]
+        selector: PinSelectorArgs,
         #[command(flatten)]
         repo: RepoDirPathArg,
         #[arg(long, conflicts_with = "merge_commit")]
@@ -196,12 +187,8 @@ pub enum CheckCmd {
     /// Use this when a single-arg `check commit <MERGE-SHA>` would silently
     /// first-parent and hide the real diff.
     Merge {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
+        #[command(flatten)]
+        selector: PinSelectorArgs,
         #[command(flatten)]
         repo: RepoDirPathArg,
         #[command(flatten)]
@@ -218,12 +205,8 @@ pub enum CheckCmd {
     },
     /// Check a GitHub PR. The diff comes from `gh pr diff`.
     Pr {
-        #[arg(long, conflicts_with = "series")]
-        project: Option<ProjectName>,
-        #[arg(long, requires = "project")]
-        tag: Option<TagName>,
-        #[arg(long)]
-        series: Option<SeriesName>,
+        #[command(flatten)]
+        selector: PinSelectorArgs,
         #[command(flatten)]
         repo: RepoDirPathArg,
         #[command(flatten)]

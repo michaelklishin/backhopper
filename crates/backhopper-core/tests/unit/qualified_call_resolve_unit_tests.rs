@@ -9,8 +9,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
+use backhopper_core::compat::added_lines::AddedLinesSubject;
 use backhopper_core::compat::qualified_call_resolve::{
-    PatchAddedFunctions, QualifiedCallSubject, analyse_qualified_calls, patch_added_functions,
+    PatchAddedFunctions, analyse_qualified_calls, patch_added_functions,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use backhopper_core::model::verdict::Reason;
@@ -47,7 +48,7 @@ fn analyse_with(
     target: &[(&str, &str, &str)],
 ) -> Vec<Reason> {
     let path = rp("deps/rabbit/src/caller.erl");
-    let subjects = [QualifiedCallSubject {
+    let subjects = [AddedLinesSubject {
         source_path: &path,
         added_text: added,
         line_map,

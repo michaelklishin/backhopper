@@ -9,41 +9,20 @@
 
 use std::path::PathBuf;
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::{
     EvaluationContext, EvaluationFiles, EvaluationInput, Pinned, Scoped, Sourced,
 };
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Snapshot, state};
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 fn snap(project: &str) -> Snapshot<state::Canonical> {
-    let mut m = Module::new(ModuleName::new("demo").unwrap());
-    m.exports.push(FunArity {
-        name: FunctionName::new("greet").unwrap(),
-        arity: Arity::new(1),
-    });
-    Snapshot::from_extracted(
-        SnapshotHeader {
-            project: ProjectName::new(project).unwrap(),
-            tag: TagName::new("v1.0.0").unwrap(),
-            branch: None,
-            commit: CommitSha::new("0".repeat(40)).unwrap(),
-            scanned_paths: vec!["src/**/*.erl".into()],
-            apps_scanned: Vec::new(),
-            generated_by: "test".into(),
-            generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-            extractor_version: String::new(),
-            dep_pins: Vec::new(),
-        },
-        vec![m],
-        vec![],
+    canonical_snapshot(
+        snapshot_header(project, "v1.0.0"),
+        vec![module_with("demo", &[("greet", 1)])],
     )
-    .into_canonical()
 }
 
 fn pin(project: &str) -> Pin {

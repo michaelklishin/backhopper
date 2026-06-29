@@ -4,18 +4,12 @@
 
 use std::path::PathBuf;
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
-};
 use backhopper_core::model::verdict::{InapplicableReason, SeriesVerdict, TouchedKinds, Verdict};
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 const VARIANT_A_DIFF: &str = "\
 diff --git a/src/rabbit_fifo.erl b/src/rabbit_fifo.erl
@@ -66,37 +60,15 @@ diff --git a/src/y.erl b/src/y.erl
  more_context.
 ";
 
-fn header(project: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
-
 fn empty_pin_context(project: &str) -> EvaluationContext {
     let pin = Pin::new(
         ProjectName::new(project).unwrap(),
         TagName::new("v1.0.0").unwrap(),
     );
-    let m = {
-        let mut m = Module::new(ModuleName::new("noop").unwrap());
-        m.visibility = Visibility::Public;
-        m.exports.push(FunArity {
-            name: FunctionName::new("noop").unwrap(),
-            arity: Arity::new(0),
-        });
-        m
-    };
-    let snap: Snapshot<state::Canonical> =
-        Snapshot::from_extracted(header(project), vec![m], vec![]).into_canonical();
+    let snap = canonical_snapshot(
+        snapshot_header(project, "v1.0.0"),
+        vec![module_with("noop", &[("noop", 0)])],
+    );
     let scope = PinScope::from_snapshot(ProjectName::new(project).unwrap(), &snap, []);
     EvaluationContext::new(pin, snap, scope)
 }

@@ -6,15 +6,14 @@ use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::config::{FamilyDefaults, VersionedMachineImplDecl, WireConstantDecl};
 use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, MacroName, ModuleName, ProjectName, TagName,
+    Arity, FunctionName, MacroName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
-    Module, Provenance, Snapshot, SnapshotHeader, VersionedMachineVersion, WireConstantBinding,
-    WireValue, state,
+    Module, Provenance, Snapshot, VersionedMachineVersion, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::model::verdict::{Reason, SnapshotSide};
-use time::OffsetDateTime;
+use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 const RABBIT_FIFO_TOUCH: &str = "\
 diff --git a/deps/rabbit/src/rabbit_fifo.erl b/deps/rabbit/src/rabbit_fifo.erl
@@ -42,21 +41,6 @@ diff --git a/deps/rabbit/src/unrelated.erl b/deps/rabbit/src/unrelated.erl
  -module(unrelated).
 +%% touched
 ";
-
-fn header(tag: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new("rabbitmq-server").unwrap(),
-        tag: TagName::new(tag).unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: Vec::new(),
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::UNIX_EPOCH,
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
 
 fn rabbit_fifo_with_version(value: u64) -> Module {
     let mut m = Module::new(ModuleName::new("rabbit_fifo").unwrap());
@@ -87,7 +71,7 @@ fn ra_log_segment_with(macros: &[&str]) -> Module {
 }
 
 fn canonical(tag: &str, modules: Vec<Module>) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(header(tag), modules, Vec::new()).into_canonical()
+    canonical_snapshot(snapshot_header("rabbitmq-server", tag), modules)
 }
 
 fn rabbitmq_defaults() -> FamilyDefaults {

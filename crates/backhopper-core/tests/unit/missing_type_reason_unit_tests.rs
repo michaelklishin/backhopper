@@ -2,39 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use time::OffsetDateTime;
-
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName, TypeName,
-};
+use backhopper_core::model::names::{Arity, FunctionName, ProjectName, TagName, TypeName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, TypeArity, Visibility, state,
-};
+use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, TypeArity, state};
 use backhopper_core::model::verdict::{Reason, Verdict};
-
-fn header(project: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
-
-fn module_named(name: &str) -> Module {
-    let mut m = Module::new(ModuleName::new(name).unwrap());
-    m.visibility = Visibility::Public;
-    m
-}
+use backhopper_test_support::{canonical_snapshot, module, snapshot_header};
 
 fn with_exported_type(mut m: Module, name: &str, arity: u8) -> Module {
     m.export_types.push(TypeArity {
@@ -53,7 +27,7 @@ fn with_exported_function(mut m: Module, name: &str, arity: u8) -> Module {
 }
 
 fn snapshot(project: &str, modules: Vec<Module>) -> Snapshot<state::Canonical> {
-    Snapshot::from_extracted(header(project), modules, vec![]).into_canonical()
+    canonical_snapshot(snapshot_header(project, "v1.0.0"), modules)
 }
 
 fn context(project: &str, modules: Vec<Module>) -> EvaluationContext {
@@ -79,7 +53,7 @@ diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
 
 #[test]
 fn exported_type_is_compatible() {
-    let m = with_exported_type(module_named("ra"), "index", 0);
+    let m = with_exported_type(module("ra"), "index", 0);
     let eval = Patch::parse(VARIANT_B_DIFF.as_bytes())
         .unwrap()
         .analyze()
@@ -95,7 +69,7 @@ fn exported_type_is_compatible() {
 #[test]
 fn unexported_type_emits_missing_type_reason() {
     // ra exports `start/0` (a function) but no types.
-    let m = with_exported_function(module_named("ra"), "start", 0);
+    let m = with_exported_function(module("ra"), "start", 0);
     let eval = Patch::parse(VARIANT_B_DIFF.as_bytes())
         .unwrap()
         .analyze()
@@ -116,7 +90,7 @@ fn unexported_type_emits_missing_type_reason() {
 
 #[test]
 fn missing_type_is_not_blocking_so_verdict_is_requires_adaptation_not_incompatible() {
-    let m = with_exported_function(module_named("ra"), "start", 0);
+    let m = with_exported_function(module("ra"), "start", 0);
     let eval = Patch::parse(VARIANT_B_DIFF.as_bytes())
         .unwrap()
         .analyze()
@@ -139,7 +113,7 @@ diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
  -module(rabbit_quorum_queue).
 +lookup_index() -> ra:index().
 ";
-    let m = with_exported_function(module_named("ra"), "start", 0);
+    let m = with_exported_function(module("ra"), "start", 0);
     let eval = Patch::parse(body_diff.as_bytes())
         .unwrap()
         .analyze()
@@ -169,7 +143,7 @@ diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
 
 #[test]
 fn out_of_scope_type_ref_produces_no_reason() {
-    let m = with_exported_type(module_named("ra"), "index", 0);
+    let m = with_exported_type(module("ra"), "index", 0);
     let diff = "\
 diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
 --- a/rabbit_quorum_queue.erl

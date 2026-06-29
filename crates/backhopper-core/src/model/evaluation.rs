@@ -150,51 +150,52 @@ impl<'a> SeriesEvaluationView<'a> {
         &self.diagnostics.missing_test_modules
     }
 
+    /// Every `(pin, reason)` pair across the evaluation, the shared
+    /// source the typed finding iterators below filter and shape.
+    fn pin_reason_pairs(self) -> impl Iterator<Item = (&'a PinVerdict, &'a Reason)> {
+        self.results
+            .results
+            .iter()
+            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
+    }
+
     /// Iterate every `Reason::TestModuleSymbolMissing` flattened to
     /// `(pin, suite_path, missing_module, call_sites)`, so consumers surface
     /// the signal without re-deriving it from the `Reason` enum.
     pub fn test_module_symbol_missing(
         self,
     ) -> impl Iterator<Item = TestModuleSymbolMissingFinding<'a>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::TestModuleSymbolMissing {
-                    suite_path,
-                    missing_module,
-                    call_sites,
-                } => Some(TestModuleSymbolMissingFinding {
-                    pin,
-                    suite_path,
-                    missing_module,
-                    call_sites: call_sites.as_slice(),
-                }),
-                _ => None,
-            })
+        self.pin_reason_pairs().filter_map(|(pin, r)| match r {
+            Reason::TestModuleSymbolMissing {
+                suite_path,
+                missing_module,
+                call_sites,
+            } => Some(TestModuleSymbolMissingFinding {
+                pin,
+                suite_path,
+                missing_module,
+                call_sites: call_sites.as_slice(),
+            }),
+            _ => None,
+        })
     }
 
     /// Iterate every `Reason::HeaderFileMissing` flattened to
     /// `(pin, source_path, include_directive, attempted_paths)`.
     pub fn header_file_missing(self) -> impl Iterator<Item = HeaderFileMissingFinding<'a>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::HeaderFileMissing {
-                    source_path,
-                    include_directive,
-                    attempted_paths,
-                } => Some(HeaderFileMissingFinding {
-                    pin,
-                    source_path,
-                    include_directive,
-                    attempted_paths: attempted_paths.as_slice(),
-                }),
-                _ => None,
-            })
+        self.pin_reason_pairs().filter_map(|(pin, r)| match r {
+            Reason::HeaderFileMissing {
+                source_path,
+                include_directive,
+                attempted_paths,
+            } => Some(HeaderFileMissingFinding {
+                pin,
+                source_path,
+                include_directive,
+                attempted_paths: attempted_paths.as_slice(),
+            }),
+            _ => None,
+        })
     }
 
     /// Iterate every `Reason::BehaviourModuleMissing` flattened to
@@ -202,21 +203,17 @@ impl<'a> SeriesEvaluationView<'a> {
     pub fn behaviour_module_missing(
         self,
     ) -> impl Iterator<Item = BehaviourModuleMissingFinding<'a>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::BehaviourModuleMissing {
-                    source_path,
-                    behaviour,
-                } => Some(BehaviourModuleMissingFinding {
-                    pin,
-                    source_path,
-                    behaviour,
-                }),
-                _ => None,
-            })
+        self.pin_reason_pairs().filter_map(|(pin, r)| match r {
+            Reason::BehaviourModuleMissing {
+                source_path,
+                behaviour,
+            } => Some(BehaviourModuleMissingFinding {
+                pin,
+                source_path,
+                behaviour,
+            }),
+            _ => None,
+        })
     }
 
     /// Iterate every `Reason::VersionedMachineSnapshotMissing` flattened to
@@ -224,20 +221,16 @@ impl<'a> SeriesEvaluationView<'a> {
     pub fn versioned_machine_snapshot_missing(
         self,
     ) -> impl Iterator<Item = VersionedMachineSnapshotMissingFinding<'a>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::VersionedMachineSnapshotMissing { module, side } => {
-                    Some(VersionedMachineSnapshotMissingFinding {
-                        pin,
-                        module,
-                        side: *side,
-                    })
-                }
-                _ => None,
-            })
+        self.pin_reason_pairs().filter_map(|(pin, r)| match r {
+            Reason::VersionedMachineSnapshotMissing { module, side } => {
+                Some(VersionedMachineSnapshotMissingFinding {
+                    pin,
+                    module,
+                    side: *side,
+                })
+            }
+            _ => None,
+        })
     }
 
     /// Iterate every `Reason::WireConstantBindingsMissing` flattened to
@@ -245,23 +238,19 @@ impl<'a> SeriesEvaluationView<'a> {
     pub fn wire_constant_bindings_missing(
         self,
     ) -> impl Iterator<Item = WireConstantBindingsMissingFinding<'a>> {
-        self.results
-            .results
-            .iter()
-            .flat_map(|pin| pin_reasons(pin).map(move |r| (pin, r)))
-            .filter_map(|(pin, r)| match r {
-                Reason::WireConstantBindingsMissing {
-                    module,
-                    macros,
-                    side,
-                } => Some(WireConstantBindingsMissingFinding {
-                    pin,
-                    module,
-                    macros: macros.as_slice(),
-                    side: *side,
-                }),
-                _ => None,
-            })
+        self.pin_reason_pairs().filter_map(|(pin, r)| match r {
+            Reason::WireConstantBindingsMissing {
+                module,
+                macros,
+                side,
+            } => Some(WireConstantBindingsMissingFinding {
+                pin,
+                module,
+                macros: macros.as_slice(),
+                side: *side,
+            }),
+            _ => None,
+        })
     }
 }
 

@@ -87,6 +87,20 @@ fn callback_with_nested_parens_in_args_counts_arity_correctly() {
 }
 
 #[test]
+fn callback_with_bitstring_arg_counts_arity_correctly() {
+    let m = read(
+        "-module(rabbit_msg).\n\
+         -callback encode(<<_:8, _:_*8>>, Opts) -> binary().\n",
+    );
+    let sig = m
+        .callbacks
+        .iter()
+        .find(|s| s.name.as_str() == "encode")
+        .expect("encode callback should be recorded");
+    assert_eq!(sig.arity.get(), 2);
+}
+
+#[test]
 fn optional_callbacks_attribute_records_optional_set() {
     let m = read(
         "-module(ra_server).\n\

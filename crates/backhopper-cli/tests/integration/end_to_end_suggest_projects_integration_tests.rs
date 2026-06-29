@@ -10,7 +10,7 @@ use std::io::Write;
 use assert_cmd::Command;
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::helpers::fixture::{FixtureRepo, write_config};
+use backhopper_test_support::{GitRepoFixture, write_config};
 
 const ERL_TRACKED: &str = r#"
 -module(demo_mod).
@@ -18,9 +18,9 @@ const ERL_TRACKED: &str = r#"
 greet(Name) -> Name.
 "#;
 
-fn fresh_workspace() -> (FixtureRepo, TempDir, std::path::PathBuf) {
+fn fresh_workspace() -> (GitRepoFixture, TempDir, std::path::PathBuf) {
     let work = TempDir::new().unwrap();
-    let repo = FixtureRepo::new();
+    let repo = GitRepoFixture::new();
     repo.write_file("src/demo_mod.erl", ERL_TRACKED);
     repo.commit("init");
     repo.tag("v1.0.0");

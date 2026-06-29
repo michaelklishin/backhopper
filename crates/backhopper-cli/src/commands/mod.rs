@@ -16,6 +16,7 @@ pub mod doctor;
 pub mod init;
 pub mod macro_env;
 pub mod pin_bump;
+pub mod pin_coverage;
 pub mod projects;
 pub mod rabbitmq_components;
 pub mod rev;

@@ -8,46 +8,21 @@
 
 use std::str::FromStr;
 
-use time::OffsetDateTime;
-
 use backhopper_core::SymbolKind;
 use backhopper_core::compat::patch::{EvaluationContext, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{
-    Arity, CommitSha, FunctionName, Mfa, ModuleName, ProjectName, TagName,
-};
+use backhopper_core::model::names::{FunctionName, Mfa, ModuleName, ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
-};
+use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::symbol::{RefOrigin, SymbolRef};
 use backhopper_core::model::verdict::{SeriesEvaluation, Verdict};
-
-fn header(project: &str) -> SnapshotHeader {
-    SnapshotHeader {
-        project: ProjectName::new(project).unwrap(),
-        tag: TagName::new("v1.0.0").unwrap(),
-        branch: None,
-        commit: CommitSha::new("0".repeat(40)).unwrap(),
-        scanned_paths: vec!["src".into()],
-        apps_scanned: Vec::new(),
-        generated_by: "test".into(),
-        generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
-        extractor_version: String::new(),
-        dep_pins: Vec::new(),
-    }
-}
+use backhopper_test_support::{canonical_snapshot, module_with, snapshot_header};
 
 fn dep_snapshot(exports: &[(&str, u8)]) -> Snapshot<state::Canonical> {
-    let mut m = Module::new(ModuleName::new("dep_mod").unwrap());
-    m.visibility = Visibility::Public;
-    for (f, a) in exports {
-        m.exports.push(FunArity {
-            name: FunctionName::new(*f).unwrap(),
-            arity: Arity::new(*a),
-        });
-    }
-    Snapshot::from_extracted(header("dep"), vec![m], vec![]).into_canonical()
+    canonical_snapshot(
+        snapshot_header("dep", "v1.0.0"),
+        vec![module_with("dep_mod", exports)],
+    )
 }
 
 fn patch_with(added: &str, context: &str) -> Vec<u8> {

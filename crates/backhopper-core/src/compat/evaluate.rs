@@ -24,19 +24,45 @@ use crate::model::verdict::{
     ArtifactKind, ConflictMarker, HunkTally, Reason, SnapshotSide, SourceDelta, Verdict,
 };
 
-#[allow(clippy::too_many_arguments)]
+/// The analyzed-patch slices `evaluate_pin` reads, grouped so the fixed
+/// inputs travel as one borrow instead of five positional arguments.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AnalyzedInputs<'a> {
+    pub files: &'a [PatchedFile],
+    pub referenced: &'a [SymbolRef],
+    pub defined: &'a [SymbolRef],
+    pub unsupported_files: &'a [PathBuf],
+    pub call_args: &'a [(Mfa, Vec<ArgShape>)],
+}
+
+/// Per-pin optional inputs: the source snapshot, the pin's file bytes,
+/// the pin scope, and family defaults.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct PinEvalOptions<'a> {
+    pub source_snapshot: Option<&'a Snapshot<state::Canonical>>,
+    pub pin_files: Option<&'a EvaluationFiles>,
+    pub scope: Option<&'a PinScope>,
+    pub family_defaults: Option<&'a FamilyDefaults>,
+}
+
 pub(crate) fn evaluate_pin(
-    files: &[PatchedFile],
-    referenced: &[SymbolRef],
-    defined: &[SymbolRef],
-    unsupported_files: &[PathBuf],
-    call_args: &[(Mfa, Vec<ArgShape>)],
+    inputs: AnalyzedInputs<'_>,
     snapshot: &Snapshot<state::Canonical>,
-    source_snapshot: Option<&Snapshot<state::Canonical>>,
-    pin_files: Option<&EvaluationFiles>,
-    scope: Option<&PinScope>,
-    family_defaults: Option<&FamilyDefaults>,
+    options: PinEvalOptions<'_>,
 ) -> EvaluationResult {
+    let AnalyzedInputs {
+        files,
+        referenced,
+        defined,
+        unsupported_files,
+        call_args,
+    } = inputs;
+    let PinEvalOptions {
+        source_snapshot,
+        pin_files,
+        scope,
+        family_defaults,
+    } = options;
     let mut reasons: Vec<Reason> = Vec::new();
     check_syntactic_artifacts(files, &mut reasons);
     let mut postimage = None;
@@ -122,7 +148,11 @@ pub(crate) fn evaluate_pin(
                     });
                 }
             }
-            _ => {}
+            // Behaviours and callbacks are resolved by conformance
+            // checks, macro uses by the define-symbol resolver.
+            SymbolKind::Behaviour { .. }
+            | SymbolKind::Callback { .. }
+            | SymbolKind::Macro { .. } => {}
         }
     }
     check_clause_mismatches(call_args, snapshot, scope, &mut reasons);
@@ -166,7 +196,10 @@ fn tally_context_miss(
     let module = match &r.kind {
         SymbolKind::Function { mfa } => &mfa.module,
         SymbolKind::FunctionAnyArity { module, .. } | SymbolKind::Type { module, .. } => module,
-        _ => return,
+        SymbolKind::Behaviour { .. }
+        | SymbolKind::Callback { .. }
+        | SymbolKind::Macro { .. }
+        | SymbolKind::Record { .. } => return,
     };
     if let Some(s) = scope
         && !s.contains_module(module)
@@ -185,7 +218,10 @@ fn tally_context_miss(
             name,
             arity,
         } => type_exported(snapshot, module, name, *arity),
-        _ => unreachable!("filtered above"),
+        SymbolKind::Behaviour { .. }
+        | SymbolKind::Callback { .. }
+        | SymbolKind::Macro { .. }
+        | SymbolKind::Record { .. } => unreachable!("filtered above"),
     };
     if !resolved {
         *out.entry(module.clone()).or_insert(0) += 1;
@@ -369,8 +405,9 @@ fn file_to_module_name(path: &Path) -> Option<ModuleName> {
 fn touched_module_set(files: &[PatchedFile]) -> BTreeSet<ModuleName> {
     let mut set = BTreeSet::new();
     for f in files {
-        let path = f.new_path.as_ref().or(f.old_path.as_ref());
-        let Some(path) = path else { continue };
+        let Some(path) = f.primary_path() else {
+            continue;
+        };
         let ext = path.extension().and_then(|s| s.to_str());
         if !matches!(ext, Some("erl") | Some("hrl")) {
             continue;
@@ -519,9 +556,8 @@ fn check_versioned_machine_data(
 
 fn check_syntactic_artifacts(files: &[PatchedFile], reasons: &mut Vec<Reason>) {
     for file in files {
-        let path = match (&file.new_path, &file.old_path) {
-            (Some(p), _) | (None, Some(p)) => p,
-            (None, None) => continue,
+        let Some(path) = file.primary_path() else {
+            continue;
         };
         for hunk in &file.hunks {
             let mut new_line = hunk.new_start;
@@ -533,7 +569,7 @@ fn check_syntactic_artifacts(files: &[PatchedFile], reasons: &mut Vec<Reason>) {
                     HunkLine::Added(text) => {
                         if let Some(marker) = ConflictMarker::detect(text) {
                             reasons.push(Reason::SyntacticArtifact {
-                                path: path.clone(),
+                                path: path.to_path_buf(),
                                 line: new_line,
                                 artifact: ArtifactKind::ConflictMarker { marker },
                             });
@@ -555,9 +591,8 @@ fn check_files_against_pin(
 ) -> PostimageTally {
     let mut tally = PostimageTally::default();
     for file in files {
-        let path = match (&file.new_path, &file.old_path) {
-            (Some(p), _) | (None, Some(p)) => p,
-            (None, None) => continue,
+        let Some(path) = file.primary_path() else {
+            continue;
         };
         let Some(slot) = pin_files.get(path) else {
             continue;
@@ -568,10 +603,12 @@ fn check_files_against_pin(
             {
                 reasons.push(Reason::ModuleRelocated {
                     module,
-                    patch_path: path.clone(),
+                    patch_path: path.to_path_buf(),
                 });
             } else {
-                reasons.push(Reason::FileAbsent { path: path.clone() });
+                reasons.push(Reason::FileAbsent {
+                    path: path.to_path_buf(),
+                });
             }
             continue;
         };
@@ -586,14 +623,14 @@ fn check_files_against_pin(
                 PreimageMatch::Exact => {}
                 PreimageMatch::Drifted { line_delta } => {
                     reasons.push(Reason::PreimageDrifted {
-                        path: path.clone(),
+                        path: path.to_path_buf(),
                         hunk_index: idx,
                         line_delta,
                     });
                 }
                 PreimageMatch::Missing { excerpt } => {
                     reasons.push(Reason::PreimageMissing {
-                        path: path.clone(),
+                        path: path.to_path_buf(),
                         hunk_index: idx,
                         preimage_excerpt: excerpt,
                     });
@@ -1137,11 +1174,8 @@ fn find_record_fields(
     snapshot: &Snapshot<state::Canonical>,
     name: &RecordName,
 ) -> Option<Vec<FieldName>> {
-    // Records live in headers (.hrl) and inline in modules (.erl): resolve both.
-    let header_records = snapshot.headers().iter().flat_map(|h| h.records.iter());
-    let module_records = snapshot.modules().iter().flat_map(|m| m.records.iter());
-    header_records
-        .chain(module_records)
+    snapshot
+        .records()
         .find(|r| &r.name == name)
         .map(|r| r.fields.iter().map(|f| f.name.clone()).collect())
 }
@@ -1165,12 +1199,7 @@ fn is_function_deprecated_in(module: &Module, function: &FunctionName, arity: Ar
 }
 
 fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> bool {
-    // Records live in headers (.hrl) and inline in modules (.erl).
-    let header_records = snapshot.headers().iter().flat_map(|h| h.records.iter());
-    let module_records = snapshot.modules().iter().flat_map(|m| m.records.iter());
-    header_records
-        .chain(module_records)
-        .any(|r| &r.name == name)
+    snapshot.records().any(|r| &r.name == name)
 }
 
 fn type_exported(
