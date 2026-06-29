@@ -24,6 +24,17 @@ fn parses_record_with_typed_fields() {
 }
 
 #[test]
+fn record_field_with_bitstring_type_is_not_split() {
+    // The comma inside `<<_:8, _:_*8>>` is part of the bitstring type,
+    // not a field separator.
+    let r = parse_record("(frame, {kind, payload :: <<_:8, _:_*8>>, version})").unwrap();
+    assert_eq!(r.name, "frame");
+    assert_eq!(r.fields.len(), 3);
+    assert_eq!(r.fields[1].name, "payload");
+    assert_eq!(r.fields[1].type_repr.as_deref(), Some("<<_:8, _:_*8>>"));
+}
+
+#[test]
 fn parses_record_with_default_and_type() {
     let r = parse_record("(s, {x :: integer() | undefined = 0})").unwrap();
     assert_eq!(r.fields.len(), 1);

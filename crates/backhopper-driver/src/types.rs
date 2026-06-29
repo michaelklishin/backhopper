@@ -51,5 +51,6 @@ pub use backhopper_core::model::verdict::{
     TouchedKinds, Verdict,
 };
 pub use backhopper_core::suites::{
-    SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef, UncoveredApplication,
+    BroadImpactModule, SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef,
+    UncoveredApplication,
 };

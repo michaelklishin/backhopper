@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use backhopper_core::{Arity, BehaviourName, FunctionName, ModuleName};
-use backhopper_erlang::tokenizer::skip_char_literal_span;
+use backhopper_erlang_scan::{skip_char_literal_span, split_top_level_commas};
 use backhopper_xref_graph::{Deprecation, DeprecationTier, FunctionSig};
 
 use crate::errors::ReadWarning;
@@ -256,51 +256,6 @@ fn parse_on_load(body: &str) -> Option<FunctionSig> {
     let name = FunctionName::new(name.trim().to_owned()).ok()?;
     let arity = arity.trim().parse::<u8>().ok()?;
     Some(FunctionSig::new(name, Arity::new(arity)))
-}
-
-pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let bytes = s.as_bytes();
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    let mut in_string = false;
-    let mut in_quote = false;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if !in_string && !in_quote && c == b'$' && i + 1 < bytes.len() {
-            i += skip_char_literal_span(bytes, i);
-            continue;
-        }
-        // `<<...>>` bitstring types carry commas that are not argument
-        // separators, e.g. a `-callback` argument typed `<<_:8, _:_*8>>`.
-        if !in_string && !in_quote && c == b'<' && bytes.get(i + 1) == Some(&b'<') {
-            depth += 1;
-            i += 2;
-            continue;
-        }
-        if !in_string && !in_quote && c == b'>' && bytes.get(i + 1) == Some(&b'>') {
-            depth -= 1;
-            i += 2;
-            continue;
-        }
-        match c {
-            b'(' | b'[' | b'{' if !in_string && !in_quote => depth += 1,
-            b')' | b']' | b'}' if !in_string && !in_quote => depth -= 1,
-            b'"' if !in_quote => in_string = !in_string,
-            b'\'' if !in_string => in_quote = !in_quote,
-            b',' if depth == 0 && !in_string && !in_quote => {
-                out.push(&s[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    if start <= s.len() {
-        out.push(&s[start..]);
-    }
-    out
 }
 
 pub(super) fn count_top_level_args(s: &str) -> u8 {

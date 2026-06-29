@@ -95,6 +95,7 @@ mod spec_normalize_unit_tests;
 mod spec_parser_unit_tests;
 mod store_new_fields_round_trip_unit_tests;
 mod store_unit_tests;
+mod suite_fanout_cap_unit_tests;
 mod suite_matcher_unit_tests;
 mod suite_rule_line_match_unit_tests;
 mod suite_rule_template_unit_tests;

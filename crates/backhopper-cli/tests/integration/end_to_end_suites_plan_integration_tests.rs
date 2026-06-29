@@ -125,6 +125,82 @@ fn suites_plan_reports_uncovered_application_with_candidates() {
     assert!(out.contains("run each suite"));
 }
 
+// A single helper referenced by every suite in the tree is escalated to
+// a broad-impact row rather than enumerating a near-full set. The run
+// hint must fire on the broad row even though no entry is selected.
+fn build_broad_fixture(dir: &TempDir) {
+    let root = dir.path();
+    let rabbit = root.join("deps/rabbit");
+    fs::create_dir_all(rabbit.join("src")).unwrap();
+    fs::create_dir_all(rabbit.join("test")).unwrap();
+    fs::write(
+        rabbit.join("src/rabbit.app.src"),
+        "{application, rabbit, [{modules, []}, {applications, [kernel]}]}.",
+    )
+    .unwrap();
+    fs::write(
+        rabbit.join("src/rabbit_ct_broker_helpers.erl"),
+        "-module(rabbit_ct_broker_helpers).",
+    )
+    .unwrap();
+    for i in 0..8 {
+        fs::write(
+            rabbit.join(format!("test/s{i}_SUITE.erl")),
+            format!("-module(s{i}_SUITE).\ngo() -> rabbit_ct_broker_helpers:setup()."),
+        )
+        .unwrap();
+    }
+    fs::write(root.join("erlang.mk"), "").unwrap();
+}
+
+#[test]
+fn suites_plan_reports_broad_impact_module() {
+    let dir = TempDir::new().unwrap();
+    build_broad_fixture(&dir);
+    let root = dir.path().to_string_lossy().to_string();
+    let a = run_succeeds([
+        "suites",
+        "plan",
+        "--repo-dir-path",
+        root.as_str(),
+        "--modified-path",
+        "deps/rabbit/src/rabbit_ct_broker_helpers.erl",
+    ]);
+    let out = stdout(&a);
+    assert!(
+        out.contains("broad: rabbit_ct_broker_helpers reaches 8 of 8 suites"),
+        "{out}"
+    );
+    assert!(out.contains("treat as a broad change"), "{out}");
+    // The run hint fires on the broad row even with no entries.
+    assert!(out.contains("run each suite"), "{out}");
+}
+
+#[test]
+fn suites_plan_emits_broad_impact_in_json() {
+    let dir = TempDir::new().unwrap();
+    build_broad_fixture(&dir);
+    let root = dir.path().to_string_lossy().to_string();
+    let a = run_succeeds([
+        "--formatter",
+        "json",
+        "suites",
+        "plan",
+        "--repo-dir-path",
+        root.as_str(),
+        "--modified-path",
+        "deps/rabbit/src/rabbit_ct_broker_helpers.erl",
+    ]);
+    let out = stdout(&a);
+    let parsed: serde_json::Value = serde_json::from_str(&out).expect("valid json");
+    let broad = parsed["data"]["broad_impact"].as_array().unwrap();
+    assert_eq!(broad.len(), 1);
+    assert_eq!(broad[0]["module"], "rabbit_ct_broker_helpers");
+    assert_eq!(broad[0]["suite_fanout"], 8);
+    assert_eq!(broad[0]["total_suites"], 8);
+    assert!(parsed["data"]["entries"].as_array().unwrap().is_empty());
+}
+
 #[test]
 fn suites_plan_counts_unattributed_paths_in_json() {
     let dir = TempDir::new().unwrap();

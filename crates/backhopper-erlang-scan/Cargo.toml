@@ -1,0 +1,23 @@
+[package]
+name        = "backhopper-erlang-scan"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+authors     = { workspace = true }
+license     = { workspace = true }
+repository  = { workspace = true }
+description = "Erlang lexical scanning primitives for backhopper"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[[test]]
+name = "proptests"
+path = "tests/proptests/main.rs"

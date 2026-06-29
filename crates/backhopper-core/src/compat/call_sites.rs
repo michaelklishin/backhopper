@@ -28,6 +28,13 @@ use crate::erlang_macros::{MacroTable, expand_value_macro_to_atom, expand_value_
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
 use crate::model::symbol::{RefContext, RefOrigin, SymbolRef};
 
+// The lexical scanners live in the leaf crate; re-exported so the
+// `compat::call_sites` import path stays stable for callers.
+pub use backhopper_erlang_scan::{
+    ScanArity, ScannedArgs, scan_top_level_args, split_top_level_args,
+};
+use backhopper_erlang_scan::{count_top_level_items, scan_arity};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DynamicCall {
     /// One of the apply-family BIFs: `apply/2`, `apply/3`, `spawn/3`,
@@ -493,113 +500,6 @@ fn looks_like_lowercase_atom(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
 }
 
-/// Result of scanning one call's argument list on a single line.
-/// `Unterminated` means the closing paren sits on a later line, so
-/// any arg count derived from this line would be a guess.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScannedArgs<'a> {
-    Terminated { args: Vec<&'a str>, consumed: usize },
-    Unterminated { args: Vec<&'a str> },
-}
-
-/// Arity evidence for one extracted call site.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScanArity {
-    Exact(u8),
-    Unterminated,
-}
-
-/// The one argument-list scanner. Tracks nested `()` `[]` `{}` and
-/// `<<>>`, strings, quoted atoms, backslash escapes, and `$c` char
-/// literals (so `$,` `$(` `$"` stay inert).
-pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
-    let bytes = after_open_paren.as_bytes();
-    let mut args: Vec<&str> = Vec::new();
-    let mut depth = 1i32;
-    let mut in_str = false;
-    let mut in_atom = false;
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if in_str || in_atom {
-            match c {
-                b'\\' => i += 1,
-                b'"' if in_str => in_str = false,
-                b'\'' if in_atom => in_atom = false,
-                _ => {}
-            }
-            i += 1;
-            continue;
-        }
-        match c {
-            b'"' => in_str = true,
-            b'\'' => in_atom = true,
-            b'$' => {
-                i += 1;
-                if bytes.get(i) == Some(&b'\\') {
-                    i += 1;
-                }
-            }
-            b'<' if bytes.get(i + 1) == Some(&b'<') => {
-                depth += 1;
-                i += 1;
-            }
-            b'>' if bytes.get(i + 1) == Some(&b'>') && depth > 1 => {
-                depth -= 1;
-                i += 1;
-            }
-            b'(' | b'[' | b'{' => depth += 1,
-            b']' | b'}' => depth -= 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    let slice = &after_open_paren[start..i];
-                    if !slice.trim().is_empty() || !args.is_empty() {
-                        args.push(slice);
-                    }
-                    return ScannedArgs::Terminated {
-                        args,
-                        consumed: i + 1,
-                    };
-                }
-            }
-            b',' if depth == 1 => {
-                args.push(&after_open_paren[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    if start < bytes.len() {
-        let slice = &after_open_paren[start..];
-        if !slice.trim().is_empty() {
-            args.push(slice);
-        }
-    }
-    ScannedArgs::Unterminated { args }
-}
-
-fn scan_arity(after_open_paren: &str) -> ScanArity {
-    match scan_top_level_args(after_open_paren) {
-        ScannedArgs::Terminated { args, .. } => {
-            ScanArity::Exact(u8::try_from(args.len()).unwrap_or(u8::MAX))
-        }
-        ScannedArgs::Unterminated { .. } => ScanArity::Unterminated,
-    }
-}
-
-/// Splits the source between an already-consumed opening `(` and its
-/// matching `)` into top-level argument source slices. Lenient about
-/// a missing close paren: callers that must distinguish use
-/// `scan_top_level_args` directly.
-pub fn split_top_level_args(after_open_paren: &str) -> Vec<&str> {
-    match scan_top_level_args(after_open_paren) {
-        ScannedArgs::Terminated { args, .. } | ScannedArgs::Unterminated { args } => args,
-    }
-}
-
 /// Collects per-call argument shapes from one source line. Mirrors
 /// `extract_into` for the `mod:fun(args)` case; classifies each actual
 /// into an `ArgShape` so the analyzer can match against pin-side
@@ -703,19 +603,6 @@ pub fn classify_arg(raw: &str) -> ArgShape {
         return ArgShape::Unknown;
     }
     ArgShape::Unknown
-}
-
-fn count_top_level_items(s: &str, open: char, close: char) -> usize {
-    let body = match (s.find(open), s.rfind(close)) {
-        (Some(a), Some(b)) if b > a => &s[a + 1..b],
-        _ => return 0,
-    };
-    if body.trim().is_empty() {
-        return 0;
-    }
-    match scan_top_level_args(body) {
-        ScannedArgs::Terminated { args, .. } | ScannedArgs::Unterminated { args } => args.len(),
-    }
 }
 
 fn is_bare_identifier(s: &str) -> bool {

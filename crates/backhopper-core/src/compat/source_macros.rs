@@ -11,6 +11,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use backhopper_erlang_scan::skip_char_literal_span;
+
 use crate::erlang_macros::{MacroTable, parse_define};
 
 /// Look up the body of a header by its raw `-include(...)` or
@@ -148,24 +150,6 @@ fn scan_to_terminator(source: &str, start: usize) -> usize {
         }
     }
     i
-}
-
-fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
-    debug_assert_eq!(bytes[at], b'$');
-    let next = at + 1;
-    if next >= bytes.len() {
-        return 1;
-    }
-    if bytes[next] == b'\\' {
-        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
-            return 4;
-        }
-        if next + 1 < bytes.len() {
-            return 3;
-        }
-        return 2;
-    }
-    2
 }
 
 fn skip_string(source: &str, start: usize) -> usize {

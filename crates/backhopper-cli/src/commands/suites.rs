@@ -262,6 +262,17 @@ fn render_plan(
                 result.unattributed_paths
             )?;
         }
+        for b in &result.broad_impact {
+            writeln!(
+                w,
+                "broad: {} reaches {} of {} suites",
+                b.module, b.suite_fanout, b.total_suites
+            )?;
+            writeln!(
+                w,
+                "  treat as a broad change: run the full suite, or pick a representative subset"
+            )?;
+        }
         if let Some(hint) = build_system_hint(build_system, result) {
             writeln!(w)?;
             writeln!(w, "{hint}")?;
@@ -272,9 +283,9 @@ fn render_plan(
 }
 
 fn build_system_hint(bs: BuildSystem, result: &SuitePlan) -> Option<&'static str> {
-    // Uncovered candidates want the run hint just as much as
-    // selected entries do.
-    if result.is_empty() && result.uncovered.is_empty() {
+    // Uncovered candidates and broad-impact rows want the run hint just
+    // as much as selected entries do.
+    if result.is_empty() && result.uncovered.is_empty() && result.broad_impact.is_empty() {
         return None;
     }
     match bs {

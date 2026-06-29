@@ -12,8 +12,9 @@ description = "Erlang source surface extractor for backhopper"
 workspace = true
 
 [dependencies]
-backhopper-core = { workspace = true }
-regex           = { workspace = true }
+backhopper-core        = { workspace = true }
+backhopper-erlang-scan = { workspace = true }
+regex                  = { workspace = true }
 serde           = { workspace = true }
 thiserror       = { workspace = true }
 tracing         = { workspace = true }

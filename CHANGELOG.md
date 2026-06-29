@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.21.0 (in development)
+## v0.22.0 (in development)
 
 ### Enhancements
 
@@ -9,14 +9,23 @@
    indices) instead of scanning the whole object database
  * `GitRepo::has_commit` checks the object header instead of decoding
    the full commit
+ * Suite selection now caps single-module fanout: when one changed module
+   reaches an outsized share of discovered suites (at least eight, and
+   more than a third), the suites it alone pulled in are no longer
+   enumerated. They are replaced by a `broad_impact` row naming the module
+   and its reach, so a near-full run driven by one helper such as
+   `rabbit_ct_broker_helpers` becomes an explicit broad-impact signal
+   instead of a silent balloon. A suite kept by an independent reason
+   still survives, and the new `SuitePlan.broad_impact` field is additive
 
 ### Bug Fixes
 
- * A `-spec`, `-callback`, or `-type` argument that is a bitstring type
-   with an internal comma (e.g. `<<_:8, _:_*8>>`) is no longer counted
-   as two arguments, so the recorded arity is correct. The Erlang
-   extractor version is now 4, so `snapshots verify --all` flags
-   snapshots generated before the fix
+ * A bitstring type with an internal comma (e.g. `<<_:8, _:_*8>>`) is no
+   longer split on that comma: a `-spec`, `-callback`, or `-type`
+   argument keeps its arity, and a record field keeps its identity
+   instead of fracturing into two fields. The Erlang extractor version is
+   now 5, so `snapshots verify --all` flags snapshots generated before
+   the fix
 
 ## v0.19.0
 

@@ -102,6 +102,20 @@ pub struct UncoveredApplication {
     pub suites: Vec<ModuleName>,
 }
 
+/// A modified module whose suite fanout is an outsized share of all
+/// discovered suites. The cap drops the suites this module alone pulled
+/// in and records this row instead, so a near-full selection driven by
+/// one helper is never silent.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroadImpactModule {
+    pub module: ModuleName,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application: Option<ApplicationName>,
+    pub suite_fanout: usize,
+    pub total_suites: usize,
+}
+
 /// Output of `plan()`. Entries are sorted by suite; reasons within
 /// each entry are in rule-application order.
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -114,6 +128,10 @@ pub struct SuitePlan {
     /// fewer reasons than inputs is still fully accounted for.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub unattributed_paths: usize,
+    /// Modules whose suite fanout was capped: each removed the suites it
+    /// alone pulled in, replaced by this row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub broad_impact: Vec<BroadImpactModule>,
 }
 
 impl SuitePlan {

@@ -15,6 +15,7 @@ workspace = true
 schemars = ["dep:schemars"]
 
 [dependencies]
+backhopper-erlang-scan = { workspace = true }
 regex       = { workspace = true }
 schemars    = { workspace = true, optional = true, features = ["derive"] }
 serde       = { workspace = true }

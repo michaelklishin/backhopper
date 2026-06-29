@@ -10,9 +10,12 @@
 //!  * `-name(args).`  body = `(args)`
 //!  * `-name body.`   body = `body`
 //!
-//! A sibling lexer in `backhopper_xref_reader::scanner` is cursor-based with
-//! position tracking; this one is block-oriented and drives `attributes.rs`.
-//! Consolidation is deferred until a third consumer needs it.
+//! The lexical primitives (`split_top_level_commas`,
+//! `skip_char_literal_span`) live in `backhopper-erlang-scan` and are
+//! re-exported here; this module keeps the block-oriented attribute-body
+//! reader that drives `attributes.rs`.
+
+pub use backhopper_erlang_scan::{skip_char_literal_span, split_top_level_commas};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributeBlock {
@@ -191,76 +194,4 @@ pub fn strip_outer_brackets(s: &str) -> &str {
         return inner.trim();
     }
     trimmed
-}
-
-pub fn split_top_level_commas(s: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut depth_paren = 0i32;
-    let mut depth_brace = 0i32;
-    let mut depth_brack = 0i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut prev_back = false;
-    let mut start = 0usize;
-    let bytes = s.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
-        if prev_back {
-            prev_back = false;
-            i += 1;
-            continue;
-        }
-        if !in_string && !in_atom_quote && ch == '$' {
-            i += skip_char_literal_span(bytes, i);
-            continue;
-        }
-        match ch {
-            '\\' if in_string || in_atom_quote => prev_back = true,
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            ',' if !in_string
-                && !in_atom_quote
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_brack == 0 =>
-            {
-                out.push(s[start..i].trim());
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    if start < s.len() {
-        out.push(s[start..].trim());
-    }
-    out.into_iter().filter(|x| !x.is_empty()).collect()
-}
-
-/// Byte length of the `$`-led char literal starting at `at`, covering
-/// `$x`, `$\n`, and `$\^X` control-char escapes. The one Erlang
-/// char-literal scanner the byte-level readers share.
-pub fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
-    debug_assert_eq!(bytes[at], b'$');
-    let next = at + 1;
-    if next >= bytes.len() {
-        return 1;
-    }
-    if bytes[next] == b'\\' {
-        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
-            return 4;
-        }
-        if next + 1 < bytes.len() {
-            return 3;
-        }
-        return 2;
-    }
-    2
 }

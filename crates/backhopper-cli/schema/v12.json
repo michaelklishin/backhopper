@@ -5993,6 +5993,36 @@
   },
   "suite_plan_payload": {
     "$defs": {
+      "BroadImpactModule": {
+        "description": "A modified module whose suite fanout is an outsized share of all\ndiscovered suites. The cap drops the suites this module alone pulled\nin and records this row instead, so a near-full selection driven by\none helper is never silent.",
+        "properties": {
+          "application": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "module": {
+            "type": "string"
+          },
+          "suite_fanout": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_suites": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "module",
+          "suite_fanout",
+          "total_suites"
+        ],
+        "type": "object"
+      },
       "SuiteInclusionReason": {
         "description": "Why a suite was included in the plan. A suite can appear under\nmultiple reasons when more than one rule fires.",
         "oneOf": [
@@ -6198,6 +6228,13 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "Output of `plan()`. Entries are sorted by suite; reasons within\neach entry are in rule-application order.",
     "properties": {
+      "broad_impact": {
+        "description": "Modules whose suite fanout was capped: each removed the suites it\nalone pulled in, replaced by this row.",
+        "items": {
+          "$ref": "#/$defs/BroadImpactModule"
+        },
+        "type": "array"
+      },
       "entries": {
         "items": {
           "$ref": "#/$defs/SuitePlanEntry"

@@ -32,6 +32,7 @@ mod snapshot_round_trip_proptests;
 mod sort_idempotent_proptests;
 mod spec_normalizer_proptests;
 mod spec_parser_does_not_panic_proptests;
+mod suite_fanout_cap_proptests;
 mod summary_row_v7_proptests;
 mod tag_glob_proptests;
 mod target_preimage_proptests;
