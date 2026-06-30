@@ -9,8 +9,9 @@
 use std::collections::BTreeSet;
 
 use backhopper_cli::cli::CheckFlags;
-use backhopper_cli::commands::check::render_batch_text;
+use backhopper_cli::commands::check::{render_batch_text, render_clearance};
 use backhopper_core::model::batch::BatchResult;
+use backhopper_core::model::clearance::RoundClearance;
 use backhopper_core::model::names::{CommitSha, DependencyName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{
@@ -54,7 +55,7 @@ fn render(rows: &[BatchResult], flags: CheckFlags) -> String {
 }
 
 #[test]
-fn vacuous_round_states_its_negatives() {
+fn vacuous_round_states_scope_absence() {
     let rows = vec![
         row(
             'a',
@@ -78,13 +79,40 @@ fn vacuous_round_states_its_negatives() {
     );
     assert!(out.contains("dep-pin bumps       : none"), "{out}");
     assert!(out.contains("no_erlang_surface_touched"), "{out}");
-    assert!(out.contains("no dependency-API risk found"), "{out}");
-    assert!(out.contains("non-analyzable files"), "{out}");
+    assert!(
+        out.contains("all candidates are outside backhopper's dep and symbol scope"),
+        "{out}"
+    );
+    assert!(out.contains("does not bound round risk"), "{out}");
+    assert!(!out.contains("no dependency-API risk found"), "{out}");
     assert!(!out.contains("review the rows below"), "{out}");
     assert!(
         !out.contains("tracked refs:"),
         "clean rows stay terse: {out}"
     );
+}
+
+#[test]
+fn zero_domain_render_clearance_states_scope_absence() {
+    let rows = vec![row(
+        'a',
+        vec![inapplicable(
+            "ra",
+            InapplicableReason::NoErlangSurfaceTouched,
+        )],
+        Diagnostics::default(),
+    )];
+    let clearance = RoundClearance::from_results(&rows, &BTreeSet::new());
+    let mut buf: Vec<u8> = Vec::new();
+    render_clearance(&mut buf, &clearance).unwrap();
+    let out = String::from_utf8(buf).unwrap();
+    assert!(
+        out.contains("all candidates are outside backhopper's dep and symbol scope"),
+        "{out}"
+    );
+    assert!(out.contains("does not bound round risk"), "{out}");
+    assert!(!out.contains("no dependency-API risk found"), "{out}");
+    assert!(!out.contains("review the rows below"), "{out}");
 }
 
 #[test]

@@ -17,6 +17,14 @@
    `rabbit_ct_broker_helpers` becomes an explicit broad-impact signal
    instead of a silent balloon. A suite kept by an independent reason
    still survives, and the new `SuitePlan.broad_impact` field is additive
+ * `RoundClearance` gains a `ZeroDomain` arm for batches where every
+   candidate is inapplicable. Previously such batches resolved to `Clean`,
+   making "all inapplicable, 0 tracked symbols" read as a low-risk signal
+   when backhopper's dep and symbol domain never intersected the round at
+   all. `ZeroDomain` exits 0 and `is_clean()` returns `true` (behavioral
+   continuity), but `render_clearance` emits "all candidates are outside
+   backhopper's dep and symbol scope; this verdict does not bound round
+   risk" in place of the clean-round trust statement
 
 ### Bug Fixes
 
