@@ -6,12 +6,11 @@
 //! from the rows, never serialized: it carries no schema version and
 //! no wire field is added.
 //!
-//! The point is trust. A vacuous round (every row inapplicable, no
-//! tracked-dep surface) must prove it was checked rather than read as
-//! "backhopper never ran": the same reason `Unanalyzed` is "emitted
-//! instead of silence". `RoundClearance` is a sum type so a renderer
-//! cannot report a clean round without going through the `Clean` arm
-//! that states the negatives.
+//! The point is trust. A renderer cannot report any outcome without
+//! going through the matching arm and stating what did or did not
+//! happen. `Clean` states analyzable surface was touched and passed;
+//! `ZeroDomain` states backhopper's dep and symbol domain did not
+//! intersect the round at all; `Findings` names what needs review.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,11 +20,13 @@ use crate::model::verdict::{BumpStatus, SeriesSummary, Verdict, exit, non_self_t
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoundClearance {
-    /// No dependency-API risk: no blocking verdict, zero tracked-dep
-    /// references, and no pin bump that needs a snapshot to vet.
+    /// No dep-API risk; at least one candidate touched analyzable surface.
     Clean(ClearanceFacts),
-    /// A reviewer should look: a blocking verdict, a tracked-dep
-    /// reference, or a snapshot-missing pin bump is present.
+    /// Every candidate was inapplicable; backhopper's dep and symbol domain
+    /// did not intersect this round.
+    ZeroDomain(ClearanceFacts),
+    /// A reviewer should look: a blocking verdict, tracked-dep references,
+    /// or a snapshot-missing pin bump.
     Findings(ClearanceFacts),
 }
 
@@ -184,8 +185,15 @@ impl RoundClearance {
             exit_code,
         };
 
+        let all_inapplicable = facts.verdicts.compatible == 0
+            && facts.verdicts.requires_adaptation == 0
+            && facts.verdicts.incompatible == 0
+            && facts.verdicts.inapplicable > 0;
+
         if blocking || tracked > 0 || snapshot_missing_bump {
             Self::Findings(facts)
+        } else if all_inapplicable {
+            Self::ZeroDomain(facts)
         } else {
             Self::Clean(facts)
         }
@@ -194,12 +202,12 @@ impl RoundClearance {
     #[must_use]
     pub fn facts(&self) -> &ClearanceFacts {
         match self {
-            Self::Clean(facts) | Self::Findings(facts) => facts,
+            Self::Clean(f) | Self::ZeroDomain(f) | Self::Findings(f) => f,
         }
     }
 
     #[must_use]
     pub fn is_clean(&self) -> bool {
-        matches!(self, Self::Clean(_))
+        matches!(self, Self::Clean(_) | Self::ZeroDomain(_))
     }
 }

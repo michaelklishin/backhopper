@@ -70,7 +70,9 @@ fn round_clearance_matches_through_the_facade() {
     // The Findings arm carries the tracked `ra` reference.
     match clearance {
         RoundClearance::Findings(facts) => assert_eq!(facts.tracked, 4),
-        RoundClearance::Clean(_) => panic!("a tracked ra reference is a finding"),
+        RoundClearance::Clean(_) | RoundClearance::ZeroDomain(_) => {
+            panic!("a tracked ra reference is a finding")
+        }
     }
 }
 

@@ -476,3 +476,101 @@ fn verdict_totals_sum_per_pin_counts() {
     assert_eq!(facts.verdicts.inapplicable, 1);
     assert_eq!(facts.verdicts.requires_adaptation, 0);
 }
+
+#[test]
+fn all_inapplicable_is_zero_domain() {
+    let rows = vec![
+        row(
+            'a',
+            "v4.1.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::NoErlangSurfaceTouched,
+            )],
+        ),
+        row(
+            'b',
+            "v4.1.x",
+            vec![inapplicable("khepri", InapplicableReason::OnlyDocsTouched)],
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::ZeroDomain(_)));
+    assert!(clearance.is_clean());
+}
+
+#[test]
+fn mixed_inapplicable_and_compatible_is_clean() {
+    let rows = vec![row(
+        'a',
+        "v4.1.x",
+        vec![
+            inapplicable("ra", InapplicableReason::OnlyDocsTouched),
+            tracked_pin("khepri", Verdict::Compatible, 0),
+        ],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Clean(_)));
+    assert!(clearance.is_clean());
+}
+
+#[test]
+fn all_inapplicable_with_snapshot_missing_bump_is_findings() {
+    let diagnostics = Diagnostics {
+        pin_bumps: vec![bump(
+            "ra",
+            Some("hex 2.16.0"),
+            "hex 2.17.0",
+            Some(BumpStatus::SnapshotMissing {
+                note: "snapshots generate".to_owned(),
+            }),
+        )],
+        ..Default::default()
+    };
+    let rows = vec![row_with_diagnostics(
+        'a',
+        "v4.1.x",
+        vec![inapplicable("ra", InapplicableReason::OnlyMakefileTouched)],
+        diagnostics,
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Findings(_)));
+    assert!(!clearance.is_clean());
+}
+
+#[test]
+fn all_inapplicable_with_tracked_refs_is_findings() {
+    let rows = vec![row(
+        'a',
+        "v4.1.x",
+        vec![tracked_pin(
+            "ra",
+            Verdict::Inapplicable {
+                reason: InapplicableReason::NoErlangSurfaceTouched,
+            },
+            3,
+        )],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Findings(_)));
+    assert!(!clearance.is_clean());
+}
+
+#[test]
+fn compatible_zero_tracked_is_clean() {
+    let rows = vec![row(
+        'a',
+        "v4.1.x",
+        vec![tracked_pin("ra", Verdict::Compatible, 0)],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Clean(_)));
+    assert!(clearance.is_clean());
+}
+
+#[test]
+fn empty_batch_is_clean() {
+    let clearance = RoundClearance::from_results(&[], &no_self());
+    assert!(matches!(clearance, RoundClearance::Clean(_)));
+    assert!(clearance.is_clean());
+}

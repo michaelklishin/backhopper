@@ -2512,11 +2512,19 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
     match clearance {
         RoundClearance::Clean(_) => writeln!(
             w,
-            "no dependency-API risk found: backhopper analyzes only Erlang, Elixir, and dep-pin changes and does not model branch divergence, so verify cherry-pick conflicts and any non-analyzable files separately"
+            "no dependency-API risk found: backhopper analyzes only Erlang, \
+             Elixir, and dep-pin changes and does not model branch divergence, \
+             so verify cherry-pick conflicts and any non-analyzable files separately"
+        )?,
+        RoundClearance::ZeroDomain(_) => writeln!(
+            w,
+            "all candidates are outside backhopper's dep and symbol scope; \
+             this verdict does not bound round risk"
         )?,
         RoundClearance::Findings(_) => writeln!(
             w,
-            "review the rows below: tracked-dep references, blocking verdicts, or snapshot-missing pin bumps are present"
+            "review the rows below: tracked-dep references, blocking verdicts, \
+             or snapshot-missing pin bumps are present"
         )?,
     }
     Ok(())

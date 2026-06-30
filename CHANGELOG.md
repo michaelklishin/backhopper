@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.22.0 (in development)
+## v0.23.0 (in development)
 
 ### Enhancements
 
@@ -17,6 +17,9 @@
    `rabbit_ct_broker_helpers` becomes an explicit broad-impact signal
    instead of a silent balloon. A suite kept by an independent reason
    still survives, and the new `SuitePlan.broad_impact` field is additive
+ * `RoundClearance` gains a `ZeroDomain` arm for batches where every
+   candidate is inapplicable. Previously such batches resolved to `Clean`,
+   potentially causing confusion
 
 ### Bug Fixes
 
