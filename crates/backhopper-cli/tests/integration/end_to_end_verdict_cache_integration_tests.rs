@@ -14,6 +14,8 @@ use std::process::Command;
 use assert_cmd::assert::Assert;
 use tempfile::TempDir;
 
+use backhopper_test_support::toml_path;
+
 use crate::helpers::cli::{stderr, stdout};
 
 /// A workspace holding a demo project repo (with an include-bearing
@@ -109,7 +111,7 @@ pins = [
   {{ project = "demo", tag = "v1.0.0" }},
 ]
 "#,
-            repo.display()
+            toml_path(&repo)
         );
         std::fs::write(dir.path().join("backhopper.toml"), config).unwrap();
         let fixture = Self { dir, fix_sha };

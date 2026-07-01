@@ -618,12 +618,20 @@ impl GitRepo {
     pub fn list_paths_at_commit(&self, commit: &CommitSha) -> Result<Vec<PathBuf>, GitError> {
         let tree = self.tree_of(commit)?;
         let mut out: Vec<PathBuf> = Vec::new();
-        let mut stack: Vec<(PathBuf, gix::Tree<'_>)> = vec![(PathBuf::new(), tree)];
+        let mut stack: Vec<(String, gix::Tree<'_>)> = vec![(String::new(), tree)];
         while let Some((prefix, current)) = stack.pop() {
             for entry in current.iter() {
                 let entry = entry.map_err(|e| GitError::Gix(e.to_string()))?;
-                let mut path = prefix.clone();
-                path.push(entry.filename().to_string());
+                let name = entry.filename().to_string();
+                // Tree entry names are joined with `/`, git's own separator,
+                // rather than `PathBuf::push`, which would use `\` on Windows
+                // and desync these paths from diff-derived paths that are
+                // always `/`-separated.
+                let path = if prefix.is_empty() {
+                    name
+                } else {
+                    format!("{prefix}/{name}")
+                };
                 let mode = entry.mode();
                 if mode.is_tree() {
                     let sub = entry
@@ -633,7 +641,7 @@ impl GitRepo {
                         .map_err(|e| GitError::Gix(e.to_string()))?;
                     stack.push((path, sub));
                 } else if mode.is_blob() {
-                    out.push(path);
+                    out.push(PathBuf::from(path));
                 }
             }
         }

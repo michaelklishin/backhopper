@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
 
+use backhopper_test_support::toml_path;
+
 use crate::helpers::cli::stderr;
 
 const COMMITS: usize = 20;
@@ -81,7 +83,7 @@ pins = [
   {{ project = "demo", tag = "v1.0.0" }},
 ]
 "#,
-        repo.display()
+        toml_path(&repo)
     );
     let cfg = dir.path().join("backhopper.toml");
     std::fs::write(&cfg, config).unwrap();

@@ -10,7 +10,7 @@ use std::process::Command as Std;
 use tempfile::{NamedTempFile, TempDir};
 
 use crate::helpers::cli::{run, stderr};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const ERL: &str = r#"
 -module(demo_mod).
@@ -42,9 +42,9 @@ pins = [
     {{ project = "demo", tag = "v1.0.0" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.display(),
-        repo.display(),
+        toml_path(snapshot_dir),
+        toml_path(repo),
+        toml_path(repo),
     );
     let p = dir.join("backhopper.toml");
     fs::write(&p, body).unwrap();
@@ -117,8 +117,8 @@ git_url = "{}"
 name = "stable"
 pins = [{{ project = "demo", tag = "v1.0.0" }}]
 "#,
-        snap.display(),
-        repo.dir.path().display(),
+        toml_path(&snap),
+        toml_path(repo.dir.path()),
     );
     let cfg = work.path().join("backhopper.toml");
     fs::write(&cfg, body).unwrap();

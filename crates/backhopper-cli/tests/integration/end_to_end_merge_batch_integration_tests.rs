@@ -13,7 +13,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, run_fails, run_succeeds, stderr, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const ERL_BASE: &str = r#"
 -module(demo_mod).
@@ -99,8 +99,8 @@ pins = [
     {{ project = "demo", tag = "v1.0.0" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.display(),
+        toml_path(snapshot_dir),
+        toml_path(repo),
     );
     let p = dir.join("backhopper.toml");
     fs::write(&p, body).unwrap();

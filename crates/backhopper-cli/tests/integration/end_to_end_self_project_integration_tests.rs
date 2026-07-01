@@ -8,7 +8,7 @@ use std::io::Write;
 use assert_cmd::Command;
 use tempfile::{NamedTempFile, TempDir};
 
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const HOST_MOD_V1: &str = "-module(host_mod).\n-export([util/1]).\nutil(X) -> X.\n";
 
@@ -54,7 +54,7 @@ kind = "self"
 name = "host-main"
 pins = [{{ project = "host", branch = "main" }}]
 "#,
-        work.join("snapshots").display(),
+        toml_path(&work.join("snapshots")),
     );
     let cfg = work.join("backhopper.toml");
     fs::write(&cfg, body).unwrap();

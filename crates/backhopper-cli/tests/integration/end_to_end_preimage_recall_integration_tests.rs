@@ -16,7 +16,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 fn write_config(
     workdir: &TempDir,
@@ -42,8 +42,8 @@ pins = [
     {{ project = "demo", tag = "source-v1" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.dir.path().display(),
+        toml_path(snapshot_dir),
+        toml_path(repo.dir.path()),
     );
     let cfg = workdir.path().join("backhopper.toml");
     fs::write(&cfg, body).unwrap();

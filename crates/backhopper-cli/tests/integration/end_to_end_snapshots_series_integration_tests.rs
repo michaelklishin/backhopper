@@ -12,7 +12,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 fn make_demo_repo() -> GitRepoFixture {
     let repo = GitRepoFixture::new();
@@ -49,8 +49,8 @@ pins = [
     {{ project = "demo", tag = "v1.0.0" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.dir.path().display()
+        toml_path(snapshot_dir),
+        toml_path(repo.dir.path())
     );
     let cfg = workdir.path().join("backhopper.toml");
     fs::write(&cfg, body).unwrap();
@@ -189,8 +189,8 @@ pins = [
     {{ project = "self-repo", branch = "main" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.dir.path().display(),
+        toml_path(&snapshot_dir),
+        toml_path(repo.dir.path()),
     );
     let cfg_path = workdir.path().join("backhopper.toml");
     fs::write(&cfg_path, body).unwrap();
@@ -244,8 +244,8 @@ pins = [
     {{ project = "self-repo", branch = "main" }},
 ]
 "#,
-        snapshot_dir.display(),
-        repo.dir.path().display(),
+        toml_path(&snapshot_dir),
+        toml_path(repo.dir.path()),
     );
     let cfg_path = workdir.path().join("backhopper.toml");
     fs::write(&cfg_path, body).unwrap();

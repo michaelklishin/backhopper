@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+use backhopper_test_support::toml_path;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -70,7 +71,7 @@ scan_paths      = ["src/**/*.erl"]
 name    = "demo"
 git_url = "/tmp/demo.git"
 "#,
-        snap_dir.display(),
+        toml_path(&snap_dir),
     );
     let cfg = work.path().join("backhopper.toml");
     fs::write(&cfg, cfg_body).unwrap();
@@ -215,7 +216,7 @@ scan_paths      = ["src/**/*.erl"]
 name    = "demo"
 git_url = "/tmp/demo.git"
 "#,
-            snap_dir.display(),
+            toml_path(&snap_dir),
         ),
     )
     .unwrap();
@@ -285,7 +286,7 @@ scan_paths      = ["src/**/*.erl"]
 name    = "empty"
 git_url = "/tmp/empty.git"
 "#,
-            snap_dir.display(),
+            toml_path(&snap_dir),
         ),
     )
     .unwrap();

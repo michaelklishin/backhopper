@@ -12,6 +12,7 @@ use tempfile::TempDir;
 
 use backhopper_core::model::names::{Mfa, ProjectName, TagName};
 use backhopper_core::store::SnapshotStore;
+use backhopper_test_support::toml_path;
 
 const RA_REPO: &str = "https://github.com/rabbitmq/ra.git";
 const KHEPRI_REPO: &str = "https://github.com/rabbitmq/khepri.git";
@@ -52,9 +53,9 @@ scan_paths      = ["src/**/*.erl", "include/**/*.hrl"]
 name    = "{}"
 git_url = "{}"
 "#,
-        snapshot_dir.display(),
+        toml_path(snapshot_dir),
         project,
-        repo.display(),
+        toml_path(repo),
     );
     let cfg = workdir.join("backhopper.toml");
     std::fs::write(&cfg, body).unwrap();

@@ -7,6 +7,13 @@
 
 use std::path::{Path, PathBuf};
 
+/// Render `path` for embedding inside a TOML basic string. `Path::display`
+/// yields `\`-separated paths on Windows, and TOML basic strings treat `\`
+/// as an escape introducer, so an unescaped path corrupts the parse.
+pub fn toml_path(path: &Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
 pub fn write_config(dir: &Path, repo_path: &Path, snapshot_dir: &Path) -> PathBuf {
     let body = format!(
         r#"
@@ -21,8 +28,8 @@ scan_paths      = ["src/**/*.erl", "include/**/*.hrl"]
 name    = "demo"
 git_url = "{}"
 "#,
-        snapshot_dir.display(),
-        repo_path.display(),
+        toml_path(snapshot_dir),
+        toml_path(repo_path),
     );
     let cfg = dir.join("backhopper.toml");
     std::fs::write(&cfg, body).unwrap();

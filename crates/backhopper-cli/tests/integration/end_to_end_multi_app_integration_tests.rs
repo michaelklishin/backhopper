@@ -5,7 +5,7 @@
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run_succeeds, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const APP_A: &str = "-module(app_a).\n-export([go/0]).\ngo() -> ok.\n";
 const APP_B: &str = "-module(app_b).\n-export([run/0]).\nrun() -> ok.\n";
@@ -30,8 +30,8 @@ app_roots = ["lib/*"]
 exclude_apps = ["excluded"]
 excluded_subdirs = ["test"]
 "#,
-        snap_dir.display(),
-        repo.display(),
+        toml_path(&snap_dir),
+        toml_path(repo),
     );
     let cfg = workdir.join("backhopper.toml");
     std::fs::write(&cfg, cfg_body).unwrap();
@@ -116,8 +116,8 @@ exclude_apps = ["excluded"]
 name = "stable"
 pins = [{{ project = "demo", tag_pattern = "v1.*", select = "latest" }}]
 "#,
-        snap_dir.display(),
-        repo.dir.path().display(),
+        toml_path(&snap_dir),
+        toml_path(repo.dir.path()),
     );
     let cfg = workdir.path().join("backhopper.toml");
     std::fs::write(&cfg, cfg_body).unwrap();

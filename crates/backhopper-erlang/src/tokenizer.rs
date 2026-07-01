@@ -140,7 +140,7 @@ fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
                 let next = bytes.get(after).map(|&b| b as char);
                 let is_terminator = matches!(
                     next,
-                    Some('\n') | Some(' ') | Some('\t') | Some('\0') | None
+                    Some('\n') | Some('\r') | Some(' ') | Some('\t') | Some('\0') | None
                 );
                 let prev = if p > 0 {
                     Some(bytes[p - 1] as char)

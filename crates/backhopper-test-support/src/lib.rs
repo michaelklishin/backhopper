@@ -9,6 +9,6 @@ mod config;
 mod git;
 mod snapshot;
 
-pub use config::write_config;
+pub use config::{toml_path, write_config};
 pub use git::GitRepoFixture;
 pub use snapshot::{canonical_snapshot, module, module_with, pin, snapshot_header};

@@ -13,6 +13,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+use backhopper_test_support::toml_path;
 
 use crate::helpers::cli::{run, stderr, stdout};
 
@@ -352,7 +353,7 @@ pins = [
   {{ project = "dep", tag = "v1.0.0" }},
 ]
 "#,
-        fx.repo().display()
+        toml_path(&fx.repo())
     );
     std::fs::write(fx.dir.path().join("backhopper.toml"), config).unwrap();
     let assert = run(fx.doctor_args()).code(64);

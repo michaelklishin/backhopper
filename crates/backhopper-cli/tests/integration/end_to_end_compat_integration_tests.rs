@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use assert_cmd::Command;
 use tempfile::{NamedTempFile, TempDir};
 
-use backhopper_test_support::{GitRepoFixture, write_config};
+use backhopper_test_support::{GitRepoFixture, toml_path, write_config};
 
 const ERL_OLD: &str = r#"
 -module(ra_lib).
@@ -96,8 +96,8 @@ name    = "demo"
 git_url = "{}"
 {}
 "#,
-        snapshot_dir.display(),
-        repo_path.display(),
+        toml_path(snapshot_dir),
+        toml_path(repo_path),
         extra_lines,
     );
     let cfg = dir.join("backhopper.toml");

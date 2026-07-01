@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
 use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::snapshot::format;
+use backhopper_test_support::toml_path;
 
 fn write_snapshot_with_extractor_version(
     store_root: &Path,
@@ -49,7 +50,7 @@ fallback_branch = "main"
 name    = "{}"
 git_url = "/tmp/does-not-need-to-exist.git"
 "#,
-        snapshot_dir.display(),
+        toml_path(snapshot_dir),
         project,
     );
     let cfg = work.join("backhopper.toml");

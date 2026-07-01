@@ -18,7 +18,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, run_succeeds, run_with_env, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const DEP_V1: &str = r#"
 -module(dep_mod).
@@ -111,8 +111,8 @@ pins = [{{ project = "dep", tag = "v1.0.0" }}]
 name = "s-new"
 pins = [{{ project = "dep", tag = "v2.0.0" }}]
 "#,
-        snapshots.display(),
-        dep.dir.path().display(),
+        toml_path(&snapshots),
+        toml_path(dep.dir.path()),
     );
     fs::write(&cfg, body).unwrap();
     run_succeeds([

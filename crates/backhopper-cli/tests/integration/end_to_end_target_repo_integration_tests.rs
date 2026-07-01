@@ -15,7 +15,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 fn make_source_repo() -> GitRepoFixture {
     let repo = GitRepoFixture::new();
@@ -70,8 +70,8 @@ name = "fed_split"
 source_prefix = "deps/rabbitmq_federation_common/"
 target_prefix = "deps/rabbitmq_federation/"
 "#,
-        snapshot_dir.display(),
-        repo.dir.path().display(),
+        toml_path(snapshot_dir),
+        toml_path(repo.dir.path()),
     );
     let cfg = workdir.path().join("backhopper.toml");
     fs::write(&cfg, body).unwrap();

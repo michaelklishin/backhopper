@@ -8,7 +8,7 @@ use assert_cmd::Command;
 use tempfile::TempDir;
 
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
-use backhopper_test_support::GitRepoFixture;
+use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const COMPONENTS_MK: &str = r#"
 PROJECT = rabbit
@@ -46,7 +46,7 @@ name    = "khepri"
 git_url = "/tmp/khepri.git"
 
 {}"#,
-        snapshot_dir.display(),
+        toml_path(snapshot_dir),
         existing_series,
     );
     let cfg = workdir.join("backhopper.toml");
