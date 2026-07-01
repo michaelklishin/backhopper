@@ -8,10 +8,18 @@
 
 use bel7_cli::PARTIAL_SUCCESS_I32;
 
-use backhopper_cli::commands::doctor::doctor_exit_code;
+use backhopper_cli::commands::doctor::{Totals, doctor_exit_code};
 use backhopper_cli::commands::snapshots::verify_all_exit_code;
 use backhopper_cli::commands::xref_backport_applicability::backport_applicability_exit_code;
 use backhopper_core::model::verdict::exit;
+
+fn totals(missing: usize, stale_extractor: usize) -> Totals {
+    Totals {
+        missing,
+        stale_extractor,
+        ..Totals::default()
+    }
+}
 
 #[test]
 fn verdict_module_constants_match_bel7_cli_convention() {
@@ -21,13 +29,18 @@ fn verdict_module_constants_match_bel7_cli_convention() {
 
 #[test]
 fn doctor_returns_zero_when_no_pins_missing() {
-    assert_eq!(doctor_exit_code(0), 0);
+    assert_eq!(doctor_exit_code(&totals(0, 0)), 0);
 }
 
 #[test]
 fn doctor_returns_partial_success_when_any_pin_missing() {
-    assert_eq!(doctor_exit_code(1), PARTIAL_SUCCESS_I32);
-    assert_eq!(doctor_exit_code(50), PARTIAL_SUCCESS_I32);
+    assert_eq!(doctor_exit_code(&totals(1, 0)), PARTIAL_SUCCESS_I32);
+    assert_eq!(doctor_exit_code(&totals(50, 0)), PARTIAL_SUCCESS_I32);
+}
+
+#[test]
+fn doctor_returns_partial_success_when_any_pin_stale() {
+    assert_eq!(doctor_exit_code(&totals(0, 1)), PARTIAL_SUCCESS_I32);
 }
 
 #[test]

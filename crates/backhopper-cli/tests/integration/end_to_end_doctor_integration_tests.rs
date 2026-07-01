@@ -59,7 +59,7 @@ fn doctor_reports_missing_pin_with_partial_success_exit() {
     let text = stdout(&a);
     a.code(3);
     assert!(text.contains("MISSING"), "stdout: {text}");
-    assert!(text.contains("0/1 pin(s) covered"));
+    assert!(text.contains("0/1 pin(s) present"));
     assert!(text.contains("backhopper snapshots generate"));
 }
 
@@ -73,7 +73,9 @@ fn doctor_reports_covered_when_snapshot_present() {
     let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
     let text = stdout(&a);
     a.success();
-    assert!(text.contains("1/1 pin(s) covered"), "stdout: {text}");
+    assert!(text.contains("1/1 pin(s) present"), "stdout: {text}");
+    // The stale-extractor segment is omitted when the count is zero.
+    assert!(!text.contains("stale-extractor"), "stdout: {text}");
 }
 
 #[test]

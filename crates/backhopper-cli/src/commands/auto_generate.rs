@@ -153,7 +153,7 @@ pub fn coverage_report(
     out
 }
 
-fn expected_extractor_version(cfg: &Config, project: &ProjectName) -> &'static str {
+pub(crate) fn expected_extractor_version(cfg: &Config, project: &ProjectName) -> &'static str {
     match cfg.project(project).map(|p| p.language) {
         Ok(Language::Erlang) => backhopper_erlang::EXTRACTOR_VERSION,
         Ok(Language::Elixir) => backhopper_elixir::EXTRACTOR_VERSION,
