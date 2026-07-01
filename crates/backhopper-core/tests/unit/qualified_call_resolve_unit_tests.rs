@@ -4,17 +4,17 @@
 
 //! `analyse_qualified_calls` against injected module-path and
 //! target-reader closures: the live target-tree resolver for qualified
-//! `m:f/a` calls.
+//! `m:f/a` calls, and the return-shape check over resolved ones.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
 use backhopper_core::compat::qualified_call_resolve::{
-    PatchAddedFunctions, analyse_qualified_calls, patch_added_functions,
+    PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
-use backhopper_core::model::verdict::Reason;
+use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
 
 fn module(s: &str) -> ModuleName {
     ModuleName::from_str(s).unwrap()
@@ -40,13 +40,38 @@ fn flagged(reasons: &[Reason]) -> Vec<(String, String, u8, u32)> {
         .collect()
 }
 
-fn analyse_with(
+fn drifted(reasons: &[Reason]) -> Vec<(String, String, String, u32)> {
+    reasons
+        .iter()
+        .filter_map(|r| match r {
+            Reason::QualifiedCallReturnShapeDrift {
+                function,
+                source_signature,
+                target_signature,
+                line,
+                ..
+            } => Some((
+                function.to_string(),
+                source_signature.clone(),
+                target_signature.clone(),
+                *line,
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `target` rows are `(module, path, file text)`; `source` rows are
+/// `(path, file text)` for the source-checkout side, `None` meaning no
+/// checkout is available.
+fn analyse_full(
     added: &str,
     line_map: &[u32],
     covered: &[&str],
-    patch_added: &PatchAddedFunctions,
+    patch_added: &PatchProvided,
     target: &[(&str, &str, &str)],
-) -> Vec<Reason> {
+    source: Option<&[(&str, &str)]>,
+) -> QualifiedCallAnalysis {
     let path = rp("deps/rabbit/src/caller.erl");
     let subjects = [AddedLinesSubject {
         source_path: &path,
@@ -59,14 +84,42 @@ fn analyse_with(
         .iter()
         .map(|(_, p, s)| ((*p).to_owned(), (*s).to_owned()))
         .collect();
+    let source_map: Option<BTreeMap<String, String>> = source.map(|rows| {
+        rows.iter()
+            .map(|(p, s)| ((*p).to_owned(), (*s).to_owned()))
+            .collect()
+    });
     let covered: BTreeSet<ModuleName> = covered.iter().map(|s| module(s)).collect();
     let resolve = |m: &ModuleName| module_to_path.get(m).cloned();
     let read = |p: &RelativePath| path_to_src.get(p.as_str()).cloned();
-    analyse_qualified_calls(&subjects, &covered, patch_added, &resolve, &read)
+    let read_source_fn = source_map
+        .as_ref()
+        .map(|m| move |p: &RelativePath| m.get(p.as_str()).cloned());
+    let read_source = read_source_fn
+        .as_ref()
+        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+    analyse_qualified_calls(
+        &subjects,
+        &covered,
+        patch_added,
+        &resolve,
+        &read,
+        read_source,
+    )
+}
+
+fn analyse_with(
+    added: &str,
+    line_map: &[u32],
+    covered: &[&str],
+    patch_added: &PatchProvided,
+    target: &[(&str, &str, &str)],
+) -> Vec<Reason> {
+    analyse_full(added, line_map, covered, patch_added, target, None).reasons
 }
 
 fn analyse(added: &str, target: &[(&str, &str, &str)]) -> Vec<Reason> {
-    analyse_with(added, &[], &[], &PatchAddedFunctions::new(), target)
+    analyse_with(added, &[], &[], &PatchProvided::default(), target)
 }
 
 // A first-party module present on target that lacks the called export
@@ -128,7 +181,7 @@ fn a_snapshot_covered_module_is_not_flagged() {
         "f(X) -> ra:never_exported(X).\n",
         &[],
         &["ra"],
-        &PatchAddedFunctions::new(),
+        &PatchProvided::default(),
         &[(
             "ra",
             "deps/ra/src/ra.erl",
@@ -189,8 +242,8 @@ fn a_parse_transform_module_is_withheld() {
 // file) must not false-positive: the patch-wide added map covers it.
 #[test]
 fn a_function_the_patch_adds_cross_file_is_not_flagged() {
-    let mut patch_added = PatchAddedFunctions::new();
-    patch_added.insert(
+    let mut patch_added = PatchProvided::default();
+    patch_added.functions.insert(
         module("other"),
         BTreeSet::from([(FunctionName::from_str("new_fn").unwrap(), Arity::new(1))]),
     );
@@ -294,7 +347,7 @@ fn the_reported_line_is_translated_through_the_map() {
         "f(V, Q) -> rabbit_misc:queue_resource(V, Q).\n",
         &[120],
         &[],
-        &PatchAddedFunctions::new(),
+        &PatchProvided::default(),
         &[(
             "rabbit_misc",
             "deps/rabbit/src/rabbit_misc.erl",
@@ -305,12 +358,342 @@ fn the_reported_line_is_translated_through_the_map() {
 }
 
 #[test]
-fn patch_added_functions_gathers_definitions_and_exports() {
+fn patch_provided_gathers_definitions_exports_and_specs() {
     let added_a = "-export([exported/1]).\nexported(X) -> X.\n";
-    let added_b = "defined(A, B) -> {A, B}.\n";
+    let added_b = "-spec defined(term(), term()) -> tuple().\ndefined(A, B) -> {A, B}.\n";
     let per_file = [(module("m"), added_a), (module("m"), added_b)];
-    let map = patch_added_functions(&per_file);
-    let set = map.get(&module("m")).unwrap();
-    assert!(set.contains(&(FunctionName::from_str("exported").unwrap(), Arity::new(1))));
-    assert!(set.contains(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))));
+    let provided = patch_provided(&per_file);
+    let functions = provided.functions.get(&module("m")).unwrap();
+    assert!(functions.contains(&(FunctionName::from_str("exported").unwrap(), Arity::new(1))));
+    assert!(functions.contains(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))));
+    let specs = provided.specs.get(&module("m")).unwrap();
+    assert!(specs.contains(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))));
+}
+
+// Return-shape drift over resolved calls
+
+const IDX_PATH: &str = "deps/rabbit/src/rabbit_classic_queue_index_v2.erl";
+
+fn idx_target(spec: &str) -> Vec<(&'static str, &'static str, String)> {
+    vec![(
+        "rabbit_classic_queue_index_v2",
+        IDX_PATH,
+        format!(
+            "-module(rabbit_classic_queue_index_v2).\n-export([info/1]).\n{spec}info(S) -> S.\n"
+        ),
+    )]
+}
+
+fn analyse_shapes(added: &str, target_spec: &str, source_spec: &str) -> QualifiedCallAnalysis {
+    let target_rows = idx_target(target_spec);
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let source_text = format!(
+        "-module(rabbit_classic_queue_index_v2).\n-export([info/1]).\n{source_spec}info(S) -> S.\n"
+    );
+    let source_rows = [(IDX_PATH, source_text.as_str())];
+    analyse_full(
+        added,
+        &[],
+        &[],
+        &PatchProvided::default(),
+        &target,
+        Some(&source_rows),
+    )
+}
+
+#[test]
+fn a_drifted_return_shape_is_flagged_with_both_signatures() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> binary().\n",
+        "-spec info(state()) -> list().\n",
+    );
+    assert_eq!(
+        drifted(&analysis.reasons),
+        [(
+            "info".to_owned(),
+            "info(state()) -> list()".to_owned(),
+            "info(state()) -> binary()".to_owned(),
+            1,
+        )]
+    );
+    assert_eq!(analysis.shape_checks.compared, 1);
+}
+
+#[test]
+fn the_drift_reason_is_non_blocking() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> binary().\n",
+        "-spec info(state()) -> list().\n",
+    );
+    assert!(analysis.reasons.iter().all(|r| !r.is_blocking()));
+}
+
+#[test]
+fn the_same_shape_modulo_whitespace_is_clean() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) ->\n    binary().\n",
+        "-spec info(state()) -> binary().\n",
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.compared, 1);
+}
+
+#[test]
+fn reordered_union_members_are_clean() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> binary() | undefined.\n",
+        "-spec info(state()) -> undefined | binary().\n",
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.compared, 1);
+}
+
+#[test]
+fn a_missing_target_spec_withholds_and_is_counted() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "",
+        "-spec info(state()) -> list().\n",
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.withheld_no_spec, 1);
+    assert_eq!(analysis.shape_checks.compared, 0);
+}
+
+#[test]
+fn a_missing_source_spec_withholds_and_is_counted() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> binary().\n",
+        "",
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.withheld_no_spec, 1);
+}
+
+#[test]
+fn an_unmodelled_return_type_withholds_and_is_counted() {
+    // A literal bitstring type is a construct the return parser does
+    // not model, so it parses to SpecType::Unknown.
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> <<_:8, _:_*8>>.\n",
+        "-spec info(state()) -> list().\n",
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.withheld_unknown_type, 1);
+    assert_eq!(analysis.shape_checks.compared, 0);
+}
+
+#[test]
+fn no_source_checkout_withholds_each_resolved_call_once() {
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\ng(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        &[],
+        &[],
+        &PatchProvided::default(),
+        &target,
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.withheld_no_source, 1);
+}
+
+#[test]
+fn the_same_drifted_call_twice_in_one_file_yields_one_reason() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\ng(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        "-spec info(state()) -> binary().\n",
+        "-spec info(state()) -> list().\n",
+    );
+    assert_eq!(drifted(&analysis.reasons).len(), 1);
+    assert_eq!(analysis.shape_checks.compared, 1);
+}
+
+#[test]
+fn an_undefined_call_gets_no_shape_check() {
+    // Export resolution already failed: the shape check never runs, so
+    // the tally stays empty and only the undefined reason fires.
+    let analysis = analyse_full(
+        "f(V, Q) -> rabbit_misc:queue_resource(V, Q).\n",
+        &[],
+        &[],
+        &PatchProvided::default(),
+        &[(
+            "rabbit_misc",
+            "deps/rabbit/src/rabbit_misc.erl",
+            "-module(rabbit_misc).\n-export([r/3]).\n-spec queue_resource(term(), term()) -> tuple().\n",
+        )],
+        Some(&[(
+            "deps/rabbit/src/rabbit_misc.erl",
+            "-module(rabbit_misc).\n-spec queue_resource(term(), term()) -> map().\n",
+        )]),
+    );
+    assert_eq!(flagged(&analysis.reasons).len(), 1);
+    assert_eq!(drifted(&analysis.reasons).len(), 0);
+    assert_eq!(analysis.shape_checks, ShapeCheckTally::default());
+}
+
+#[test]
+fn a_patch_added_callee_gets_no_shape_check() {
+    let mut patch_added = PatchProvided::default();
+    patch_added.functions.insert(
+        module("rabbit_classic_queue_index_v2"),
+        BTreeSet::from([(FunctionName::from_str("info").unwrap(), Arity::new(1))]),
+    );
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        &[],
+        &[],
+        &patch_added,
+        &target,
+        Some(&[(IDX_PATH, "-spec info(state()) -> list().\n")]),
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks, ShapeCheckTally::default());
+}
+
+#[test]
+fn covered_and_unknown_modules_get_no_shape_check() {
+    let analysis = analyse_full(
+        "f(X) -> ra:add_member(X), lists:flatten(X).\n",
+        &[],
+        &["ra"],
+        &PatchProvided::default(),
+        &[(
+            "ra",
+            "deps/ra/src/ra.erl",
+            "-module(ra).\n-export([add_member/1]).\n-spec add_member(term()) -> ok.\n",
+        )],
+        Some(&[(
+            "deps/ra/src/ra.erl",
+            "-module(ra).\n-spec add_member(term()) -> {ok, term()}.\n",
+        )]),
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks, ShapeCheckTally::default());
+}
+
+#[test]
+fn the_drift_line_is_translated_through_the_map() {
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        &[240],
+        &[],
+        &PatchProvided::default(),
+        &target,
+        Some(&[(IDX_PATH, "-spec info(state()) -> list().\n")]),
+    );
+    assert_eq!(drifted(&analysis.reasons)[0].3, 240);
+}
+
+#[test]
+fn a_patch_rewritten_spec_gets_no_shape_check() {
+    // The pick carries the new spec to the target, so the pre-existing
+    // difference between the trees is not drift the pick will hit.
+    let mut patch_added = PatchProvided::default();
+    patch_added.specs.insert(
+        module("rabbit_classic_queue_index_v2"),
+        BTreeSet::from([(FunctionName::from_str("info").unwrap(), Arity::new(1))]),
+    );
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        &[],
+        &[],
+        &patch_added,
+        &target,
+        Some(&[(IDX_PATH, "-spec info(state()) -> list().\n")]),
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks, ShapeCheckTally::default());
+}
+
+#[test]
+fn an_unreadable_source_module_counts_as_no_source_not_no_spec() {
+    // A checkout without the callee's file (e.g. a defaulted
+    // `--repo-dir-path` pointing somewhere else) is a missing source,
+    // not a readable module that happens to lack a spec.
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
+        &[],
+        &[],
+        &PatchProvided::default(),
+        &target,
+        Some(&[]),
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+    assert_eq!(analysis.shape_checks.withheld_no_source, 1);
+    assert_eq!(analysis.shape_checks.withheld_no_spec, 0);
 }

@@ -573,6 +573,10 @@
             },
             "type": "array"
           },
+          "qualified_call_shape_checks": {
+            "$ref": "#/$defs/ShapeCheckTally",
+            "description": "What the live qualified-call gate's return-shape check did with\neach first-party resolved call: compared, or withheld and why."
+          },
           "suggested_suites": {
             "description": "SUITE names worth running for the patch, derived from touched paths.\nPopulated even when the verdict promotes to `Inapplicable` so that\nschema-only and config-only diffs still surface relevant suites.",
             "items": {
@@ -2152,6 +2156,52 @@
             "type": "object"
           },
           {
+            "description": "A qualified `m:f/a` call that resolves against the target tree\nhas a target-tree `-spec` return shape that disagrees with its\nsource-tree `-spec`. Sister of `ReturnShapeMismatch` for the\nlive, snapshot-free first-party axis: same comparator,\nnon-blocking like the rest of that axis. Only evaluated once the\ncall is confirmed to resolve; withheld when either side lacks a\n`-spec`.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "qualified_call_return_shape_drift",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "module": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              },
+              "source_signature": {
+                "type": "string"
+              },
+              "target_signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "module",
+              "function",
+              "arity",
+              "source_signature",
+              "target_signature",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
             "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
             "properties": {
               "kind": {
@@ -2286,6 +2336,36 @@
           "results",
           "summary"
         ],
+        "type": "object"
+      },
+      "ShapeCheckTally": {
+        "description": "What the live qualified-call gate's return-shape check did with\neach first-party resolved call. Never reasons: a withhold is not a\nfinding, but a round where most calls are shape-blind must read\ndifferently from a round where all of them were compared.",
+        "properties": {
+          "compared": {
+            "description": "Both sides had a `-spec` that parsed to a known type; the shapes\nwere compared. Drift is visible in the reasons, not double-counted\nhere.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_no_source": {
+            "description": "No source checkout was available to read (`--repo-dir-path`\nabsent on a patch-file input).",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_no_spec": {
+            "description": "One or both sides declare no `-spec` for the called function.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_unknown_type": {
+            "description": "Both sides have a spec but at least one parses to\n`SpecType::Unknown`.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "SnapshotSide": {
@@ -3556,6 +3636,10 @@
                   "$ref": "#/$defs/PinBump"
                 },
                 "type": "array"
+              },
+              "qualified_call_shape_checks": {
+                "$ref": "#/$defs/ShapeCheckTally",
+                "description": "What the live qualified-call gate's return-shape check did with\neach first-party resolved call: compared, or withheld and why."
               },
               "suggested_suites": {
                 "description": "SUITE names worth running for the patch, derived from touched paths.\nPopulated even when the verdict promotes to `Inapplicable` so that\nschema-only and config-only diffs still surface relevant suites.",
@@ -5120,6 +5204,52 @@
                 "type": "object"
               },
               {
+                "description": "A qualified `m:f/a` call that resolves against the target tree\nhas a target-tree `-spec` return shape that disagrees with its\nsource-tree `-spec`. Sister of `ReturnShapeMismatch` for the\nlive, snapshot-free first-party axis: same comparator,\nnon-blocking like the rest of that axis. Only evaluated once the\ncall is confirmed to resolve; withheld when either side lacks a\n`-spec`.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "qualified_call_return_shape_drift",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "source_signature": {
+                    "type": "string"
+                  },
+                  "target_signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "module",
+                  "function",
+                  "arity",
+                  "source_signature",
+                  "target_signature",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
                 "properties": {
                   "kind": {
@@ -5225,6 +5355,36 @@
               "results",
               "summary"
             ],
+            "type": "object"
+          },
+          "ShapeCheckTally": {
+            "description": "What the live qualified-call gate's return-shape check did with\neach first-party resolved call. Never reasons: a withhold is not a\nfinding, but a round where most calls are shape-blind must read\ndifferently from a round where all of them were compared.",
+            "properties": {
+              "compared": {
+                "description": "Both sides had a `-spec` that parsed to a known type; the shapes\nwere compared. Drift is visible in the reasons, not double-counted\nhere.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_no_source": {
+                "description": "No source checkout was available to read (`--repo-dir-path`\nabsent on a patch-file input).",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_no_spec": {
+                "description": "One or both sides declare no `-spec` for the called function.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_unknown_type": {
+                "description": "Both sides have a spec but at least one parses to\n`SpecType::Unknown`.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
             "type": "object"
           },
           "SnapshotSide": {

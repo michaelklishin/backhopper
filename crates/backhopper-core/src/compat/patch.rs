@@ -30,7 +30,7 @@ use crate::model::snapshot::{Snapshot, state};
 use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     AlreadyPresent, ContentPresence, Diagnostics, PinVerdict, SeriesEvaluation, SeriesVerdict,
-    Unanalyzed,
+    ShapeCheckTally, Unanalyzed,
 };
 
 pub use crate::compat::diff::PATCH_SIZE_LIMIT;
@@ -626,6 +626,7 @@ impl Patch<Analyzed> {
                 already_present_skipped: None,
                 dep_pin_divergence: Vec::new(),
                 pin_bumps: Vec::new(),
+                qualified_call_shape_checks: ShapeCheckTally::default(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),

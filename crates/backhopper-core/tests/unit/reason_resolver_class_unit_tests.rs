@@ -62,6 +62,18 @@ fn the_target_tree_reasons_map_one_to_one() {
             ResolverClass::QualifiedCall,
         ),
         (
+            Reason::QualifiedCallReturnShapeDrift {
+                source_path: rp("src/ra_server.erl"),
+                module: module("rabbit_classic_queue_index_v2"),
+                function: FunctionName::from_str("info").unwrap(),
+                arity: Arity::new(1),
+                source_signature: "info(state()) -> map()".to_owned(),
+                target_signature: "info(state()) -> [{atom(), integer()}]".to_owned(),
+                line: 1,
+            },
+            ResolverClass::QualifiedCall,
+        ),
+        (
             Reason::HeaderFileMissing {
                 source_path: rp("src/ra_server.erl"),
                 include_directive: IncludeDirective::Include {

@@ -3,3 +3,4 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod scan_unit_tests;
+mod signature_unit_tests;

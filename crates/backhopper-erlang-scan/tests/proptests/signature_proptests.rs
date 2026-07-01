@@ -4,7 +4,7 @@
 
 use proptest::prelude::*;
 
-use backhopper_erlang::specs::parse_callable_signature;
+use backhopper_erlang_scan::parse_callable_signature;
 
 proptest! {
     #[test]
@@ -21,5 +21,10 @@ proptest! {
         let body = format!("encode({}) -> binary()", args.join(", "));
         let sig = parse_callable_signature(&body).unwrap();
         prop_assert_eq!(sig.arity as usize, n);
+    }
+
+    #[test]
+    fn never_panics_on_arbitrary_input(body in ".{0,200}") {
+        let _ = parse_callable_signature(&body);
     }
 }

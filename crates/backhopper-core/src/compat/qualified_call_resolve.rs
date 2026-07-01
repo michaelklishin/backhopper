@@ -7,23 +7,45 @@
 //! of `local_call_resolve` for the qualified case. A call is flagged
 //! only when its module is first-party (present on the target tree and
 //! covered by no pin snapshot), the export set is fully readable, and
-//! neither the target nor the patch exports `f/a`. Everything else is
-//! withheld and left to the build.
+//! neither the target nor the patch exports `f/a`. A call that does
+//! resolve gets its `-spec` return shape compared between the source
+//! and target checkouts, with the same comparator and guards the
+//! tracked-dependency axis uses; every withheld comparison is counted
+//! in a `ShapeCheckTally` so a shape-blind round is distinguishable
+//! from a compared-clean one. Everything else is withheld and left to
+//! the build.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::call_sites::extract_qualified_calls;
-use crate::compat::source_attributes::{ExportSet, extract_exports, extract_function_signatures};
+use crate::compat::source_attributes::{
+    ExportSet, SpecTable, extract_exports, extract_function_signatures, extract_specs,
+};
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
-use crate::model::verdict::Reason;
+use crate::model::spec_ast::SpecType;
+use crate::model::spec_parser::parse_signature_return;
+use crate::model::verdict::{Reason, ShapeCheckTally};
 
-/// `(function, arity)` pairs the patch adds per module: definitions and
-/// `-export` entries. A qualified call to one of these is not flagged,
-/// since the patch introduces it (often in a different file than the
-/// call).
-pub type PatchAddedFunctions = BTreeMap<ModuleName, BTreeSet<(FunctionName, Arity)>>;
+/// `(function, arity)` pairs per module.
+pub type PerModuleFunctionSet = BTreeMap<ModuleName, BTreeSet<(FunctionName, Arity)>>;
+
+/// What the patch's added lines themselves provide per module. A
+/// qualified call to an added function is not flagged, since the patch
+/// introduces it (often in a different file than the call). A resolved
+/// call whose `-spec` the patch rewrites is not shape-compared:
+/// post-apply, both trees carry the patch's version, so there is no
+/// pre-existing drift to find.
+#[derive(Debug, Default)]
+pub struct PatchProvided {
+    pub functions: PerModuleFunctionSet,
+    pub specs: PerModuleFunctionSet,
+}
+
+/// Reads one module file's text by tree-relative path: a git blob for
+/// the target side, the on-disk checkout for the source side.
+pub type TreeReader<'a> = &'a dyn Fn(&RelativePath) -> Option<String>;
 
 /// Where a called module sits relative to this axis. Only `FirstParty`
 /// is resolved; the other two are withheld, so a dependency call or an
@@ -58,13 +80,13 @@ pub fn classify_module(
     }
 }
 
-/// Functions the patch adds per module, gathered across every touched
+/// What the patch adds per module, gathered across every touched
 /// `.erl` file so a cross-file add (call in one file, callee and its
 /// `-export` in the module's own file) does not false-positive.
-pub fn patch_added_functions(per_file: &[(ModuleName, &str)]) -> PatchAddedFunctions {
-    let mut out: PatchAddedFunctions = BTreeMap::new();
+pub fn patch_provided(per_file: &[(ModuleName, &str)]) -> PatchProvided {
+    let mut out = PatchProvided::default();
     for (module, added_text) in per_file {
-        let entry = out.entry(module.clone()).or_default();
+        let functions = out.functions.entry(module.clone()).or_default();
         for sig in extract_function_signatures(added_text) {
             if !sig.is_definition {
                 continue;
@@ -73,69 +95,195 @@ pub fn patch_added_functions(per_file: &[(ModuleName, &str)]) -> PatchAddedFunct
                 FunctionName::from_str(&sig.name),
                 Arity::try_from(sig.arity),
             ) {
-                entry.insert((function, arity));
+                functions.insert((function, arity));
             }
         }
-        entry.extend(extract_exports(added_text).exports);
+        functions.extend(extract_exports(added_text).exports);
+        let specs = extract_specs(added_text);
+        if !specs.is_empty() {
+            out.specs
+                .entry(module.clone())
+                .or_default()
+                .extend(specs.into_keys());
+        }
     }
     out
 }
 
+/// What the qualified-call gate produced: the export-resolution
+/// reasons plus the return-shape findings, and the tally of what the
+/// shape check did with each resolved call.
+#[derive(Debug, Default)]
+pub struct QualifiedCallAnalysis {
+    pub reasons: Vec<Reason>,
+    pub shape_checks: ShapeCheckTally,
+}
+
 /// Flag each added qualified call whose module is first-party on the
-/// target and does not export the called `f/a`. `resolve_module_path`
-/// maps a module to its `.erl` path on the target tree (the first-party
-/// gate: `None` means absent, so withhold); `read_target` reads that
-/// path. `covered_modules` is the union of every pin snapshot's
-/// modules: a call into one of them is the snapshot axis's, not this
-/// one's. One reason per `(file, module, function, arity)`.
+/// target and does not export the called `f/a`, and compare the
+/// `-spec` return shape of each call that does resolve.
+/// `resolve_module_path` maps a module to its `.erl` path on the
+/// target tree (the first-party gate: `None` means absent, so
+/// withhold); `read_target` reads that path at the resolved target
+/// commit; `read_source` reads it from the source checkout (`None`
+/// when no checkout is available, which withholds every shape check).
+/// `covered_modules` is the union of every pin snapshot's modules: a
+/// call into one of them is the snapshot axis's, not this one's. One
+/// reason per `(file, module, function, arity)`.
 pub fn analyse_qualified_calls(
     subjects: &[AddedLinesSubject<'_>],
     covered_modules: &BTreeSet<ModuleName>,
-    patch_added: &PatchAddedFunctions,
+    patch_added: &PatchProvided,
     resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
-    read_target: &dyn Fn(&RelativePath) -> Option<String>,
-) -> Vec<Reason> {
-    let mut reasons = Vec::new();
+    read_target: TreeReader<'_>,
+    read_source: Option<TreeReader<'_>>,
+) -> QualifiedCallAnalysis {
+    let mut analysis = QualifiedCallAnalysis::default();
     // None caches a withheld module (covered, absent, or unreadable
     // export surface), so a second call into it skips the work too.
-    let mut exports_by_module: BTreeMap<ModuleName, Option<ExportSet>> = BTreeMap::new();
+    // The path rides along for the spec tables, whose cache fills
+    // lazily and only for modules that receive a resolved call.
+    let mut exports_by_module: BTreeMap<ModuleName, Option<(ExportSet, RelativePath)>> =
+        BTreeMap::new();
+    // The source side is Option: a failed read means the module is not
+    // readable on the source checkout (counted as withheld_no_source),
+    // which is not the same fact as a readable module with no spec.
+    let mut specs_by_module: BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)> = BTreeMap::new();
     for subject in subjects {
         let calls = extract_qualified_calls(subject.added_text);
         if calls.is_empty() {
             continue;
         }
         let mut flagged: BTreeSet<(ModuleName, FunctionName, Arity)> = BTreeSet::new();
+        let mut shape_seen: BTreeSet<(ModuleName, FunctionName, Arity)> = BTreeSet::new();
         for call in calls {
             let module = &call.mfa.module;
-            let exports = exports_by_module.entry(module.clone()).or_insert_with(|| {
+            let entry = exports_by_module.entry(module.clone()).or_insert_with(|| {
                 match classify_module(module, covered_modules, resolve_module_path) {
                     ModuleProvenance::FirstParty { path } => {
                         let exports = extract_exports(&read_target(&path)?);
-                        exports.complete.then_some(exports)
+                        exports.complete.then_some((exports, path))
                     }
                     ModuleProvenance::CoveredBySnapshot | ModuleProvenance::Unknown => None,
                 }
             });
-            let Some(exports) = exports.as_ref() else {
+            let Some((exports, path)) = entry.as_ref() else {
                 continue;
             };
             let key = (call.mfa.function.clone(), call.mfa.arity);
-            if exports.exports.contains(&key)
-                || patch_added.get(module).is_some_and(|s| s.contains(&key))
+            // A callee the patch itself introduces has no meaningful
+            // pre-existing shape on either tree.
+            if patch_added
+                .functions
+                .get(module)
+                .is_some_and(|s| s.contains(&key))
             {
+                continue;
+            }
+            if exports.exports.contains(&key) {
+                // A spec the patch rewrites lands on the target with
+                // the pick: no pre-existing drift to compare.
+                if patch_added
+                    .specs
+                    .get(module)
+                    .is_some_and(|s| s.contains(&key))
+                {
+                    continue;
+                }
+                if !shape_seen.insert((module.clone(), key.0.clone(), key.1)) {
+                    continue;
+                }
+                check_return_shape(
+                    subject,
+                    module,
+                    path,
+                    &key,
+                    call.line,
+                    read_target,
+                    read_source,
+                    &mut specs_by_module,
+                    &mut analysis,
+                );
                 continue;
             }
             if !flagged.insert((module.clone(), call.mfa.function.clone(), call.mfa.arity)) {
                 continue;
             }
-            reasons.push(Reason::QualifiedCallUndefinedOnTarget {
-                source_path: subject.source_path.clone(),
-                module: module.clone(),
-                function: call.mfa.function,
-                arity: call.mfa.arity,
-                line: file_line(subject.line_map, call.line),
-            });
+            analysis
+                .reasons
+                .push(Reason::QualifiedCallUndefinedOnTarget {
+                    source_path: subject.source_path.clone(),
+                    module: module.clone(),
+                    function: call.mfa.function,
+                    arity: call.mfa.arity,
+                    line: file_line(subject.line_map, call.line),
+                });
         }
     }
-    reasons
+    analysis
+}
+
+/// The four guards `check_return_shapes` applies on the snapshot axis,
+/// sourced from the two checkouts' spec tables: present on both sides,
+/// both parse to a known `SpecType`, shapes disagree. Every guard that
+/// declines to compare is counted rather than dropped.
+#[allow(clippy::too_many_arguments)]
+fn check_return_shape(
+    subject: &AddedLinesSubject<'_>,
+    module: &ModuleName,
+    path: &RelativePath,
+    key: &(FunctionName, Arity),
+    call_line: u32,
+    read_target: TreeReader<'_>,
+    read_source: Option<TreeReader<'_>>,
+    specs_by_module: &mut BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)>,
+    analysis: &mut QualifiedCallAnalysis,
+) {
+    let tally = &mut analysis.shape_checks;
+    let Some(read_source) = read_source else {
+        tally.withheld_no_source += 1;
+        return;
+    };
+    let (target_specs, source_specs) = specs_by_module.entry(module.clone()).or_insert_with(|| {
+        (
+            read_target(path)
+                .map(|t| extract_specs(&t))
+                .unwrap_or_default(),
+            read_source(path).map(|t| extract_specs(&t)),
+        )
+    });
+    let Some(source_specs) = source_specs.as_ref() else {
+        tally.withheld_no_source += 1;
+        return;
+    };
+    let (Some(target_sig), Some(source_sig)) = (target_specs.get(key), source_specs.get(key))
+    else {
+        tally.withheld_no_spec += 1;
+        return;
+    };
+    // Identical text means identical shape: no parse needed.
+    if target_sig == source_sig {
+        tally.compared += 1;
+        return;
+    }
+    let target_ast = parse_signature_return(target_sig);
+    let source_ast = parse_signature_return(source_sig);
+    if matches!(target_ast, SpecType::Unknown) || matches!(source_ast, SpecType::Unknown) {
+        tally.withheld_unknown_type += 1;
+        return;
+    }
+    tally.compared += 1;
+    if !target_ast.matches(&source_ast) {
+        analysis
+            .reasons
+            .push(Reason::QualifiedCallReturnShapeDrift {
+                source_path: subject.source_path.clone(),
+                module: module.clone(),
+                function: key.0.clone(),
+                arity: key.1,
+                source_signature: source_sig.clone(),
+                target_signature: target_sig.clone(),
+                line: file_line(subject.line_map, call_line),
+            });
+    }
 }

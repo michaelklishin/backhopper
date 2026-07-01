@@ -112,6 +112,15 @@ fn samples() -> Vec<Reason> {
             arity: Arity::new(1),
             line: 1,
         },
+        Reason::QualifiedCallReturnShapeDrift {
+            source_path: RelativePath::new("deps/rabbit/src/m.erl").unwrap(),
+            module: module(),
+            function: function(),
+            arity: Arity::new(1),
+            source_signature: "f(term()) -> binary()".into(),
+            target_signature: "f(term()) -> list()".into(),
+            line: 1,
+        },
     ]
 }
 

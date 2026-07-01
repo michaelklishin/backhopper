@@ -147,6 +147,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::RecordUndefinedOnTarget { .. } => "RecordUndefinedOnTarget",
         Reason::LocalCallUndefinedOnTarget { .. } => "LocalCallUndefinedOnTarget",
         Reason::QualifiedCallUndefinedOnTarget { .. } => "QualifiedCallUndefinedOnTarget",
+        Reason::QualifiedCallReturnShapeDrift { .. } => "QualifiedCallReturnShapeDrift",
         Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
         Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
         _ => "UnknownReason",
@@ -401,6 +402,17 @@ fn reason_detail(r: &Reason) -> String {
             arity,
             line,
         } => format!("{module}:{function}/{arity} undefined on target ({source_path}:{line})"),
+        Reason::QualifiedCallReturnShapeDrift {
+            source_path,
+            module,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "{module}:{function}/{arity}: source spec {source_signature:?} vs target spec {target_signature:?} ({source_path}:{line})"
+        ),
         Reason::VersionedMachineSnapshotMissing { module, side } => {
             format!("{module}: versioned-machine snapshot missing on {side:?}")
         }

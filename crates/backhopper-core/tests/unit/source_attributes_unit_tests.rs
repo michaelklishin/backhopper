@@ -6,11 +6,16 @@
 //! tests that need a real `TargetTreeIndex` live in
 //! `integration/source_attributes_resolve_integration_tests.rs`.
 
+use std::str::FromStr;
+
 use backhopper_core::compat::source_attributes::{
     declares_parse_transform, extract_behaviours, extract_defined_macros, extract_defined_records,
     extract_function_signatures, extract_imports, extract_includes, extract_macro_uses,
-    extract_record_uses, is_predefined_macro,
+    extract_record_uses, extract_specs, is_predefined_macro,
 };
+use backhopper_core::model::names::{Arity, FunctionName};
+use backhopper_core::model::spec_ast::SpecType;
+use backhopper_core::model::spec_parser::parse_signature_return;
 use backhopper_core::model::verdict::IncludeDirective;
 
 #[test]
@@ -293,4 +298,99 @@ fn extract_behaviours_finds_three_in_a_row() {
     assert_eq!(v[0].behaviour.as_str(), "gen_server");
     assert_eq!(v[1].behaviour.as_str(), "supervisor");
     assert_eq!(v[2].behaviour.as_str(), "gen_statem");
+}
+
+// extract_specs
+
+fn spec_key(function: &str, arity: u8) -> (FunctionName, Arity) {
+    (FunctionName::from_str(function).unwrap(), Arity::new(arity))
+}
+
+#[test]
+fn extract_specs_finds_a_single_spec() {
+    let specs = extract_specs("-spec info(state()) -> [{atom(), integer()}].\n");
+    assert_eq!(
+        specs.get(&spec_key("info", 1)).unwrap(),
+        "info(state()) -> [{atom(), integer()}]"
+    );
+}
+
+#[test]
+fn extract_specs_keeps_the_arrow_so_the_return_parses() {
+    let specs = extract_specs("-spec segment_entry_count() -> pos_integer().\n");
+    let sig = specs.get(&spec_key("segment_entry_count", 0)).unwrap();
+    assert!(!matches!(parse_signature_return(sig), SpecType::Unknown));
+}
+
+#[test]
+fn extract_specs_handles_a_multi_clause_spec() {
+    let src = "-spec recover(term()) -> {ok, state()};\n       (undefined) -> {error, no_state}.\n";
+    let specs = extract_specs(src);
+    assert!(specs.contains_key(&spec_key("recover", 1)));
+}
+
+#[test]
+fn extract_specs_handles_a_multi_line_body() {
+    let src = "-spec ack([rabbit_variable_queue:seq_id()], State) ->\n    {[non_neg_integer()], State}\n    when State::state().\n";
+    let specs = extract_specs(src);
+    assert!(specs.contains_key(&spec_key("ack", 2)));
+}
+
+#[test]
+fn extract_specs_handles_the_parenthesised_form() {
+    let specs = extract_specs("-spec(delete_and_terminate(state()) -> state()).\n");
+    assert!(specs.contains_key(&spec_key("delete_and_terminate", 1)));
+}
+
+#[test]
+fn extract_specs_returns_empty_for_a_module_with_no_specs() {
+    assert!(extract_specs("-module(rabbit_file).\ninit() -> ok.\n").is_empty());
+}
+
+#[test]
+fn extract_specs_skips_module_qualified_forms() {
+    let specs = extract_specs("-spec rabbit_misc:format(term(), list()) -> string().\n");
+    assert!(specs.is_empty());
+}
+
+#[test]
+fn extract_specs_does_not_overrun_into_the_next_form() {
+    let src = "-spec info(state()) -> list().\n-type state() :: #qi{}.\n";
+    let specs = extract_specs(src);
+    assert_eq!(specs.len(), 1);
+    assert_eq!(
+        specs.get(&spec_key("info", 1)).unwrap(),
+        "info(state()) -> list()"
+    );
+}
+
+#[test]
+fn extract_specs_ignores_spec_text_in_comments_and_strings() {
+    let src = "%% -spec commented(term()) -> ok.\nformat() -> \"-spec fake(x) -> y.\".\n-spec real(term()) -> ok.\n";
+    let specs = extract_specs(src);
+    assert_eq!(specs.len(), 1);
+    assert!(specs.contains_key(&spec_key("real", 1)));
+}
+
+#[test]
+fn extract_specs_does_not_match_longer_attribute_names() {
+    assert!(extract_specs("-specs_of(module) -> ok.\n").is_empty());
+}
+
+#[test]
+fn extract_specs_bitstring_argument_keeps_the_snapshot_arity() {
+    // The shared parser counts `<<_:8, _:_*8>>` as one argument; a
+    // divergent counter here would miskey the table and withhold.
+    let specs = extract_specs("-spec encode(<<_:8, _:_*8>>) -> binary().\n");
+    assert!(specs.contains_key(&spec_key("encode", 1)));
+}
+
+#[test]
+fn extract_specs_is_not_derailed_by_a_char_literal_quote() {
+    // `$"` is a char literal, not a string opener: without the `$`
+    // skip, the scanner would swallow everything up to the next `"`,
+    // including the spec.
+    let src = "quote() -> [$\", $-].\n-spec info(state()) -> list().\n";
+    let specs = extract_specs(src);
+    assert!(specs.contains_key(&spec_key("info", 1)));
 }

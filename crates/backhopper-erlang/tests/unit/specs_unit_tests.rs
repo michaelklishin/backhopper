@@ -4,42 +4,13 @@
 
 use backhopper_erlang::specs::{parse_callable_signature, parse_type_decl};
 
+// `parse_callable_signature` lives in `backhopper-erlang-scan` and is
+// tested there; this exercises the re-exported path.
 #[test]
-fn parses_simple_spec() {
+fn callable_signature_reexport_stays_stable() {
     let s = parse_callable_signature("register(X) -> ok").unwrap();
     assert_eq!(s.name, "register");
     assert_eq!(s.arity, 1);
-}
-
-#[test]
-fn parses_zero_arity() {
-    let s = parse_callable_signature("init() -> state()").unwrap();
-    assert_eq!(s.arity, 0);
-}
-
-#[test]
-fn parses_two_arg_with_typed_args() {
-    let s = parse_callable_signature(
-        "process_command(Id :: term(), Cmd :: term()) -> ok | {error, term()}",
-    )
-    .unwrap();
-    assert_eq!(s.arity, 2);
-}
-
-#[test]
-fn bitstring_type_arg_does_not_inflate_arity() {
-    // `<<_:8, _:_*8>>` is one argument; its inner comma belongs to the
-    // bitstring type, not the argument list.
-    let s = parse_callable_signature("encode(<<_:8, _:_*8>>) -> binary()").unwrap();
-    assert_eq!(s.name, "encode");
-    assert_eq!(s.arity, 1);
-}
-
-#[test]
-fn bitstring_type_among_other_args_counts_correctly() {
-    let s =
-        parse_callable_signature("write(Fd :: file:io_device(), <<_:8, _:_*8>>) -> ok").unwrap();
-    assert_eq!(s.arity, 2);
 }
 
 #[test]

@@ -8,6 +8,7 @@
 //! to every pin's verdict.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -18,7 +19,7 @@ use backhopper_core::compat::define_resolve::analyse_define_symbols;
 use backhopper_core::compat::local_call_resolve::analyse_local_calls;
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    analyse_qualified_calls, patch_added_functions,
+    QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
@@ -381,28 +382,32 @@ pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -
 }
 
 /// Resolve qualified `m:f/a` calls the patch adds against the called
-/// module's exports on the target tree. `.erl` files only.
+/// module's exports on the target tree, and compare resolved calls'
+/// `-spec` return shapes between the checkouts. `.erl` files only.
 /// `covered_modules` is the union of every pin snapshot's modules: a
 /// call into one of those defers to the snapshot axis.
+/// `source_repo_dir` is the live source checkout; `None` withholds
+/// every shape check (counted, not silent).
 pub fn collect_qualified_call_findings(
     files: &[PatchedFile],
     ctx: &TargetContext,
     covered_modules: &BTreeSet<ModuleName>,
-) -> Vec<Reason> {
+    source_repo_dir: Option<&Path>,
+) -> QualifiedCallAnalysis {
     let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
         .into_iter()
         .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
         .collect();
     if subjects_text.is_empty() {
-        return Vec::new();
+        return QualifiedCallAnalysis::default();
     }
     let per_file: Vec<(ModuleName, &str)> = subjects_text
         .iter()
         .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
         .collect();
-    let patch_added = patch_added_functions(&per_file);
+    let patch_added = patch_provided(&per_file);
     let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
+        return QualifiedCallAnalysis::default();
     };
     let commit = ctx.index.resolved_commit().clone();
     let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
@@ -412,6 +417,11 @@ pub fn collect_qualified_call_findings(
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
+    let read_source_fn = source_repo_dir
+        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
+    let read_source = read_source_fn
+        .as_ref()
+        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
     let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
         .iter()
         .map(|(p, t, lm)| AddedLinesSubject {
@@ -426,7 +436,14 @@ pub fn collect_qualified_call_findings(
         &patch_added,
         &resolve_module_path,
         &read_target,
+        read_source,
     )
+}
+
+/// The source side reads the live checkout through the filesystem: no
+/// single source commit exists for patch, range, and PR inputs.
+fn read_source_text(repo_dir: &Path, path: &RelativePath) -> Option<String> {
+    fs::read_to_string(repo_dir.join(path.as_str())).ok()
 }
 
 /// The Erlang module a `.erl` path defines, by basename.

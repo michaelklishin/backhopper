@@ -693,6 +693,7 @@ fn apply_target_context(
     target_ctx: &target_repo::TargetContext,
     bytes: &[u8],
     covered_modules: &BTreeSet<ModuleName>,
+    source_repo_dir: Option<&Path>,
     evaluation: &mut SeriesEvaluation,
 ) -> CliResult<()> {
     let parsed = Patch::parse(bytes)?;
@@ -720,9 +721,14 @@ fn apply_target_context(
     target_repo::merge_reasons_into_evaluation(define_reasons, evaluation);
     let local_call_reasons = target_repo::collect_local_call_findings(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(local_call_reasons, evaluation);
-    let qualified_call_reasons =
-        target_repo::collect_qualified_call_findings(&parsed.files, target_ctx, covered_modules);
-    target_repo::merge_reasons_into_evaluation(qualified_call_reasons, evaluation);
+    let qualified_calls = target_repo::collect_qualified_call_findings(
+        &parsed.files,
+        target_ctx,
+        covered_modules,
+        source_repo_dir,
+    );
+    target_repo::merge_reasons_into_evaluation(qualified_calls.reasons, evaluation);
+    evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
     let preimage_reasons = target_repo::collect_target_preimage_findings(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(preimage_reasons, evaluation);
     Ok(())
@@ -1118,7 +1124,14 @@ fn run_check_patch(
         }
         if let Some(target_ctx) = &target_ctx {
             let covered = covered_module_set(&cache, &pins)?;
-            apply_target_context(cfg, target_ctx, bytes, &covered, &mut evaluation)?;
+            apply_target_context(
+                cfg,
+                target_ctx,
+                bytes,
+                &covered,
+                repo_dir_path,
+                &mut evaluation,
+            )?;
             // Patch-shaped inputs have no commit identity to probe.
             if let Some(p) = &provenance {
                 if let Some(probe) =
@@ -1455,6 +1468,17 @@ fn reason_md_label(r: &Reason) -> String {
         } => format!(
             "QualifiedCallUndefinedOnTarget {module}:{function}/{arity} in {source_path}:{line}"
         ),
+        Reason::QualifiedCallReturnShapeDrift {
+            source_path,
+            module,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "QualifiedCallReturnShapeDrift {module}:{function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
+        ),
         _ => format!("{r:?}"),
     }
 }
@@ -1587,6 +1611,7 @@ fn render_text(
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
     render_already_present(w, &evaluation.diagnostics)?;
+    render_shape_checks(w, &evaluation.diagnostics)?;
     for d in &evaluation.diagnostics.dep_pin_divergence {
         writeln!(
             w,
@@ -1626,6 +1651,30 @@ fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> Cl
         let plural = if *count == 1 { "" } else { "s" };
         writeln!(w, "  {prefix:<40} {count} path{plural}")?;
     }
+    Ok(())
+}
+
+/// Always on when the qualified-call gate ran: a round where the shape
+/// check withheld must read differently from one where it compared.
+fn render_shape_checks(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
+    let t = &diagnostics.qualified_call_shape_checks;
+    if t.is_empty() {
+        return Ok(());
+    }
+    let mut parts = vec![format!("{} shape-compared", t.compared)];
+    if t.withheld_no_spec > 0 {
+        parts.push(format!("{} shape-blind (no -spec)", t.withheld_no_spec));
+    }
+    if t.withheld_unknown_type > 0 {
+        parts.push(format!("{} unknown type", t.withheld_unknown_type));
+    }
+    if t.withheld_no_source > 0 {
+        parts.push(format!(
+            "{} unchecked (no source checkout)",
+            t.withheld_no_source
+        ));
+    }
+    writeln!(w, "qualified calls: {}", parts.join(", "))?;
     Ok(())
 }
 
@@ -2251,7 +2300,14 @@ fn run_batch(
                 )?;
                 evaluation.pr_commits.clone_from(&input.pr_commits);
                 if let Some(target_ctx) = &target_ctx {
-                    apply_target_context(cfg, target_ctx, &input.bytes, covered, &mut evaluation)?;
+                    apply_target_context(
+                        cfg,
+                        target_ctx,
+                        &input.bytes,
+                        covered,
+                        Some(repo),
+                        &mut evaluation,
+                    )?;
                     if let Some(probe) = &probe {
                         probe.apply(&planned.sha, &input.bytes, &mut evaluation);
                     }

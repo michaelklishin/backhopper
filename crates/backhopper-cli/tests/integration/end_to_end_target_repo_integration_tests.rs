@@ -984,3 +984,218 @@ fn partial_target_absence_emits_target_path_absent() {
         .unwrap_or_else(|| panic!("expected target_path_absent in {reasons:?}"));
     assert_eq!(r["path"], "deps/demo/src/mgmt.erl");
 }
+
+// The 045 shape gate. `rabbit_classic_queue_index_v2` joins the source
+// tree after the pin tag, so no snapshot covers it and it resolves
+// live. `info/1` carries a spec whose return shape differs between the
+// checkouts; `segment_file/2` carries none on either side (the real
+// incident's shape), so it is counted shape-blind, never flagged.
+#[test]
+fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = GitRepoFixture::new();
+    source.write_file(
+        "deps/demo/src/backing_queue_SUITE.erl",
+        "-module(backing_queue_SUITE).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    source.commit("seed suite");
+    source.tag("source-v1");
+    source.write_file(
+        "deps/demo/src/rabbit_classic_queue_index_v2.erl",
+        "-module(rabbit_classic_queue_index_v2).\n\
+         -export([info/1, segment_file/2]).\n\
+         -spec info(state()) -> #{atom() => integer()}.\n\
+         info(S) -> maps:from_list(S).\n\
+         segment_file(Segment, Dir) ->\n\
+             <<Dir/binary, (integer_to_binary(Segment))/binary>>.\n",
+    );
+    source.commit("add index module after the pin tag");
+    source.write_file(
+        "deps/demo/src/backing_queue_SUITE.erl",
+        "-module(backing_queue_SUITE).\n\
+         -export([go/0]).\n\
+         go() -> ok.\n\
+         t_info(S) -> rabbit_classic_queue_index_v2:info(S).\n\
+         t_segment(Seg, Dir) -> rabbit_classic_queue_index_v2:segment_file(Seg, Dir).\n",
+    );
+    source.commit("call info/1 and segment_file/2");
+    let target = GitRepoFixture::new();
+    target.write_file(
+        "deps/demo/src/backing_queue_SUITE.erl",
+        "-module(backing_queue_SUITE).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    target.write_file(
+        "deps/demo/src/rabbit_classic_queue_index_v2.erl",
+        "-module(rabbit_classic_queue_index_v2).\n\
+         -export([info/1, segment_file/2]).\n\
+         -spec info(state()) -> [{atom(), integer()}].\n\
+         info(S) -> S.\n\
+         segment_file(Segment, Dir) ->\n\
+             filename:join(Dir, integer_to_list(Segment)).\n",
+    );
+    target.commit("seed with the list-shaped info spec and no segment_file spec");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let sha = source.head_sha();
+    let a = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&a)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    let r = reasons
+        .iter()
+        .find(|r| r["kind"] == "qualified_call_return_shape_drift")
+        .unwrap_or_else(|| panic!("expected qualified_call_return_shape_drift in {reasons:?}"));
+    assert_eq!(r["module"], "rabbit_classic_queue_index_v2");
+    assert_eq!(r["function"], "info");
+    assert_eq!(r["arity"], 1);
+    assert_eq!(
+        r["source_signature"],
+        "info(state()) -> #{atom() => integer()}"
+    );
+    assert_eq!(
+        r["target_signature"],
+        "info(state()) -> [{atom(), integer()}]"
+    );
+    // The call is the fourth line of the suite file.
+    assert_eq!(r["line"], 4);
+    // segment_file/2 resolves but has no spec on either side: counted,
+    // never flagged.
+    assert!(
+        !reasons
+            .iter()
+            .any(|r| r["kind"] == "qualified_call_return_shape_drift"
+                && r["function"] == "segment_file"),
+        "spec-less callee must not be flagged: {reasons:?}"
+    );
+    let tally = &env["data"]["diagnostics"]["qualified_call_shape_checks"];
+    assert_eq!(tally["compared"], 1);
+    assert_eq!(tally["withheld_no_spec"], 1);
+
+    // One render line: a shape-blind round must not read as clean.
+    let t = run([
+        "--formatter",
+        "text",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let text = stdout(&t);
+    assert!(
+        text.contains("qualified calls: 1 shape-compared, 1 shape-blind (no -spec)"),
+        "missing the shape-check line: {text}"
+    );
+    assert!(
+        text.contains("QualifiedCallReturnShapeDrift"),
+        "text output missing the drift reason: {text}"
+    );
+
+    // Without a target repo the 037 gate never runs: no drift reason,
+    // no tally.
+    let b = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "commit",
+        "--series",
+        "demo-series",
+        "--repo-dir-path",
+        source.dir.path().to_str().unwrap(),
+        &sha,
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&b)).expect("envelope parses");
+    let reasons = env["data"]["results"]["results"][0]["verdict"]["reasons"]
+        .as_array()
+        .expect("a reasons array");
+    assert!(
+        !reasons
+            .iter()
+            .any(|r| r["kind"] == "qualified_call_return_shape_drift"),
+        "gate must be opt-in via --target-repo-dir-path: {reasons:?}"
+    );
+    assert!(env["data"]["diagnostics"]["qualified_call_shape_checks"].is_null());
+}
+
+// A patch-file input carries no source checkout, so every resolved
+// call's shape check is withheld and counted, not silently dropped.
+#[test]
+fn a_patch_input_without_a_source_checkout_counts_unchecked_calls() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snap");
+    let source = GitRepoFixture::new();
+    source.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    source.commit("seed caller");
+    source.tag("source-v1");
+    let target = GitRepoFixture::new();
+    target.write_file(
+        "deps/demo/src/caller.erl",
+        "-module(caller).\n-export([go/0]).\ngo() -> ok.\n",
+    );
+    target.write_file(
+        "deps/demo/src/helper.erl",
+        "-module(helper).\n-export([ping/0]).\n-spec ping() -> pong.\nping() -> pong.\n",
+    );
+    target.commit("seed caller and a spec'd helper");
+
+    let cfg_path = write_config(&workdir, &source, &snapshot_dir);
+    generate_snapshot(&cfg_path);
+    let patch = "\
+diff --git a/deps/demo/src/caller.erl b/deps/demo/src/caller.erl
+--- a/deps/demo/src/caller.erl
++++ b/deps/demo/src/caller.erl
+@@ -1,3 +1,4 @@
+ -module(caller).
+ -export([go/0]).
+ go() -> ok.
++f() -> helper:ping().
+";
+    let patch_path = workdir.path().join("call.patch");
+    fs::write(&patch_path, patch).unwrap();
+    let t = run([
+        "--formatter",
+        "text",
+        "--config-file-path",
+        cfg_path.to_str().unwrap(),
+        "check",
+        "patch",
+        "--series",
+        "demo-series",
+        "--target-repo-dir-path",
+        target.dir.path().to_str().unwrap(),
+        patch_path.to_str().unwrap(),
+    ]);
+    let text = stdout(&t);
+    assert!(
+        text.contains("qualified calls: 0 shape-compared, 1 unchecked (no source checkout)"),
+        "missing the unchecked tally line: {text}"
+    );
+}

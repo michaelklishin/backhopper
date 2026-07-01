@@ -232,6 +232,46 @@ pub fn count_top_level_commas(s: &str) -> usize {
     n
 }
 
+/// A `-spec` or `-callback` body reduced to its name, arity, and the
+/// canonical `name(Args) -> Ret` signature string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSignature {
+    pub name: String,
+    pub arity: u8,
+    pub signature: String,
+}
+
+/// Parses a `-spec` or `-callback` body (`name(Args) -> Ret`, no
+/// leading attribute keyword, no trailing `.`). Module-qualified forms
+/// (`Mod:f(...)`) return `None`: the `:` ends the name and the next
+/// character is not `(`.
+pub fn parse_callable_signature(body: &str) -> Option<ParsedSignature> {
+    let trimmed = body.trim();
+    let name_end = trimmed
+        .char_indices()
+        .find(|(_, c)| !c.is_ascii_alphanumeric() && *c != '_' && *c != '@' && *c != '\'')
+        .map(|(i, _)| i)
+        .unwrap_or(trimmed.len());
+    if name_end == 0 {
+        return None;
+    }
+    let name = trimmed[..name_end].to_string();
+    let after_name = trimmed[name_end..].trim_start();
+    if !after_name.starts_with('(') {
+        return None;
+    }
+    let (args, rest_after_args) = take_balanced_parens(after_name)?;
+    let arity = count_top_level_commas(args) + if args.trim().is_empty() { 0 } else { 1 };
+    let rest = rest_after_args.trim_start();
+    let after_arrow = rest.strip_prefix("->")?.trim_start();
+    let signature = format!("{}({}) -> {}", name, args.trim(), after_arrow.trim());
+    Some(ParsedSignature {
+        name,
+        arity: arity.min(255) as u8,
+        signature,
+    })
+}
+
 /// Given `s` starting at `(`, returns the inner source and the rest
 /// after the matching `)`, tracking nested parens, strings, and atoms.
 pub fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {

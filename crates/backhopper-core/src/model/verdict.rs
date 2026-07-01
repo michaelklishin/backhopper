@@ -404,6 +404,22 @@ pub enum Reason {
         arity: Arity,
         line: u32,
     },
+    /// A qualified `m:f/a` call that resolves against the target tree
+    /// has a target-tree `-spec` return shape that disagrees with its
+    /// source-tree `-spec`. Sister of `ReturnShapeMismatch` for the
+    /// live, snapshot-free first-party axis: same comparator,
+    /// non-blocking like the rest of that axis. Only evaluated once the
+    /// call is confirmed to resolve; withheld when either side lacks a
+    /// `-spec`.
+    QualifiedCallReturnShapeDrift {
+        source_path: RelativePath,
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+        source_signature: String,
+        target_signature: String,
+        line: u32,
+    },
     /// Declared versioned-machine module is touched but the snapshot
     /// has no recorded `versioned_machine_version` on `side`.
     /// Non-blocking.
@@ -589,6 +605,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => None,
         }
@@ -606,7 +623,8 @@ impl Reason {
             Self::MacroUndefinedOnTarget { .. } => Some(ResolverClass::Macro),
             Self::RecordUndefinedOnTarget { .. } => Some(ResolverClass::Record),
             Self::LocalCallUndefinedOnTarget { .. } => Some(ResolverClass::LocalCall),
-            Self::QualifiedCallUndefinedOnTarget { .. } => Some(ResolverClass::QualifiedCall),
+            Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallReturnShapeDrift { .. } => Some(ResolverClass::QualifiedCall),
             Self::HeaderFileMissing { .. } => Some(ResolverClass::Include),
             Self::BehaviourModuleMissing { .. } => Some(ResolverClass::Behaviour),
             Self::ArityChanged { .. }
@@ -688,6 +706,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -734,6 +753,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -1212,6 +1232,10 @@ pub struct Diagnostics {
     /// `rabbitmq-components.mk`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pin_bumps: Vec<PinBump>,
+    /// What the live qualified-call gate's return-shape check did with
+    /// each first-party resolved call: compared, or withheld and why.
+    #[serde(default, skip_serializing_if = "ShapeCheckTally::is_empty")]
+    pub qualified_call_shape_checks: ShapeCheckTally,
 }
 
 impl Diagnostics {
@@ -1229,6 +1253,7 @@ impl Diagnostics {
             already_present_skipped,
             dep_pin_divergence,
             pin_bumps,
+            qualified_call_shape_checks,
         } = self;
         untracked_calls.is_empty()
             && untracked_records.is_empty()
@@ -1241,6 +1266,7 @@ impl Diagnostics {
             && already_present_skipped.is_none()
             && dep_pin_divergence.is_empty()
             && pin_bumps.is_empty()
+            && qualified_call_shape_checks.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -1277,6 +1303,44 @@ pub struct TargetMatch {
     pub commit: CommitSha,
     pub via: TargetMatchKind,
     pub subject: String,
+}
+
+/// What the live qualified-call gate's return-shape check did with
+/// each first-party resolved call. Never reasons: a withhold is not a
+/// finding, but a round where most calls are shape-blind must read
+/// differently from a round where all of them were compared.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ShapeCheckTally {
+    /// Both sides had a `-spec` that parsed to a known type; the shapes
+    /// were compared. Drift is visible in the reasons, not double-counted
+    /// here.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub compared: usize,
+    /// One or both sides declare no `-spec` for the called function.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_no_spec: usize,
+    /// Both sides have a spec but at least one parses to
+    /// `SpecType::Unknown`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_unknown_type: usize,
+    /// The callee module was not readable on the source side: no
+    /// checkout was supplied, or the checkout has no file at the
+    /// module's path (a defaulted `--repo-dir-path` that is not the
+    /// source tree lands here, not in `withheld_no_spec`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_no_source: usize,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+impl ShapeCheckTally {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Per-file hunk counters for the content-presence check.

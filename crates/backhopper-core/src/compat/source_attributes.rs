@@ -19,15 +19,18 @@
 //! values) is invisible to the scanner: those cases land in a
 //! follow-up `--deep-helper-resolution` pass.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::str::FromStr;
+
+use backhopper_erlang_scan::parse_callable_signature;
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::verdict::IncludeDirective;
+use crate::snapshot::spec_normalize::normalize_signature;
 
 /// One `-behaviour(M)` declaration the scanner saw, with the line
 /// number for the user-facing report.
@@ -336,6 +339,91 @@ pub fn extract_exports(src: &str) -> ExportSet {
         }
     }
     ExportSet { exports, complete }
+}
+
+/// A module's `-spec` signatures, keyed by `(function, arity)`.
+pub type SpecTable = BTreeMap<(FunctionName, Arity), String>;
+
+/// A module's `-spec name(Args) -> Ret.` signatures, keyed by
+/// `(function, arity)`. Parsing is `backhopper-erlang-scan`'s
+/// `parse_callable_signature`: the same grammar the snapshot pipeline
+/// uses, so the live axis and the snapshot axis cannot disagree on
+/// what a spec is or which arity it has. Module-qualified forms parse
+/// to `None` and are simply absent, which withholds downstream.
+pub fn extract_specs(src: &str) -> SpecTable {
+    let bytes = src.as_bytes();
+    let mut out = SpecTable::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'-' if at_form_start(bytes, i) && at_spec_keyword(bytes, i + 1) => {
+                let body_start = i + 1 + "spec".len();
+                let body_end = form_end(bytes, body_start);
+                let body = str::from_utf8(&bytes[body_start..body_end]).unwrap_or("");
+                if let Some(sig) = parse_callable_signature(strip_outer_parens(body))
+                    && let Ok(function) = FunctionName::from_str(&sig.name)
+                {
+                    out.insert(
+                        (function, Arity::new(sig.arity)),
+                        normalize_signature(&sig.signature),
+                    );
+                }
+                i = body_end;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// True when `spec` starts at `pos` and is not a prefix of a longer
+/// attribute name (`-specs_of(...)` must not match).
+fn at_spec_keyword(bytes: &[u8], pos: usize) -> bool {
+    bytes[pos..].starts_with(b"spec")
+        && !bytes
+            .get(pos + "spec".len())
+            .copied()
+            .is_some_and(is_attribute_name_char)
+}
+
+/// The parenthesised attribute form: `-spec(f(Args) -> Ret).` wraps
+/// the body once; the snapshot pipeline strips the same layer.
+fn strip_outer_parens(body: &str) -> &str {
+    let trimmed = body.trim();
+    match trimmed.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+        Some(inner) => inner.trim(),
+        None => trimmed,
+    }
+}
+
+/// Byte index of the `.` ending the form that starts at `start`, or
+/// end of input; comments, strings, quoted atoms, and char literals
+/// are skipped.
+fn form_end(bytes: &[u8], start: usize) -> usize {
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'.' if is_form_terminator(bytes, i) => return i,
+            _ => i += 1,
+        }
+    }
+    i
 }
 
 fn parse_fun_arity(entry: &str) -> Option<(String, usize)> {
