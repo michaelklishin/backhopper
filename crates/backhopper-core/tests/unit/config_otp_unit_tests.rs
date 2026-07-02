@@ -279,6 +279,8 @@ fn series_resolve_pins_walks_specs_against_store() {
             TagName::new("v2.16.13").unwrap(),
         )],
         untracked_projects: Vec::new(),
+        target_repo_dir_path: None,
+        target_ref: None,
     };
     let pins = series.resolve_pins(&store).unwrap();
     assert_eq!(pins.len(), 1);

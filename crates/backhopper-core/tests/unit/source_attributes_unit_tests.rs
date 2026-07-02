@@ -9,9 +9,9 @@
 use std::str::FromStr;
 
 use backhopper_core::compat::source_attributes::{
-    declares_parse_transform, extract_behaviours, extract_defined_macros, extract_defined_records,
-    extract_function_signatures, extract_imports, extract_includes, extract_macro_uses,
-    extract_record_uses, extract_specs, is_predefined_macro,
+    declares_parse_transform, extract_behaviours, extract_defined_macro_values,
+    extract_defined_macros, extract_defined_records, extract_function_signatures, extract_imports,
+    extract_includes, extract_macro_uses, extract_record_uses, extract_specs, is_predefined_macro,
 };
 use backhopper_core::model::names::{Arity, FunctionName};
 use backhopper_core::model::spec_ast::SpecType;
@@ -393,4 +393,41 @@ fn extract_specs_is_not_derailed_by_a_char_literal_quote() {
     let src = "quote() -> [$\", $-].\n-spec info(state()) -> list().\n";
     let specs = extract_specs(src);
     assert!(specs.contains_key(&spec_key("info", 1)));
+}
+
+// extract_defined_macro_values
+
+#[test]
+fn macro_values_capture_object_and_function_forms() {
+    let src = "-define(SNAPSHOT_INTERVAL, 4096).\n-define(incr(X), X + 1).\n";
+    let values = extract_defined_macro_values(src);
+    let interval = &values["SNAPSHOT_INTERVAL"];
+    assert_eq!(interval.len(), 1);
+    assert_eq!(interval[0].params, None);
+    assert_eq!(interval[0].body, "4096");
+    let incr = &values["incr"];
+    assert_eq!(incr[0].params, Some(1));
+    assert_eq!(incr[0].body, "X + 1");
+}
+
+#[test]
+fn macro_values_normalize_whitespace_and_comments() {
+    let src = "-define(LIMITS(X), #{max => X,\n    %% cap\n    min => 0}).\n";
+    let values = extract_defined_macro_values(src);
+    assert_eq!(values["LIMITS"][0].body, "#{max => X, min => 0}");
+}
+
+#[test]
+fn macro_values_keep_every_definition_of_a_name() {
+    let src =
+        "-ifdef(TEST).\n-define(LOG_LEVEL, debug).\n-else.\n-define(LOG_LEVEL, info).\n-endif.\n";
+    let values = extract_defined_macro_values(src);
+    assert_eq!(values["LOG_LEVEL"].len(), 2);
+}
+
+#[test]
+fn macro_values_keep_commas_inside_the_body() {
+    let src = "-define(PAIR, {a, b}).\n";
+    let values = extract_defined_macro_values(src);
+    assert_eq!(values["PAIR"][0].body, "{a, b}");
 }

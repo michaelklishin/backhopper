@@ -72,7 +72,16 @@ fn analyse_full(
     target: &[(&str, &str, &str)],
     source: Option<&[(&str, &str)]>,
 ) -> QualifiedCallAnalysis {
-    let path = rp("deps/rabbit/src/caller.erl");
+    let path = rp("deps/some-app/src/caller.erl");
+    // A bare `&[]` means "contiguous": synthesize the 1..=n identity
+    // map the extractor's length assert requires.
+    let seq: Vec<u32>;
+    let line_map = if line_map.is_empty() && !added.is_empty() {
+        seq = (1..=added.lines().count() as u32).collect();
+        &seq
+    } else {
+        line_map
+    };
     let subjects = [AddedLinesSubject {
         source_path: &path,
         added_text: added,
@@ -205,7 +214,7 @@ fn an_export_all_module_is_withheld() {
         "f(X) -> other:helper(X).\n",
         &[(
             "other",
-            "deps/rabbit/src/other.erl",
+            "deps/some-app/src/other.erl",
             "-module(other).\n-compile(export_all).\nhelper(X) -> X.\n",
         )],
     );
@@ -218,7 +227,7 @@ fn a_macro_in_the_export_list_withholds() {
         "f(X) -> other:helper(X).\n",
         &[(
             "other",
-            "deps/rabbit/src/other.erl",
+            "deps/some-app/src/other.erl",
             "-module(other).\n-export([?API]).\n",
         )],
     );
@@ -231,7 +240,7 @@ fn a_parse_transform_module_is_withheld() {
         "f(X) -> other:injected(X).\n",
         &[(
             "other",
-            "deps/rabbit/src/other.erl",
+            "deps/some-app/src/other.erl",
             "-module(other).\n-compile({parse_transform, t}).\n-export([known/0]).\n",
         )],
     );
@@ -254,7 +263,7 @@ fn a_function_the_patch_adds_cross_file_is_not_flagged() {
         &patch_added,
         &[(
             "other",
-            "deps/rabbit/src/other.erl",
+            "deps/some-app/src/other.erl",
             "-module(other).\n-export([old/0]).\nold() -> ok.\n",
         )],
     );
@@ -696,4 +705,51 @@ fn an_unreadable_source_module_counts_as_no_source_not_no_spec() {
     );
     assert_eq!(analysis.shape_checks.withheld_no_source, 1);
     assert_eq!(analysis.shape_checks.withheld_no_spec, 0);
+}
+
+// Joined runs (046 §A): wrapped calls reach the gate
+
+#[test]
+fn a_wrapped_undefined_call_is_flagged_with_exact_arity() {
+    let reasons = analyse(
+        "f(V, Q) -> rabbit_misc:queue_resource(V,\n    Q).\n",
+        &[(
+            "rabbit_misc",
+            "deps/rabbit/src/rabbit_misc.erl",
+            "-module(rabbit_misc).\n-export([r/3]).\n",
+        )],
+    );
+    assert_eq!(
+        flagged(&reasons),
+        [("rabbit_misc".to_owned(), "queue_resource".to_owned(), 2, 1)]
+    );
+}
+
+#[test]
+fn a_wrapped_resolved_call_is_shape_compared() {
+    let analysis = analyse_shapes(
+        "f(S) -> rabbit_classic_queue_index_v2:info(\n    S).\n",
+        "-spec info(state()) -> binary().\n",
+        "-spec info(state()) -> list().\n",
+    );
+    assert_eq!(drifted(&analysis.reasons).len(), 1);
+    assert_eq!(analysis.shape_checks.compared, 1);
+}
+
+#[test]
+fn repro_e2e_line_attribution_through_the_gate() {
+    let target_rows = idx_target("-spec info(state()) -> binary().\n");
+    let target: Vec<(&str, &str, &str)> = target_rows
+        .iter()
+        .map(|(m, p, s)| (*m, *p, s.as_str()))
+        .collect();
+    let analysis = analyse_full(
+        "t_info(S) -> rabbit_classic_queue_index_v2:info(S).\nt_segment(Seg, Dir) -> rabbit_classic_queue_index_v2:segment_file(Seg, Dir).\nt_local(S) -> local_info(S).\n",
+        &[6, 7, 8],
+        &[],
+        &PatchProvided::default(),
+        &target,
+        Some(&[(IDX_PATH, "-spec info(state()) -> list().\n")]),
+    );
+    assert_eq!(drifted(&analysis.reasons)[0].3, 6);
 }

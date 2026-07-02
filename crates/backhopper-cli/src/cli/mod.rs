@@ -26,6 +26,7 @@ pub mod shell;
 pub mod siblings;
 pub mod snapshots;
 pub mod suites;
+pub mod tree;
 pub mod tree_source;
 pub mod xref;
 
@@ -43,6 +44,7 @@ pub use shell::{CompletionsCmd, ShellCmd};
 pub use siblings::{SiblingsCmd, SiblingsDoctorArgs};
 pub use snapshots::SnapshotsCmd;
 pub use suites::SuitesCmd;
+pub use tree::TreeCmd;
 pub use tree_source::TreeSource;
 pub use xref::XrefCmd;
 
@@ -220,6 +222,11 @@ pub enum Group {
     Rev {
         #[command(subcommand)]
         cmd: RevCmd,
+    },
+    /// Query a repo ref's tree: one module's API surface, live.
+    Tree {
+        #[command(subcommand)]
+        cmd: TreeCmd,
     },
     /// Cross-branch drift checks against sibling release branches.
     Siblings {

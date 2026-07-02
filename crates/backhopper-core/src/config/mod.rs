@@ -444,6 +444,16 @@ pub struct SeriesRaw {
     /// series-pin coverage warning for the named pairs.
     #[serde(default)]
     pub untracked_projects: Vec<String>,
+    /// The target checkout this series' branch lives in, for
+    /// `check cascade` and for single-series verbs run without
+    /// `--target-repo-dir-path`. Authoritative for backhopper; q-port
+    /// holds its own copy and cross-checks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_repo_dir_path: Option<String>,
+    /// Ref within that checkout; `HEAD` when omitted, matching the
+    /// flag's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -670,6 +680,12 @@ pub struct Series {
     /// Tracked projects this series deliberately does not pin.
     #[serde(default)]
     pub untracked_projects: Vec<ProjectName>,
+    /// The target checkout this series' branch lives in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_repo_dir_path: Option<PathBuf>,
+    /// Ref within that checkout; `HEAD` when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_ref: Option<String>,
 }
 
 impl Series {
@@ -772,6 +788,8 @@ impl Config {
                 name: SeriesName::new(s.name).map_err(ConfigError::Name)?,
                 pins,
                 untracked_projects,
+                target_repo_dir_path: s.target_repo_dir_path.map(PathBuf::from),
+                target_ref: s.target_ref,
             });
         }
         let mut suite_rules = Vec::with_capacity(raw.suite_rules.len());

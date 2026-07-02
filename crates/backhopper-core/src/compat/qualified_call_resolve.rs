@@ -150,7 +150,7 @@ pub fn analyse_qualified_calls(
     // which is not the same fact as a readable module with no spec.
     let mut specs_by_module: BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)> = BTreeMap::new();
     for subject in subjects {
-        let calls = extract_qualified_calls(subject.added_text);
+        let calls = extract_qualified_calls(subject.added_text, subject.line_map);
         if calls.is_empty() {
             continue;
         }
@@ -223,10 +223,56 @@ pub fn analyse_qualified_calls(
     analysis
 }
 
-/// The four guards `check_return_shapes` applies on the snapshot axis,
-/// sourced from the two checkouts' spec tables: present on both sides,
-/// both parse to a known `SpecType`, shapes disagree. Every guard that
-/// declines to compare is counted rather than dropped.
+/// Outcome of comparing one function's `-spec` return shape between
+/// two spec tables. The guards are `check_return_shapes`' from the
+/// snapshot axis: present on both sides, both parse to a known
+/// `SpecType`, shapes disagree.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ShapeComparison {
+    /// Both sides have a spec and the shapes agree.
+    Same,
+    /// Both sides have a spec and the shapes disagree.
+    Drift {
+        source_signature: String,
+        target_signature: String,
+    },
+    /// One or both sides declare no `-spec` for the key.
+    NoSpec,
+    /// Both sides have a spec but at least one parses to
+    /// `SpecType::Unknown`.
+    UnknownType,
+}
+
+pub fn compare_return_shapes(
+    target_specs: &SpecTable,
+    source_specs: &SpecTable,
+    key: &(FunctionName, Arity),
+) -> ShapeComparison {
+    let (Some(target_sig), Some(source_sig)) = (target_specs.get(key), source_specs.get(key))
+    else {
+        return ShapeComparison::NoSpec;
+    };
+    // Identical text means identical shape: no parse needed.
+    if target_sig == source_sig {
+        return ShapeComparison::Same;
+    }
+    let target_ast = parse_signature_return(target_sig);
+    let source_ast = parse_signature_return(source_sig);
+    if matches!(target_ast, SpecType::Unknown) || matches!(source_ast, SpecType::Unknown) {
+        return ShapeComparison::UnknownType;
+    }
+    if target_ast.matches(&source_ast) {
+        ShapeComparison::Same
+    } else {
+        ShapeComparison::Drift {
+            source_signature: source_sig.clone(),
+            target_signature: target_sig.clone(),
+        }
+    }
+}
+
+/// Every guard that declines to compare is counted rather than
+/// dropped.
 #[allow(clippy::too_many_arguments)]
 fn check_return_shape(
     subject: &AddedLinesSubject<'_>,
@@ -256,34 +302,26 @@ fn check_return_shape(
         tally.withheld_no_source += 1;
         return;
     };
-    let (Some(target_sig), Some(source_sig)) = (target_specs.get(key), source_specs.get(key))
-    else {
-        tally.withheld_no_spec += 1;
-        return;
-    };
-    // Identical text means identical shape: no parse needed.
-    if target_sig == source_sig {
-        tally.compared += 1;
-        return;
-    }
-    let target_ast = parse_signature_return(target_sig);
-    let source_ast = parse_signature_return(source_sig);
-    if matches!(target_ast, SpecType::Unknown) || matches!(source_ast, SpecType::Unknown) {
-        tally.withheld_unknown_type += 1;
-        return;
-    }
-    tally.compared += 1;
-    if !target_ast.matches(&source_ast) {
-        analysis
-            .reasons
-            .push(Reason::QualifiedCallReturnShapeDrift {
-                source_path: subject.source_path.clone(),
-                module: module.clone(),
-                function: key.0.clone(),
-                arity: key.1,
-                source_signature: source_sig.clone(),
-                target_signature: target_sig.clone(),
-                line: file_line(subject.line_map, call_line),
-            });
+    match compare_return_shapes(target_specs, source_specs, key) {
+        ShapeComparison::Same => tally.compared += 1,
+        ShapeComparison::NoSpec => tally.withheld_no_spec += 1,
+        ShapeComparison::UnknownType => tally.withheld_unknown_type += 1,
+        ShapeComparison::Drift {
+            source_signature,
+            target_signature,
+        } => {
+            tally.compared += 1;
+            analysis
+                .reasons
+                .push(Reason::QualifiedCallReturnShapeDrift {
+                    source_path: subject.source_path.clone(),
+                    module: module.clone(),
+                    function: key.0.clone(),
+                    arity: key.1,
+                    source_signature,
+                    target_signature,
+                    line: file_line(subject.line_map, call_line),
+                });
+        }
     }
 }

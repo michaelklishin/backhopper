@@ -176,3 +176,73 @@ fn cache_section_rejects_unknown_fields() {
     let path = write_config(&tmp, "config_version = 1\n\n[cache]\nlru = true\n");
     assert!(Config::load(&path).is_err());
 }
+
+// Series target fields (046 §F)
+
+#[test]
+fn a_series_carries_its_target_checkout_and_ref() {
+    let body = r#"
+config_version = 1
+
+[defaults]
+snapshot_dir = "snapshots"
+fallback_branch = "main"
+scan_paths = ["src/**/*.erl"]
+
+[[project]]
+name = "ra"
+git_url = "/tmp/ra.git"
+
+[[series]]
+name = "rabbitmq-3.13"
+pins = [ { project = "ra", tag = "v2.7.5" } ]
+target_repo_dir_path = "/checkouts/paid_oss_backports_v3.13.x.git"
+target_ref = "v3.13.x"
+
+[[series]]
+name = "rabbitmq-4.2"
+pins = [ { project = "ra", tag = "v3.1.6" } ]
+"#;
+    let tmp = TempDir::new().unwrap();
+    let path = write_config(&tmp, body);
+    let cfg = Config::load(&path).unwrap();
+    let with = cfg
+        .series_by_name(&SeriesName::new("rabbitmq-3.13").unwrap())
+        .unwrap();
+    assert_eq!(
+        with.target_repo_dir_path.as_deref(),
+        Some(std::path::Path::new(
+            "/checkouts/paid_oss_backports_v3.13.x.git"
+        ))
+    );
+    assert_eq!(with.target_ref.as_deref(), Some("v3.13.x"));
+    let without = cfg
+        .series_by_name(&SeriesName::new("rabbitmq-4.2").unwrap())
+        .unwrap();
+    assert_eq!(without.target_repo_dir_path, None);
+    assert_eq!(without.target_ref, None);
+}
+
+#[test]
+fn a_series_still_rejects_an_unknown_field() {
+    let body = r#"
+config_version = 1
+
+[defaults]
+snapshot_dir = "snapshots"
+fallback_branch = "main"
+scan_paths = ["src/**/*.erl"]
+
+[[project]]
+name = "ra"
+git_url = "/tmp/ra.git"
+
+[[series]]
+name = "rabbitmq-3.13"
+pins = [ { project = "ra", tag = "v2.7.5" } ]
+target_repo_path = "/typo/field/name"
+"#;
+    let tmp = TempDir::new().unwrap();
+    let path = write_config(&tmp, body);
+    assert!(Config::load(&path).is_err());
+}

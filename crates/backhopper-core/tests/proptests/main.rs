@@ -23,6 +23,7 @@ mod postimage_duality_proptests;
 mod predicted_conflicts_proptests;
 mod preimage_check_proptests;
 mod qualified_call_gate_proptests;
+mod qualified_call_run_join_proptests;
 mod relative_path_proptests;
 mod scan_hunk_proptests;
 mod schema_diff_proptests;

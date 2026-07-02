@@ -105,26 +105,72 @@ pub struct QualifiedCallSite {
 /// Every statically-named `mod:fun(Args)` call in `src`, with line and
 /// arity. Type-attribute lines (`-spec`, `-callback`, `-type`,
 /// `-opaque`) are skipped: a qualified `mod:t()` there is a type
-/// reference, not a call. Variable-module and wrapped multi-line calls
-/// are skipped by `extract_call_args_into`.
-pub fn extract_qualified_calls(src: &str) -> Vec<QualifiedCallSite> {
+/// reference, not a call. `line_map[i]` is text line `i`'s file line:
+/// consecutive `Body` lines join into one scanned run only when
+/// file-adjacent, so a call whose argument list wraps yields its exact
+/// arity while fragments from different hunks never concatenate into a
+/// false construct. The scanner's classification state persists across
+/// gaps on purpose: resetting would misread a still-open `-spec` as
+/// body text.
+pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCallSite> {
+    debug_assert_eq!(
+        line_map.len(),
+        src.lines().count(),
+        "line map length must equal the line count"
+    );
     let mut scanner = AttrCtxScanner::new();
     let mut out = Vec::new();
-    let mut calls = Vec::new();
+    let mut run = String::new();
+    // (byte offset of the line's start in `run`, 1-based text line)
+    let mut run_lines: Vec<(usize, u32)> = Vec::new();
+    let mut prev_body_file_line: Option<u32> = None;
     for (idx, line) in src.lines().enumerate() {
-        if scanner.classify(line) != RefContext::Body {
+        let stripped = strip_line_comment(line);
+        let ctx = scanner.classify(stripped);
+        let file_line = line_map.get(idx).copied();
+        let adjacent = match (prev_body_file_line, file_line) {
+            (Some(prev), Some(cur)) => cur == prev + 1,
+            _ => false,
+        };
+        if ctx != RefContext::Body || !adjacent {
+            flush_qualified_run(&run, &run_lines, &mut out);
+            run.clear();
+            run_lines.clear();
+        }
+        prev_body_file_line = (ctx == RefContext::Body).then_some(file_line).flatten();
+        if ctx != RefContext::Body {
             continue;
         }
-        calls.clear();
-        extract_call_args_into(line, &mut calls);
-        for (mfa, _shapes) in calls.drain(..) {
-            out.push(QualifiedCallSite {
-                mfa,
-                line: (idx + 1) as u32,
-            });
-        }
+        run_lines.push((run.len(), (idx + 1) as u32));
+        run.push_str(stripped);
+        run.push('\n');
     }
+    flush_qualified_run(&run, &run_lines, &mut out);
     out
+}
+
+fn flush_qualified_run(run: &str, run_lines: &[(usize, u32)], out: &mut Vec<QualifiedCallSite>) {
+    if run.is_empty() {
+        return;
+    }
+    let mut calls = Vec::new();
+    push_call_args_with_offsets(run, &mut calls);
+    for ((mfa, _shapes), offset) in calls {
+        out.push(QualifiedCallSite {
+            mfa,
+            line: run_line_at(run_lines, offset),
+        });
+    }
+}
+
+// Match-start origin: the run line whose start offset is the last one
+// at or before the match offset.
+fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
+    match run_lines.binary_search_by(|(start, _)| start.cmp(&offset)) {
+        Ok(i) => run_lines[i].1,
+        Err(0) => run_lines.first().map_or(1, |(_, l)| *l),
+        Err(i) => run_lines[i - 1].1,
+    }
 }
 
 /// Cross-line classifier that decides whether a hunk line is body or

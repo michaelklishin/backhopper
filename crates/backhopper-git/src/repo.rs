@@ -13,7 +13,7 @@ use std::str;
 
 use gix::bstr::ByteSlice;
 use gix::object::tree::diff::Change;
-use imara_diff::{Algorithm, BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig};
+use imara_diff::{Algorithm, Diff, Hunk, InternedInput};
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix, TagName};
@@ -722,13 +722,87 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
     }
 }
 
+const DIFF_CONTEXT: u32 = 3;
+
 /// Unified-diff hunks without any file header lines. Returns an empty
-/// string when `before == after`.
+/// string when `before == after`. imara computes the change ranges;
+/// the hunk grouping, headers, and line emission are ours: imara 0.2's
+/// bundled printer can emit more leading context than its header start
+/// accounts for, which shifts every file line a consumer derives from
+/// `new_start`.
 pub fn unified_diff_body(before: &str, after: &str) -> String {
     let input = InternedInput::new(before, after);
     let mut diff = Diff::compute(Algorithm::Histogram, &input);
     diff.postprocess_lines(&input);
-    let printer = BasicLineDiffPrinter(&input.interner);
-    diff.unified_diff(&printer, UnifiedDiffConfig::default(), &input)
-        .to_string()
+    let changes: Vec<Hunk> = diff.hunks().collect();
+    if changes.is_empty() {
+        return String::new();
+    }
+    let before_len = input.before.len() as u32;
+    // Group changes whose three-line contexts touch or overlap into one
+    // printed hunk, the way git does.
+    let mut groups: Vec<Vec<Hunk>> = Vec::new();
+    for hunk in changes {
+        match groups.last_mut() {
+            Some(group)
+                if hunk.before.start.saturating_sub(DIFF_CONTEXT)
+                    <= group.last().expect("group is non-empty").before.end + DIFF_CONTEXT =>
+            {
+                group.push(hunk);
+            }
+            _ => groups.push(vec![hunk]),
+        }
+    }
+    let before_line = |i: u32| input.interner[input.before[i as usize]];
+    let after_line = |i: u32| input.interner[input.after[i as usize]];
+    let mut out = String::new();
+    for group in groups {
+        let first = group.first().expect("group is non-empty");
+        let last = group.last().expect("group is non-empty");
+        // The unchanged region around a change is identical on both
+        // sides, so one leading and one trailing count serve both.
+        let leading = DIFF_CONTEXT.min(first.before.start);
+        let trailing = DIFF_CONTEXT.min(before_len - last.before.end);
+        let old_start = first.before.start - leading;
+        let old_count = last.before.end + trailing - old_start;
+        let new_start = first.after.start - leading;
+        let new_count = last.after.end + trailing - new_start;
+        let _ = writeln!(
+            out,
+            "@@ -{},{old_count} +{},{new_count} @@",
+            display_start(old_start, old_count),
+            display_start(new_start, new_count),
+        );
+        let mut pos = old_start;
+        for hunk in &group {
+            for i in pos..hunk.before.start {
+                push_diff_line(&mut out, ' ', before_line(i));
+            }
+            for i in hunk.before.clone() {
+                push_diff_line(&mut out, '-', before_line(i));
+            }
+            for i in hunk.after.clone() {
+                push_diff_line(&mut out, '+', after_line(i));
+            }
+            pos = hunk.before.end;
+        }
+        for i in pos..last.before.end + trailing {
+            push_diff_line(&mut out, ' ', before_line(i));
+        }
+    }
+    out
+}
+
+/// Unified headers are 1-based, except that a zero-length range names
+/// the line before the position.
+fn display_start(start: u32, count: u32) -> u32 {
+    if count == 0 { start } else { start + 1 }
+}
+
+fn push_diff_line(out: &mut String, sign: char, line: &str) {
+    out.push(sign);
+    out.push_str(line);
+    if !line.ends_with('\n') {
+        out.push('\n');
+    }
 }

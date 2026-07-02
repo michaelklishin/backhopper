@@ -24,7 +24,9 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::str::FromStr;
 
-use backhopper_erlang_scan::parse_callable_signature;
+use backhopper_erlang_scan::{
+    count_top_level_commas, parse_callable_signature, take_balanced_parens,
+};
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
@@ -65,6 +67,120 @@ pub fn extract_defined_macros(src: &str) -> BTreeSet<String> {
         .into_iter()
         .filter_map(|hit| parse_macro_define_name(hit.body))
         .collect()
+}
+
+/// One `-define(NAME, ...)` or `-define(NAME(Args), ...)` form:
+/// `params` is `None` for the object-like form, and `body` is the
+/// definition text with comments stripped and whitespace collapsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacroDef {
+    pub params: Option<usize>,
+    pub body: String,
+}
+
+/// Every `-define` in `src` with its normalized body, keyed by name.
+/// A name defined more than once (`-ifdef` branches, or coexisting
+/// object-like and function-like forms) keeps every definition, so the
+/// caller can withhold instead of guessing which one is live.
+pub fn extract_defined_macro_values(src: &str) -> BTreeMap<String, Vec<MacroDef>> {
+    let mut out: BTreeMap<String, Vec<MacroDef>> = BTreeMap::new();
+    for hit in iter_attribute_bodies(src, &["define"]) {
+        let Some((name, params, value)) = parse_macro_define(hit.body) else {
+            continue;
+        };
+        out.entry(name).or_default().push(MacroDef {
+            params,
+            body: normalize_macro_body(value),
+        });
+    }
+    out
+}
+
+/// Splits a `-define` body into name, parameter count, and value text.
+fn parse_macro_define(body: &str) -> Option<(String, Option<usize>, &str)> {
+    let trimmed = body.trim_start();
+    let name_end = trimmed
+        .char_indices()
+        .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '_' || *c == '@'))
+        .map(|(i, _)| i)
+        .unwrap_or(trimmed.len());
+    if name_end == 0 {
+        return None;
+    }
+    let name = trimmed[..name_end].to_owned();
+    let rest = trimmed[name_end..].trim_start();
+    let (params, after) = if rest.starts_with('(') {
+        let (args, after_args) = take_balanced_parens(rest)?;
+        let count = if args.trim().is_empty() {
+            0
+        } else {
+            count_top_level_commas(args) + 1
+        };
+        (Some(count), after_args.trim_start())
+    } else {
+        (None, rest)
+    };
+    let value = after.strip_prefix(',')?;
+    Some((name, params, value))
+}
+
+/// Comments stripped, whitespace runs collapsed to one space, ends
+/// trimmed: enough to equate reformatting without equating bodies that
+/// differ.
+fn normalize_macro_body(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    let mut in_string = false;
+    let mut in_atom = false;
+    while let Some(c) = chars.next() {
+        if in_string || in_atom {
+            out.push(c);
+            match c {
+                '\\' => {
+                    if let Some(next) = chars.next() {
+                        out.push(next);
+                    }
+                }
+                '"' if in_string => in_string = false,
+                '\'' if in_atom => in_atom = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '%' => {
+                for next in chars.by_ref() {
+                    if next == '\n' {
+                        break;
+                    }
+                }
+                if !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            }
+            '"' => {
+                in_string = true;
+                out.push(c);
+            }
+            '\'' => {
+                in_atom = true;
+                out.push(c);
+            }
+            '$' => {
+                out.push(c);
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            }
+            c if c.is_whitespace() => {
+                if !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out.trim().to_owned()
 }
 
 /// Every `?MACRO` reference in `src`, comments and strings skipped.
@@ -351,6 +467,40 @@ pub type SpecTable = BTreeMap<(FunctionName, Arity), String>;
 /// what a spec is or which arity it has. Module-qualified forms parse
 /// to `None` and are simply absent, which withholds downstream.
 pub fn extract_specs(src: &str) -> SpecTable {
+    extract_signature_forms(src, b"spec")
+}
+
+/// A behaviour module's `-callback name(Args) -> Ret.` signatures,
+/// keyed by `(function, arity)`. Same walker and grammar as
+/// `extract_specs`.
+pub fn extract_callbacks(src: &str) -> SpecTable {
+    extract_signature_forms(src, b"callback")
+}
+
+/// The `(function, arity)` pairs a behaviour lists in
+/// `-optional_callbacks([f/a, ...])`.
+pub fn extract_optional_callbacks(src: &str) -> BTreeSet<(FunctionName, Arity)> {
+    let mut out = BTreeSet::new();
+    for hit in iter_attribute_bodies(src, &["optional_callbacks"]) {
+        let Some(open) = hit.body.find('[') else {
+            continue;
+        };
+        let Some(close) = hit.body[open..].find(']') else {
+            continue;
+        };
+        for entry in hit.body[open + 1..open + close].split(',') {
+            if let Some((name, arity)) = parse_fun_arity(entry)
+                && let (Ok(function), Ok(arity)) =
+                    (FunctionName::from_str(&name), Arity::try_from(arity))
+            {
+                out.insert((function, arity));
+            }
+        }
+    }
+    out
+}
+
+fn extract_signature_forms(src: &str, keyword: &[u8]) -> SpecTable {
     let bytes = src.as_bytes();
     let mut out = SpecTable::new();
     let mut i = 0;
@@ -364,8 +514,8 @@ pub fn extract_specs(src: &str) -> SpecTable {
             b'"' => i = skip_string(bytes, i, b'"'),
             b'$' => i += 2.min(bytes.len() - i),
             b'\'' => i = skip_string(bytes, i, b'\''),
-            b'-' if at_form_start(bytes, i) && at_spec_keyword(bytes, i + 1) => {
-                let body_start = i + 1 + "spec".len();
+            b'-' if at_form_start(bytes, i) && at_keyword(bytes, i + 1, keyword) => {
+                let body_start = i + 1 + keyword.len();
                 let body_end = form_end(bytes, body_start);
                 let body = str::from_utf8(&bytes[body_start..body_end]).unwrap_or("");
                 if let Some(sig) = parse_callable_signature(strip_outer_parens(body))
@@ -384,12 +534,12 @@ pub fn extract_specs(src: &str) -> SpecTable {
     out
 }
 
-/// True when `spec` starts at `pos` and is not a prefix of a longer
-/// attribute name (`-specs_of(...)` must not match).
-fn at_spec_keyword(bytes: &[u8], pos: usize) -> bool {
-    bytes[pos..].starts_with(b"spec")
+/// True when `keyword` starts at `pos` and is not a prefix of a longer
+/// attribute name (`-specs_of(...)` must not match `spec`).
+fn at_keyword(bytes: &[u8], pos: usize, keyword: &[u8]) -> bool {
+    bytes[pos..].starts_with(keyword)
         && !bytes
-            .get(pos + "spec".len())
+            .get(pos + keyword.len())
             .copied()
             .is_some_and(is_attribute_name_char)
 }

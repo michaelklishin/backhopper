@@ -14,9 +14,12 @@ use std::str::FromStr;
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
 use backhopper_core::compat::added_lines::{AddedLinesSubject, added_lines_with_offsets};
+use backhopper_core::compat::behaviour_callback_resolve::analyse_behaviour_callbacks;
 use backhopper_core::compat::classify_hunks_against_target;
-use backhopper_core::compat::define_resolve::analyse_define_symbols;
-use backhopper_core::compat::local_call_resolve::analyse_local_calls;
+use backhopper_core::compat::define_resolve::{
+    MacroValueAnalysis, analyse_define_symbols, analyse_macro_values,
+};
+use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
     QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
@@ -353,23 +356,34 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
 }
 
 /// Resolve unqualified calls the patch adds against the target
-/// module's function set. `.erl` files only: a `.hrl` defines no
-/// function set of its own.
-pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+/// module's function set, and compare resolved calls' `-spec` return
+/// shapes between the checkouts. `.erl` files only: a `.hrl` defines
+/// no function set of its own. `source_repo_dir` is the live source
+/// checkout; `None` withholds every shape check (counted, not silent).
+pub fn collect_local_call_findings(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+    source_repo_dir: Option<&Path>,
+) -> LocalCallAnalysis {
     let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
         .into_iter()
         .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
         .collect();
     if subjects_text.is_empty() {
-        return Vec::new();
+        return LocalCallAnalysis::default();
     }
     let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
+        return LocalCallAnalysis::default();
     };
     let commit = ctx.index.resolved_commit().clone();
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
+    let read_source_fn = source_repo_dir
+        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
+    let read_source = read_source_fn
+        .as_ref()
+        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
     let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
         .iter()
         .map(|(p, t, lm)| AddedLinesSubject {
@@ -378,7 +392,7 @@ pub fn collect_local_call_findings(files: &[PatchedFile], ctx: &TargetContext) -
             line_map: lm,
         })
         .collect();
-    analyse_local_calls(&subjects, &read_target)
+    analyse_local_calls(&subjects, &read_target, read_source)
 }
 
 /// Resolve qualified `m:f/a` calls the patch adds against the called
@@ -444,6 +458,90 @@ pub fn collect_qualified_call_findings(
 /// single source commit exists for patch, range, and PR inputs.
 fn read_source_text(repo_dir: &Path, path: &RelativePath) -> Option<String> {
     fs::read_to_string(repo_dir.join(path.as_str())).ok()
+}
+
+/// Compare a declared behaviour's `-callback` surface between the two
+/// trees for behaviours the patch's added lines declare. `.erl` files
+/// only.
+pub fn collect_behaviour_callback_findings(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+    covered_modules: &BTreeSet<ModuleName>,
+    source_repo_dir: Option<&Path>,
+) -> Vec<Reason> {
+    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
+        .into_iter()
+        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
+        .collect();
+    if subjects_text.is_empty() {
+        return Vec::new();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
+        let path = ctx.index.module_erl_path(m)?;
+        RelativePath::new(path.to_str()?.to_owned()).ok()
+    };
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let read_source_fn = source_repo_dir
+        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
+    let read_source = read_source_fn
+        .as_ref()
+        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t, lm)| AddedLinesSubject {
+            source_path: p,
+            added_text: t,
+            line_map: lm,
+        })
+        .collect();
+    analyse_behaviour_callbacks(
+        &subjects,
+        covered_modules,
+        &resolve_module_path,
+        &read_target,
+        read_source,
+    )
+}
+
+/// Compare same-file `-define` values for macros the patch uses
+/// between the two trees. `.erl` and `.hrl` alike: a define lives in
+/// either.
+pub fn collect_macro_value_findings(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+    source_repo_dir: Option<&Path>,
+) -> MacroValueAnalysis {
+    let subjects_text = collect_define_subject_text(files);
+    if subjects_text.is_empty() {
+        return MacroValueAnalysis::default();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return MacroValueAnalysis::default();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let read_source_fn = source_repo_dir
+        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
+    let read_source = read_source_fn
+        .as_ref()
+        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t, lm)| AddedLinesSubject {
+            source_path: p,
+            added_text: t,
+            line_map: lm,
+        })
+        .collect();
+    analyse_macro_values(&subjects, &read_target, read_source)
 }
 
 /// The Erlang module a `.erl` path defines, by basename.

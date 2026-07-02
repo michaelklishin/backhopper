@@ -64,6 +64,12 @@ pub struct CheckFlags {
     pub no_cache: bool,
 }
 
+/// Default already-present walk cap, shared with `check cascade`'s
+/// synthesized per-leg target args.
+pub const DEFAULT_TARGET_WALK_LIMIT: usize = 5000;
+/// Default target ref, shared the same way.
+pub const DEFAULT_TARGET_REF: &str = "HEAD";
+
 /// Cross-branch target-repo flags. When `target_repo_dir_path` is set,
 /// the verdict pipeline classifies every touched path against the
 /// target tree and emits `PathRename` or `PathsMissingOnTarget` rows
@@ -75,7 +81,7 @@ pub struct TargetRepoArgs {
     #[arg(long)]
     pub target_repo_dir_path: Option<PathBuf>,
     /// Ref to resolve inside the target repo. Defaults to `HEAD`.
-    #[arg(long, default_value = "HEAD", requires = "target_repo_dir_path")]
+    #[arg(long, default_value = DEFAULT_TARGET_REF, requires = "target_repo_dir_path")]
     pub target_ref: String,
     /// External `[[path_translation]]` TOML file unioned with the
     /// stanzas in `backhopper.toml`. The flag accepts a path; missing
@@ -85,7 +91,7 @@ pub struct TargetRepoArgs {
     /// Cap the target-branch first-parent walk used by already-present
     /// detection. A backstop, not a tuning knob: real divergence
     /// windows are a few hundred commits.
-    #[arg(long, default_value_t = 5000, requires = "target_repo_dir_path")]
+    #[arg(long, default_value_t = DEFAULT_TARGET_WALK_LIMIT, requires = "target_repo_dir_path")]
     pub target_walk_limit: usize,
     /// Skip already-present detection against the target branch.
     #[arg(long, requires = "target_repo_dir_path")]
@@ -239,6 +245,26 @@ pub enum CheckCmd {
         source: SourcePinArgs,
         #[command(flatten)]
         target: TargetRepoArgs,
+        #[command(flatten)]
+        diagnostics: CheckFlags,
+    },
+    /// Check one commit set against every leg of a cascade: one series
+    /// per leg, in the given order, each with the target checkout its
+    /// series stanza names.
+    Cascade {
+        /// Legs in cascade order. Repeat the flag or use a
+        /// comma-separated list; every named series must carry
+        /// `target_repo_dir_path` in the config.
+        #[arg(long, required = true, value_delimiter = ',')]
+        series: Vec<SeriesName>,
+        #[command(flatten)]
+        repo: RepoDirPathArg,
+        /// File of one commit SHA prefix per line (7 to 40 hex characters;
+        /// trailing `# annotation` ignored); `-` reads stdin.
+        #[arg(long, required = true)]
+        commits_file_path: PathBuf,
+        #[command(flatten)]
+        source: SourcePinArgs,
         #[command(flatten)]
         diagnostics: CheckFlags,
     },

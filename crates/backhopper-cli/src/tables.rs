@@ -148,6 +148,10 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::LocalCallUndefinedOnTarget { .. } => "LocalCallUndefinedOnTarget",
         Reason::QualifiedCallUndefinedOnTarget { .. } => "QualifiedCallUndefinedOnTarget",
         Reason::QualifiedCallReturnShapeDrift { .. } => "QualifiedCallReturnShapeDrift",
+        Reason::LocalCallReturnShapeDrift { .. } => "LocalCallReturnShapeDrift",
+        Reason::MacroValueDrift { .. } => "MacroValueDrift",
+        Reason::BehaviourCallbackAddedOnTarget { .. } => "BehaviourCallbackAddedOnTarget",
+        Reason::BehaviourCallbackDriftOnTarget { .. } => "BehaviourCallbackDriftOnTarget",
         Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
         Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
         _ => "UnknownReason",
@@ -412,6 +416,45 @@ fn reason_detail(r: &Reason) -> String {
             line,
         } => format!(
             "{module}:{function}/{arity}: source spec {source_signature:?} vs target spec {target_signature:?} ({source_path}:{line})"
+        ),
+        Reason::LocalCallReturnShapeDrift {
+            source_path,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "{function}/{arity}: source spec {source_signature:?} vs target spec {target_signature:?} ({source_path}:{line})"
+        ),
+        Reason::MacroValueDrift {
+            source_path,
+            macro_name,
+            source_value,
+            target_value,
+            line,
+        } => format!(
+            "?{macro_name}: source value {source_value:?} vs target value {target_value:?} ({source_path}:{line})"
+        ),
+        Reason::BehaviourCallbackAddedOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            line,
+        } => format!(
+            "{behaviour} on target requires {callback}/{arity} the source does not declare ({source_path}:{line})"
+        ),
+        Reason::BehaviourCallbackDriftOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "{behaviour}:{callback}/{arity}: source {source_signature:?} vs target {target_signature:?} ({source_path}:{line})"
         ),
         Reason::VersionedMachineSnapshotMissing { module, side } => {
             format!("{module}: versioned-machine snapshot missing on {side:?}")

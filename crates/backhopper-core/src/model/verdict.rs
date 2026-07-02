@@ -420,6 +420,56 @@ pub enum Reason {
         target_signature: String,
         line: u32,
     },
+    /// An unqualified call that resolves against the target module's
+    /// own definitions has a target-tree `-spec` return shape that
+    /// disagrees with its source-tree `-spec`. The local twin of
+    /// `QualifiedCallReturnShapeDrift`; imported resolutions are
+    /// withheld, since the callee's spec lives in another module.
+    LocalCallReturnShapeDrift {
+        source_path: RelativePath,
+        function: FunctionName,
+        arity: Arity,
+        source_signature: String,
+        target_signature: String,
+        line: u32,
+    },
+    /// A `?MACRO` the patch uses is defined in the touched file itself
+    /// on both trees, exactly once each, and the normalized `-define`
+    /// bodies disagree: the compile-clean, behavior-divergent class.
+    /// Withheld for definitions reached any other way. Non-blocking.
+    MacroValueDrift {
+        source_path: RelativePath,
+        macro_name: String,
+        source_value: String,
+        target_value: String,
+        line: u32,
+    },
+    /// The target's version of a behaviour the patch declares requires
+    /// a callback the source's version does not, and the target does
+    /// not list it as optional: an implementation written against the
+    /// source is missing it. `line` is the `-behaviour` attribute's
+    /// line in the touched file. Non-blocking.
+    BehaviourCallbackAddedOnTarget {
+        source_path: RelativePath,
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        line: u32,
+    },
+    /// A callback both trees' versions of a declared behaviour declare
+    /// has a different normalized signature on the target. The whole
+    /// signature is compared, not just the return half: a callback
+    /// contract's argument types are the implementer's obligation.
+    /// Non-blocking.
+    BehaviourCallbackDriftOnTarget {
+        source_path: RelativePath,
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        source_signature: String,
+        target_signature: String,
+        line: u32,
+    },
     /// Declared versioned-machine module is touched but the snapshot
     /// has no recorded `versioned_machine_version` on `side`.
     /// Non-blocking.
@@ -606,6 +656,10 @@ impl Reason {
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
+            | Self::LocalCallReturnShapeDrift { .. }
+            | Self::MacroValueDrift { .. }
+            | Self::BehaviourCallbackAddedOnTarget { .. }
+            | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => None,
         }
@@ -620,13 +674,19 @@ impl Reason {
                 Some(ResolverClass::of_symbol_kind(&symbol.kind))
             }
             Self::MissingType { .. } => Some(ResolverClass::Type),
-            Self::MacroUndefinedOnTarget { .. } => Some(ResolverClass::Macro),
+            Self::MacroUndefinedOnTarget { .. } | Self::MacroValueDrift { .. } => {
+                Some(ResolverClass::Macro)
+            }
             Self::RecordUndefinedOnTarget { .. } => Some(ResolverClass::Record),
-            Self::LocalCallUndefinedOnTarget { .. } => Some(ResolverClass::LocalCall),
+            Self::LocalCallUndefinedOnTarget { .. } | Self::LocalCallReturnShapeDrift { .. } => {
+                Some(ResolverClass::LocalCall)
+            }
             Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. } => Some(ResolverClass::QualifiedCall),
             Self::HeaderFileMissing { .. } => Some(ResolverClass::Include),
-            Self::BehaviourModuleMissing { .. } => Some(ResolverClass::Behaviour),
+            Self::BehaviourModuleMissing { .. }
+            | Self::BehaviourCallbackAddedOnTarget { .. }
+            | Self::BehaviourCallbackDriftOnTarget { .. } => Some(ResolverClass::Behaviour),
             Self::ArityChanged { .. }
             | Self::SignatureChanged { .. }
             | Self::FileAbsent { .. }
@@ -707,6 +767,10 @@ impl Reason {
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
+            | Self::LocalCallReturnShapeDrift { .. }
+            | Self::MacroValueDrift { .. }
+            | Self::BehaviourCallbackAddedOnTarget { .. }
+            | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -754,6 +818,10 @@ impl Reason {
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
+            | Self::LocalCallReturnShapeDrift { .. }
+            | Self::MacroValueDrift { .. }
+            | Self::BehaviourCallbackAddedOnTarget { .. }
+            | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
             | Self::WireConstantBindingsMissing { .. } => false,
         }
@@ -1236,6 +1304,15 @@ pub struct Diagnostics {
     /// each first-party resolved call: compared, or withheld and why.
     #[serde(default, skip_serializing_if = "ShapeCheckTally::is_empty")]
     pub qualified_call_shape_checks: ShapeCheckTally,
+    /// The local-call twin: resolved unqualified calls, compared or
+    /// withheld. Kept apart from the qualified tally so one axis's
+    /// coverage never reads as the other's.
+    #[serde(default, skip_serializing_if = "ShapeCheckTally::is_empty")]
+    pub local_call_shape_checks: ShapeCheckTally,
+    /// Same-file `-define` value comparisons over macros the patch
+    /// uses: compared, or withheld and why.
+    #[serde(default, skip_serializing_if = "MacroValueTally::is_empty")]
+    pub macro_value_checks: MacroValueTally,
 }
 
 impl Diagnostics {
@@ -1254,6 +1331,8 @@ impl Diagnostics {
             dep_pin_divergence,
             pin_bumps,
             qualified_call_shape_checks,
+            local_call_shape_checks,
+            macro_value_checks,
         } = self;
         untracked_calls.is_empty()
             && untracked_records.is_empty()
@@ -1267,6 +1346,8 @@ impl Diagnostics {
             && dep_pin_divergence.is_empty()
             && pin_bumps.is_empty()
             && qualified_call_shape_checks.is_empty()
+            && local_call_shape_checks.is_empty()
+            && macro_value_checks.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -1330,6 +1411,11 @@ pub struct ShapeCheckTally {
     /// source tree lands here, not in `withheld_no_spec`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub withheld_no_source: usize,
+    /// The call resolved through an `-import`: the callee's `-spec`
+    /// lives in another module, so the calling module's tables cannot
+    /// compare it. Local-call axis only.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_imported: usize,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -1338,6 +1424,35 @@ fn is_zero(n: &usize) -> bool {
 }
 
 impl ShapeCheckTally {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// What the macro-value check did with each `?MACRO` the patch uses:
+/// compared, or withheld and why. Same-file `-define`s only; anything
+/// reached another way is withheld, never guessed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct MacroValueTally {
+    /// Defined exactly once same-file on both sides; values compared.
+    /// Drift is visible in the reasons, not double-counted here.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub compared: usize,
+    /// Not defined same-file on both sides: the definition lives in an
+    /// include, or moved between files across the trees.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_definition_elsewhere: usize,
+    /// Defined more than once in the file on either side (`-ifdef`
+    /// branches): either value could be live.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_multiple_defines: usize,
+    /// The touched file was not readable on the source side.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_no_source: usize,
+}
+
+impl MacroValueTally {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
     }

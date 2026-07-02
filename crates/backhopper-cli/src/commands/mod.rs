@@ -32,6 +32,7 @@ pub mod suggest;
 pub mod suites;
 pub mod summary;
 pub mod target_repo;
+pub mod tree;
 pub mod tree_source;
 pub mod verdict_cache;
 pub mod version;
@@ -57,6 +58,7 @@ pub fn dispatch(cli: Cli) -> CliResult<i32> {
         Group::Suites { cmd } => suites::handle(&cli.global, cmd),
         Group::Schema { cmd } => schema::handle(&cli.global, cmd),
         Group::Rev { cmd } => rev::handle(&cli.global, cmd),
+        Group::Tree { cmd } => tree::handle(&cli.global, cmd),
         Group::Siblings { cmd } => siblings::handle(&cli.global, cmd),
         Group::Version => version::handle(&cli.global),
     }

@@ -43,9 +43,9 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, PinBump, PinVerdict, Reason,
-    SeriesEvaluation, SeriesVerdict, SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds,
-    TranslationSource, Verdict,
+    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, MacroValueTally, PinBump,
+    PinVerdict, Reason, SeriesEvaluation, SeriesSummary, SeriesVerdict, ShapeCheckTally,
+    SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds, TranslationSource, Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
@@ -55,7 +55,7 @@ use backhopper_git::{
     normalized_patch_hash, trailer_origin_on_target,
 };
 
-use crate::cli::check::TargetRepoArgs;
+use crate::cli::check::{DEFAULT_TARGET_REF, DEFAULT_TARGET_WALK_LIMIT, TargetRepoArgs};
 use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, PinSelectorArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
@@ -375,7 +375,52 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
             &target,
             diagnostics,
         ),
+        CheckCmd::Cascade {
+            series,
+            repo,
+            commits_file_path,
+            source,
+            diagnostics,
+        } => run_cascade(
+            args,
+            &cfg,
+            &series,
+            &repo.repo_dir_path,
+            &commits_file_path,
+            &source,
+            diagnostics,
+        ),
     }
+}
+
+/// A single-series run without `--target-repo-dir-path` picks the
+/// target up from the series config; explicit flags win, and the
+/// config's `target_ref` rides along only when the config's dir was
+/// used. Multi-series `check batch` deliberately does not default.
+fn effective_target_args(
+    cfg: &Config,
+    selector: &PinSelectorArgs,
+    target: &TargetRepoArgs,
+) -> TargetRepoArgs {
+    if target.target_repo_dir_path.is_some() {
+        return target.clone();
+    }
+    let Some(series_name) = &selector.series else {
+        return target.clone();
+    };
+    let Ok(series) = cfg.series_by_name(series_name) else {
+        return target.clone();
+    };
+    let Some(dir) = &series.target_repo_dir_path else {
+        return target.clone();
+    };
+    let mut out = target.clone();
+    out.target_repo_dir_path = Some(dir.clone());
+    out.target_ref = series
+        .target_ref
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TARGET_REF.to_owned());
+    out
 }
 
 fn lookup_commit_subject(sha: &CommitSha, repo: Option<&Path>) -> Option<String> {
@@ -719,8 +764,21 @@ fn apply_target_context(
     target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
     let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(define_reasons, evaluation);
-    let local_call_reasons = target_repo::collect_local_call_findings(&parsed.files, target_ctx);
-    target_repo::merge_reasons_into_evaluation(local_call_reasons, evaluation);
+    let local_calls =
+        target_repo::collect_local_call_findings(&parsed.files, target_ctx, source_repo_dir);
+    target_repo::merge_reasons_into_evaluation(local_calls.reasons, evaluation);
+    evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
+    let macro_values =
+        target_repo::collect_macro_value_findings(&parsed.files, target_ctx, source_repo_dir);
+    target_repo::merge_reasons_into_evaluation(macro_values.reasons, evaluation);
+    evaluation.diagnostics.macro_value_checks = macro_values.checks;
+    let behaviour_callbacks = target_repo::collect_behaviour_callback_findings(
+        &parsed.files,
+        target_ctx,
+        covered_modules,
+        source_repo_dir,
+    );
+    target_repo::merge_reasons_into_evaluation(behaviour_callbacks, evaluation);
     let qualified_calls = target_repo::collect_qualified_call_findings(
         &parsed.files,
         target_ctx,
@@ -1075,7 +1133,8 @@ fn run_check_patch(
         selector.series.as_ref(),
         source,
     )?;
-    let target_ctx = target_repo::build_context(target, &cfg.path_translations, repo_dir_path)?;
+    let target = effective_target_args(cfg, selector, target);
+    let target_ctx = target_repo::build_context(&target, &cfg.path_translations, repo_dir_path)?;
     // patch, pr, and range inputs have no stable content address; the
     // two flags rescan state that lives outside the cache key
     let cache_bypass = provenance.is_none()
@@ -1479,6 +1538,45 @@ fn reason_md_label(r: &Reason) -> String {
         } => format!(
             "QualifiedCallReturnShapeDrift {module}:{function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
         ),
+        Reason::LocalCallReturnShapeDrift {
+            source_path,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "LocalCallReturnShapeDrift {function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
+        ),
+        Reason::MacroValueDrift {
+            source_path,
+            macro_name,
+            source_value,
+            target_value,
+            line,
+        } => format!(
+            "MacroValueDrift ?{macro_name} in {source_path}:{line}: source value {source_value:?} vs target value {target_value:?}"
+        ),
+        Reason::BehaviourCallbackAddedOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            line,
+        } => format!(
+            "BehaviourCallbackAddedOnTarget {behaviour} requires {callback}/{arity} in {source_path}:{line}"
+        ),
+        Reason::BehaviourCallbackDriftOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "BehaviourCallbackDriftOnTarget {behaviour}:{callback}/{arity} in {source_path}:{line}: source {source_signature:?} vs target {target_signature:?}"
+        ),
         _ => format!("{r:?}"),
     }
 }
@@ -1654,10 +1752,20 @@ fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> Cl
     Ok(())
 }
 
-/// Always on when the qualified-call gate ran: a round where the shape
-/// check withheld must read differently from one where it compared.
+/// Always on when the live gates ran: a round where a shape check
+/// withheld must read differently from one where it compared.
 fn render_shape_checks(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
-    let t = &diagnostics.qualified_call_shape_checks;
+    render_shape_tally(
+        w,
+        "qualified calls",
+        &diagnostics.qualified_call_shape_checks,
+    )?;
+    render_shape_tally(w, "local calls", &diagnostics.local_call_shape_checks)?;
+    render_macro_value_tally(w, &diagnostics.macro_value_checks)?;
+    Ok(())
+}
+
+fn render_shape_tally(w: &mut dyn Write, label: &str, t: &ShapeCheckTally) -> CliResult<()> {
     if t.is_empty() {
         return Ok(());
     }
@@ -1674,7 +1782,37 @@ fn render_shape_checks(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResul
             t.withheld_no_source
         ));
     }
-    writeln!(w, "qualified calls: {}", parts.join(", "))?;
+    if t.withheld_imported > 0 {
+        parts.push(format!(
+            "{} imported (spec in another module)",
+            t.withheld_imported
+        ));
+    }
+    writeln!(w, "{label}: {}", parts.join(", "))?;
+    Ok(())
+}
+
+fn render_macro_value_tally(w: &mut dyn Write, t: &MacroValueTally) -> CliResult<()> {
+    if t.is_empty() {
+        return Ok(());
+    }
+    let mut parts = vec![format!("{} value-compared", t.compared)];
+    if t.withheld_definition_elsewhere > 0 {
+        parts.push(format!(
+            "{} defined elsewhere",
+            t.withheld_definition_elsewhere
+        ));
+    }
+    if t.withheld_multiple_defines > 0 {
+        parts.push(format!("{} multiply defined", t.withheld_multiple_defines));
+    }
+    if t.withheld_no_source > 0 {
+        parts.push(format!(
+            "{} unchecked (no source checkout)",
+            t.withheld_no_source
+        ));
+    }
+    writeln!(w, "macro values: {}", parts.join(", "))?;
     Ok(())
 }
 
@@ -2200,17 +2338,77 @@ fn run_batch(
     reject_terse(diagnostics, "check batch")?;
     let store = open_store_read(args, cfg)?;
     let entries = read_commits_file(commits_file_path)?;
-    let target_ctx = target_repo::build_context(target, &cfg.path_translations, Some(repo))?;
     if entries.is_empty() {
         return Err(CliError::InvalidInput(
             "no commits supplied (empty file or stdin)".into(),
         ));
     }
+    let outcome = evaluate_batch(
+        args,
+        cfg,
+        &store,
+        series_names,
+        repo,
+        &entries,
+        source,
+        target,
+        diagnostics,
+    )?;
+    let git_repo = GitRepo::open(repo.to_path_buf())?;
+    let payload = BatchPayload {
+        queried_against: outcome.queried,
+        results: outcome.results,
+        self_projects: Some(self_project_names(cfg)),
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
+    };
+    let worst_exit = outcome.worst_exit;
+    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
+        let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
+        emit_rows(summary_fmt, &rows)?;
+        return Ok(worst_exit);
+    }
+    let ctx = OutputContext::new(args.formatter, "check batch");
+    let self_projects = self_project_names(cfg);
+    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
+    render_with_exit(&ctx, &payload, worst_exit, |w| {
+        render_batch_text(
+            w,
+            &payload.results,
+            diagnostics,
+            &self_projects,
+            &known_projects,
+        )
+    })
+}
+
+/// What one batch evaluation produced, before any rendering.
+struct BatchOutcome {
+    queried: Vec<BatchQuery>,
+    results: Vec<BatchResult>,
+    worst_exit: i32,
+}
+
+/// The batch evaluation core, target-parameterized so `check cascade`
+/// can run it once per leg.
+#[allow(clippy::too_many_arguments)]
+fn evaluate_batch(
+    args: &GlobalArgs,
+    cfg: &Config,
+    store: &SnapshotStore<ReadOnly>,
+    series_names: &[SeriesName],
+    repo: &Path,
+    entries: &[(usize, CommitShaPrefix)],
+    source: &SourcePinArgs,
+    target: &TargetRepoArgs,
+    diagnostics: CheckFlags,
+) -> CliResult<BatchOutcome> {
+    let target_ctx = target_repo::build_context(target, &cfg.path_translations, Some(repo))?;
     let git_repo = GitRepo::open(repo.to_path_buf())?;
     let probe = AlreadyPresentProbe::maybe_open(target_ctx.as_ref(), Some(repo));
     let dep_pin_probe = DepPinProbe::maybe_open(target_ctx.as_ref(), Some(repo));
-    let plan = BatchPlan::resolve(&git_repo, repo, &entries)?;
-    let resolved_series = resolve_series_set(args, cfg, &store, series_names, repo, diagnostics)?;
+    let plan = BatchPlan::resolve(&git_repo, repo, entries)?;
+    let resolved_series = resolve_series_set(args, cfg, store, series_names, repo, diagnostics)?;
     let queried = batch_queries(&resolved_series);
     let pair_count = plan.len() * resolved_series.len();
     let mut reporter = select_batch_reporter(args);
@@ -2218,9 +2416,9 @@ fn run_batch(
     let mut results: Vec<BatchResult> = Vec::with_capacity(pair_count);
     let mut worst_exit: i32 = 0;
     let mut current: usize = 0;
-    let cache = SnapshotCache::new(&store);
-    let mut availability = AvailabilityProbe::new(cfg, &store, &cache);
-    let bump_assessor = PinBumpAssessor::new(cfg, &store);
+    let cache = SnapshotCache::new(store);
+    let mut availability = AvailabilityProbe::new(cfg, store, &cache);
+    let bump_assessor = PinBumpAssessor::new(cfg, store);
     let mut bump_generator = BumpSnapshotGenerator::new(args, cfg);
     let session = CacheSession::open(args, cfg, diagnostics.no_cache, false);
     // Source pins depend only on the series, never on the commit.
@@ -2228,7 +2426,7 @@ fn run_batch(
     for series in &resolved_series {
         source_pins_by_series.push(resolve_source_pins(
             cfg,
-            &store,
+            store,
             &series.pins,
             None,
             None,
@@ -2264,7 +2462,7 @@ fn run_batch(
             let item_label = format!("{} @ {}{merge_marker}", planned.sha, series.name);
             let key = session.check_key(
                 cfg,
-                &store,
+                store,
                 &planned.sha,
                 Some(&series.name),
                 &series.pins,
@@ -2345,7 +2543,7 @@ fn run_batch(
             };
             availability.apply(&mut evaluation);
             if diagnostics.auto_generate {
-                bump_generator.apply(&store, &evaluation);
+                bump_generator.apply(store, &evaluation);
             }
             bump_assessor.apply(&mut evaluation);
             current += 1;
@@ -2366,30 +2564,233 @@ fn run_batch(
     }
     reporter.finish(pair_count);
     session.report();
-    let payload = BatchPayload {
-        queried_against: queried,
+    Ok(BatchOutcome {
+        queried,
         results,
-        self_projects: Some(self_project_names(cfg)),
-        resolver_coverage: Some(ResolverCoverage::current()),
-        fingerprint_version: Some(FINGERPRINT_VERSION),
-    };
-    if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
-        let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
-        emit_rows(summary_fmt, &rows)?;
-        return Ok(worst_exit);
-    }
-    let ctx = OutputContext::new(args.formatter, "check batch");
-    let self_projects = self_project_names(cfg);
-    let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
-    render_with_exit(&ctx, &payload, worst_exit, |w| {
-        render_batch_text(
-            w,
-            &payload.results,
-            diagnostics,
-            &self_projects,
-            &known_projects,
-        )
+        worst_exit,
     })
+}
+
+/// One evaluated cascade leg: the series, the checkout that served as
+/// its target, and the leg's whole batch payload. `exit_code` is the
+/// value the leg would have exited with alone; clearance itself stays
+/// derive-on-read, never serialized.
+#[derive(Debug, Serialize)]
+struct CascadeLeg {
+    series: SeriesName,
+    target_repo_dir_path: PathBuf,
+    target_ref: String,
+    exit_code: i32,
+    batch: BatchPayload,
+}
+
+#[derive(Debug, Serialize)]
+struct CascadePayload {
+    legs: Vec<CascadeLeg>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_cascade(
+    args: &GlobalArgs,
+    cfg: &Config,
+    series_names: &[SeriesName],
+    repo: &Path,
+    commits_file_path: &Path,
+    source: &SourcePinArgs,
+    diagnostics: CheckFlags,
+) -> CliResult<i32> {
+    reject_terse(diagnostics, "check cascade")?;
+    // Config errors surface by name before any evaluation starts.
+    let mut seen: BTreeSet<&SeriesName> = BTreeSet::new();
+    for name in series_names {
+        if !seen.insert(name) {
+            return Err(CliError::InvalidInput(format!(
+                "series {name} appears more than once in --series"
+            )));
+        }
+    }
+    let mut leg_targets = Vec::with_capacity(series_names.len());
+    for name in series_names {
+        let series = cfg.series_by_name(name)?;
+        let Some(dir) = &series.target_repo_dir_path else {
+            return Err(CliError::InvalidInput(format!(
+                "series {name} has no target_repo_dir_path in the config; every cascade leg needs one"
+            )));
+        };
+        let target_ref = series
+            .target_ref
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TARGET_REF.to_owned());
+        leg_targets.push((name.clone(), dir.clone(), target_ref));
+    }
+    let store = open_store_read(args, cfg)?;
+    let entries = read_commits_file(commits_file_path)?;
+    if entries.is_empty() {
+        return Err(CliError::InvalidInput(
+            "no commits supplied (empty file or stdin)".into(),
+        ));
+    }
+    let mut legs = Vec::with_capacity(leg_targets.len());
+    let mut worst_exit: i32 = 0;
+    for (name, dir, target_ref) in leg_targets {
+        let target = TargetRepoArgs {
+            target_repo_dir_path: Some(dir.clone()),
+            target_ref: target_ref.clone(),
+            path_translations_file_path: None,
+            target_walk_limit: DEFAULT_TARGET_WALK_LIMIT,
+            skip_already_present: false,
+        };
+        let outcome = evaluate_batch(
+            args,
+            cfg,
+            &store,
+            std::slice::from_ref(&name),
+            repo,
+            &entries,
+            source,
+            &target,
+            diagnostics,
+        )?;
+        worst_exit = worst_exit.max(outcome.worst_exit);
+        legs.push(CascadeLeg {
+            series: name,
+            target_repo_dir_path: dir,
+            target_ref,
+            exit_code: outcome.worst_exit,
+            batch: BatchPayload {
+                queried_against: outcome.queried,
+                results: outcome.results,
+                self_projects: Some(self_project_names(cfg)),
+                resolver_coverage: Some(ResolverCoverage::current()),
+                fingerprint_version: Some(FINGERPRINT_VERSION),
+            },
+        });
+    }
+    let payload = CascadePayload { legs };
+    let self_projects = self_project_names(cfg);
+    let subjects = cascade_subjects(&payload, repo);
+    let ctx = OutputContext::new(args.formatter, "check cascade");
+    render_with_exit(&ctx, &payload, worst_exit, |w| {
+        render_cascade_text(w, &payload, &self_projects, &subjects)
+    })
+}
+
+/// Commit subjects for the matrix, one lookup per distinct SHA.
+fn cascade_subjects(payload: &CascadePayload, repo: &Path) -> BTreeMap<CommitSha, String> {
+    let mut out = BTreeMap::new();
+    for leg in &payload.legs {
+        for row in &leg.batch.results {
+            out.entry(row.commit.clone()).or_insert_with(|| {
+                lookup_commit_subject(&row.commit, Some(repo)).unwrap_or_default()
+            });
+        }
+    }
+    out
+}
+
+/// One matrix (rows in commit order, one verdict column per leg), then
+/// one block per leg: the clearance line and the leg's aggregated
+/// shape and macro tallies.
+fn render_cascade_text(
+    w: &mut dyn Write,
+    payload: &CascadePayload,
+    self_projects: &BTreeSet<ProjectName>,
+    subjects: &BTreeMap<CommitSha, String>,
+) -> CliResult<()> {
+    let Some(first) = payload.legs.first() else {
+        return Ok(());
+    };
+    let shas: Vec<&CommitSha> = first.batch.results.iter().map(|r| &r.commit).collect();
+    let mut cells: BTreeMap<(&CommitSha, &SeriesName), &'static str> = BTreeMap::new();
+    for leg in &payload.legs {
+        for row in &leg.batch.results {
+            cells.insert(
+                (&row.commit, &leg.series),
+                summary_cell(&row.verdict.summary),
+            );
+        }
+    }
+    let subject_width = shas
+        .iter()
+        .map(|sha| subjects.get(*sha).map_or(0, |s| s.len()))
+        .max()
+        .unwrap_or(0)
+        .clamp(7, 60);
+    let col_widths: Vec<usize> = payload
+        .legs
+        .iter()
+        .map(|l| l.series.as_str().len().max("requires_adaptation".len()))
+        .collect();
+    write!(w, "{:<12} {:<subject_width$}", "sha", "subject")?;
+    for (leg, width) in payload.legs.iter().zip(&col_widths) {
+        write!(w, " {:<width$}", leg.series.as_str(), width = *width)?;
+    }
+    writeln!(w)?;
+    for sha in &shas {
+        let short = &sha.as_str()[..10.min(sha.as_str().len())];
+        let subject = subjects.get(*sha).map(String::as_str).unwrap_or("");
+        let subject: String = subject.chars().take(subject_width).collect();
+        write!(w, "{short:<12} {subject:<subject_width$}")?;
+        for (leg, width) in payload.legs.iter().zip(&col_widths) {
+            let cell = cells.get(&(*sha, &leg.series)).copied().unwrap_or("-");
+            write!(w, " {cell:<width$}", width = *width)?;
+        }
+        writeln!(w)?;
+    }
+    for leg in &payload.legs {
+        writeln!(w)?;
+        writeln!(
+            w,
+            "leg {} ({} at {}):",
+            leg.series,
+            leg.target_repo_dir_path.display(),
+            leg.target_ref
+        )?;
+        let clearance = RoundClearance::from_results(&leg.batch.results, self_projects);
+        render_clearance(w, &clearance)?;
+        let (qualified, local, macros) = sum_leg_tallies(&leg.batch.results);
+        render_shape_tally(w, "qualified calls", &qualified)?;
+        render_shape_tally(w, "local calls", &local)?;
+        render_macro_value_tally(w, &macros)?;
+    }
+    Ok(())
+}
+
+/// The worst verdict in a row's summary, as the matrix cell label.
+fn summary_cell(summary: &SeriesSummary) -> &'static str {
+    if summary.incompatible > 0 {
+        "incompatible"
+    } else if summary.requires_adaptation > 0 {
+        "requires_adaptation"
+    } else if summary.compatible > 0 {
+        "compatible"
+    } else {
+        "inapplicable"
+    }
+}
+
+fn sum_leg_tallies(results: &[BatchResult]) -> (ShapeCheckTally, ShapeCheckTally, MacroValueTally) {
+    let mut qualified = ShapeCheckTally::default();
+    let mut local = ShapeCheckTally::default();
+    let mut macros = MacroValueTally::default();
+    for row in results {
+        add_shape(&mut qualified, &row.diagnostics.qualified_call_shape_checks);
+        add_shape(&mut local, &row.diagnostics.local_call_shape_checks);
+        let m = &row.diagnostics.macro_value_checks;
+        macros.compared += m.compared;
+        macros.withheld_definition_elsewhere += m.withheld_definition_elsewhere;
+        macros.withheld_multiple_defines += m.withheld_multiple_defines;
+        macros.withheld_no_source += m.withheld_no_source;
+    }
+    (qualified, local, macros)
+}
+
+fn add_shape(into: &mut ShapeCheckTally, from: &ShapeCheckTally) {
+    into.compared += from.compared;
+    into.withheld_no_spec += from.withheld_no_spec;
+    into.withheld_unknown_type += from.withheld_unknown_type;
+    into.withheld_no_source += from.withheld_no_source;
+    into.withheld_imported += from.withheld_imported;
 }
 
 /// One requested series with its resolved pins and original specs.

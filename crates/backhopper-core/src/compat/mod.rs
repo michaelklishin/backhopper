@@ -5,6 +5,7 @@
 pub mod added_file;
 pub mod added_lines;
 pub mod arg_shape;
+pub mod behaviour_callback_resolve;
 pub mod call_sites;
 pub mod define_resolve;
 pub(crate) mod diff;

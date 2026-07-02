@@ -5,32 +5,50 @@
 //! Resolves unqualified `f(Args)` calls a patch adds against the target
 //! module's own function set: the case where a hunk calls a local
 //! function a sibling commit introduced that the target branch lacks.
+//! A call that does resolve against the module's own definitions gets
+//! its `-spec` return shape compared between the checkouts, with the
+//! same comparator and tally semantics as the qualified axis.
 //!
 //! Unlike macros and records, functions live in the `.erl` file (a
 //! header almost never defines one), so this reads only the target
 //! module, not its includes. To keep false positives near zero it is
 //! conservative: it suppresses when the target file is unreadable or
 //! declares a `parse_transform` (which injects unseeable functions),
-//! and never flags an auto-imported BIF or an imported function.
+//! and never flags an auto-imported BIF or an imported function. An
+//! imported resolution is withheld from the shape check too: the
+//! callee's `-spec` lives in another module.
 
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
+use crate::compat::qualified_call_resolve::{ShapeComparison, TreeReader, compare_return_shapes};
 use crate::compat::source_attributes::{
-    FunctionSignature, declares_parse_transform, extract_function_signatures, extract_imports,
+    FunctionSignature, SpecTable, declares_parse_transform, extract_function_signatures,
+    extract_imports, extract_specs,
 };
-use crate::model::names::{Arity, FunctionName, RelativePath};
-use crate::model::verdict::Reason;
+use crate::model::names::{Arity, FunctionName};
+use crate::model::verdict::{Reason, ShapeCheckTally};
+
+/// What the local-call gate produced: the reasons plus the shape-check
+/// tally, mirroring `QualifiedCallAnalysis`.
+#[derive(Debug, Default)]
+pub struct LocalCallAnalysis {
+    pub reasons: Vec<Reason>,
+    pub shape_checks: ShapeCheckTally,
+}
 
 /// Flag each added unqualified call whose `f/arity` the target module
 /// neither defines, imports, nor inherits as a BIF, and that the patch
-/// does not define. One reason per `(file, function, arity)`.
+/// does not define; compare the `-spec` return shape of each call the
+/// target module itself defines. One reason per `(file, function,
+/// arity)`.
 pub fn analyse_local_calls(
     subjects: &[AddedLinesSubject<'_>],
-    read_target: &dyn Fn(&RelativePath) -> Option<String>,
-) -> Vec<Reason> {
-    let mut reasons = Vec::new();
+    read_target: TreeReader<'_>,
+    read_source: Option<TreeReader<'_>>,
+) -> LocalCallAnalysis {
+    let mut analysis = LocalCallAnalysis::default();
     for subject in subjects {
         let sigs = extract_function_signatures(subject.added_text);
         if sigs.iter().all(|s| s.is_definition) {
@@ -44,16 +62,43 @@ pub fn analyse_local_calls(
             continue;
         }
         let patch_defs = defined_set(&sigs);
-        let mut target_defs = defined_set(&extract_function_signatures(&target));
-        target_defs.extend(extract_imports(&target));
+        // A spec the patch rewrites lands on the target with the pick:
+        // no pre-existing drift to compare.
+        let patch_specs = extract_specs(subject.added_text);
+        let target_defined = defined_set(&extract_function_signatures(&target));
+        let imported = extract_imports(&target);
+        // The callee module is the subject file itself: one table pair
+        // per subject, filled on the first resolved call.
+        let mut spec_tables: Option<(SpecTable, Option<SpecTable>)> = None;
         let mut flagged = BTreeSet::new();
+        let mut shape_seen = BTreeSet::new();
         for call in sigs.iter().filter(|s| !s.is_definition) {
             let key = (call.name.clone(), call.arity);
-            if is_auto_imported_bif(&call.name)
-                || patch_defs.contains(&key)
-                || target_defs.contains(&key)
-                || !flagged.insert(key)
-            {
+            if is_auto_imported_bif(&call.name) || patch_defs.contains(&key) {
+                continue;
+            }
+            if target_defined.contains(&key) {
+                if !shape_seen.insert(key) {
+                    continue;
+                }
+                check_local_return_shape(
+                    subject,
+                    &target,
+                    call,
+                    &patch_specs,
+                    read_source,
+                    &mut spec_tables,
+                    &mut analysis,
+                );
+                continue;
+            }
+            if imported.contains(&key) {
+                if shape_seen.insert(key) {
+                    analysis.shape_checks.withheld_imported += 1;
+                }
+                continue;
+            }
+            if !flagged.insert(key) {
                 continue;
             }
             let (Ok(function), Ok(arity)) = (
@@ -62,7 +107,7 @@ pub fn analyse_local_calls(
             ) else {
                 continue;
             };
-            reasons.push(Reason::LocalCallUndefinedOnTarget {
+            analysis.reasons.push(Reason::LocalCallUndefinedOnTarget {
                 source_path: subject.source_path.clone(),
                 function,
                 arity,
@@ -70,7 +115,62 @@ pub fn analyse_local_calls(
             });
         }
     }
-    reasons
+    analysis
+}
+
+fn check_local_return_shape(
+    subject: &AddedLinesSubject<'_>,
+    target_text: &str,
+    call: &FunctionSignature,
+    patch_specs: &SpecTable,
+    read_source: Option<TreeReader<'_>>,
+    spec_tables: &mut Option<(SpecTable, Option<SpecTable>)>,
+    analysis: &mut LocalCallAnalysis,
+) {
+    let tally = &mut analysis.shape_checks;
+    let (Ok(function), Ok(arity)) = (
+        FunctionName::from_str(&call.name),
+        Arity::try_from(call.arity),
+    ) else {
+        return;
+    };
+    let key = (function, arity);
+    if patch_specs.contains_key(&key) {
+        return;
+    }
+    let Some(read_source) = read_source else {
+        tally.withheld_no_source += 1;
+        return;
+    };
+    let (target_specs, source_specs) = spec_tables.get_or_insert_with(|| {
+        (
+            extract_specs(target_text),
+            read_source(subject.source_path).map(|t| extract_specs(&t)),
+        )
+    });
+    let Some(source_specs) = source_specs.as_ref() else {
+        tally.withheld_no_source += 1;
+        return;
+    };
+    match compare_return_shapes(target_specs, source_specs, &key) {
+        ShapeComparison::Same => tally.compared += 1,
+        ShapeComparison::NoSpec => tally.withheld_no_spec += 1,
+        ShapeComparison::UnknownType => tally.withheld_unknown_type += 1,
+        ShapeComparison::Drift {
+            source_signature,
+            target_signature,
+        } => {
+            tally.compared += 1;
+            analysis.reasons.push(Reason::LocalCallReturnShapeDrift {
+                source_path: subject.source_path.clone(),
+                function: key.0,
+                arity: key.1,
+                source_signature,
+                target_signature,
+                line: file_line(subject.line_map, call.line),
+            });
+        }
+    }
 }
 
 fn defined_set(sigs: &[FunctionSignature]) -> BTreeSet<(String, usize)> {

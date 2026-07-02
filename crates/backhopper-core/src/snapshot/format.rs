@@ -101,6 +101,17 @@ fn write_dep_pin<W: Write>(w: &mut W, pin: &VendoredDep) -> io::Result<()> {
     writeln!(w, "# dep-pin: {} = {} {}", pin.name, label, pin.version)
 }
 
+/// One module's canonical section text, without any snapshot header:
+/// the shape `tree show` prints for a live tree, where no snapshot
+/// exists to head it.
+pub fn module_to_string(m: &Module) -> Result<String, SnapshotError> {
+    let mut buf = Vec::new();
+    write_module(m, &mut buf)?;
+    String::from_utf8(buf).map_err(|e| SnapshotError::InvalidUtf8 {
+        offset: e.utf8_error().valid_up_to(),
+    })
+}
+
 fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
     writeln!(w, "module {}", m.name)?;
     if m.visibility != Visibility::Public {

@@ -5,6 +5,7 @@
 mod end_to_end_auto_generate_integration_tests;
 mod end_to_end_bel7_cli_integration_tests;
 mod end_to_end_bisect_integration_tests;
+mod end_to_end_cascade_integration_tests;
 mod end_to_end_check_merge_integration_tests;
 mod end_to_end_compat_batch_integration_tests;
 mod end_to_end_compat_commit_integration_tests;
@@ -38,6 +39,7 @@ mod end_to_end_suggest_projects_integration_tests;
 mod end_to_end_suites_plan_integration_tests;
 mod end_to_end_target_repo_integration_tests;
 mod end_to_end_terse_integration_tests;
+mod end_to_end_tree_integration_tests;
 mod end_to_end_verdict_cache_integration_tests;
 mod end_to_end_xref_backport_applicability_integration_tests;
 mod end_to_end_xref_integration_tests;

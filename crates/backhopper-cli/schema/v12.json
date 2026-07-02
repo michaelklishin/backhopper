@@ -554,6 +554,14 @@
             },
             "type": "array"
           },
+          "local_call_shape_checks": {
+            "$ref": "#/$defs/ShapeCheckTally",
+            "description": "The local-call twin: resolved unqualified calls, compared or\nwithheld. Kept apart from the qualified tally so one axis's\ncoverage never reads as the other's."
+          },
+          "macro_value_checks": {
+            "$ref": "#/$defs/MacroValueTally",
+            "description": "Same-file `-define` value comparisons over macros the patch\nuses: compared, or withheld and why."
+          },
           "missing_test_modules": {
             "additionalProperties": {
               "additionalProperties": {
@@ -924,6 +932,36 @@
           "none"
         ],
         "type": "string"
+      },
+      "MacroValueTally": {
+        "description": "What the macro-value check did with each `?MACRO` the patch uses:\ncompared, or withheld and why. Same-file `-define`s only; anything\nreached another way is withheld, never guessed.",
+        "properties": {
+          "compared": {
+            "description": "Defined exactly once same-file on both sides; values compared.\nDrift is visible in the reasons, not double-counted here.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_definition_elsewhere": {
+            "description": "Not defined same-file on both sides: the definition lives in an\ninclude, or moved between files across the trees.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_multiple_defines": {
+            "description": "Defined more than once in the file on either side (`-ifdef`\nbranches): either value could be live.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_no_source": {
+            "description": "The touched file was not readable on the source side.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
       },
       "Mfa": {
         "properties": {
@@ -2202,6 +2240,167 @@
             "type": "object"
           },
           {
+            "description": "An unqualified call that resolves against the target module's\nown definitions has a target-tree `-spec` return shape that\ndisagrees with its source-tree `-spec`. The local twin of\n`QualifiedCallReturnShapeDrift`; imported resolutions are\nwithheld, since the callee's spec lives in another module.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "local_call_return_shape_drift",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source_path": {
+                "type": "string"
+              },
+              "source_signature": {
+                "type": "string"
+              },
+              "target_signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "function",
+              "arity",
+              "source_signature",
+              "target_signature",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A `?MACRO` the patch uses is defined in the touched file itself\non both trees, exactly once each, and the normalized `-define`\nbodies disagree: the compile-clean, behavior-divergent class.\nWithheld for definitions reached any other way. Non-blocking.",
+            "properties": {
+              "kind": {
+                "const": "macro_value_drift",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "macro_name": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              },
+              "source_value": {
+                "type": "string"
+              },
+              "target_value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "macro_name",
+              "source_value",
+              "target_value",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The target's version of a behaviour the patch declares requires\na callback the source's version does not, and the target does\nnot list it as optional: an implementation written against the\nsource is missing it. `line` is the `-behaviour` attribute's\nline in the touched file. Non-blocking.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "behaviour": {
+                "type": "string"
+              },
+              "callback": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "behaviour_callback_added_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "behaviour",
+              "callback",
+              "arity",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A callback both trees' versions of a declared behaviour declare\nhas a different normalized signature on the target. The whole\nsignature is compared, not just the return half: a callback\ncontract's argument types are the implementer's obligation.\nNon-blocking.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "behaviour": {
+                "type": "string"
+              },
+              "callback": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "behaviour_callback_drift_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source_path": {
+                "type": "string"
+              },
+              "source_signature": {
+                "type": "string"
+              },
+              "target_signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "behaviour",
+              "callback",
+              "arity",
+              "source_signature",
+              "target_signature",
+              "line"
+            ],
+            "type": "object"
+          },
+          {
             "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
             "properties": {
               "kind": {
@@ -2347,8 +2546,14 @@
             "minimum": 0,
             "type": "integer"
           },
+          "withheld_imported": {
+            "description": "The call resolved through an `-import`: the callee's `-spec`\nlives in another module, so the calling module's tables cannot\ncompare it. Local-call axis only.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
           "withheld_no_source": {
-            "description": "No source checkout was available to read (`--repo-dir-path`\nabsent on a patch-file input).",
+            "description": "The callee module was not readable on the source side: no\ncheckout was supplied, or the checkout has no file at the\nmodule's path (a defaulted `--repo-dir-path` that is not the\nsource tree lands here, not in `withheld_no_spec`).",
             "format": "uint",
             "minimum": 0,
             "type": "integer"
@@ -3618,6 +3823,14 @@
                 },
                 "type": "array"
               },
+              "local_call_shape_checks": {
+                "$ref": "#/$defs/ShapeCheckTally",
+                "description": "The local-call twin: resolved unqualified calls, compared or\nwithheld. Kept apart from the qualified tally so one axis's\ncoverage never reads as the other's."
+              },
+              "macro_value_checks": {
+                "$ref": "#/$defs/MacroValueTally",
+                "description": "Same-file `-define` value comparisons over macros the patch\nuses: compared, or withheld and why."
+              },
               "missing_test_modules": {
                 "additionalProperties": {
                   "additionalProperties": {
@@ -3988,6 +4201,36 @@
               "none"
             ],
             "type": "string"
+          },
+          "MacroValueTally": {
+            "description": "What the macro-value check did with each `?MACRO` the patch uses:\ncompared, or withheld and why. Same-file `-define`s only; anything\nreached another way is withheld, never guessed.",
+            "properties": {
+              "compared": {
+                "description": "Defined exactly once same-file on both sides; values compared.\nDrift is visible in the reasons, not double-counted here.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_definition_elsewhere": {
+                "description": "Not defined same-file on both sides: the definition lives in an\ninclude, or moved between files across the trees.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_multiple_defines": {
+                "description": "Defined more than once in the file on either side (`-ifdef`\nbranches): either value could be live.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_no_source": {
+                "description": "The touched file was not readable on the source side.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
           },
           "Mfa": {
             "properties": {
@@ -5250,6 +5493,167 @@
                 "type": "object"
               },
               {
+                "description": "An unqualified call that resolves against the target module's\nown definitions has a target-tree `-spec` return shape that\ndisagrees with its source-tree `-spec`. The local twin of\n`QualifiedCallReturnShapeDrift`; imported resolutions are\nwithheld, since the callee's spec lives in another module.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "local_call_return_shape_drift",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "source_signature": {
+                    "type": "string"
+                  },
+                  "target_signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "function",
+                  "arity",
+                  "source_signature",
+                  "target_signature",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A `?MACRO` the patch uses is defined in the touched file itself\non both trees, exactly once each, and the normalized `-define`\nbodies disagree: the compile-clean, behavior-divergent class.\nWithheld for definitions reached any other way. Non-blocking.",
+                "properties": {
+                  "kind": {
+                    "const": "macro_value_drift",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "macro_name": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "source_value": {
+                    "type": "string"
+                  },
+                  "target_value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "macro_name",
+                  "source_value",
+                  "target_value",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The target's version of a behaviour the patch declares requires\na callback the source's version does not, and the target does\nnot list it as optional: an implementation written against the\nsource is missing it. `line` is the `-behaviour` attribute's\nline in the touched file. Non-blocking.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_callback_added_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "behaviour",
+                  "callback",
+                  "arity",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A callback both trees' versions of a declared behaviour declare\nhas a different normalized signature on the target. The whole\nsignature is compared, not just the return half: a callback\ncontract's argument types are the implementer's obligation.\nNon-blocking.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "behaviour": {
+                    "type": "string"
+                  },
+                  "callback": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "behaviour_callback_drift_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "source_signature": {
+                    "type": "string"
+                  },
+                  "target_signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "behaviour",
+                  "callback",
+                  "arity",
+                  "source_signature",
+                  "target_signature",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
                 "description": "Declared versioned-machine module is touched but the snapshot\nhas no recorded `versioned_machine_version` on `side`.\nNon-blocking.",
                 "properties": {
                   "kind": {
@@ -5366,8 +5770,14 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "withheld_imported": {
+                "description": "The call resolved through an `-import`: the callee's `-spec`\nlives in another module, so the calling module's tables cannot\ncompare it. Local-call axis only.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
               "withheld_no_source": {
-                "description": "No source checkout was available to read (`--repo-dir-path`\nabsent on a patch-file input).",
+                "description": "The callee module was not readable on the source side: no\ncheckout was supplied, or the checkout has no file at the\nmodule's path (a defaulted `--repo-dir-path` that is not the\nsource tree lands here, not in `withheld_no_spec`).",
                 "format": "uint",
                 "minimum": 0,
                 "type": "integer"

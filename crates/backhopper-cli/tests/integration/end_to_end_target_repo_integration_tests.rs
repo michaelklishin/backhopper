@@ -997,7 +997,11 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     let source = GitRepoFixture::new();
     source.write_file(
         "deps/demo/src/backing_queue_SUITE.erl",
-        "-module(backing_queue_SUITE).\n-export([go/0]).\ngo() -> ok.\n",
+        "-module(backing_queue_SUITE).\n\
+         -export([go/0]).\n\
+         -spec local_info(state()) -> #{atom() => integer()}.\n\
+         local_info(S) -> maps:from_list(S).\n\
+         go() -> ok.\n",
     );
     source.commit("seed suite");
     source.tag("source-v1");
@@ -1015,15 +1019,22 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
         "deps/demo/src/backing_queue_SUITE.erl",
         "-module(backing_queue_SUITE).\n\
          -export([go/0]).\n\
+         -spec local_info(state()) -> #{atom() => integer()}.\n\
+         local_info(S) -> maps:from_list(S).\n\
          go() -> ok.\n\
          t_info(S) -> rabbit_classic_queue_index_v2:info(S).\n\
-         t_segment(Seg, Dir) -> rabbit_classic_queue_index_v2:segment_file(Seg, Dir).\n",
+         t_segment(Seg, Dir) -> rabbit_classic_queue_index_v2:segment_file(Seg, Dir).\n\
+         t_local(S) -> local_info(S).\n",
     );
-    source.commit("call info/1 and segment_file/2");
+    source.commit("call info/1, segment_file/2, and local_info/1");
     let target = GitRepoFixture::new();
     target.write_file(
         "deps/demo/src/backing_queue_SUITE.erl",
-        "-module(backing_queue_SUITE).\n-export([go/0]).\ngo() -> ok.\n",
+        "-module(backing_queue_SUITE).\n\
+         -export([go/0]).\n\
+         -spec local_info(state()) -> [{atom(), integer()}].\n\
+         local_info(S) -> S.\n\
+         go() -> ok.\n",
     );
     target.write_file(
         "deps/demo/src/rabbit_classic_queue_index_v2.erl",
@@ -1073,8 +1084,8 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
         r["target_signature"],
         "info(state()) -> [{atom(), integer()}]"
     );
-    // The call is the fourth line of the suite file.
-    assert_eq!(r["line"], 4);
+    // The call is the sixth line of the suite file.
+    assert_eq!(r["line"], 6);
     // segment_file/2 resolves but has no spec on either side: counted,
     // never flagged.
     assert!(
@@ -1087,8 +1098,25 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     let tally = &env["data"]["diagnostics"]["qualified_call_shape_checks"];
     assert_eq!(tally["compared"], 1);
     assert_eq!(tally["withheld_no_spec"], 1);
+    // The unqualified local_info/1 call drifts too (046 §B).
+    let local = reasons
+        .iter()
+        .find(|r| r["kind"] == "local_call_return_shape_drift")
+        .unwrap_or_else(|| panic!("expected local_call_return_shape_drift in {reasons:?}"));
+    assert_eq!(local["function"], "local_info");
+    assert_eq!(
+        local["source_signature"],
+        "local_info(state()) -> #{atom() => integer()}"
+    );
+    assert_eq!(
+        local["target_signature"],
+        "local_info(state()) -> [{atom(), integer()}]"
+    );
+    assert_eq!(local["line"], 8);
+    let local_tally = &env["data"]["diagnostics"]["local_call_shape_checks"];
+    assert_eq!(local_tally["compared"], 1);
 
-    // One render line: a shape-blind round must not read as clean.
+    // One render line per axis: a shape-blind round must not read as clean.
     let t = run([
         "--formatter",
         "text",

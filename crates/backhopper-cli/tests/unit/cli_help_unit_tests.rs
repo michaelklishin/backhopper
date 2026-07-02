@@ -111,7 +111,12 @@ fn check_group_subcommand_set_is_exact() {
         .filter(|n| *n != "help")
         .collect();
     names.sort_unstable();
-    assert_eq!(names, ["batch", "commit", "merge", "patch", "pr", "range"]);
+    assert_eq!(
+        names,
+        [
+            "batch", "cascade", "commit", "merge", "patch", "pr", "range"
+        ]
+    );
 }
 
 #[test]
