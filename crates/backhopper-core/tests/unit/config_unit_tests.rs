@@ -177,7 +177,7 @@ fn cache_section_rejects_unknown_fields() {
     assert!(Config::load(&path).is_err());
 }
 
-// Series target fields (046 §F)
+// Series target fields
 
 #[test]
 fn a_series_carries_its_target_checkout_and_ref() {

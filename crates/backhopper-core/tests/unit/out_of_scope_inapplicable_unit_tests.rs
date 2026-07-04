@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! JSON wire-format lockdown for the OutOfScopeFor and Untracked
-//! `InapplicableReason` variants added in design doc 010 §3.
+//! `InapplicableReason` variants.
 
 use serde_json::json;
 

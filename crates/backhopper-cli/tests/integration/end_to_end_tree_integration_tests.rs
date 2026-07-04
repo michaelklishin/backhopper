@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! End-to-end tests for `tree show` (doc 046 §E): one module's API
+//! End-to-end tests for `tree show`: one module's API
 //! surface from a repo ref, rendered in the canonical snapshot format.
 
 #![cfg(unix)]

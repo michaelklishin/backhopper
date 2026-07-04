@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! End-to-end tests for `check cascade` (doc 046 §F): one commit set,
+//! End-to-end tests for `check cascade`: one commit set,
 //! one series per leg, each leg's target from its series stanza.
 
 #![cfg(unix)]

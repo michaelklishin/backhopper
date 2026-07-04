@@ -186,7 +186,7 @@ fn introduced_pin_of_an_untracked_dep_reports_untracked() {
     assert_eq!(unknown["status"]["state"], "untracked");
 }
 
-// The §1.5 contract: detection survives the cache, assessment does
+// The contract: detection survives the cache, assessment does
 // not. The same cached entry must report fresh store state.
 #[test]
 fn cached_bump_reassesses_against_the_current_store() {

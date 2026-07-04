@@ -4,8 +4,8 @@
 
 //! Shared patch resolution for commit-shaped check inputs.
 //!
-//! Every verb that evaluates "the diff of a commit" — single, merge,
-//! multi-series, batch, bisect — resolves through here, so the
+//! Every verb that evaluates "the diff of a commit" (single, merge,
+//! multi-series, batch, bisect) resolves through here, so the
 //! merge-routing decision is a typed policy instead of duplicated
 //! parent-count checks at each call site.
 

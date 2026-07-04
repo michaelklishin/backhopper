@@ -410,7 +410,7 @@ Markdown, or summary format is requested.
  * `assert_cmd`, `predicates`, `insta`, `tempfile`: CLI test
    harness (dev-dependencies in `backhopper-cli`)
 
-We deliberately do *not* take `tokio`, `tar`, `walkdir`, `unidiff`,
+We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
 `rayon`, or `git2-rs`. See design doc §15.
 
 ## Target Rust Version
@@ -499,7 +499,7 @@ extraction:
 
 `ProjectLayout::defaults()` returns a `LayoutDefaults` struct that the
 config loader applies field-by-field to any unset value. List fields
-**replace** the default when specified by the user: we deliberately do
+replace the default when specified by the user: we deliberately do
 not introduce a delta-merge mode.
 
 ## Snapshot Format Invariants
@@ -534,10 +534,9 @@ gets its own commit and CHANGELOG entry so a regression is bisectable.
 
  * Only add very important comments, both in tests and implementation;
    identifier names and the diff are the documentation
-
  * No multi-line comment blocks. One short line, above the line it
    describes, when needed at all
- * Comments always sit on their own line *above* the code they document.
+ * Comments always sit on their own line above the code they document.
    Never as a trailing `// ...` after the code on the same line:
 
    ```rust
@@ -567,6 +566,13 @@ design docs.
  * No flourish, no editorializing, no imagery. Real domain terms are fine
  * If a comment needs a second clause to justify itself, it is probably
    too clever
+ * Plain full sentences over compressed clever noun phrases; state
+   guarantees explicitly rather than implying them with jargon
+ * No bold or italics for emphasis in prose or comments
+ * Never cite design docs or review rounds ("doc 046 §B", "§1.5") in code
+   or test comments; describe the mechanism or contract inline instead
+ * These vocabulary rules apply to identifiers too: test function names
+   and helper modules use the same plain words as prose
 
 ## Git Instructions
 

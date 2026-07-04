@@ -7,9 +7,9 @@
 //! Identical patch bytes do not imply identical verdicts: the
 //! analyzer expands `?MACRO` references in the patch's hunk lines
 //! against per-file macro tables built from the parent tree. This
-//! module rebuilds exactly those tables — through the same
+//! module rebuilds exactly those tables (through the same
 //! `build_macro_table` fold core uses, against a resolver that
-//! mirrors `FileMap`'s lookup order over the parent tree — then
+//! mirrors `FileMap`'s lookup order over the parent tree), then
 //! restricts each table to the closure of macro names the patch can
 //! actually reach (the names in its hunk lines, plus names reachable
 //! through their expansions) and hashes the restriction. A define the

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The per-module suite-fanout cap (042 §A, §B, §C): a module that
+//! The per-module suite-fanout cap: a module that
 //! reaches an outsized share of suites is escalated to a
 //! `BroadImpactModule` row and the suites it alone pulled in are dropped,
 //! while suites kept by an independent reason survive.

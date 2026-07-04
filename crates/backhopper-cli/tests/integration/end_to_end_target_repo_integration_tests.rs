@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! End-to-end tests for `--target-repo-dir-path` cross-branch
-//! backport assessment (doc 014). Builds source + target repos in
+//! backport assessment. Builds source and target repos in
 //! TempDirs and drives the CLI against them.
 
 #![cfg(unix)]
@@ -1098,7 +1098,7 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     let tally = &env["data"]["diagnostics"]["qualified_call_shape_checks"];
     assert_eq!(tally["compared"], 1);
     assert_eq!(tally["withheld_no_spec"], 1);
-    // The unqualified local_info/1 call drifts too (046 §B).
+    // The unqualified local_info/1 call drifts too.
     let local = reasons
         .iter()
         .find(|r| r["kind"] == "local_call_return_shape_drift")

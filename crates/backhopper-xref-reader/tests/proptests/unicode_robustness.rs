@@ -3,8 +3,8 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! The reader runs over every file of every tag of every project, so
-//! arbitrary text — including multibyte UTF-8 in comments, strings,
-//! and `$c` char literals — must never panic the scanner.
+//! arbitrary text (including multibyte UTF-8 in comments, strings,
+//! and `$c` char literals) must never panic the scanner.
 
 use std::path::PathBuf;
 

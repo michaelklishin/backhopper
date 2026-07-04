@@ -72,8 +72,7 @@ pub const DEFAULT_TARGET_REF: &str = "HEAD";
 
 /// Cross-branch target-repo flags. When `target_repo_dir_path` is set,
 /// the verdict pipeline classifies every touched path against the
-/// target tree and emits `PathRename` or `PathsMissingOnTarget` rows
-/// per doc 014.
+/// target tree and emits `PathRename` or `PathsMissingOnTarget` rows.
 #[derive(Debug, Args, Clone, Default)]
 pub struct TargetRepoArgs {
     /// Working clone of the branch the commit is being backported to.

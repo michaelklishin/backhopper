@@ -7,8 +7,8 @@
 //!
 //! Two levels: `by-input/` keys on the commit SHA plus every
 //! evaluation input (the fast path), `by-content/` keys on the
-//! normalized patch plus the macro environment — what the evaluation
-//! actually consumes — so a `git cherry-pick -x` hop that re-mints
+//! normalized patch plus the macro environment (what the evaluation
+//! actually consumes), so a `git cherry-pick -x` hop that re-mints
 //! the SHA still hits. A content hit mints an input-level alias for
 //! the new SHA inside `lookup_content` itself, so no caller can
 //! forget it.
@@ -91,7 +91,7 @@ pub struct CacheKeyInputs {
     pub shape: EvaluationShape,
     pub commit: CommitSha,
     /// The series the pins came from, when one was named. Joins the
-    /// key (two series with identical pins split entries — accepted
+    /// key (two series with identical pins split entries, accepted
     /// for inspectability) and powers `cache list --series`.
     pub series: Option<SeriesName>,
     pub pins: Vec<PinKeyRow>,

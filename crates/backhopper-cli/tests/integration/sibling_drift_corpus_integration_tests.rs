@@ -101,7 +101,7 @@ fn scorer_clears_the_f1_and_precision_floors_on_the_labeled_corpus() {
     );
 }
 
-/// The motivating shape from design doc 018 case C: a small flag-only
+/// The motivating shape: a small flag-only
 /// `find_crashes` gate fix in a SUITE must land in the `Sweep` band.
 #[test]
 fn case_c_shaped_fix_lands_in_the_sweep_band() {

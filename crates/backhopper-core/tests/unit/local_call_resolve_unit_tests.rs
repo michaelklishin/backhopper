@@ -193,7 +193,7 @@ fn a_forward_reference_resolves() {
     assert!(reasons.is_empty());
 }
 
-// Return-shape drift over resolved local calls (046 §B)
+// Return-shape drift over resolved local calls
 
 const IDX: &str = "deps/rabbit/src/rabbit_classic_queue_index_v2.erl";
 

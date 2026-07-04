@@ -335,7 +335,7 @@ diff --git a/README.md b/README.md
     assert!(stdout.contains("inapplicable: 1"), "got {stdout}");
     assert!(
         stdout.contains("only_docs_touched"),
-        "docs-only patch must keep the OnlyDocsTouched signal, not the §3 Untracked reroute: {stdout}"
+        "docs-only patch must keep the OnlyDocsTouched signal, not the Untracked reroute: {stdout}"
     );
 }
 

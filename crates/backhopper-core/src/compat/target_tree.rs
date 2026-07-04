@@ -76,7 +76,7 @@ fn to_verdict_translation_source(entry: &PathTranslation) -> TranslationSource {
     }
 }
 
-/// Apply the path normalisation rules from doc 014 §3.5: backslash to
+/// Apply the path normalisation rules: backslash to
 /// forward slash, strip leading `./`, reject `..` segments. Returns
 /// `None` for unsafe paths.
 pub fn normalise(p: &Path) -> Option<PathBuf> {

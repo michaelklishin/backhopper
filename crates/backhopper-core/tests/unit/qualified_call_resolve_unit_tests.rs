@@ -707,7 +707,7 @@ fn an_unreadable_source_module_counts_as_no_source_not_no_spec() {
     assert_eq!(analysis.shape_checks.withheld_no_spec, 0);
 }
 
-// Joined runs (046 §A): wrapped calls reach the gate
+// Joined runs: wrapped calls reach the gate
 
 #[test]
 fn a_wrapped_undefined_call_is_flagged_with_exact_arity() {

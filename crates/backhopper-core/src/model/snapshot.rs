@@ -124,8 +124,7 @@ pub struct Module {
     pub records: Vec<RecordDecl>,
     /// Exports declared inside an `-ifdef(TEST)` block. Test-only
     /// exports drive cascade planning for the unconditional-exports
-    /// refactor (see `008_unconditional_exports_case_feedback.md`
-    /// §3.3): they are not part of the public API at the tag but the
+    /// refactor: they are not part of the public API at the tag but the
     /// planner needs to know they exist on this branch.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub test_only_exports: Vec<TestOnlyExport>,
@@ -138,7 +137,7 @@ pub struct Module {
     pub ifdef_macros: Vec<IfdefMacro>,
     /// `-ifndef(TEST)/-else/-endif` regions: a function with two
     /// bodies, a production one and a test one. Recorded for
-    /// surfacing (see feedback §7.3); no verdict rule fires on them.
+    /// surfacing; no verdict rule fires on them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variant_c_blocks: Vec<VariantCBlock>,
     /// Extracted body of the version function for modules that implement

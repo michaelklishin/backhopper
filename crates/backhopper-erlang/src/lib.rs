@@ -6,7 +6,7 @@
 //!
 //! Reads Erlang source text and yields the model types from `backhopper-core`.
 //! The parser is line-oriented and only recognizes the attributes that affect
-//! API compatibility: see the design doc and the modules in this crate.
+//! API compatibility: see the modules in this crate.
 
 pub mod attributes;
 pub mod clause_heads;

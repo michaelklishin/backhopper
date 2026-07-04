@@ -8,9 +8,9 @@
 //!
 //! Key-construction failures (an unresolvable pin tag, an unreadable
 //! config file) never fail the run: the pair is counted as bypassed
-//! and evaluated normally. The standing rule from the design doc: a
-//! new evaluation input either joins the key or its flag joins the
-//! bypass list — half-keyed is the only forbidden state.
+//! and evaluated normally. The standing rule: a new evaluation input
+//! either joins the key or its flag joins the bypass list. Half-keyed
+//! is the only forbidden state.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;

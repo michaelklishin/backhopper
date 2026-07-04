@@ -63,7 +63,7 @@ fn a_variable_module_call_is_skipped() {
     assert!(got.is_empty(), "unexpected: {got:?}");
 }
 
-// Joined runs (046 §A)
+// Joined runs
 
 #[test]
 fn a_wrapped_call_recovers_its_exact_arity() {
