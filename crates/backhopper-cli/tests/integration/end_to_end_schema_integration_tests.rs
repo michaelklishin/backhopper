@@ -163,6 +163,33 @@ fn diff_v12_to_v13_is_add_only() {
     assert!(data["changed_types"].as_array().unwrap().is_empty());
 }
 
+/// Golden pin for the symbol axis: v14 adds exactly the target-findings
+/// types and fields on top of v13, and removes nothing.
+#[test]
+fn diff_v13_to_v14_is_add_only() {
+    let a = run_succeeds(["--formatter", "json", "schema", "diff", "13", "14"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json");
+    let data = v.get("data").expect("data");
+    let added: Vec<&str> = data["added_paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "/batch_payload/$defs/BatchResult/properties/target_findings",
+            "/batch_payload/$defs/TargetFindings",
+            "/envelope/properties/data/$defs/TargetFindings",
+            "/envelope/properties/data/properties/target_findings",
+            "/summary_row/properties/target_findings",
+        ]
+    );
+    assert!(data["removed_paths"].as_array().unwrap().is_empty());
+    assert!(data["changed_types"].as_array().unwrap().is_empty());
+}
+
 #[test]
 fn diff_unknown_version_fails_cleanly() {
     let a = run_fails(["schema", "diff", "1", "99"]);

@@ -4,6 +4,13 @@
 
 ### Enhancements
 
+ * Symbol findings on the target are no longer dropped when every
+   verdict is inapplicable: each row checked against a target carries a
+   `target_findings` list beside the pin verdicts, and the clearance,
+   summary, and exit code reflect it. Before, a suite-only pick could
+   reference a function the target never defines and still exit 0
+ * OTP modules such as `rpc` are no longer reported as missing by
+   `--resolve-untracked-modules`
  * Apply conflict forecast accuracy can now be measured:
    `evaluate_forecasts` compares stored forecasts with how picks
    actually applied and lists the conflicts the forecast missed

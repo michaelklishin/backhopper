@@ -207,6 +207,7 @@ fn inapplicable_row(apply: Option<ApplyForecast>) -> BatchResult {
         parent_count: None,
         verdict_fingerprint: None,
         apply,
+        target_findings: None,
     }
 }
 

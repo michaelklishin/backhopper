@@ -159,7 +159,7 @@ fn reason_kind(r: &Reason) -> &'static str {
     }
 }
 
-fn reason_detail(r: &Reason) -> String {
+pub(crate) fn reason_detail(r: &Reason) -> String {
     match r {
         Reason::MissingSymbol {
             symbol,

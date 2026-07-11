@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
 use crate::model::apply::ApplyForecast;
+use crate::model::findings::TargetFindings;
 use crate::model::names::{
     Arity, CommitSha, DependencyName, FieldName, FunctionName, GitRef, MacroName, ModuleName,
     ProjectName, RecordName, RelativePath, TagName, TypeName,
@@ -1766,14 +1767,24 @@ pub struct SeriesEvaluation {
     /// `Some`, even when the patch touched zero files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apply: Option<ApplyForecast>,
+
+    /// Symbol-axis target findings for this evaluation. `None` means
+    /// no target context was supplied, so the axis was not evaluated:
+    /// never "clean". A producer with a target context always emits
+    /// `Some`, even when no check produced a finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_findings: Option<TargetFindings>,
 }
 
 impl SeriesEvaluation {
-    /// Folds both axes: a blocking verdict or a predicted apply
-    /// conflict needs attention.
+    /// Folds all three axes: a blocking verdict, a predicted apply
+    /// conflict, or a symbol finding on the target needs attention.
+    /// Findings gate on non-empty, not blocking: the same reasons on
+    /// an applicable pin read at least requires-adaptation.
     pub fn worst_exit_code(&self) -> i32 {
         if self.verdict.summary.is_blocking()
             || self.apply.as_ref().is_some_and(ApplyForecast::has_conflict)
+            || self.target_findings.as_ref().is_some_and(|t| !t.is_empty())
         {
             exit::NEEDS_ATTENTION
         } else {

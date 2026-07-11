@@ -13,6 +13,7 @@ use std::num::NonZeroU32;
 use backhopper_core::config::Config;
 use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::BatchResult;
+use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 use backhopper_core::model::verdict::{
@@ -48,7 +49,10 @@ pub fn to_summary_row(
 ) -> SummaryRow {
     summary_row(
         &eval.verdict,
-        eval.apply.as_ref(),
+        RowAxes {
+            apply: eval.apply.as_ref(),
+            target_findings: eval.target_findings.as_ref(),
+        },
         self_projects,
         sha,
         subject,
@@ -67,7 +71,10 @@ pub fn batch_result_to_summary_row(
 ) -> SummaryRow {
     summary_row(
         &result.verdict,
-        result.apply.as_ref(),
+        RowAxes {
+            apply: result.apply.as_ref(),
+            target_findings: result.target_findings.as_ref(),
+        },
         self_projects,
         result.commit.clone(),
         subject,
@@ -76,9 +83,16 @@ pub fn batch_result_to_summary_row(
     )
 }
 
+/// The two row-level target axes a summary row reports beside the
+/// verdict.
+struct RowAxes<'a> {
+    apply: Option<&'a ApplyForecast>,
+    target_findings: Option<&'a TargetFindings>,
+}
+
 fn summary_row(
     verdict: &SeriesVerdict,
-    apply: Option<&ApplyForecast>,
+    axes: RowAxes<'_>,
     self_projects: &BTreeSet<ProjectName>,
     sha: CommitSha,
     subject: String,
@@ -94,7 +108,8 @@ fn summary_row(
         subject,
         series,
         parent_count,
-        apply_conflicts: apply.map_or(0, |f| f.conflicts().count() as u32),
+        apply_conflicts: axes.apply.map_or(0, |f| f.conflicts().count() as u32),
+        target_findings: axes.target_findings.map_or(0, |t| t.reasons.len() as u32),
     }
 }
 
@@ -171,13 +186,14 @@ fn emit_text(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
         let series = row.series.as_ref().map_or("-", |s| s.as_str());
         writeln!(
             w,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.sha.abbreviated(),
             row.verdict.as_str(),
             touched,
             row.tracked,
             series,
             row.apply_conflicts,
+            row.target_findings,
             row.subject.replace('\t', " "),
         )?;
     }

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::apply::ApplyForecast;
 use crate::model::clearance::RoundClearance;
+use crate::model::findings::TargetFindings;
 use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
@@ -140,4 +141,11 @@ pub struct BatchResult {
     /// even when the patch touched zero files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apply: Option<ApplyForecast>,
+
+    /// Symbol-axis target findings for this row. `None` means no
+    /// target context was supplied, so the axis was not evaluated:
+    /// never "clean". A producer with a target context always emits
+    /// `Some`, even when no check produced a finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_findings: Option<TargetFindings>,
 }

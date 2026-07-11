@@ -44,6 +44,7 @@ fn eval_with(pins: Vec<PinVerdict>) -> SeriesEvaluation {
         touched_paths: Vec::new(),
         pr_commits: None,
         apply: None,
+        target_findings: None,
     }
 }
 

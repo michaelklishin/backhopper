@@ -40,6 +40,7 @@ mod spec_table_proptests;
 mod suite_fanout_cap_proptests;
 mod summary_row_v7_proptests;
 mod tag_glob_proptests;
+mod target_findings_proptests;
 mod target_preimage_proptests;
 mod test_suite_parser_proptests;
 mod touched_kinds_proptests;

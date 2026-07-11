@@ -60,6 +60,7 @@ fn row(reasons: Vec<Reason>) -> BatchResult {
         parent_count: None,
         verdict_fingerprint: None,
         apply: None,
+        target_findings: None,
     }
 }
 

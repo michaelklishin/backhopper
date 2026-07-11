@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::model::apply::PathApplyOutcome;
 use crate::model::batch::BatchResult;
 use crate::model::names::{ProjectName, RelativePath};
+use crate::model::resolver_coverage::ResolverClass;
 use crate::model::verdict::{BumpStatus, SeriesSummary, Verdict, exit, non_self_tracked};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +51,9 @@ pub struct ClearanceFacts {
     /// Apply-axis roll-up. `rows_with_forecast == 0` means no row
     /// carried a forecast, and the renderer says so.
     pub apply: ApplyRollup,
+    /// Symbol-axis roll-up. `rows_with_findings == 0` means no row
+    /// carried the field, and the renderer says so.
+    pub target: TargetFindingsRollup,
     /// Union of every row's `suggested_suites`, sorted and deduplicated.
     pub suites: Vec<String>,
     /// `exit::OK` or `exit::NEEDS_ATTENTION`, the value `check batch`
@@ -139,6 +143,27 @@ impl ApplyRollup {
     }
 }
 
+/// Symbol-axis facts summed over the round's rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TargetFindingsRollup {
+    /// Rows that carried the findings field at all.
+    pub rows_with_findings: usize,
+    /// Rows whose findings are non-empty.
+    pub finding_rows: usize,
+    /// Finding counts by resolver class, the ranking view.
+    pub by_class: Vec<(ResolverClass, usize)>,
+    /// Findings with no resolver class, counted so the class view
+    /// never hides a reason.
+    pub unclassified: usize,
+}
+
+impl TargetFindingsRollup {
+    #[must_use]
+    pub fn has_findings(&self) -> bool {
+        self.finding_rows > 0
+    }
+}
+
 impl RoundClearance {
     #[must_use]
     pub fn from_results(results: &[BatchResult], self_projects: &BTreeSet<ProjectName>) -> Self {
@@ -153,6 +178,8 @@ impl RoundClearance {
         let mut snapshot_missing_bump = false;
         let mut apply = ApplyRollup::default();
         let mut conflicted_paths = BTreeSet::new();
+        let mut target = TargetFindingsRollup::default();
+        let mut target_by_class: BTreeMap<ResolverClass, usize> = BTreeMap::new();
 
         for row in results {
             commits.insert(&row.commit);
@@ -191,6 +218,17 @@ impl RoundClearance {
                 }
             }
 
+            if let Some(findings) = &row.target_findings {
+                target.rows_with_findings += 1;
+                if !findings.is_empty() {
+                    target.finding_rows += 1;
+                }
+                for (class, n) in findings.by_class() {
+                    *target_by_class.entry(class).or_insert(0) += n;
+                }
+                target.unclassified += findings.unclassified();
+            }
+
             for bump in &row.diagnostics.pin_bumps {
                 if !seen_bumps.insert((&row.commit, &bump.dep, bump.to.as_str())) {
                     continue;
@@ -212,9 +250,12 @@ impl RoundClearance {
         }
 
         apply.conflicted_paths = conflicted_paths.into_iter().collect();
+        target.by_class = target_by_class.into_iter().collect();
 
         let blocking = verdicts.is_blocking();
-        let exit_code = if blocking || apply.has_conflict() {
+        // findings gate on non-empty: the same reasons on an
+        // applicable pin read at least requires-adaptation
+        let exit_code = if blocking || apply.has_conflict() || target.has_findings() {
             exit::NEEDS_ATTENTION
         } else {
             exit::OK
@@ -229,6 +270,7 @@ impl RoundClearance {
             reasons,
             bumps,
             apply,
+            target,
             suites: suites.into_iter().collect(),
             exit_code,
         };
@@ -238,7 +280,12 @@ impl RoundClearance {
             && facts.verdicts.incompatible == 0
             && facts.verdicts.inapplicable > 0;
 
-        if blocking || tracked > 0 || snapshot_missing_bump || facts.apply.has_conflict() {
+        if blocking
+            || tracked > 0
+            || snapshot_missing_bump
+            || facts.apply.has_conflict()
+            || facts.target.has_findings()
+        {
             Self::Findings(facts)
         } else if all_inapplicable {
             Self::ZeroDomain(facts)

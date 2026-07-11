@@ -56,6 +56,7 @@ fn row_with_bumps(
         parent_count: None,
         verdict_fingerprint: None,
         apply: None,
+        target_findings: None,
     }
 }
 

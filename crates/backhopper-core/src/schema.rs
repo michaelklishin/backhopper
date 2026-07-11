@@ -48,6 +48,10 @@ const SCHEMA_V11_FROZEN: &str = include_str!("schema_v11_snapshot.json");
 /// v12 froze when v13 added the apply forecast to the live payload
 /// types (`SeriesEvaluation.apply`, `BatchResult.apply`).
 const SCHEMA_V12_FROZEN: &str = include_str!("schema_v12_snapshot.json");
+/// v13 froze when v14 added the symbol-axis target findings to the
+/// live payload types (`SeriesEvaluation.target_findings`,
+/// `BatchResult.target_findings`, `SummaryRow.target_findings`).
+const SCHEMA_V13_FROZEN: &str = include_str!("schema_v13_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -87,7 +91,10 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         12 => {
             Ok(serde_json::from_str(SCHEMA_V12_FROZEN).expect("frozen v12 snapshot is valid JSON"))
         }
-        13 => Ok(combined_v13()),
+        13 => {
+            Ok(serde_json::from_str(SCHEMA_V13_FROZEN).expect("frozen v13 snapshot is valid JSON"))
+        }
+        14 => Ok(combined_v14()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -135,17 +142,18 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v13() -> Value {
+fn combined_v14() -> Value {
     let series = envelope_with_payload::<SeriesEvaluation>(
-        13,
+        14,
         "check",
-        "v13 adds the apply axis: `SeriesEvaluation` and `BatchResult` gain `apply`, a \
-         per-path forecast of whether the patch applies to the target tree as written \
-         (clean, drifted, unassessed, or a predicted conflict). The field is absent when \
-         no target context was supplied, so absence means the axis was not evaluated, \
-         never that it was clean. The forecast is independent of every pin verdict: an \
-         all-inapplicable row still carries its predicted conflicts, and the round \
-         clearance and exit code fold over both axes.",
+        "v14 adds the symbol axis: `SeriesEvaluation`, `BatchResult`, and the check \
+         payload gain `target_findings`, the row-level copy of every reason the \
+         live-axis target checks produced. The same reasons still merge into applicable \
+         pin verdicts; the row-level field survives inapplicable ones, so a suite-only \
+         pick cannot silently drop what the target checks found. Absent when no target \
+         context was supplied: absence means the axis was not evaluated, never that it \
+         was clean. `SummaryRow` gains a `target_findings` count. The round clearance \
+         and exit code fold over all three axes.",
     );
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
@@ -174,8 +182,8 @@ fn combined_v13() -> Value {
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
     obj.insert("suite_plan_payload".into(), suite_plan_payload);
-    obj.insert("schema_version".into(), json!(13));
-    obj.insert("title".into(), json!("backhopper envelope v13"));
+    obj.insert("schema_version".into(), json!(14));
+    obj.insert("title".into(), json!("backhopper envelope v14"));
     Value::Object(obj)
 }
 

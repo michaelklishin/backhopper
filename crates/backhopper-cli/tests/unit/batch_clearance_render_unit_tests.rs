@@ -46,6 +46,7 @@ fn row(c: char, pins: Vec<PinVerdict>, diagnostics: Diagnostics) -> BatchResult 
         parent_count: None,
         verdict_fingerprint: None,
         apply: None,
+        target_findings: None,
     }
 }
 

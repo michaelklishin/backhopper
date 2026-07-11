@@ -30,5 +30,6 @@ mod snapshot_types_reexport_unit_tests;
 mod snapshots_builder_unit_tests;
 mod stdin_payload_unit_tests;
 mod suites_builder_unit_tests;
+mod target_findings_wire_unit_tests;
 mod verb_unit_tests;
 mod versioned_machine_finding_iterators_unit_tests;

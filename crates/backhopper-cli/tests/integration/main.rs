@@ -39,6 +39,7 @@ mod end_to_end_snapshots_introduced_integration_tests;
 mod end_to_end_snapshots_series_integration_tests;
 mod end_to_end_suggest_projects_integration_tests;
 mod end_to_end_suites_plan_integration_tests;
+mod end_to_end_target_findings_integration_tests;
 mod end_to_end_target_repo_integration_tests;
 mod end_to_end_terse_integration_tests;
 mod end_to_end_tree_integration_tests;

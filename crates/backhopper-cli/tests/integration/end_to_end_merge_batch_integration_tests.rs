@@ -246,12 +246,13 @@ fn batch_text_summary_carries_series_column_before_subject() {
     let fields: Vec<&str> = line.split('\t').collect();
     assert_eq!(
         fields.len(),
-        7,
-        "sha, verdict, touched, tracked, series, apply conflicts, subject"
+        8,
+        "sha, verdict, touched, tracked, series, apply conflicts, target findings, subject"
     );
     assert_eq!(fields[4], "stable");
     assert_eq!(fields[5], "0");
-    assert_eq!(fields[6], "plain change");
+    assert_eq!(fields[6], "0");
+    assert_eq!(fields[7], "plain change");
 }
 
 #[test]
@@ -401,8 +402,9 @@ fn pin_targeted_text_summary_renders_a_dash_for_the_series_column() {
     ]);
     let out = stdout(&assert);
     let fields: Vec<&str> = out.lines().next().expect("one row").split('\t').collect();
-    assert_eq!(fields.len(), 7);
+    assert_eq!(fields.len(), 8);
     assert_eq!(fields[4], "-");
     assert_eq!(fields[5], "0");
-    assert_eq!(fields[6], "plain change");
+    assert_eq!(fields[6], "0");
+    assert_eq!(fields[7], "plain change");
 }

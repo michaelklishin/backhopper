@@ -38,6 +38,12 @@ pub struct SummaryRow {
     /// verdict kind never reflects it, so the row states it itself.
     #[serde(default)]
     pub apply_conflicts: u32,
+
+    /// Symbol-axis findings on the target. Zero when the axis found
+    /// nothing or was not evaluated; the verdict kind on an
+    /// all-inapplicable row never reflects it, so the row states it.
+    #[serde(default)]
+    pub target_findings: u32,
 }
 
 /// Kind-only projection of `Verdict`: drops the variant payloads so a

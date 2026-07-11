@@ -24,6 +24,7 @@ pub use errors::{Error, Result};
 pub use extract::{ExtractError, ExtractedSource, classify_visibility};
 pub use model::apply::{ApplyForecast, ApplySummary, PathApplyOutcome, UnassessedReason};
 pub use model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
+pub use model::findings::TargetFindings;
 pub use model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FieldName,
     FunctionName, Mfa, ModuleName, ProjectName, RecordName, RelativePath, SeriesName, TagGlob,

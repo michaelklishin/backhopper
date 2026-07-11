@@ -635,6 +635,7 @@ impl Patch<Analyzed> {
             touched_paths: collect_touched_paths(&self.files),
             pr_commits: None,
             apply: None,
+            target_findings: None,
         }
     }
 }

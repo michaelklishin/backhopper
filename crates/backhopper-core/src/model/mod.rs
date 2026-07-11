@@ -8,6 +8,7 @@ pub mod cache;
 pub mod clearance;
 pub mod eval;
 pub mod evaluation;
+pub mod findings;
 pub mod fingerprint;
 pub mod names;
 pub mod pin;

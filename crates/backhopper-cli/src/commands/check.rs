@@ -31,7 +31,10 @@ use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
-use backhopper_core::model::clearance::{ApplyRollup, BumpSummary, RoundClearance};
+use backhopper_core::model::clearance::{
+    ApplyRollup, BumpSummary, RoundClearance, TargetFindingsRollup,
+};
+use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
@@ -83,7 +86,7 @@ use crate::commands::target_repo;
 use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_alts, render_with_exit};
-use crate::tables::{format_symbol, render_evaluation_table};
+use crate::tables::{format_symbol, reason_detail, render_evaluation_table};
 
 #[derive(Debug, Serialize)]
 struct CompatPayload {
@@ -114,6 +117,9 @@ struct CompatPayload {
     /// supplied: the axis was not evaluated, never "clean".
     #[serde(skip_serializing_if = "Option::is_none")]
     apply: Option<ApplyForecast>,
+    /// Symbol-axis target findings, `None` when no target context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target_findings: Option<TargetFindings>,
 }
 
 #[derive(Debug, Serialize)]
@@ -597,7 +603,8 @@ fn resolve_untracked_modules_against_tree(
         .diagnostics
         .untracked_calls
         .keys()
-        .filter(|m| !modules_on_disk.contains(m.as_str()))
+        // OTP modules are never on disk and never missing
+        .filter(|m| !is_otp_module(m) && !modules_on_disk.contains(m.as_str()))
         .cloned()
         .collect();
     if missing.is_empty() {
@@ -768,15 +775,22 @@ fn apply_target_context(
     let findings =
         target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
     target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
+    // the row-level copy of each symbol-axis stream: the pin merge
+    // drops reasons on inapplicable pins, this field survives them
+    let mut target_findings = TargetFindings::default();
+    let mut merge_symbol_reasons = |reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation| {
+        target_findings.reasons.extend(reasons.iter().cloned());
+        target_repo::merge_reasons_into_evaluation(reasons, evaluation);
+    };
     let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
-    target_repo::merge_reasons_into_evaluation(define_reasons, evaluation);
+    merge_symbol_reasons(define_reasons, evaluation);
     let local_calls =
         target_repo::collect_local_call_findings(&parsed.files, target_ctx, source_repo_dir);
-    target_repo::merge_reasons_into_evaluation(local_calls.reasons, evaluation);
+    merge_symbol_reasons(local_calls.reasons, evaluation);
     evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
     let macro_values =
         target_repo::collect_macro_value_findings(&parsed.files, target_ctx, source_repo_dir);
-    target_repo::merge_reasons_into_evaluation(macro_values.reasons, evaluation);
+    merge_symbol_reasons(macro_values.reasons, evaluation);
     evaluation.diagnostics.macro_value_checks = macro_values.checks;
     let behaviour_callbacks = target_repo::collect_behaviour_callback_findings(
         &parsed.files,
@@ -784,19 +798,21 @@ fn apply_target_context(
         covered_modules,
         source_repo_dir,
     );
-    target_repo::merge_reasons_into_evaluation(behaviour_callbacks, evaluation);
+    merge_symbol_reasons(behaviour_callbacks, evaluation);
     let qualified_calls = target_repo::collect_qualified_call_findings(
         &parsed.files,
         target_ctx,
         covered_modules,
         source_repo_dir,
     );
-    target_repo::merge_reasons_into_evaluation(qualified_calls.reasons, evaluation);
+    merge_symbol_reasons(qualified_calls.reasons, evaluation);
     evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
     evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
+    // the apply axis has its own row-level record: not collected here
     let apply_analysis = target_repo::collect_target_apply_analysis(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
     evaluation.apply = Some(apply_analysis.forecast);
+    evaluation.target_findings = Some(target_findings);
     Ok(())
 }
 
@@ -1283,6 +1299,7 @@ fn run_check_patch(
         resolver_coverage: Some(ResolverCoverage::current()),
         fingerprint_version: Some(FINGERPRINT_VERSION),
         apply: evaluation.apply.clone(),
+        target_findings: evaluation.target_findings.clone(),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
@@ -1339,6 +1356,35 @@ fn render_apply_forecast(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> Cl
     Ok(())
 }
 
+/// The single-check findings lines: like the apply conflicts, these
+/// shape the exit code even when every verdict is inapplicable, so
+/// text output must state them.
+fn render_target_findings(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
+    for reason in
+        findings_the_pins_do_not_show(&evaluation.verdict, evaluation.target_findings.as_ref())
+    {
+        writeln!(w, "target finding: {}", reason_detail(reason))?;
+    }
+    Ok(())
+}
+
+/// The row-level findings a renderer should print: non-empty and every
+/// pin inapplicable. On any other row the pin table already displays
+/// the same reasons, and printing both would show one fact twice.
+fn findings_the_pins_do_not_show<'a>(
+    verdict: &SeriesVerdict,
+    findings: Option<&'a TargetFindings>,
+) -> &'a [Reason] {
+    let all_inapplicable = verdict
+        .results
+        .iter()
+        .all(|pv| matches!(pv.verdict, Verdict::Inapplicable { .. }));
+    match findings {
+        Some(f) if !f.is_empty() && all_inapplicable => &f.reasons,
+        _ => &[],
+    }
+}
+
 fn pin_bump_label(b: &PinBump) -> String {
     let change = match &b.from {
         Some(from) => format!("{} {} -> {}", b.dep, from, b.to),
@@ -1374,6 +1420,14 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
         if any {
             writeln!(w)?;
         }
+    }
+    let row_findings =
+        findings_the_pins_do_not_show(&evaluation.verdict, evaluation.target_findings.as_ref());
+    for reason in row_findings {
+        writeln!(w, "**Target finding:** {}", reason_detail(reason))?;
+    }
+    if !row_findings.is_empty() {
+        writeln!(w)?;
     }
     writeln!(w, "| Pin | Verdict | Tracked refs | Notes |")?;
     writeln!(w, "| --- | --- | --- | --- |")?;
@@ -1758,6 +1812,7 @@ fn render_text(
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
     render_apply_forecast(w, evaluation)?;
+    render_target_findings(w, evaluation)?;
     render_already_present(w, &evaluation.diagnostics)?;
     render_shape_checks(w, &evaluation.diagnostics)?;
     for d in &evaluation.diagnostics.dep_pin_divergence {
@@ -2626,6 +2681,7 @@ fn evaluate_batch(
                 parent_count: NonZeroU32::new(planned.parents.len() as u32),
                 verdict_fingerprint,
                 apply: evaluation.apply,
+                target_findings: evaluation.target_findings,
             });
         }
     }
@@ -2770,13 +2826,21 @@ fn render_cascade_text(
     let shas: Vec<&CommitSha> = first.batch.results.iter().map(|r| &r.commit).collect();
     let mut cells: BTreeMap<(&CommitSha, &SeriesName), String> = BTreeMap::new();
     let mut any_conflict = false;
+    let mut any_finding = false;
     for leg in &payload.legs {
         for row in &leg.batch.results {
             let conflicted = row.apply.as_ref().is_some_and(ApplyForecast::has_conflict);
             any_conflict |= conflicted;
-            // the trailing marker keeps the apply axis visible beside
-            // the verdict without widening the matrix
-            let marker = if conflicted { "*" } else { "" };
+            let has_findings = row.target_findings.as_ref().is_some_and(|t| !t.is_empty());
+            any_finding |= has_findings;
+            // the trailing markers keep both target axes visible
+            // beside the verdict without widening the matrix
+            let marker = match (conflicted, has_findings) {
+                (true, true) => "*!",
+                (true, false) => "*",
+                (false, true) => "!",
+                (false, false) => "",
+            };
             cells.insert(
                 (&row.commit, &leg.series),
                 format!("{}{marker}", summary_cell(&row.verdict.summary)),
@@ -2792,7 +2856,7 @@ fn render_cascade_text(
     let col_widths: Vec<usize> = payload
         .legs
         .iter()
-        .map(|l| l.series.as_str().len().max("requires_adaptation*".len()))
+        .map(|l| l.series.as_str().len().max("requires_adaptation*!".len()))
         .collect();
     write!(w, "{:<12} {:<subject_width$}", "sha", "subject")?;
     for (leg, width) in payload.legs.iter().zip(&col_widths) {
@@ -2815,6 +2879,9 @@ fn render_cascade_text(
     }
     if any_conflict {
         writeln!(w, "* apply conflict predicted on this leg")?;
+    }
+    if any_finding {
+        writeln!(w, "! symbol findings on this leg")?;
     }
     for leg in &payload.legs {
         writeln!(w)?;
@@ -3001,6 +3068,9 @@ pub fn render_batch_text(
                 writeln!(w, "  apply conflicts: {}", conflicts.join(", "))?;
             }
         }
+        for reason in findings_the_pins_do_not_show(&r.verdict, r.target_findings.as_ref()) {
+            writeln!(w, "  target finding: {}", reason_detail(reason))?;
+        }
         // Shown only when non-zero so a clean round's rows stay terse;
         // it points the reviewer at the rows the header total came from.
         let tracked = row_tracked_refs(&r.verdict.results, self_projects);
@@ -3063,6 +3133,7 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
     }
     render_bump_summary_line(w, &f.bumps)?;
     render_apply_rollup_line(w, &f.apply)?;
+    render_target_rollup_line(w, &f.target)?;
     if f.suites.is_empty() {
         writeln!(w, "  suites worth running: (none)")?;
     } else {
@@ -3072,9 +3143,9 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
     match clearance {
         RoundClearance::Clean(f) if f.apply.rows_with_forecast > 0 => writeln!(
             w,
-            "no dependency-API risk found and no apply conflicts were \
-             predicted; the forecast covers only analyzable files, so verify \
-             other files separately"
+            "no dependency-API risk found, no apply conflicts were predicted, \
+             and no symbol findings were resolved on the target; both target \
+             axes cover only analyzable files, so verify other files separately"
         )?,
         RoundClearance::Clean(_) => writeln!(
             w,
@@ -3084,8 +3155,9 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
         )?,
         RoundClearance::ZeroDomain(f) if f.apply.rows_with_forecast > 0 => writeln!(
             w,
-            "all candidates are outside backhopper's dep and symbol scope and \
-             no apply conflicts were predicted on the assessed paths"
+            "all candidates are outside backhopper's dep and symbol scope, no \
+             apply conflicts were predicted, and no symbol findings were \
+             resolved on the assessed target"
         )?,
         RoundClearance::ZeroDomain(_) => writeln!(
             w,
@@ -3095,7 +3167,8 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
         RoundClearance::Findings(_) => writeln!(
             w,
             "review the rows below: tracked-dep references, blocking verdicts, \
-             snapshot-missing pin bumps, or predicted apply conflicts are present"
+             snapshot-missing pin bumps, predicted apply conflicts, or symbol \
+             findings on the target are present"
         )?,
     }
     Ok(())
@@ -3146,6 +3219,42 @@ fn render_apply_rollup_line(w: &mut dyn Write, apply: &ApplyRollup) -> CliResult
         apply.conflicted_paths.len(),
         plural(apply.conflicted_paths.len()),
         by_kind.join(", "),
+    )?;
+    Ok(())
+}
+
+fn render_target_rollup_line(w: &mut dyn Write, target: &TargetFindingsRollup) -> CliResult<()> {
+    if target.rows_with_findings == 0 {
+        writeln!(
+            w,
+            "  target findings     : not evaluated (no --target-repo-dir-path)"
+        )?;
+        return Ok(());
+    }
+    if target.finding_rows == 0 {
+        writeln!(
+            w,
+            "  target findings     : none ({} row{} assessed)",
+            target.rows_with_findings,
+            plural(target.rows_with_findings),
+        )?;
+        return Ok(());
+    }
+    let mut by_class: Vec<String> = target
+        .by_class
+        .iter()
+        .map(|(class, n)| format!("{}={n}", class.as_str()))
+        .collect();
+    if target.unclassified > 0 {
+        by_class.push(format!("unclassified={}", target.unclassified));
+    }
+    writeln!(
+        w,
+        "  target findings     : {} row{} of {} ({})",
+        target.finding_rows,
+        plural(target.finding_rows),
+        target.rows_with_findings,
+        by_class.join(", "),
     )?;
     Ok(())
 }

@@ -33,6 +33,21 @@ pub enum ResolverClass {
 }
 
 impl ResolverClass {
+    /// Stable label matching the serde spelling, for text roll-ups.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ResolverClass::Macro => "macro",
+            ResolverClass::Include => "include",
+            ResolverClass::Behaviour => "behaviour",
+            ResolverClass::QualifiedCall => "qualified_call",
+            ResolverClass::Record => "record",
+            ResolverClass::LocalCall => "local_call",
+            ResolverClass::Type => "type",
+            ResolverClass::IndirectCall => "indirect_call",
+        }
+    }
+
     pub const ALL: [ResolverClass; 8] = [
         ResolverClass::Macro,
         ResolverClass::Include,

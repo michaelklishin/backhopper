@@ -8,17 +8,21 @@
 //! suite union.
 
 use std::collections::BTreeSet;
+use std::str::FromStr;
 
 use backhopper_core::model::apply::{ApplyForecast, PathApplyOutcome, UnassessedReason};
 use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::clearance::RoundClearance;
+use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::names::{
-    CommitSha, DependencyName, ProjectName, RelativePath, SeriesName, TagName,
+    Arity, CommitSha, DependencyName, FunctionName, ModuleName, ProjectName, RelativePath,
+    SeriesName, TagName,
 };
 use backhopper_core::model::pin::Pin;
+use backhopper_core::model::resolver_coverage::ResolverClass;
 use backhopper_core::model::verdict::{
-    ApplyConflictKind, BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump,
-    PinVerdict, Reason, SeriesVerdict, Verdict,
+    ApplyConflictKind, BumpStatus, Diagnostics, InapplicableReason, IndirectCallForm, PatchFacts,
+    PinBump, PinVerdict, Reason, SeriesVerdict, Verdict,
 };
 
 fn commit(c: char) -> CommitSha {
@@ -71,6 +75,7 @@ fn row_with_diagnostics(
         parent_count: None,
         verdict_fingerprint: None,
         apply: None,
+        target_findings: None,
     }
 }
 
@@ -736,4 +741,131 @@ fn conflicted_paths_dedup_across_rows_and_kinds_sum() {
     assert_eq!(facts.apply.conflicted_paths.len(), 1);
     assert_eq!(facts.apply.by_kind.get("preimage_missing"), Some(&1));
     assert_eq!(facts.apply.by_kind.get("file_absent"), Some(&1));
+}
+
+fn indirect_finding(function: &str) -> Reason {
+    Reason::IndirectCallUndefinedOnTarget {
+        source_path: RelativePath::new("deps/rabbit/test/maintenance_mode_SUITE.erl").unwrap(),
+        module: ModuleName::from_str("rabbit_queue_type").unwrap(),
+        function: FunctionName::from_str(function).unwrap(),
+        arity: Arity::new(1),
+        via: IndirectCallForm::MeckExpect,
+        line: 356,
+    }
+}
+
+fn row_with_findings(
+    c: char,
+    series: &str,
+    pins: Vec<PinVerdict>,
+    findings: Option<TargetFindings>,
+) -> BatchResult {
+    let mut r = row(c, series, pins);
+    r.target_findings = findings;
+    r
+}
+
+// The HF-33 shape: every verdict inapplicable, yet the target checks
+// found symbols missing. The round must not read as ZeroDomain.
+#[test]
+fn all_inapplicable_with_a_target_finding_is_findings_and_exits_nonzero() {
+    let rows = vec![
+        row_with_findings(
+            'a',
+            "v3.13.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::OnlyTestFixturesTouched,
+            )],
+            Some(TargetFindings {
+                reasons: vec![indirect_finding("drain"), indirect_finding("revive")],
+            }),
+        ),
+        row_with_findings(
+            'b',
+            "v3.13.x",
+            vec![inapplicable("ra", InapplicableReason::OnlyDocsTouched)],
+            Some(TargetFindings::default()),
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Findings(_)));
+    let facts = clearance.facts();
+    assert_eq!(facts.exit_code, 3);
+    assert_eq!(facts.target.rows_with_findings, 2);
+    assert_eq!(facts.target.finding_rows, 1);
+    assert_eq!(
+        facts.target.by_class,
+        vec![(ResolverClass::IndirectCall, 2)]
+    );
+    assert_eq!(facts.target.unclassified, 0);
+}
+
+#[test]
+fn all_inapplicable_with_empty_findings_stays_zero_domain() {
+    let rows = vec![row_with_findings(
+        'a',
+        "v3.13.x",
+        vec![inapplicable(
+            "ra",
+            InapplicableReason::OnlyTestFixturesTouched,
+        )],
+        Some(TargetFindings::default()),
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::ZeroDomain(_)));
+    let facts = clearance.facts();
+    assert_eq!(facts.exit_code, 0);
+    assert_eq!(facts.target.rows_with_findings, 1);
+    assert_eq!(facts.target.finding_rows, 0);
+}
+
+#[test]
+fn rows_without_the_findings_field_keep_todays_arms() {
+    let rows = vec![row(
+        'a',
+        "v3.13.x",
+        vec![inapplicable(
+            "ra",
+            InapplicableReason::OnlyTestFixturesTouched,
+        )],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::ZeroDomain(_)));
+    assert_eq!(clearance.facts().target.rows_with_findings, 0);
+}
+
+// both target axes at once produce one Findings with both rollups
+#[test]
+fn a_forecast_conflict_and_a_target_finding_populate_both_rollups() {
+    let forecast = forecast_with(&[(
+        "deps/rabbit/test/quorum_queue_SUITE.erl",
+        PathApplyOutcome::Conflict {
+            kind: ApplyConflictKind::PreimageMissing,
+        },
+    )]);
+    let rows = vec![
+        row_with_apply(
+            'a',
+            "v3.13.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::OnlyTestFixturesTouched,
+            )],
+            Some(forecast),
+        ),
+        row_with_findings(
+            'b',
+            "v3.13.x",
+            vec![inapplicable("ra", InapplicableReason::OnlyDocsTouched)],
+            Some(TargetFindings {
+                reasons: vec![indirect_finding("drain")],
+            }),
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Findings(_)));
+    let facts = clearance.facts();
+    assert_eq!(facts.apply.conflicted_rows, 1);
+    assert_eq!(facts.target.finding_rows, 1);
 }

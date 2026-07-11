@@ -29,6 +29,7 @@ fn build_eval(verdicts: Vec<PinVerdict>) -> SeriesEvaluation {
         touched_paths: Vec::new(),
         pr_commits: None,
         apply: None,
+        target_findings: None,
     }
 }
 

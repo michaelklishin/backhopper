@@ -18,13 +18,14 @@ pub use backhopper_core::model::cache::{
     CacheShowPayload, CacheStatsPayload,
 };
 pub use backhopper_core::model::clearance::{
-    ApplyRollup, BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
+    ApplyRollup, BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance, TargetFindingsRollup,
 };
 pub use backhopper_core::model::eval::{
     BuildOutcome, CorpusEntry, EvalReport, ForecastEntry, ForecastMiss, ForecastReport,
     ForecastedConflict, MissedBreak, ObservedApply, PredictedConflict, Ratio,
 };
 pub use backhopper_core::model::evaluation::AggregateVerdict;
+pub use backhopper_core::model::findings::TargetFindings;
 pub use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 pub use backhopper_core::model::names::{
     ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,

@@ -22,6 +22,7 @@ fn touched_paths_emits_as_empty_array_when_no_paths_seen() {
         touched_paths: Vec::new(),
         pr_commits: None,
         apply: None,
+        target_findings: None,
     };
     let json = serde_json::to_value(&eval).unwrap();
     assert!(
