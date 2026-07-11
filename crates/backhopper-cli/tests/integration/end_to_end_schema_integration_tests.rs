@@ -124,7 +124,7 @@ fn diff_v8_to_v9_adds_exactly_the_cache_payloads() {
 /// Golden pin for the apply axis: v13 adds exactly the apply-forecast
 /// types and fields on top of v12, and removes nothing.
 #[test]
-fn diff_v12_to_v13_adds_exactly_the_apply_forecast() {
+fn diff_v12_to_v13_is_add_only() {
     let a = run_succeeds(["--formatter", "json", "schema", "diff", "12", "13"]);
     let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json");
     let data = v.get("data").expect("data");
@@ -140,11 +140,20 @@ fn diff_v12_to_v13_adds_exactly_the_apply_forecast() {
             "/batch_payload/$defs/ApplyConflictKind",
             "/batch_payload/$defs/ApplyForecast",
             "/batch_payload/$defs/BatchResult/properties/apply",
+            "/batch_payload/$defs/Diagnostics/properties/indirect_call_checks",
+            "/batch_payload/$defs/IndirectCallForm",
+            "/batch_payload/$defs/IndirectCallTally",
             "/batch_payload/$defs/PathApplyOutcome",
+            "/batch_payload/$defs/Reason/oneOf/42",
+            "/batch_payload/$defs/ResolverClass/enum/7",
             "/batch_payload/$defs/UnassessedReason",
             "/envelope/properties/data/$defs/ApplyConflictKind",
             "/envelope/properties/data/$defs/ApplyForecast",
+            "/envelope/properties/data/$defs/Diagnostics/properties/indirect_call_checks",
+            "/envelope/properties/data/$defs/IndirectCallForm",
+            "/envelope/properties/data/$defs/IndirectCallTally",
             "/envelope/properties/data/$defs/PathApplyOutcome",
+            "/envelope/properties/data/$defs/Reason/oneOf/42",
             "/envelope/properties/data/$defs/UnassessedReason",
             "/envelope/properties/data/properties/apply",
             "/summary_row/properties/apply_conflicts",

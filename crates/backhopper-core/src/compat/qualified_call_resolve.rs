@@ -20,13 +20,14 @@ use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::call_sites::extract_qualified_calls;
+use crate::compat::indirect_calls::{IndirectCallSite, extract_indirect_calls};
 use crate::compat::source_attributes::{
     ExportSet, SpecTable, extract_exports, extract_function_signatures, extract_specs,
 };
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
-use crate::model::verdict::{Reason, ShapeCheckTally};
+use crate::model::verdict::{IndirectCallForm, IndirectCallTally, Reason, ShapeCheckTally};
 
 /// `(function, arity)` pairs per module.
 pub type PerModuleFunctionSet = BTreeMap<ModuleName, BTreeSet<(FunctionName, Arity)>>;
@@ -117,6 +118,17 @@ pub fn patch_provided(per_file: &[(ModuleName, &str)]) -> PatchProvided {
 pub struct QualifiedCallAnalysis {
     pub reasons: Vec<Reason>,
     pub shape_checks: ShapeCheckTally,
+    pub indirect_checks: IndirectCallTally,
+}
+
+/// The target module's readable surface for this axis: what it exports
+/// and what it defines. The defined set exists for the indirect gate,
+/// where a meck expectation on an unexported function is legitimate.
+#[derive(Debug)]
+struct TargetModuleSurface {
+    exports: ExportSet,
+    defined: BTreeSet<(FunctionName, Arity)>,
+    path: RelativePath,
 }
 
 /// Flag each added qualified call whose module is first-party on the
@@ -143,8 +155,7 @@ pub fn analyse_qualified_calls(
     // export surface), so a second call into it skips the work too.
     // The path rides along for the spec tables, whose cache fills
     // lazily and only for modules that receive a resolved call.
-    let mut exports_by_module: BTreeMap<ModuleName, Option<(ExportSet, RelativePath)>> =
-        BTreeMap::new();
+    let mut exports_by_module: BTreeMap<ModuleName, Option<TargetModuleSurface>> = BTreeMap::new();
     // The source side is Option: a failed read means the module is not
     // readable on the source checkout (counted as withheld_no_source),
     // which is not the same fact as a readable module with no spec.
@@ -159,17 +170,12 @@ pub fn analyse_qualified_calls(
         for call in calls {
             let module = &call.mfa.module;
             let entry = exports_by_module.entry(module.clone()).or_insert_with(|| {
-                match classify_module(module, covered_modules, resolve_module_path) {
-                    ModuleProvenance::FirstParty { path } => {
-                        let exports = extract_exports(&read_target(&path)?);
-                        exports.complete.then_some((exports, path))
-                    }
-                    ModuleProvenance::CoveredBySnapshot | ModuleProvenance::Unknown => None,
-                }
+                target_module_surface(module, covered_modules, resolve_module_path, read_target)
             });
-            let Some((exports, path)) = entry.as_ref() else {
+            let Some(surface) = entry.as_ref() else {
                 continue;
             };
+            let (exports, path) = (&surface.exports, &surface.path);
             let key = (call.mfa.function.clone(), call.mfa.arity);
             // A callee the patch itself introduces has no meaningful
             // pre-existing shape on either tree.
@@ -220,7 +226,115 @@ pub fn analyse_qualified_calls(
                 });
         }
     }
+    for subject in subjects {
+        resolve_indirect_calls(
+            subject,
+            covered_modules,
+            patch_added,
+            resolve_module_path,
+            read_target,
+            &mut exports_by_module,
+            &mut analysis,
+        );
+    }
     analysis
+}
+
+/// Classify a module and read its export and definition surface once.
+/// `None` caches every withheld case: covered, absent, or an
+/// incompletely readable export surface.
+fn target_module_surface(
+    module: &ModuleName,
+    covered_modules: &BTreeSet<ModuleName>,
+    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
+    read_target: TreeReader<'_>,
+) -> Option<TargetModuleSurface> {
+    match classify_module(module, covered_modules, resolve_module_path) {
+        ModuleProvenance::FirstParty { path } => {
+            let text = read_target(&path)?;
+            let exports = extract_exports(&text);
+            if !exports.complete {
+                return None;
+            }
+            let defined = extract_function_signatures(&text)
+                .into_iter()
+                .filter(|sig| sig.is_definition)
+                .filter_map(|sig| {
+                    match (
+                        FunctionName::from_str(&sig.name),
+                        Arity::try_from(sig.arity),
+                    ) {
+                        (Ok(function), Ok(arity)) => Some((function, arity)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            Some(TargetModuleSurface {
+                exports,
+                defined,
+                path,
+            })
+        }
+        ModuleProvenance::CoveredBySnapshot | ModuleProvenance::Unknown => None,
+    }
+}
+
+/// Resolve one subject's indirect MFA references (meck expectations
+/// and rpc forms) against the target modules' export and definition
+/// sets. A site is flagged only when the target module neither exports
+/// nor defines it and the patch does not add it.
+fn resolve_indirect_calls(
+    subject: &AddedLinesSubject<'_>,
+    covered_modules: &BTreeSet<ModuleName>,
+    patch_added: &PatchProvided,
+    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
+    read_target: TreeReader<'_>,
+    exports_by_module: &mut BTreeMap<ModuleName, Option<TargetModuleSurface>>,
+    analysis: &mut QualifiedCallAnalysis,
+) {
+    let extraction = extract_indirect_calls(subject.added_text, subject.line_map);
+    analysis.indirect_checks.withheld_dynamic += extraction.withheld_dynamic;
+    let mut seen: BTreeSet<(ModuleName, FunctionName, Arity, IndirectCallForm)> = BTreeSet::new();
+    for site in extraction.sites {
+        let IndirectCallSite { mfa, via, line } = site;
+        let entry = exports_by_module
+            .entry(mfa.module.clone())
+            .or_insert_with(|| {
+                target_module_surface(
+                    &mfa.module,
+                    covered_modules,
+                    resolve_module_path,
+                    read_target,
+                )
+            });
+        let Some(surface) = entry.as_ref() else {
+            continue;
+        };
+        if !seen.insert((mfa.module.clone(), mfa.function.clone(), mfa.arity, via)) {
+            continue;
+        }
+        analysis.indirect_checks.checked += 1;
+        let key = (mfa.function.clone(), mfa.arity);
+        if surface.exports.exports.contains(&key)
+            || surface.defined.contains(&key)
+            || patch_added
+                .functions
+                .get(&mfa.module)
+                .is_some_and(|s| s.contains(&key))
+        {
+            continue;
+        }
+        analysis
+            .reasons
+            .push(Reason::IndirectCallUndefinedOnTarget {
+                source_path: subject.source_path.clone(),
+                module: mfa.module,
+                function: mfa.function,
+                arity: mfa.arity,
+                via,
+                line: file_line(subject.line_map, line),
+            });
+    }
 }
 
 /// Outcome of comparing one function's `-spec` return shape between

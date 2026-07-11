@@ -486,6 +486,20 @@ pub enum Reason {
         macros: Vec<MacroName>,
         side: SnapshotSide,
     },
+    /// A first-party `m:f/a` referenced as arguments to a mocking or
+    /// rpc form (a meck expectation, `rpc:call`, `erpc:call`, or a CT
+    /// broker rpc helper) is neither exported nor defined by the target
+    /// tree's module. Non-blocking: a meck expectation can install a
+    /// function the module never had, so absence proves drift, not
+    /// failure.
+    IndirectCallUndefinedOnTarget {
+        source_path: RelativePath,
+        module: ModuleName,
+        function: FunctionName,
+        arity: Arity,
+        via: IndirectCallForm,
+        line: u32,
+    },
 }
 
 /// Which side of a snapshot comparison the data is missing from.
@@ -624,6 +638,33 @@ impl ApplyConflictKind {
     }
 }
 
+/// Which recognized call form carried an indirect MFA reference. Names
+/// the innermost form: a meck expectation reached through an rpc helper
+/// is `MeckExpect`, not the helper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum IndirectCallForm {
+    MeckExpect,
+    RpcCall,
+    ErpcCall,
+    CtBrokerHelperRpc,
+}
+
+impl IndirectCallForm {
+    /// The Erlang form the extractor matched, for text output. Distinct
+    /// from the serde wire name on purpose.
+    #[must_use]
+    pub fn display_form(self) -> &'static str {
+        match self {
+            Self::MeckExpect => "meck:expect",
+            Self::RpcCall => "rpc:call",
+            Self::ErpcCall => "erpc:call",
+            Self::CtBrokerHelperRpc => "rabbit_ct_broker_helpers:rpc",
+        }
+    }
+}
+
 impl Reason {
     /// The risky apply outcome and its path, or `None` for a clean or
     /// non-apply reason. `PreimageDrifted` is excluded: a drifted preimage
@@ -668,6 +709,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::LocalCallReturnShapeDrift { .. }
             | Self::MacroValueDrift { .. }
@@ -696,6 +738,7 @@ impl Reason {
             }
             Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. } => Some(ResolverClass::QualifiedCall),
+            Self::IndirectCallUndefinedOnTarget { .. } => Some(ResolverClass::IndirectCall),
             Self::HeaderFileMissing { .. } => Some(ResolverClass::Include),
             Self::BehaviourModuleMissing { .. }
             | Self::BehaviourCallbackAddedOnTarget { .. }
@@ -779,6 +822,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::LocalCallReturnShapeDrift { .. }
             | Self::MacroValueDrift { .. }
@@ -830,6 +874,7 @@ impl Reason {
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
+            | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
             | Self::LocalCallReturnShapeDrift { .. }
             | Self::MacroValueDrift { .. }
@@ -1326,6 +1371,11 @@ pub struct Diagnostics {
     /// uses: compared, or withheld and why.
     #[serde(default, skip_serializing_if = "MacroValueTally::is_empty")]
     pub macro_value_checks: MacroValueTally,
+    /// What the indirect-reference check (meck expectations and rpc
+    /// forms) did with each recognized occurrence: resolved against the
+    /// target module, or seen with an unreadable arity and withheld.
+    #[serde(default, skip_serializing_if = "IndirectCallTally::is_empty")]
+    pub indirect_call_checks: IndirectCallTally,
 }
 
 impl Diagnostics {
@@ -1346,6 +1396,7 @@ impl Diagnostics {
             qualified_call_shape_checks,
             local_call_shape_checks,
             macro_value_checks,
+            indirect_call_checks,
         } = self;
         untracked_calls.is_empty()
             && untracked_records.is_empty()
@@ -1361,6 +1412,7 @@ impl Diagnostics {
             && qualified_call_shape_checks.is_empty()
             && local_call_shape_checks.is_empty()
             && macro_value_checks.is_empty()
+            && indirect_call_checks.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -1466,6 +1518,30 @@ pub struct MacroValueTally {
 }
 
 impl MacroValueTally {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// What the indirect-reference check did with each recognized form
+/// occurrence. `checked` counts deduplicated resolved sites, the same
+/// dedup the reasons use; flagged sites are visible in the reasons,
+/// not double-counted here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct IndirectCallTally {
+    /// Module first-party, export and definition sets readable: the
+    /// membership check ran.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub checked: usize,
+    /// Module and function were literal atoms but the arity source was
+    /// not statically readable: a variable argument list, a list with a
+    /// cons tail, or a non-literal arity argument.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub withheld_dynamic: usize,
+}
+
+impl IndirectCallTally {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
     }

@@ -18,6 +18,7 @@
 //!
 //! These flow into a separate diagnostic envelope and never feed `Verdict`.
 
+use std::mem;
 use std::str::FromStr;
 use std::sync::OnceLock;
 
@@ -45,7 +46,7 @@ pub enum DynamicCall {
     VariableDispatch,
 }
 
-fn call_re() -> &'static Regex {
+pub(crate) fn call_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         Regex::new(r"\b([a-z][a-zA-Z0-9_@]*)\s*:\s*([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex")
@@ -113,6 +114,34 @@ pub struct QualifiedCallSite {
 /// gaps on purpose: resetting would misread a still-open `-spec` as
 /// body text.
 pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCallSite> {
+    let mut out = Vec::new();
+    for run in body_runs(src, line_map) {
+        let mut calls = Vec::new();
+        push_call_args_with_offsets(&run.text, &mut calls);
+        for ((mfa, _shapes), offset) in calls {
+            out.push(QualifiedCallSite {
+                mfa,
+                line: run_line_at(&run.line_starts, offset),
+            });
+        }
+    }
+    out
+}
+
+/// One joined run of file-adjacent body lines, comment-stripped, with
+/// each line's byte offset into `text` paired with its 1-based text
+/// line. Shared by the qualified-call and indirect-reference
+/// extractors so both see wrapped constructs whole.
+#[derive(Debug)]
+pub(crate) struct BodyRun {
+    pub(crate) text: String,
+    pub(crate) line_starts: Vec<(usize, u32)>,
+}
+
+/// Joins consecutive `Body` lines into runs, breaking on attribute
+/// context and on file-line gaps so fragments from different hunks
+/// never concatenate into a false construct.
+pub(crate) fn body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
     debug_assert_eq!(
         line_map.len(),
         src.lines().count(),
@@ -121,7 +150,6 @@ pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCall
     let mut scanner = AttrCtxScanner::new();
     let mut out = Vec::new();
     let mut run = String::new();
-    // (byte offset of the line's start in `run`, 1-based text line)
     let mut run_lines: Vec<(usize, u32)> = Vec::new();
     let mut prev_body_file_line: Option<u32> = None;
     for (idx, line) in src.lines().enumerate() {
@@ -132,10 +160,11 @@ pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCall
             (Some(prev), Some(cur)) => cur == prev + 1,
             _ => false,
         };
-        if ctx != RefContext::Body || !adjacent {
-            flush_qualified_run(&run, &run_lines, &mut out);
-            run.clear();
-            run_lines.clear();
+        if (ctx != RefContext::Body || !adjacent) && !run.is_empty() {
+            out.push(BodyRun {
+                text: mem::take(&mut run),
+                line_starts: mem::take(&mut run_lines),
+            });
         }
         prev_body_file_line = (ctx == RefContext::Body).then_some(file_line).flatten();
         if ctx != RefContext::Body {
@@ -145,27 +174,18 @@ pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCall
         run.push_str(stripped);
         run.push('\n');
     }
-    flush_qualified_run(&run, &run_lines, &mut out);
-    out
-}
-
-fn flush_qualified_run(run: &str, run_lines: &[(usize, u32)], out: &mut Vec<QualifiedCallSite>) {
-    if run.is_empty() {
-        return;
-    }
-    let mut calls = Vec::new();
-    push_call_args_with_offsets(run, &mut calls);
-    for ((mfa, _shapes), offset) in calls {
-        out.push(QualifiedCallSite {
-            mfa,
-            line: run_line_at(run_lines, offset),
+    if !run.is_empty() {
+        out.push(BodyRun {
+            text: run,
+            line_starts: run_lines,
         });
     }
+    out
 }
 
 // Match-start origin: the run line whose start offset is the last one
 // at or before the match offset.
-fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
+pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
     match run_lines.binary_search_by(|(start, _)| start.cmp(&offset)) {
         Ok(i) => run_lines[i].1,
         Err(0) => run_lines.first().map_or(1, |(_, l)| *l),

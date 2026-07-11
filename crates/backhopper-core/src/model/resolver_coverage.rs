@@ -29,10 +29,11 @@ pub enum ResolverClass {
     Record,
     LocalCall,
     Type,
+    IndirectCall,
 }
 
 impl ResolverClass {
-    pub const ALL: [ResolverClass; 7] = [
+    pub const ALL: [ResolverClass; 8] = [
         ResolverClass::Macro,
         ResolverClass::Include,
         ResolverClass::Behaviour,
@@ -40,11 +41,13 @@ impl ResolverClass {
         ResolverClass::Record,
         ResolverClass::LocalCall,
         ResolverClass::Type,
+        ResolverClass::IndirectCall,
     ];
 
     /// Whether the analyzer resolves this class. Macro, include,
-    /// behaviour, record, and local call resolve on the target tree;
-    /// qualified call and type resolve through the snapshot and self-pin.
+    /// behaviour, record, local call, and indirect call resolve on the
+    /// target tree; qualified call and type resolve through the
+    /// snapshot and self-pin.
     #[must_use]
     pub fn is_covered(self) -> bool {
         match self {
@@ -54,7 +57,8 @@ impl ResolverClass {
             | ResolverClass::QualifiedCall
             | ResolverClass::Record
             | ResolverClass::LocalCall
-            | ResolverClass::Type => true,
+            | ResolverClass::Type
+            | ResolverClass::IndirectCall => true,
         }
     }
 

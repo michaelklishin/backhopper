@@ -13,7 +13,7 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::resolver_coverage::ResolverClass;
 use backhopper_core::model::symbol::SymbolRef;
-use backhopper_core::model::verdict::{IncludeDirective, Reason};
+use backhopper_core::model::verdict::{IncludeDirective, IndirectCallForm, Reason};
 
 fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
@@ -89,6 +89,17 @@ fn the_target_tree_reasons_map_one_to_one() {
                 behaviour: module("ra_machine"),
             },
             ResolverClass::Behaviour,
+        ),
+        (
+            Reason::IndirectCallUndefinedOnTarget {
+                source_path: rp("test/maintenance_mode_SUITE.erl"),
+                module: module("rabbit_queue_type"),
+                function: FunctionName::from_str("revive").unwrap(),
+                arity: Arity::new(0),
+                via: IndirectCallForm::MeckExpect,
+                line: 1,
+            },
+            ResolverClass::IndirectCall,
         ),
         (
             Reason::MissingType {
@@ -179,6 +190,14 @@ fn every_resolver_class_is_reachable_from_some_reason() {
             first_seen_at_tag: None,
             needs_pin_at_least: None,
             suggested_replacement: None,
+        },
+        Reason::IndirectCallUndefinedOnTarget {
+            source_path: rp("test/maintenance_mode_SUITE.erl"),
+            module: module("rabbit_queue_type"),
+            function: FunctionName::from_str("drain").unwrap(),
+            arity: Arity::new(1),
+            via: IndirectCallForm::MeckExpect,
+            line: 1,
         },
     ];
     let reached: BTreeSet<ResolverClass> =

@@ -29,8 +29,8 @@ use crate::model::pin::Pin;
 use crate::model::snapshot::{Snapshot, state};
 use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
-    AlreadyPresent, ContentPresence, Diagnostics, MacroValueTally, PinVerdict, SeriesEvaluation,
-    SeriesVerdict, ShapeCheckTally, Unanalyzed,
+    AlreadyPresent, ContentPresence, Diagnostics, IndirectCallTally, MacroValueTally, PinVerdict,
+    SeriesEvaluation, SeriesVerdict, ShapeCheckTally, Unanalyzed,
 };
 
 pub use crate::compat::diff::PATCH_SIZE_LIMIT;
@@ -629,6 +629,7 @@ impl Patch<Analyzed> {
                 qualified_call_shape_checks: ShapeCheckTally::default(),
                 local_call_shape_checks: ShapeCheckTally::default(),
                 macro_value_checks: MacroValueTally::default(),
+                indirect_call_checks: IndirectCallTally::default(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),

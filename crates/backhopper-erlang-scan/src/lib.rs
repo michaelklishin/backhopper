@@ -232,6 +232,87 @@ pub fn count_top_level_commas(s: &str) -> usize {
     n
 }
 
+/// Result of scanning one list literal's elements after the opening
+/// `[`. `ImproperTail` means a top-level `|`, so the element count is
+/// not the list's length. `Unterminated` means the closing bracket is
+/// not in the input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScannedList<'a> {
+    Terminated {
+        elements: Vec<&'a str>,
+        consumed: usize,
+    },
+    ImproperTail,
+    Unterminated,
+}
+
+/// The list-literal twin of `scan_top_level_args`: splits the source
+/// after an already-consumed opening `[` into top-level element slices,
+/// with the same string, atom, char-literal, and binary handling.
+pub fn scan_list_elements(after_open_bracket: &str) -> ScannedList<'_> {
+    let bytes = after_open_bracket.as_bytes();
+    let mut elements: Vec<&str> = Vec::new();
+    let mut depth = 1i32;
+    let mut in_str = false;
+    let mut in_atom = false;
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if in_str || in_atom {
+            match c {
+                b'\\' => i += 1,
+                b'"' if in_str => in_str = false,
+                b'\'' if in_atom => in_atom = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b'"' => in_str = true,
+            b'\'' => in_atom = true,
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
+                continue;
+            }
+            b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                depth += 1;
+                i += 1;
+            }
+            b'>' if bytes.get(i + 1) == Some(&b'>') && depth > 1 => {
+                depth -= 1;
+                i += 1;
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b'}' => depth -= 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let slice = &after_open_bracket[start..i];
+                    if !slice.trim().is_empty() || !elements.is_empty() {
+                        elements.push(slice);
+                    }
+                    return ScannedList::Terminated {
+                        elements,
+                        consumed: i + 1,
+                    };
+                }
+            }
+            // `||` is a comprehension, not a cons tail, and makes the
+            // element count meaningless too.
+            b'|' if depth == 1 => return ScannedList::ImproperTail,
+            b',' if depth == 1 => {
+                elements.push(&after_open_bracket[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    ScannedList::Unterminated
+}
+
 /// A `-spec` or `-callback` body reduced to its name, arity, and the
 /// canonical `name(Args) -> Ret` signature string.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -17,6 +17,7 @@ mod error_unit_tests;
 mod exit_class_unit_tests;
 mod global_flags_pass_through_unit_tests;
 mod global_options_unit_tests;
+mod indirect_call_wire_unit_tests;
 mod invocation_assembly_unit_tests;
 mod mock_backend_unit_tests;
 mod pin_selector_unit_tests;

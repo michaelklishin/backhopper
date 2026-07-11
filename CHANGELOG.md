@@ -18,6 +18,11 @@
    between the checkouts too; a disagreement is a non-blocking
    `local_call_return_shape_drift` reason, tallied in
    `diagnostics.local_call_shape_checks`
+ * An `m:f/a` passed as arguments to `meck:expect/3,4`, `rpc:call/4,5`,
+   `erpc:call/4,5`, or a CT broker rpc helper is now resolved against
+   the target tree; a function the target module neither exports nor
+   defines is a non-blocking `indirect_call_undefined_on_target`
+   reason, tallied in `diagnostics.indirect_call_checks`
  * A used macro whose same-file `-define` value differs between the
    checkouts is a non-blocking `macro_value_drift` reason, tallied in
    `diagnostics.macro_value_checks`

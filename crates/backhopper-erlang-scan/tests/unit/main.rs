@@ -2,5 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod list_scan_unit_tests;
 mod scan_unit_tests;
 mod signature_unit_tests;

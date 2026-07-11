@@ -44,9 +44,10 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, MacroValueTally, PinBump,
-    PinVerdict, Reason, SeriesEvaluation, SeriesSummary, SeriesVerdict, ShapeCheckTally,
-    SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds, TranslationSource, Verdict,
+    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, IndirectCallTally,
+    MacroValueTally, PinBump, PinVerdict, Reason, SeriesEvaluation, SeriesSummary, SeriesVerdict,
+    ShapeCheckTally, SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds, TranslationSource,
+    Verdict,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
@@ -792,6 +793,7 @@ fn apply_target_context(
     );
     target_repo::merge_reasons_into_evaluation(qualified_calls.reasons, evaluation);
     evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
+    evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
     let apply_analysis = target_repo::collect_target_apply_analysis(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
     evaluation.apply = Some(apply_analysis.forecast);
@@ -1563,6 +1565,17 @@ fn reason_md_label(r: &Reason) -> String {
         } => format!(
             "QualifiedCallUndefinedOnTarget {module}:{function}/{arity} in {source_path}:{line}"
         ),
+        Reason::IndirectCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            via,
+            line,
+        } => format!(
+            "IndirectCallUndefinedOnTarget {module}:{function}/{arity} via {} in {source_path}:{line}",
+            via.display_form()
+        ),
         Reason::QualifiedCallReturnShapeDrift {
             source_path,
             module,
@@ -1799,6 +1812,22 @@ fn render_shape_checks(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResul
     )?;
     render_shape_tally(w, "local calls", &diagnostics.local_call_shape_checks)?;
     render_macro_value_tally(w, &diagnostics.macro_value_checks)?;
+    render_indirect_tally(w, &diagnostics.indirect_call_checks)?;
+    Ok(())
+}
+
+fn render_indirect_tally(w: &mut dyn Write, t: &IndirectCallTally) -> CliResult<()> {
+    if t.is_empty() {
+        return Ok(());
+    }
+    let mut parts = vec![format!("{} checked", t.checked)];
+    if t.withheld_dynamic > 0 {
+        parts.push(format!(
+            "{} withheld (arity not readable)",
+            t.withheld_dynamic
+        ));
+    }
+    writeln!(w, "indirect calls: {}", parts.join(", "))?;
     Ok(())
 }
 
@@ -2798,10 +2827,11 @@ fn render_cascade_text(
         )?;
         let clearance = RoundClearance::from_results(&leg.batch.results, self_projects);
         render_clearance(w, &clearance)?;
-        let (qualified, local, macros) = sum_leg_tallies(&leg.batch.results);
-        render_shape_tally(w, "qualified calls", &qualified)?;
-        render_shape_tally(w, "local calls", &local)?;
-        render_macro_value_tally(w, &macros)?;
+        let tallies = sum_leg_tallies(&leg.batch.results);
+        render_shape_tally(w, "qualified calls", &tallies.qualified)?;
+        render_shape_tally(w, "local calls", &tallies.local)?;
+        render_macro_value_tally(w, &tallies.macros)?;
+        render_indirect_tally(w, &tallies.indirect)?;
     }
     Ok(())
 }
@@ -2819,20 +2849,33 @@ fn summary_cell(summary: &SeriesSummary) -> &'static str {
     }
 }
 
-fn sum_leg_tallies(results: &[BatchResult]) -> (ShapeCheckTally, ShapeCheckTally, MacroValueTally) {
-    let mut qualified = ShapeCheckTally::default();
-    let mut local = ShapeCheckTally::default();
-    let mut macros = MacroValueTally::default();
+/// Per-leg sums of the diagnostics tallies, one field per rendered line.
+#[derive(Default)]
+struct LegTallies {
+    qualified: ShapeCheckTally,
+    local: ShapeCheckTally,
+    macros: MacroValueTally,
+    indirect: IndirectCallTally,
+}
+
+fn sum_leg_tallies(results: &[BatchResult]) -> LegTallies {
+    let mut t = LegTallies::default();
     for row in results {
-        add_shape(&mut qualified, &row.diagnostics.qualified_call_shape_checks);
-        add_shape(&mut local, &row.diagnostics.local_call_shape_checks);
+        add_shape(
+            &mut t.qualified,
+            &row.diagnostics.qualified_call_shape_checks,
+        );
+        add_shape(&mut t.local, &row.diagnostics.local_call_shape_checks);
         let m = &row.diagnostics.macro_value_checks;
-        macros.compared += m.compared;
-        macros.withheld_definition_elsewhere += m.withheld_definition_elsewhere;
-        macros.withheld_multiple_defines += m.withheld_multiple_defines;
-        macros.withheld_no_source += m.withheld_no_source;
+        t.macros.compared += m.compared;
+        t.macros.withheld_definition_elsewhere += m.withheld_definition_elsewhere;
+        t.macros.withheld_multiple_defines += m.withheld_multiple_defines;
+        t.macros.withheld_no_source += m.withheld_no_source;
+        let i = &row.diagnostics.indirect_call_checks;
+        t.indirect.checked += i.checked;
+        t.indirect.withheld_dynamic += i.withheld_dynamic;
     }
-    (qualified, local, macros)
+    t
 }
 
 fn add_shape(into: &mut ShapeCheckTally, from: &ShapeCheckTally) {

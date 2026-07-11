@@ -10,6 +10,7 @@ pub mod call_sites;
 pub mod define_resolve;
 pub(crate) mod diff;
 pub(crate) mod evaluate;
+pub mod indirect_calls;
 pub mod local_call_resolve;
 pub mod otp;
 pub mod patch;

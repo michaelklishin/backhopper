@@ -47,6 +47,7 @@ mod file_kind_and_family_unit_tests;
 mod format_v2_unit_tests;
 mod implementer_index_unit_tests;
 mod inapplicable_promotion_unit_tests;
+mod indirect_calls_unit_tests;
 mod library_derivation_unit_tests;
 mod local_call_resolve_unit_tests;
 mod macro_value_resolve_unit_tests;

@@ -590,6 +590,10 @@
             },
             "type": "array"
           },
+          "indirect_call_checks": {
+            "$ref": "#/$defs/IndirectCallTally",
+            "description": "What the indirect-reference check (meck expectations and rpc\nforms) did with each recognized occurrence: resolved against the\ntarget module, or seen with an unreadable arity and withheld."
+          },
           "local_call_shape_checks": {
             "$ref": "#/$defs/ShapeCheckTally",
             "description": "The local-call twin: resolved unqualified calls, compared or\nwithheld. Kept apart from the qualified tally so one axis's\ncoverage never reads as the other's."
@@ -938,6 +942,34 @@
             "type": "object"
           }
         ]
+      },
+      "IndirectCallForm": {
+        "description": "Which recognized call form carried an indirect MFA reference. Names\nthe innermost form: a meck expectation reached through an rpc helper\nis `MeckExpect`, not the helper.",
+        "enum": [
+          "meck_expect",
+          "rpc_call",
+          "erpc_call",
+          "ct_broker_helper_rpc"
+        ],
+        "type": "string"
+      },
+      "IndirectCallTally": {
+        "description": "What the indirect-reference check did with each recognized form\noccurrence. `checked` counts deduplicated resolved sites, the same\ndedup the reasons use; flagged sites are visible in the reasons,\nnot double-counted here.",
+        "properties": {
+          "checked": {
+            "description": "Module first-party, export and definition sets readable: the\nmembership check ran.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "withheld_dynamic": {
+            "description": "Module and function were literal atoms but the arity source was\nnot statically readable: a variable argument list, a list with a\ncons tail, or a non-literal arity argument.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
       },
       "KhepriSignals": {
         "properties": {
@@ -2554,6 +2586,48 @@
               "side"
             ],
             "type": "object"
+          },
+          {
+            "description": "A first-party `m:f/a` referenced as arguments to a mocking or\nrpc form (a meck expectation, `rpc:call`, `erpc:call`, or a CT\nbroker rpc helper) is neither exported nor defined by the target\ntree's module. Non-blocking: a meck expectation can install a\nfunction the module never had, so absence proves drift, not\nfailure.",
+            "properties": {
+              "arity": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "function": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "indirect_call_undefined_on_target",
+                "type": "string"
+              },
+              "line": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "module": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string"
+              },
+              "via": {
+                "$ref": "#/$defs/IndirectCallForm"
+              }
+            },
+            "required": [
+              "kind",
+              "source_path",
+              "module",
+              "function",
+              "arity",
+              "via",
+              "line"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -2574,7 +2648,8 @@
           "qualified_call",
           "record",
           "local_call",
-          "type"
+          "type",
+          "indirect_call"
         ],
         "type": "string"
       },
@@ -3969,6 +4044,10 @@
                 },
                 "type": "array"
               },
+              "indirect_call_checks": {
+                "$ref": "#/$defs/IndirectCallTally",
+                "description": "What the indirect-reference check (meck expectations and rpc\nforms) did with each recognized occurrence: resolved against the\ntarget module, or seen with an unreadable arity and withheld."
+              },
               "local_call_shape_checks": {
                 "$ref": "#/$defs/ShapeCheckTally",
                 "description": "The local-call twin: resolved unqualified calls, compared or\nwithheld. Kept apart from the qualified tally so one axis's\ncoverage never reads as the other's."
@@ -4317,6 +4396,34 @@
                 "type": "object"
               }
             ]
+          },
+          "IndirectCallForm": {
+            "description": "Which recognized call form carried an indirect MFA reference. Names\nthe innermost form: a meck expectation reached through an rpc helper\nis `MeckExpect`, not the helper.",
+            "enum": [
+              "meck_expect",
+              "rpc_call",
+              "erpc_call",
+              "ct_broker_helper_rpc"
+            ],
+            "type": "string"
+          },
+          "IndirectCallTally": {
+            "description": "What the indirect-reference check did with each recognized form\noccurrence. `checked` counts deduplicated resolved sites, the same\ndedup the reasons use; flagged sites are visible in the reasons,\nnot double-counted here.",
+            "properties": {
+              "checked": {
+                "description": "Module first-party, export and definition sets readable: the\nmembership check ran.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "withheld_dynamic": {
+                "description": "Module and function were literal atoms but the arity source was\nnot statically readable: a variable argument list, a list with a\ncons tail, or a non-literal arity argument.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
           },
           "KhepriSignals": {
             "properties": {
@@ -5915,6 +6022,48 @@
                   "module",
                   "macros",
                   "side"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "A first-party `m:f/a` referenced as arguments to a mocking or\nrpc form (a meck expectation, `rpc:call`, `erpc:call`, or a CT\nbroker rpc helper) is neither exported nor defined by the target\ntree's module. Non-blocking: a meck expectation can install a\nfunction the module never had, so absence proves drift, not\nfailure.",
+                "properties": {
+                  "arity": {
+                    "format": "uint8",
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "indirect_call_undefined_on_target",
+                    "type": "string"
+                  },
+                  "line": {
+                    "format": "uint32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "source_path": {
+                    "type": "string"
+                  },
+                  "via": {
+                    "$ref": "#/$defs/IndirectCallForm"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source_path",
+                  "module",
+                  "function",
+                  "arity",
+                  "via",
+                  "line"
                 ],
                 "type": "object"
               }

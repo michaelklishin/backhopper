@@ -147,6 +147,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::RecordUndefinedOnTarget { .. } => "RecordUndefinedOnTarget",
         Reason::LocalCallUndefinedOnTarget { .. } => "LocalCallUndefinedOnTarget",
         Reason::QualifiedCallUndefinedOnTarget { .. } => "QualifiedCallUndefinedOnTarget",
+        Reason::IndirectCallUndefinedOnTarget { .. } => "IndirectCallUndefinedOnTarget",
         Reason::QualifiedCallReturnShapeDrift { .. } => "QualifiedCallReturnShapeDrift",
         Reason::LocalCallReturnShapeDrift { .. } => "LocalCallReturnShapeDrift",
         Reason::MacroValueDrift { .. } => "MacroValueDrift",
@@ -406,6 +407,17 @@ fn reason_detail(r: &Reason) -> String {
             arity,
             line,
         } => format!("{module}:{function}/{arity} undefined on target ({source_path}:{line})"),
+        Reason::IndirectCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            via,
+            line,
+        } => format!(
+            "{module}:{function}/{arity} undefined on target (via {}, {source_path}:{line})",
+            via.display_form()
+        ),
         Reason::QualifiedCallReturnShapeDrift {
             source_path,
             module,

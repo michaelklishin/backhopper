@@ -49,9 +49,9 @@ pub use backhopper_core::model::snapshot_diff::{
 pub use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 pub use backhopper_core::model::symbol::{RefOrigin, Reference, SymbolKind, SymbolRef};
 pub use backhopper_core::model::verdict::{
-    ApplyConflictKind, BumpStatus, Diagnostics, FileKind, InapplicableReason, NeedsPin, PatchFacts,
-    PinBump, PinVerdict, Reason, SeriesSummary, SeriesVerdict, SnapshotSide, SourceDelta,
-    TouchedKinds, Verdict,
+    ApplyConflictKind, BumpStatus, Diagnostics, FileKind, InapplicableReason, IndirectCallForm,
+    IndirectCallTally, NeedsPin, PatchFacts, PinBump, PinVerdict, Reason, SeriesSummary,
+    SeriesVerdict, SnapshotSide, SourceDelta, TouchedKinds, Verdict,
 };
 pub use backhopper_core::suites::{
     BroadImpactModule, SuiteInclusionReason, SuitePlan, SuitePlanEntry, SuiteRef,
