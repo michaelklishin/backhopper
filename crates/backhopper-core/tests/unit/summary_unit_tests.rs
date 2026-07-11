@@ -61,6 +61,7 @@ fn summary_row_round_trips_via_json() {
         subject: "Add osiris bloom filter".to_owned(),
         series: None,
         parent_count: None,
+        apply_conflicts: 0,
     };
     let json = serde_json::to_string(&row).unwrap();
     let back: SummaryRow = serde_json::from_str(&json).unwrap();
@@ -80,6 +81,7 @@ fn summary_row_json_includes_touched_breakdown() {
         subject: "Update CHANGELOG".to_owned(),
         series: None,
         parent_count: None,
+        apply_conflicts: 0,
     };
     let json = serde_json::to_string(&row).unwrap();
     assert!(json.contains("\"erl\":1"));

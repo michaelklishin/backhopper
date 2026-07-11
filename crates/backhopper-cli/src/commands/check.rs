@@ -29,8 +29,9 @@ use backhopper_core::compat::scope::{PinScope, parse_module_names};
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
+use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
-use backhopper_core::model::clearance::{BumpSummary, RoundClearance};
+use backhopper_core::model::clearance::{ApplyRollup, BumpSummary, RoundClearance};
 use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
@@ -108,6 +109,10 @@ struct CompatPayload {
     resolver_coverage: Option<ResolverCoverage>,
     /// The fingerprint generation this binary stamped. Always emitted.
     fingerprint_version: Option<u32>,
+    /// Apply-axis prediction. Absent when no target context was
+    /// supplied: the axis was not evaluated, never "clean".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    apply: Option<ApplyForecast>,
 }
 
 #[derive(Debug, Serialize)]
@@ -787,8 +792,9 @@ fn apply_target_context(
     );
     target_repo::merge_reasons_into_evaluation(qualified_calls.reasons, evaluation);
     evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
-    let preimage_reasons = target_repo::collect_target_preimage_findings(&parsed.files, target_ctx);
-    target_repo::merge_reasons_into_evaluation(preimage_reasons, evaluation);
+    let apply_analysis = target_repo::collect_target_apply_analysis(&parsed.files, target_ctx);
+    target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
+    evaluation.apply = Some(apply_analysis.forecast);
     Ok(())
 }
 
@@ -1274,6 +1280,7 @@ fn run_check_patch(
         verdict_fingerprint,
         resolver_coverage: Some(ResolverCoverage::current()),
         fingerprint_version: Some(FINGERPRINT_VERSION),
+        apply: evaluation.apply.clone(),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = evaluation.worst_exit_code();
@@ -1316,6 +1323,20 @@ fn run_check_patch(
     )
 }
 
+/// The single-check apply line: conflicts are the exit-shaping fact,
+/// so text output must state them even when every verdict is
+/// inapplicable. Clean and absent forecasts stay silent here; the
+/// batch clearance is the roll-up surface.
+fn render_apply_forecast(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
+    let Some(forecast) = &evaluation.apply else {
+        return Ok(());
+    };
+    for (path, kind) in forecast.conflicts() {
+        writeln!(w, "apply conflict: {} ({})", path.as_str(), kind.as_str())?;
+    }
+    Ok(())
+}
+
 fn pin_bump_label(b: &PinBump) -> String {
     let change = match &b.from {
         Some(from) => format!("{} {} -> {}", b.dep, from, b.to),
@@ -1336,6 +1357,21 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
     }
     if !evaluation.diagnostics.pin_bumps.is_empty() {
         writeln!(w)?;
+    }
+    if let Some(forecast) = &evaluation.apply {
+        let mut any = false;
+        for (path, kind) in forecast.conflicts() {
+            writeln!(
+                w,
+                "**Apply conflict:** `{}` ({})",
+                path.as_str(),
+                kind.as_str()
+            )?;
+            any = true;
+        }
+        if any {
+            writeln!(w)?;
+        }
     }
     writeln!(w, "| Pin | Verdict | Tracked refs | Notes |")?;
     writeln!(w, "| --- | --- | --- | --- |")?;
@@ -1708,6 +1744,7 @@ fn render_text(
     )?;
     writeln!(w)?;
     writeln!(w, "{}", render_evaluation_table(evaluation, style))?;
+    render_apply_forecast(w, evaluation)?;
     render_already_present(w, &evaluation.diagnostics)?;
     render_shape_checks(w, &evaluation.diagnostics)?;
     for d in &evaluation.diagnostics.dep_pin_divergence {
@@ -2559,6 +2596,7 @@ fn evaluate_batch(
                 touched_paths: evaluation.touched_paths,
                 parent_count: NonZeroU32::new(planned.parents.len() as u32),
                 verdict_fingerprint,
+                apply: evaluation.apply,
             });
         }
     }
@@ -2701,12 +2739,18 @@ fn render_cascade_text(
         return Ok(());
     };
     let shas: Vec<&CommitSha> = first.batch.results.iter().map(|r| &r.commit).collect();
-    let mut cells: BTreeMap<(&CommitSha, &SeriesName), &'static str> = BTreeMap::new();
+    let mut cells: BTreeMap<(&CommitSha, &SeriesName), String> = BTreeMap::new();
+    let mut any_conflict = false;
     for leg in &payload.legs {
         for row in &leg.batch.results {
+            let conflicted = row.apply.as_ref().is_some_and(ApplyForecast::has_conflict);
+            any_conflict |= conflicted;
+            // the trailing marker keeps the apply axis visible beside
+            // the verdict without widening the matrix
+            let marker = if conflicted { "*" } else { "" };
             cells.insert(
                 (&row.commit, &leg.series),
-                summary_cell(&row.verdict.summary),
+                format!("{}{marker}", summary_cell(&row.verdict.summary)),
             );
         }
     }
@@ -2719,7 +2763,7 @@ fn render_cascade_text(
     let col_widths: Vec<usize> = payload
         .legs
         .iter()
-        .map(|l| l.series.as_str().len().max("requires_adaptation".len()))
+        .map(|l| l.series.as_str().len().max("requires_adaptation*".len()))
         .collect();
     write!(w, "{:<12} {:<subject_width$}", "sha", "subject")?;
     for (leg, width) in payload.legs.iter().zip(&col_widths) {
@@ -2732,10 +2776,16 @@ fn render_cascade_text(
         let subject: String = subject.chars().take(subject_width).collect();
         write!(w, "{short:<12} {subject:<subject_width$}")?;
         for (leg, width) in payload.legs.iter().zip(&col_widths) {
-            let cell = cells.get(&(*sha, &leg.series)).copied().unwrap_or("-");
+            let cell = cells
+                .get(&(*sha, &leg.series))
+                .map(String::as_str)
+                .unwrap_or("-");
             write!(w, " {cell:<width$}", width = *width)?;
         }
         writeln!(w)?;
+    }
+    if any_conflict {
+        writeln!(w, "* apply conflict predicted on this leg")?;
     }
     for leg in &payload.legs {
         writeln!(w)?;
@@ -2899,6 +2949,15 @@ pub fn render_batch_text(
         if !reasons.is_empty() {
             writeln!(w, "  inapplicable: {}", reasons.join(", "))?;
         }
+        if let Some(forecast) = &r.apply {
+            let conflicts: Vec<String> = forecast
+                .conflicts()
+                .map(|(path, kind)| format!("{} ({})", path.as_str(), kind.as_str()))
+                .collect();
+            if !conflicts.is_empty() {
+                writeln!(w, "  apply conflicts: {}", conflicts.join(", "))?;
+            }
+        }
         // Shown only when non-zero so a clean round's rows stay terse;
         // it points the reviewer at the rows the header total came from.
         let tracked = row_tracked_refs(&r.verdict.results, self_projects);
@@ -2960,6 +3019,7 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
         writeln!(w, "  inapplicable reasons: {}", ranked.join(", "))?;
     }
     render_bump_summary_line(w, &f.bumps)?;
+    render_apply_rollup_line(w, &f.apply)?;
     if f.suites.is_empty() {
         writeln!(w, "  suites worth running: (none)")?;
     } else {
@@ -2967,11 +3027,22 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
     }
     writeln!(w)?;
     match clearance {
+        RoundClearance::Clean(f) if f.apply.rows_with_forecast > 0 => writeln!(
+            w,
+            "no dependency-API risk found and no apply conflicts were \
+             predicted; the forecast covers only analyzable files, so verify \
+             other files separately"
+        )?,
         RoundClearance::Clean(_) => writeln!(
             w,
             "no dependency-API risk found: backhopper analyzes only Erlang, \
              Elixir, and dep-pin changes and does not model branch divergence, \
              so verify cherry-pick conflicts and any non-analyzable files separately"
+        )?,
+        RoundClearance::ZeroDomain(f) if f.apply.rows_with_forecast > 0 => writeln!(
+            w,
+            "all candidates are outside backhopper's dep and symbol scope and \
+             no apply conflicts were predicted on the assessed paths"
         )?,
         RoundClearance::ZeroDomain(_) => writeln!(
             w,
@@ -2981,9 +3052,58 @@ pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliRes
         RoundClearance::Findings(_) => writeln!(
             w,
             "review the rows below: tracked-dep references, blocking verdicts, \
-             or snapshot-missing pin bumps are present"
+             snapshot-missing pin bumps, or predicted apply conflicts are present"
         )?,
     }
+    Ok(())
+}
+
+fn render_apply_rollup_line(w: &mut dyn Write, apply: &ApplyRollup) -> CliResult<()> {
+    if apply.rows_with_forecast == 0 {
+        writeln!(
+            w,
+            "  apply forecast      : not evaluated (no --target-repo-dir-path)"
+        )?;
+        return Ok(());
+    }
+    if apply.conflicted_rows == 0 {
+        let unassessed = if apply.unassessed_paths > 0 {
+            format!(
+                ", {} path{} unassessed",
+                apply.unassessed_paths,
+                plural(apply.unassessed_paths as usize)
+            )
+        } else {
+            String::new()
+        };
+        writeln!(
+            w,
+            "  apply forecast      : clean across {} row{}{unassessed}",
+            apply.rows_with_forecast,
+            plural(apply.rows_with_forecast),
+        )?;
+        return Ok(());
+    }
+    let by_kind: Vec<String> = apply
+        .by_kind
+        .iter()
+        .map(|(kind, n)| format!("{kind}={n}"))
+        .collect();
+    let verb = if apply.conflicted_rows == 1 {
+        "conflicts"
+    } else {
+        "conflict"
+    };
+    writeln!(
+        w,
+        "  apply forecast      : {} row{} of {} {verb} on {} path{} ({})",
+        apply.conflicted_rows,
+        plural(apply.conflicted_rows),
+        apply.rows_with_forecast,
+        apply.conflicted_paths.len(),
+        plural(apply.conflicted_paths.len()),
+        by_kind.join(", "),
+    )?;
     Ok(())
 }
 

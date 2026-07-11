@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::compat::arg_shape::ArgShape;
+use crate::model::apply::ApplyForecast;
 use crate::model::names::{
     Arity, CommitSha, DependencyName, FieldName, FunctionName, GitRef, MacroName, ModuleName,
     ProjectName, RecordName, RelativePath, TagName, TypeName,
@@ -609,6 +610,18 @@ pub enum ApplyConflictKind {
     PostimageCollision,
     PreimageMissing,
     FileAbsent,
+}
+
+impl ApplyConflictKind {
+    /// Stable label used in clearance roll-ups and text output.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PostimageCollision => "postimage_collision",
+            Self::PreimageMissing => "preimage_missing",
+            Self::FileAbsent => "file_absent",
+        }
+    }
 }
 
 impl Reason {
@@ -1670,11 +1683,26 @@ pub struct SeriesEvaluation {
     /// `None` vs `Some(vec![])` distinction is wire-load-bearing.
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
+
+    /// Apply-axis prediction for this evaluation. `None` means no
+    /// target context was supplied, so the axis was not evaluated:
+    /// never "clean". A producer with a target context always emits
+    /// `Some`, even when the patch touched zero files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apply: Option<ApplyForecast>,
 }
 
 impl SeriesEvaluation {
+    /// Folds both axes: a blocking verdict or a predicted apply
+    /// conflict needs attention.
     pub fn worst_exit_code(&self) -> i32 {
-        self.verdict.worst_exit_code()
+        if self.verdict.summary.is_blocking()
+            || self.apply.as_ref().is_some_and(ApplyForecast::has_conflict)
+        {
+            exit::NEEDS_ATTENTION
+        } else {
+            exit::OK
+        }
     }
 
     /// Populates symbol-availability fields on missing-symbol and

@@ -55,6 +55,7 @@ fn row_with_bumps(
         pr_commits: None,
         parent_count: None,
         verdict_fingerprint: None,
+        apply: None,
     }
 }
 

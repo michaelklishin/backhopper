@@ -9,13 +9,16 @@
 //! that lives in `backhopper_core::model` flows through unchanged so
 //! callers can match on the same enums the CLI itself produces.
 
+pub use backhopper_core::model::apply::{
+    ApplyForecast, ApplySummary, PathApplyOutcome, UnassessedReason,
+};
 pub use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 pub use backhopper_core::model::cache::{
     CacheLevel, CacheLevelStats, CacheListPayload, CacheListRow, CacheMutationPayload,
     CacheShowPayload, CacheStatsPayload,
 };
 pub use backhopper_core::model::clearance::{
-    BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
+    ApplyRollup, BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
 };
 pub use backhopper_core::model::eval::{
     BuildOutcome, CorpusEntry, EvalReport, MissedBreak, PredictedConflict, Ratio,

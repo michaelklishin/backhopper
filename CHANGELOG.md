@@ -1,9 +1,12 @@
 # Changelog
 
-## v0.23.0 (in development)
+## v0.24.0 (in development)
 
 ### Enhancements
 
+ * Predicted apply conflicts are no longer lost on inapplicable rows:
+   every row checked against a target now carries an `apply` per-path
+   forecast, and the clearance and exit code account for it
  * A qualified call that resolves against the target tree now has its
    `-spec` return shape compared between the checkouts; a disagreement
    is a non-blocking `qualified_call_return_shape_drift` reason, and

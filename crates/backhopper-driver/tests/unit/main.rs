@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod apply_forecast_wire_unit_tests;
 mod batch_builder_unit_tests;
 mod batch_v6_envelope_unit_tests;
 mod cancellation_unit_tests;

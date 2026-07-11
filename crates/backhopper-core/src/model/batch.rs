@@ -10,6 +10,7 @@ use std::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::apply::ApplyForecast;
 use crate::model::clearance::RoundClearance;
 use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
@@ -132,4 +133,11 @@ pub struct BatchResult {
     /// unresolvable pin) and pre-fingerprint producers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verdict_fingerprint: Option<VerdictFingerprint>,
+
+    /// Apply-axis prediction for this row. `None` means no target
+    /// context was supplied, so the axis was not evaluated: never
+    /// "clean". A producer with a target context always emits `Some`,
+    /// even when the patch touched zero files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apply: Option<ApplyForecast>,
 }

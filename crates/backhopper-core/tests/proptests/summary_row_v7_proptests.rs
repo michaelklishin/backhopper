@@ -53,6 +53,7 @@ proptest! {
             subject,
             series,
             parent_count,
+            apply_conflicts: 0,
         };
         let json = serde_json::to_string(&row).unwrap();
         let back: SummaryRow = serde_json::from_str(&json).unwrap();

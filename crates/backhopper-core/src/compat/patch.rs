@@ -633,6 +633,7 @@ impl Patch<Analyzed> {
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),
             pr_commits: None,
+            apply: None,
         }
     }
 }

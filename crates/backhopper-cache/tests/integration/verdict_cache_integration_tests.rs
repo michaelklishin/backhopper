@@ -45,6 +45,7 @@ fn evaluation() -> SeriesEvaluation {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
+        apply: None,
     }
 }
 

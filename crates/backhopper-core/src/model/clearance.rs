@@ -14,8 +14,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::model::apply::PathApplyOutcome;
 use crate::model::batch::BatchResult;
-use crate::model::names::ProjectName;
+use crate::model::names::{ProjectName, RelativePath};
 use crate::model::verdict::{BumpStatus, SeriesSummary, Verdict, exit, non_self_tracked};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +47,9 @@ pub struct ClearanceFacts {
     pub verdicts: SeriesSummary,
     pub reasons: ReasonHistogram,
     pub bumps: BumpSummary,
+    /// Apply-axis roll-up. `rows_with_forecast == 0` means no row
+    /// carried a forecast, and the renderer says so.
+    pub apply: ApplyRollup,
     /// Union of every row's `suggested_suites`, sorted and deduplicated.
     pub suites: Vec<String>,
     /// `exit::OK` or `exit::NEEDS_ATTENTION`, the value `check batch`
@@ -113,6 +117,28 @@ impl BumpSummary {
     }
 }
 
+/// Apply-axis facts summed over the round's rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ApplyRollup {
+    /// Rows that carried an apply forecast at all.
+    pub rows_with_forecast: usize,
+    /// Rows whose forecast predicts at least one conflict.
+    pub conflicted_rows: usize,
+    /// Distinct conflicting paths across the round, sorted.
+    pub conflicted_paths: Vec<RelativePath>,
+    /// Conflict counts by kind label, summed over rows.
+    pub by_kind: BTreeMap<&'static str, u32>,
+    /// Paths stated unassessed, summed over rows; coverage, not risk.
+    pub unassessed_paths: u32,
+}
+
+impl ApplyRollup {
+    #[must_use]
+    pub fn has_conflict(&self) -> bool {
+        self.conflicted_rows > 0
+    }
+}
+
 impl RoundClearance {
     #[must_use]
     pub fn from_results(results: &[BatchResult], self_projects: &BTreeSet<ProjectName>) -> Self {
@@ -125,6 +151,8 @@ impl RoundClearance {
         let mut bumps = BumpSummary::default();
         let mut seen_bumps = BTreeSet::new();
         let mut snapshot_missing_bump = false;
+        let mut apply = ApplyRollup::default();
+        let mut conflicted_paths = BTreeSet::new();
 
         for row in results {
             commits.insert(&row.commit);
@@ -144,6 +172,23 @@ impl RoundClearance {
 
             for suite in &row.diagnostics.suggested_suites {
                 suites.insert(suite.clone());
+            }
+
+            if let Some(forecast) = &row.apply {
+                apply.rows_with_forecast += 1;
+                if forecast.has_conflict() {
+                    apply.conflicted_rows += 1;
+                }
+                for (path, outcome) in &forecast.paths {
+                    match outcome {
+                        PathApplyOutcome::Conflict { kind } => {
+                            conflicted_paths.insert(path.clone());
+                            *apply.by_kind.entry(kind.as_str()).or_insert(0) += 1;
+                        }
+                        PathApplyOutcome::Unassessed { .. } => apply.unassessed_paths += 1,
+                        PathApplyOutcome::CleanExact | PathApplyOutcome::CleanDrifted { .. } => {}
+                    }
+                }
             }
 
             for bump in &row.diagnostics.pin_bumps {
@@ -166,8 +211,10 @@ impl RoundClearance {
             }
         }
 
+        apply.conflicted_paths = conflicted_paths.into_iter().collect();
+
         let blocking = verdicts.is_blocking();
-        let exit_code = if blocking {
+        let exit_code = if blocking || apply.has_conflict() {
             exit::NEEDS_ATTENTION
         } else {
             exit::OK
@@ -181,6 +228,7 @@ impl RoundClearance {
             verdicts,
             reasons,
             bumps,
+            apply,
             suites: suites.into_iter().collect(),
             exit_code,
         };
@@ -190,7 +238,7 @@ impl RoundClearance {
             && facts.verdicts.incompatible == 0
             && facts.verdicts.inapplicable > 0;
 
-        if blocking || tracked > 0 || snapshot_missing_bump {
+        if blocking || tracked > 0 || snapshot_missing_bump || facts.apply.has_conflict() {
             Self::Findings(facts)
         } else if all_inapplicable {
             Self::ZeroDomain(facts)

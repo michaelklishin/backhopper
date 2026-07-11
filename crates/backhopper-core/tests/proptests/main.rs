@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod app_src_robustness_proptests;
+mod apply_forecast_proptests;
 mod arg_scanner_proptests;
 mod arg_shape_proptests;
 mod clearance_proptests;

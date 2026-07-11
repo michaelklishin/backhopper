@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 29a74f280c20aff2e5439941a726e00827a5c4cec38b304a4e1153ec0ef57a22 # shrinks to observations = [(RelativePath("deps/rabbit/src/rabbit_fifo.erl"), CleanExact), (RelativePath("deps/rabbit/test/quorum_queue_SUITE.erl"), Unassessed { reason: TargetNotText }), (RelativePath("deps/rabbit/src/rabbit_fifo.erl"), CleanExact), (RelativePath("deps/rabbit/src/rabbit_fifo.erl"), CleanExact), (RelativePath("deps/rabbitmq_management/src/rabbit_mgmt_wm_auth.erl"), CleanExact), (RelativePath("deps/rabbit/src/rabbit_fifo.erl"), CleanExact), (RelativePath("deps/rabbit/test/quorum_queue_SUITE.erl"), Unassessed { reason: BinaryFile }), (RelativePath("deps/rabbit/src/rabbit_fifo.erl"), CleanExact)], seed = 1455289226055061886

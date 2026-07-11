@@ -33,6 +33,11 @@ pub struct SummaryRow {
     /// inputs (no commit identity) and pre-v7 envelopes.
     #[serde(default)]
     pub parent_count: Option<NonZeroU32>,
+    /// Paths the apply forecast predicts will conflict on the target.
+    /// Zero when the forecast is clean or was not evaluated; the
+    /// verdict kind never reflects it, so the row states it itself.
+    #[serde(default)]
+    pub apply_conflicts: u32,
 }
 
 /// Kind-only projection of `Verdict`: drops the variant payloads so a

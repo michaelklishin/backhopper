@@ -43,6 +43,7 @@ fn eval_with(pins: Vec<PinVerdict>) -> SeriesEvaluation {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
+        apply: None,
     }
 }
 

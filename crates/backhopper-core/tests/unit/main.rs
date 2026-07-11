@@ -6,6 +6,7 @@ mod added_lines_unit_tests;
 mod aggregate_verdict_unit_tests;
 mod app_src_unit_tests;
 mod apply_conflict_unit_tests;
+mod apply_forecast_unit_tests;
 mod arg_shape_unit_tests;
 mod arity_try_from_unit_tests;
 mod batch_clearance_self_projects_unit_tests;

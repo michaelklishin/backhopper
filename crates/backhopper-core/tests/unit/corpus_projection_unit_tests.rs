@@ -34,6 +34,7 @@ fn row(verdict: Verdict, fingerprint: Option<&str>) -> BatchResult {
         pr_commits: None,
         parent_count: None,
         verdict_fingerprint: fingerprint.map(VerdictFingerprint::new),
+        apply: None,
     }
 }
 

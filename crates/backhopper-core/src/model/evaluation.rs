@@ -289,20 +289,32 @@ impl BatchResult {
     }
 
     /// The risky apply conflicts this row predicts, one per path at its
-    /// highest severity. Path stays a `PathBuf`: a predictor never drops a
-    /// risky path, so relativizing is the caller's call.
+    /// highest severity: the union of the row's apply forecast and the
+    /// reason-derived conflicts. The reason arm keeps envelopes that
+    /// predate the forecast working; the forecast arm carries the rows
+    /// whose reasons were dropped on inapplicable pins. Path stays a
+    /// `PathBuf`: a predictor never drops a risky path, so relativizing
+    /// is the caller's call.
     #[must_use]
     pub fn predicted_conflicts(&self) -> Vec<PredictedConflict> {
         let mut by_path: BTreeMap<PathBuf, ApplyConflictKind> = BTreeMap::new();
+        let mut record = |path: PathBuf, kind: ApplyConflictKind| {
+            by_path
+                .entry(path)
+                .and_modify(|seen| *seen = (*seen).max(kind))
+                .or_insert(kind);
+        };
         for (path, kind) in self
             .evaluation()
             .reasons()
             .filter_map(Reason::apply_conflict)
         {
-            by_path
-                .entry(path.to_path_buf())
-                .and_modify(|seen| *seen = (*seen).max(kind))
-                .or_insert(kind);
+            record(path.to_path_buf(), kind);
+        }
+        if let Some(forecast) = &self.apply {
+            for (path, kind) in forecast.conflicts() {
+                record(PathBuf::from(path.as_str()), kind);
+            }
         }
         by_path
             .into_iter()

@@ -11,6 +11,7 @@ use std::io::{self, BufWriter, Write};
 use std::num::NonZeroU32;
 
 use backhopper_core::config::Config;
+use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
@@ -47,6 +48,7 @@ pub fn to_summary_row(
 ) -> SummaryRow {
     summary_row(
         &eval.verdict,
+        eval.apply.as_ref(),
         self_projects,
         sha,
         subject,
@@ -65,6 +67,7 @@ pub fn batch_result_to_summary_row(
 ) -> SummaryRow {
     summary_row(
         &result.verdict,
+        result.apply.as_ref(),
         self_projects,
         result.commit.clone(),
         subject,
@@ -75,6 +78,7 @@ pub fn batch_result_to_summary_row(
 
 fn summary_row(
     verdict: &SeriesVerdict,
+    apply: Option<&ApplyForecast>,
     self_projects: &BTreeSet<ProjectName>,
     sha: CommitSha,
     subject: String,
@@ -90,6 +94,7 @@ fn summary_row(
         subject,
         series,
         parent_count,
+        apply_conflicts: apply.map_or(0, |f| f.conflicts().count() as u32),
     }
 }
 
@@ -166,12 +171,13 @@ fn emit_text(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
         let series = row.series.as_ref().map_or("-", |s| s.as_str());
         writeln!(
             w,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.sha.abbreviated(),
             row.verdict.as_str(),
             touched,
             row.tracked,
             series,
+            row.apply_conflicts,
             row.subject.replace('\t', " "),
         )?;
     }

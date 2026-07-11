@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 
+use backhopper_core::model::apply::{ApplyForecast, PathApplyOutcome, UnassessedReason};
 use backhopper_core::model::batch::BatchResult;
 use backhopper_core::model::clearance::RoundClearance;
 use backhopper_core::model::names::{
@@ -16,8 +17,8 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{
-    BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump, PinVerdict, Reason,
-    SeriesVerdict, Verdict,
+    ApplyConflictKind, BumpStatus, Diagnostics, InapplicableReason, PatchFacts, PinBump,
+    PinVerdict, Reason, SeriesVerdict, Verdict,
 };
 
 fn commit(c: char) -> CommitSha {
@@ -69,6 +70,7 @@ fn row_with_diagnostics(
         pr_commits: None,
         parent_count: None,
         verdict_fingerprint: None,
+        apply: None,
     }
 }
 
@@ -573,4 +575,165 @@ fn empty_batch_is_clean() {
     let clearance = RoundClearance::from_results(&[], &no_self());
     assert!(matches!(clearance, RoundClearance::Clean(_)));
     assert!(clearance.is_clean());
+}
+
+fn forecast_with(paths: &[(&str, PathApplyOutcome)]) -> ApplyForecast {
+    let mut forecast = ApplyForecast::default();
+    for (path, outcome) in paths {
+        forecast.record(
+            RelativePath::new((*path).to_owned()).unwrap(),
+            outcome.clone(),
+        );
+    }
+    forecast
+}
+
+fn row_with_apply(
+    c: char,
+    series: &str,
+    pins: Vec<PinVerdict>,
+    apply: Option<ApplyForecast>,
+) -> BatchResult {
+    let mut r = row(c, series, pins);
+    r.apply = apply;
+    r
+}
+
+// The July 2026 operator case: every verdict inapplicable, yet the
+// forecast predicts conflicts. The round must not read as ZeroDomain.
+#[test]
+fn all_inapplicable_with_a_forecast_conflict_is_findings_and_exits_nonzero() {
+    let forecast = forecast_with(&[
+        (
+            "deps/rabbit/test/quorum_queue_SUITE.erl",
+            PathApplyOutcome::Conflict {
+                kind: ApplyConflictKind::PreimageMissing,
+            },
+        ),
+        (
+            "deps/rabbit/src/rabbit_fifo.erl",
+            PathApplyOutcome::CleanExact,
+        ),
+    ]);
+    let rows = vec![
+        row_with_apply(
+            'a',
+            "v4.0.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::OnlyTestFixturesTouched,
+            )],
+            Some(forecast),
+        ),
+        row_with_apply(
+            'b',
+            "v4.0.x",
+            vec![inapplicable("ra", InapplicableReason::OnlyDocsTouched)],
+            Some(ApplyForecast::default()),
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Findings(_)));
+    assert!(!clearance.is_clean());
+    let facts = clearance.facts();
+    assert_eq!(facts.exit_code, 3);
+    assert_eq!(facts.apply.rows_with_forecast, 2);
+    assert_eq!(facts.apply.conflicted_rows, 1);
+    assert_eq!(
+        facts.apply.conflicted_paths,
+        vec![RelativePath::new("deps/rabbit/test/quorum_queue_SUITE.erl".to_owned()).unwrap()]
+    );
+    assert_eq!(facts.apply.by_kind.get("preimage_missing"), Some(&1));
+}
+
+#[test]
+fn all_inapplicable_with_clean_forecasts_stays_zero_domain() {
+    let forecast = forecast_with(&[(
+        "deps/rabbit/test/quorum_queue_SUITE.erl",
+        PathApplyOutcome::CleanDrifted { line_delta: 5 },
+    )]);
+    let rows = vec![row_with_apply(
+        'a',
+        "v4.0.x",
+        vec![inapplicable(
+            "ra",
+            InapplicableReason::OnlyTestFixturesTouched,
+        )],
+        Some(forecast),
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::ZeroDomain(_)));
+    let facts = clearance.facts();
+    assert_eq!(facts.exit_code, 0);
+    assert_eq!(facts.apply.rows_with_forecast, 1);
+    assert_eq!(facts.apply.conflicted_rows, 0);
+}
+
+// An unassessed path is coverage, not risk: it must not flip the arm.
+#[test]
+fn unassessed_paths_are_counted_but_never_findings() {
+    let forecast = forecast_with(&[(
+        "deps/rabbit/priv/logo.png",
+        PathApplyOutcome::Unassessed {
+            reason: UnassessedReason::BinaryFile,
+        },
+    )]);
+    let rows = vec![row_with_apply(
+        'a',
+        "v4.0.x",
+        vec![inapplicable("ra", InapplicableReason::OnlyDocsTouched)],
+        Some(forecast),
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::ZeroDomain(_)));
+    assert_eq!(clearance.facts().apply.unassessed_paths, 1);
+}
+
+#[test]
+fn rows_without_forecasts_report_zero_forecast_coverage() {
+    let rows = vec![row(
+        'a',
+        "v4.1.x",
+        vec![tracked_pin("ra", Verdict::Compatible, 0)],
+    )];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    assert!(matches!(clearance, RoundClearance::Clean(_)));
+    assert_eq!(clearance.facts().apply.rows_with_forecast, 0);
+    assert!(!clearance.facts().apply.has_conflict());
+}
+
+#[test]
+fn conflicted_paths_dedup_across_rows_and_kinds_sum() {
+    let suite_conflict = |kind| {
+        forecast_with(&[(
+            "deps/rabbit/test/quorum_queue_SUITE.erl",
+            PathApplyOutcome::Conflict { kind },
+        )])
+    };
+    let rows = vec![
+        row_with_apply(
+            'a',
+            "v4.0.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::OnlyTestFixturesTouched,
+            )],
+            Some(suite_conflict(ApplyConflictKind::PreimageMissing)),
+        ),
+        row_with_apply(
+            'a',
+            "v3.13.x",
+            vec![inapplicable(
+                "ra",
+                InapplicableReason::OnlyTestFixturesTouched,
+            )],
+            Some(suite_conflict(ApplyConflictKind::FileAbsent)),
+        ),
+    ];
+    let clearance = RoundClearance::from_results(&rows, &no_self());
+    let facts = clearance.facts();
+    assert_eq!(facts.apply.conflicted_rows, 2);
+    assert_eq!(facts.apply.conflicted_paths.len(), 1);
+    assert_eq!(facts.apply.by_kind.get("preimage_missing"), Some(&1));
+    assert_eq!(facts.apply.by_kind.get("file_absent"), Some(&1));
 }

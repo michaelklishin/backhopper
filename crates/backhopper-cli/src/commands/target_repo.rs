@@ -29,10 +29,11 @@ use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
 };
 use backhopper_core::config::{Config, PathTranslations};
+use backhopper_core::model::apply::{ApplyForecast, PathApplyOutcome, UnassessedReason};
 use backhopper_core::model::names::{CommitSha, GitRef, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{
-    Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SeriesSummary,
-    SeriesVerdict, TranslationSource, Verdict,
+    ApplyConflictKind, Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation,
+    SeriesSummary, SeriesVerdict, TranslationSource, Verdict,
 };
 use backhopper_git::{GitRepo, build_target_tree_index};
 
@@ -550,19 +551,32 @@ fn module_of_erl_path(path: &RelativePath) -> Option<ModuleName> {
     ModuleName::from_str(stem).ok()
 }
 
-/// Classify every touched file's hunks against the target tree:
+/// The target-tree apply pass: unchanged per-pin reasons plus the
+/// per-path forecast that survives inapplicable verdicts.
+#[derive(Debug)]
+pub struct TargetApplyAnalysis {
+    pub reasons: Vec<Reason>,
+    pub forecast: ApplyForecast,
+}
+
+/// Classify every touched file's hunks against the target tree.
 /// `Missing` predicts a textual conflict, `Drifted` a clean shifted
-/// apply.
-pub fn collect_target_preimage_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+/// apply. Each path also lands in the forecast: an absent path is a
+/// `FileAbsent` conflict, a binary or non-text path is stated
+/// unassessed, and a fully clean file is recorded rather than skipped.
+pub fn collect_target_apply_analysis(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+) -> TargetApplyAnalysis {
+    let mut analysis = TargetApplyAnalysis {
+        reasons: Vec::new(),
+        forecast: ApplyForecast::default(),
+    };
     let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
+        return analysis;
     };
     let commit = ctx.index.resolved_commit().clone();
-    let mut reasons = Vec::new();
     for file in files {
-        if file.binary {
-            continue;
-        }
         let Some(path) = file.new_path.as_deref().or(file.old_path.as_deref()) else {
             continue;
         };
@@ -575,22 +589,72 @@ pub fn collect_target_preimage_findings(files: &[PatchedFile], ctx: &TargetConte
         else {
             continue;
         };
-        if let Some(content) = read_target_text(&repo, &commit, &ctx.translations, &rel) {
-            reasons.extend(classify_hunks_against_target(path, &file.hunks, &content));
+        if file.binary {
+            analysis.forecast.record(
+                rel,
+                PathApplyOutcome::Unassessed {
+                    reason: UnassessedReason::BinaryFile,
+                },
+            );
+            continue;
         }
+        let outcome = match read_target(&repo, &commit, &ctx.translations, &rel) {
+            TargetRead::Text(content) => {
+                let file_reasons = classify_hunks_against_target(path, &file.hunks, &content);
+                let outcome = path_outcome(&file_reasons);
+                analysis.reasons.extend(file_reasons);
+                outcome
+            }
+            TargetRead::NotText => PathApplyOutcome::Unassessed {
+                reason: UnassessedReason::TargetNotText,
+            },
+            TargetRead::Absent => PathApplyOutcome::Conflict {
+                kind: ApplyConflictKind::FileAbsent,
+            },
+        };
+        analysis.forecast.record(rel, outcome);
     }
-    reasons
+    analysis
+}
+
+/// Fold one file's hunk classifications into its path outcome: the
+/// worst conflict wins, else the largest-magnitude drift, else exact.
+fn path_outcome(reasons: &[Reason]) -> PathApplyOutcome {
+    let mut outcome = PathApplyOutcome::CleanExact;
+    for reason in reasons {
+        let next = match reason {
+            Reason::PreimageDrifted { line_delta, .. } => PathApplyOutcome::CleanDrifted {
+                line_delta: *line_delta as i64,
+            },
+            Reason::PreimageMissing { .. } => PathApplyOutcome::Conflict {
+                kind: ApplyConflictKind::PreimageMissing,
+            },
+            Reason::PostimageCollision { .. } => PathApplyOutcome::Conflict {
+                kind: ApplyConflictKind::PostimageCollision,
+            },
+            _ => continue,
+        };
+        outcome = outcome.merge(next);
+    }
+    outcome
+}
+
+/// What reading a path off the target tree found.
+enum TargetRead {
+    Text(String),
+    /// The blob exists but is not valid UTF-8.
+    NotText,
+    Absent,
 }
 
 /// Read a path's bytes at `commit`, falling back to its translated
-/// path so a relocated layout still resolves. `None` when neither
-/// exists or the blob is not valid UTF-8.
-fn read_target_text(
+/// path so a relocated layout still resolves.
+fn read_target(
     repo: &GitRepo,
     commit: &CommitSha,
     translations: &PathTranslations,
     path: &RelativePath,
-) -> Option<String> {
+) -> TargetRead {
     let direct = repo
         .read_blob_at(commit, Path::new(path.as_str()))
         .ok()
@@ -598,8 +662,26 @@ fn read_target_text(
     let bytes = direct.or_else(|| {
         let (translated, _) = translations.translate(path.as_str())?;
         repo.read_blob_at(commit, &translated).ok().flatten()
-    })?;
-    String::from_utf8(bytes).ok()
+    });
+    match bytes {
+        None => TargetRead::Absent,
+        Some(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => TargetRead::Text(text),
+            Err(_) => TargetRead::NotText,
+        },
+    }
+}
+
+fn read_target_text(
+    repo: &GitRepo,
+    commit: &CommitSha,
+    translations: &PathTranslations,
+    path: &RelativePath,
+) -> Option<String> {
+    match read_target(repo, commit, translations, path) {
+        TargetRead::Text(text) => Some(text),
+        TargetRead::NotText | TargetRead::Absent => None,
+    }
 }
 
 /// Merge `findings` into every pin's verdict and the series-level

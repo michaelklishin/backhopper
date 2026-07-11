@@ -59,6 +59,7 @@ fn row(reasons: Vec<Reason>) -> BatchResult {
         pr_commits: None,
         parent_count: None,
         verdict_fingerprint: None,
+        apply: None,
     }
 }
 

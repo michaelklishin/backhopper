@@ -121,6 +121,39 @@ fn diff_v8_to_v9_adds_exactly_the_cache_payloads() {
     assert!(data["removed_paths"].as_array().unwrap().is_empty());
 }
 
+/// Golden pin for the apply axis: v13 adds exactly the apply-forecast
+/// types and fields on top of v12, and removes nothing.
+#[test]
+fn diff_v12_to_v13_adds_exactly_the_apply_forecast() {
+    let a = run_succeeds(["--formatter", "json", "schema", "diff", "12", "13"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json");
+    let data = v.get("data").expect("data");
+    let added: Vec<&str> = data["added_paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "/batch_payload/$defs/ApplyConflictKind",
+            "/batch_payload/$defs/ApplyForecast",
+            "/batch_payload/$defs/BatchResult/properties/apply",
+            "/batch_payload/$defs/PathApplyOutcome",
+            "/batch_payload/$defs/UnassessedReason",
+            "/envelope/properties/data/$defs/ApplyConflictKind",
+            "/envelope/properties/data/$defs/ApplyForecast",
+            "/envelope/properties/data/$defs/PathApplyOutcome",
+            "/envelope/properties/data/$defs/UnassessedReason",
+            "/envelope/properties/data/properties/apply",
+            "/summary_row/properties/apply_conflicts",
+        ]
+    );
+    assert!(data["removed_paths"].as_array().unwrap().is_empty());
+    assert!(data["changed_types"].as_array().unwrap().is_empty());
+}
+
 #[test]
 fn diff_unknown_version_fails_cleanly() {
     let a = run_fails(["schema", "diff", "1", "99"]);

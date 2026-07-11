@@ -26,6 +26,7 @@ fn series_eval_with(pins: Vec<PinVerdict>) -> SeriesEvaluation {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
+        apply: None,
     }
 }
 
@@ -116,6 +117,7 @@ fn emit_rows_text_summary_smoke_runs() {
         subject: "Hello".to_owned(),
         series: None,
         parent_count: None,
+        apply_conflicts: 0,
     };
     emit_rows(SummaryFormatter::Text, &[row]).expect("emit ok");
 }
@@ -165,6 +167,7 @@ fn batch_row_projection_carries_series_and_parent_count() {
         pr_commits: None,
         parent_count: NonZeroU32::new(2),
         verdict_fingerprint: None,
+        apply: None,
     };
     let row = batch_result_to_summary_row(&result, &BTreeSet::new(), "merge subject".into());
     assert_eq!(row.sha, fixture_sha());

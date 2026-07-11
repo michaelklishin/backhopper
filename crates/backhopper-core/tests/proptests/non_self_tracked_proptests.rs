@@ -48,6 +48,7 @@ fn arb_row() -> impl Strategy<Value = BatchResult> {
             pr_commits: None,
             parent_count: None,
             verdict_fingerprint: None,
+            apply: None,
         })
 }
 
