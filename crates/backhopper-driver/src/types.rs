@@ -21,7 +21,8 @@ pub use backhopper_core::model::clearance::{
     ApplyRollup, BumpSummary, ClearanceFacts, ReasonHistogram, RoundClearance,
 };
 pub use backhopper_core::model::eval::{
-    BuildOutcome, CorpusEntry, EvalReport, MissedBreak, PredictedConflict, Ratio,
+    BuildOutcome, CorpusEntry, EvalReport, ForecastEntry, ForecastMiss, ForecastReport,
+    ForecastedConflict, MissedBreak, ObservedApply, PredictedConflict, Ratio,
 };
 pub use backhopper_core::model::evaluation::AggregateVerdict;
 pub use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};

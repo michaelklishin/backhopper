@@ -7,13 +7,14 @@
 //! two; this is a plain fold over the paired rows, run as needed, not a
 //! stored subsystem.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::evaluation::AggregateVerdict;
 use crate::model::fingerprint::VerdictFingerprint;
+use crate::model::names::{CommitSha, RelativePath};
 use crate::model::resolver_coverage::{ResolverClass, ResolverCoverage};
 use crate::model::verdict::ApplyConflictKind;
 
@@ -171,4 +172,182 @@ fn resolver_bug(class: Option<ResolverClass>, coverage: Option<&ResolverCoverage
         (Some(class), Some(coverage)) => Some(coverage.is_checked(class)),
         _ => None,
     }
+}
+
+/// An apply conflict a forecast predicts: one path, its conflict kind.
+/// Normalized to `RelativePath` by the producer, unlike
+/// `PredictedConflict`, which keeps a lossless `PathBuf`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ForecastedConflict {
+    pub path: RelativePath,
+    pub kind: ApplyConflictKind,
+}
+
+/// How the pick actually applied. `OutOfBand` landings correlate with
+/// hard conflicts, so dropping them would bias recall toward easy picks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ObservedApply {
+    Clean,
+    /// Still a conflict when `paths` is empty: normalization may have
+    /// dropped every path.
+    Conflicted {
+        paths: BTreeSet<RelativePath>,
+    },
+    OutOfBand,
+}
+
+/// One paired row: what triage predicted for a candidate and how the
+/// apply went.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ForecastEntry {
+    pub sha: CommitSha,
+    /// One conflict per path, the shape `predicted_conflicts` emits;
+    /// duplicate paths would inflate the `path_overlap` denominator.
+    pub predicted: Vec<ForecastedConflict>,
+    pub observed: ObservedApply,
+    /// Observed paths that did not normalize to `RelativePath`: counted
+    /// so the report states what the producer dropped.
+    #[serde(default)]
+    pub unconvertible_paths: usize,
+}
+
+/// Observed conflicting paths the forecast did not predict, the
+/// worklist row. Path-level, so a pick whose forecast called one path
+/// and missed another still surfaces the missed path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ForecastMiss {
+    pub sha: CommitSha,
+    /// Observed conflicting paths with no matched prediction.
+    pub missed_paths: BTreeSet<RelativePath>,
+    /// The entry's full prediction, for routing the miss. Empty means
+    /// the forecast saw nothing at all on this pick.
+    pub predicted: Vec<ForecastedConflict>,
+}
+
+/// The forecast fold's output. The rates are entry-level: a hit is an
+/// entry that predicted any conflict and observed any conflict; which
+/// paths matched is graded by `path_overlap` and `false_negatives`.
+/// Forecasts are computed at triage against the then-current target
+/// tip, so false negatives partly measure tip drift, not forecast error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ForecastReport {
+    pub entries: usize,
+    /// Of conflict-predicting entries, the share that observed a conflict.
+    pub precision: Ratio,
+    /// Of conflict-observing entries, the share the forecast predicted.
+    pub recall: Ratio,
+    /// Of predicted paths on true-positive entries, the share matched by
+    /// an observed conflicting path.
+    pub path_overlap: Ratio,
+    /// Entries excluded from both rate denominators: when this count
+    /// dominates, the rates are not trustworthy.
+    pub out_of_band: usize,
+    /// Observed paths the producer could not normalize, summed.
+    pub unconvertible_paths: usize,
+    /// Observed conflicting paths with no matched prediction, per entry,
+    /// including entries the rates count as hits.
+    pub false_negatives: Vec<ForecastMiss>,
+}
+
+/// Fold paired forecast rows into accuracy rates and a missed-conflict
+/// worklist.
+#[must_use]
+pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
+    let mut precision = Ratio { hits: 0, total: 0 };
+    let mut recall = Ratio { hits: 0, total: 0 };
+    let mut path_overlap = Ratio { hits: 0, total: 0 };
+    let mut out_of_band = 0;
+    let mut unconvertible_paths = 0;
+    let mut false_negatives = Vec::new();
+
+    for e in entries {
+        unconvertible_paths += e.unconvertible_paths;
+        let observed_paths = match &e.observed {
+            ObservedApply::OutOfBand => {
+                out_of_band += 1;
+                continue;
+            }
+            ObservedApply::Clean => None,
+            ObservedApply::Conflicted { paths } => Some(paths),
+        };
+        let predicted = !e.predicted.is_empty();
+        // the variant decides, never the path count: an all-unconvertible
+        // conflict still counts
+        let observed = observed_paths.is_some();
+        if predicted {
+            precision.total += 1;
+            if observed {
+                precision.hits += 1;
+            }
+        }
+        if observed {
+            recall.total += 1;
+            if predicted {
+                recall.hits += 1;
+            }
+        }
+        let Some(paths) = observed_paths else {
+            continue;
+        };
+        let prediction_names = |o: &RelativePath| {
+            e.predicted
+                .iter()
+                .any(|p| paths_match(p.path.as_str(), o.as_str()))
+        };
+        if predicted {
+            path_overlap.total += e.predicted.len();
+            path_overlap.hits += e
+                .predicted
+                .iter()
+                .filter(|p| {
+                    paths
+                        .iter()
+                        .any(|o| paths_match(p.path.as_str(), o.as_str()))
+                })
+                .count();
+        }
+        let missed: BTreeSet<RelativePath> = paths
+            .iter()
+            .filter(|o| !prediction_names(o))
+            .cloned()
+            .collect();
+        if !missed.is_empty() {
+            false_negatives.push(ForecastMiss {
+                sha: e.sha.clone(),
+                missed_paths: missed,
+                predicted: e.predicted.clone(),
+            });
+        }
+    }
+
+    ForecastReport {
+        entries: entries.len(),
+        precision,
+        recall,
+        path_overlap,
+        out_of_band,
+        unconvertible_paths,
+        false_negatives,
+    }
+}
+
+/// Whether two paths recorded relative to different roots name the same
+/// file: equal, or one is a `/`-boundary suffix of the other. Many-to-one
+/// by design: a bare `Makefile` matches any path ending in `/Makefile`.
+#[must_use]
+pub fn paths_match(a: &str, b: &str) -> bool {
+    has_path_suffix(a, b) || has_path_suffix(b, a)
+}
+
+fn has_path_suffix(haystack: &str, needle: &str) -> bool {
+    haystack == needle
+        || (haystack.len() > needle.len()
+            && haystack.ends_with(needle)
+            && haystack.as_bytes()[haystack.len() - needle.len() - 1] == b'/')
 }
