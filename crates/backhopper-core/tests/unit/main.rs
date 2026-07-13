@@ -48,6 +48,7 @@ mod forecast_eval_unit_tests;
 mod format_v2_unit_tests;
 mod implementer_index_unit_tests;
 mod inapplicable_promotion_unit_tests;
+mod indirect_calls_elixir_unit_tests;
 mod indirect_calls_unit_tests;
 mod library_derivation_unit_tests;
 mod local_call_resolve_unit_tests;

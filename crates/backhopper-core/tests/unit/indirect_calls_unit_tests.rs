@@ -138,6 +138,28 @@ fn rpc_and_erpc_call_forms_extract() {
 }
 
 #[test]
+fn rabbit_misc_rpc_call_forms_extract() {
+    let src = "f(Node, Q) ->\n\
+               rabbit_misc:rpc_call(Node, rabbit_plugins, list, []),\n\
+               rabbit_misc:rpc_call(Node, rabbit_amqqueue, lookup, [Q], 5000).\n";
+    assert_eq!(
+        sites(src),
+        [
+            (
+                "rabbit_plugins:list/0".to_owned(),
+                IndirectCallForm::RabbitMiscRpcCall,
+                2
+            ),
+            (
+                "rabbit_amqqueue:lookup/1".to_owned(),
+                IndirectCallForm::RabbitMiscRpcCall,
+                3
+            ),
+        ]
+    );
+}
+
+#[test]
 fn ct_broker_helper_rpc_overloads_extract_at_their_positions() {
     let src = "f(Config, Node) ->\n\
                rabbit_ct_broker_helpers:rpc(Config, rabbit_maintenance, status, []),\n\

@@ -20,7 +20,9 @@ use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::call_sites::extract_qualified_calls;
-use crate::compat::indirect_calls::{IndirectCallSite, extract_indirect_calls};
+use crate::compat::indirect_calls::{
+    IndirectExtraction, extract_indirect_calls, extract_indirect_calls_elixir,
+};
 use crate::compat::source_attributes::{
     ExportSet, SpecTable, extract_exports, extract_function_signatures, extract_specs,
 };
@@ -279,10 +281,48 @@ fn target_module_surface(
     }
 }
 
-/// Resolve one subject's indirect MFA references (meck expectations
-/// and rpc forms) against the target modules' export and definition
-/// sets. A site is flagged only when the target module neither exports
-/// nor defines it and the patch does not add it.
+/// The indirect-reference axis for Elixir sources. `:module.function`
+/// calls of a recognized form are extracted from the Elixir added lines
+/// and resolved against the same Erlang target tree the qualified-call
+/// axis reads. Only the extractor differs from the Erlang path; the
+/// resolution, gate, and reason are shared.
+pub fn analyse_indirect_elixir_calls(
+    subjects: &[AddedLinesSubject<'_>],
+    covered_modules: &BTreeSet<ModuleName>,
+    patch_added: &PatchProvided,
+    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
+    read_target: TreeReader<'_>,
+) -> IndirectCallAnalysis {
+    let mut exports_by_module: BTreeMap<ModuleName, Option<TargetModuleSurface>> = BTreeMap::new();
+    let mut out = IndirectCallAnalysis::default();
+    for subject in subjects {
+        let extraction = extract_indirect_calls_elixir(subject.added_text, subject.line_map);
+        resolve_extraction(
+            &extraction,
+            subject,
+            covered_modules,
+            patch_added,
+            resolve_module_path,
+            read_target,
+            &mut exports_by_module,
+            &mut out.reasons,
+            &mut out.tally,
+        );
+    }
+    out
+}
+
+/// The reasons and tally the indirect-reference axis produces on its
+/// own, so the Elixir path can be wired beside the qualified stream.
+#[derive(Debug, Default)]
+pub struct IndirectCallAnalysis {
+    pub reasons: Vec<Reason>,
+    pub tally: IndirectCallTally,
+}
+
+/// Resolve one subject's Erlang indirect MFA references against the
+/// target modules' surfaces, folding the reasons and tally into the
+/// qualified-call analysis.
 fn resolve_indirect_calls(
     subject: &AddedLinesSubject<'_>,
     covered_modules: &BTreeSet<ModuleName>,
@@ -293,47 +333,72 @@ fn resolve_indirect_calls(
     analysis: &mut QualifiedCallAnalysis,
 ) {
     let extraction = extract_indirect_calls(subject.added_text, subject.line_map);
-    analysis.indirect_checks.withheld_dynamic += extraction.withheld_dynamic;
+    resolve_extraction(
+        &extraction,
+        subject,
+        covered_modules,
+        patch_added,
+        resolve_module_path,
+        read_target,
+        exports_by_module,
+        &mut analysis.reasons,
+        &mut analysis.indirect_checks,
+    );
+}
+
+/// Resolve extracted indirect sites against the target modules' export
+/// and definition sets, language-independent below the extractor. A
+/// site is flagged only when the target module neither exports nor
+/// defines it and the patch does not add it.
+#[allow(clippy::too_many_arguments)]
+fn resolve_extraction(
+    extraction: &IndirectExtraction,
+    subject: &AddedLinesSubject<'_>,
+    covered_modules: &BTreeSet<ModuleName>,
+    patch_added: &PatchProvided,
+    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
+    read_target: TreeReader<'_>,
+    exports_by_module: &mut BTreeMap<ModuleName, Option<TargetModuleSurface>>,
+    reasons: &mut Vec<Reason>,
+    tally: &mut IndirectCallTally,
+) {
+    tally.withheld_dynamic += extraction.withheld_dynamic;
     let mut seen: BTreeSet<(ModuleName, FunctionName, Arity, IndirectCallForm)> = BTreeSet::new();
-    for site in extraction.sites {
-        let IndirectCallSite { mfa, via, line } = site;
-        let entry = exports_by_module
-            .entry(mfa.module.clone())
-            .or_insert_with(|| {
-                target_module_surface(
-                    &mfa.module,
-                    covered_modules,
-                    resolve_module_path,
-                    read_target,
-                )
-            });
+    for site in &extraction.sites {
+        let (module, function, arity, via) = (
+            &site.mfa.module,
+            &site.mfa.function,
+            site.mfa.arity,
+            site.via,
+        );
+        let entry = exports_by_module.entry(module.clone()).or_insert_with(|| {
+            target_module_surface(module, covered_modules, resolve_module_path, read_target)
+        });
         let Some(surface) = entry.as_ref() else {
             continue;
         };
-        if !seen.insert((mfa.module.clone(), mfa.function.clone(), mfa.arity, via)) {
+        if !seen.insert((module.clone(), function.clone(), arity, via)) {
             continue;
         }
-        analysis.indirect_checks.checked += 1;
-        let key = (mfa.function.clone(), mfa.arity);
+        tally.checked += 1;
+        let key = (function.clone(), arity);
         if surface.exports.exports.contains(&key)
             || surface.defined.contains(&key)
             || patch_added
                 .functions
-                .get(&mfa.module)
+                .get(module)
                 .is_some_and(|s| s.contains(&key))
         {
             continue;
         }
-        analysis
-            .reasons
-            .push(Reason::IndirectCallUndefinedOnTarget {
-                source_path: subject.source_path.clone(),
-                module: mfa.module,
-                function: mfa.function,
-                arity: mfa.arity,
-                via,
-                line: file_line(subject.line_map, line),
-            });
+        reasons.push(Reason::IndirectCallUndefinedOnTarget {
+            source_path: subject.source_path.clone(),
+            module: module.clone(),
+            function: function.clone(),
+            arity,
+            via,
+            line: file_line(subject.line_map, site.line),
+        });
     }
 }
 

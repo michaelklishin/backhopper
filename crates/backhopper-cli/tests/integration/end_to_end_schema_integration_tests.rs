@@ -180,7 +180,9 @@ fn diff_v13_to_v14_is_add_only() {
         added,
         [
             "/batch_payload/$defs/BatchResult/properties/target_findings",
+            "/batch_payload/$defs/IndirectCallForm/enum/4",
             "/batch_payload/$defs/TargetFindings",
+            "/envelope/properties/data/$defs/IndirectCallForm/enum/4",
             "/envelope/properties/data/$defs/TargetFindings",
             "/envelope/properties/data/properties/target_findings",
             "/summary_row/properties/target_findings",

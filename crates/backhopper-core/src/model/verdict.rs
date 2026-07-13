@@ -650,6 +650,7 @@ pub enum IndirectCallForm {
     RpcCall,
     ErpcCall,
     CtBrokerHelperRpc,
+    RabbitMiscRpcCall,
 }
 
 impl IndirectCallForm {
@@ -662,6 +663,7 @@ impl IndirectCallForm {
             Self::RpcCall => "rpc:call",
             Self::ErpcCall => "erpc:call",
             Self::CtBrokerHelperRpc => "rabbit_ct_broker_helpers:rpc",
+            Self::RabbitMiscRpcCall => "rabbit_misc:rpc_call",
         }
     }
 }
@@ -1545,6 +1547,13 @@ pub struct IndirectCallTally {
 impl IndirectCallTally {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Fold another tally in, so the Erlang and Elixir extraction
+    /// streams sum into one counter.
+    pub fn merge(&mut self, other: Self) {
+        self.checked += other.checked;
+        self.withheld_dynamic += other.withheld_dynamic;
     }
 }
 

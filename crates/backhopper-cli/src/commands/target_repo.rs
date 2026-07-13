@@ -22,7 +22,8 @@ use backhopper_core::compat::define_resolve::{
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
+    IndirectCallAnalysis, QualifiedCallAnalysis, analyse_indirect_elixir_calls,
+    analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
@@ -270,6 +271,12 @@ fn is_erl_or_hrl(path: &Path) -> bool {
         .is_some_and(|s| s.eq_ignore_ascii_case("erl") || s.eq_ignore_ascii_case("hrl"))
 }
 
+fn is_elixir(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("ex") || s.eq_ignore_ascii_case("exs"))
+}
+
 /// Union of every configured project family's
 /// `test_helper_search_paths`. The 018 resolvers cast a wide net by
 /// design: the user can pass the same patch through different
@@ -452,6 +459,68 @@ pub fn collect_qualified_call_findings(
         &resolve_module_path,
         &read_target,
         read_source,
+    )
+}
+
+/// Resolve the `m:f/a` an Elixir call carries to a recognized rpc form
+/// against the Erlang target tree. `.ex` and `.exs` files only; the
+/// referenced module is Erlang, so it resolves through the same
+/// module-path lookup and export check the qualified-call axis uses.
+/// A function the same commit adds in an `.erl` file is not flagged, so
+/// a combined server-and-CLI backport does not false-positive.
+pub fn collect_indirect_elixir_findings(
+    files: &[PatchedFile],
+    ctx: &TargetContext,
+    covered_modules: &BTreeSet<ModuleName>,
+) -> IndirectCallAnalysis {
+    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = files
+        .iter()
+        .filter(|f| !f.binary)
+        .filter_map(|f| {
+            let new_path = f.new_path.as_ref()?;
+            if new_path == Path::new("/dev/null") || !is_elixir(new_path) {
+                return None;
+            }
+            let path = new_path.to_str().and_then(|s| RelativePath::new(s).ok())?;
+            let (added, line_map) = added_lines_with_offsets(&f.hunks);
+            (!added.is_empty()).then_some((path, added, line_map))
+        })
+        .collect();
+    if subjects_text.is_empty() {
+        return IndirectCallAnalysis::default();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return IndirectCallAnalysis::default();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let erl_subjects = collect_define_subject_text(files);
+    let erl_per_file: Vec<(ModuleName, &str)> = erl_subjects
+        .iter()
+        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
+        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+        .collect();
+    let patch_added = patch_provided(&erl_per_file);
+    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
+        let path = ctx.index.module_erl_path(m)?;
+        RelativePath::new(path.to_str()?.to_owned()).ok()
+    };
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t, lm)| AddedLinesSubject {
+            source_path: p,
+            added_text: t,
+            line_map: lm,
+        })
+        .collect();
+    analyse_indirect_elixir_calls(
+        &subjects,
+        covered_modules,
+        &patch_added,
+        &resolve_module_path,
+        &read_target,
     )
 }
 

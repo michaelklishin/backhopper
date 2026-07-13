@@ -808,6 +808,13 @@ fn apply_target_context(
     merge_symbol_reasons(qualified_calls.reasons, evaluation);
     evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
     evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
+    let indirect_elixir =
+        target_repo::collect_indirect_elixir_findings(&parsed.files, target_ctx, covered_modules);
+    merge_symbol_reasons(indirect_elixir.reasons, evaluation);
+    evaluation
+        .diagnostics
+        .indirect_call_checks
+        .merge(indirect_elixir.tally);
     // the apply axis has its own row-level record: not collected here
     let apply_analysis = target_repo::collect_target_apply_analysis(&parsed.files, target_ctx);
     target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
@@ -2938,9 +2945,7 @@ fn sum_leg_tallies(results: &[BatchResult]) -> LegTallies {
         t.macros.withheld_definition_elsewhere += m.withheld_definition_elsewhere;
         t.macros.withheld_multiple_defines += m.withheld_multiple_defines;
         t.macros.withheld_no_source += m.withheld_no_source;
-        let i = &row.diagnostics.indirect_call_checks;
-        t.indirect.checked += i.checked;
-        t.indirect.withheld_dynamic += i.withheld_dynamic;
+        t.indirect.merge(row.diagnostics.indirect_call_checks);
     }
     t
 }

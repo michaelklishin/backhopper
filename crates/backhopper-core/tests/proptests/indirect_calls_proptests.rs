@@ -6,7 +6,9 @@
 //! reformat-invariant on well-formed forms, and accounting-complete at
 //! the extraction level.
 
-use backhopper_core::compat::indirect_calls::extract_indirect_calls;
+use backhopper_core::compat::indirect_calls::{
+    extract_indirect_calls, extract_indirect_calls_elixir,
+};
 use proptest::prelude::*;
 
 fn identity_line_map(src: &str) -> Vec<u32> {
@@ -15,6 +17,16 @@ fn identity_line_map(src: &str) -> Vec<u32> {
 
 fn atom() -> impl Strategy<Value = String> {
     "[a-z][a-z0-9_]{0,10}"
+}
+
+/// One well-formed Elixir rpc form with a literal module and function,
+/// arity from the literal list.
+fn elixir_occurrence() -> impl Strategy<Value = (String, String, String, usize)> {
+    (atom(), atom(), 0usize..5).prop_map(|(m, f, arity)| {
+        let args = vec!["x"; arity].join(", ");
+        let form = format!(":rabbit_misc.rpc_call(node, :{m}, :{f}, [{args}])");
+        (form, m, f, arity)
+    })
 }
 
 /// One well-formed occurrence with a literal module and function. The
@@ -95,5 +107,45 @@ proptest! {
         let src = format!("t(Node) ->\n{}\n    ok.\n", body.join("\n"));
         let out = extract_indirect_calls(&src, &identity_line_map(&src));
         prop_assert_eq!(out.sites.len() + out.withheld_dynamic, occs.len());
+    }
+
+    #[test]
+    fn elixir_never_panics_on_arbitrary_text(src in ".{0,300}") {
+        let line_map = identity_line_map(&src);
+        let _ = extract_indirect_calls_elixir(&src, &line_map);
+    }
+
+    #[test]
+    fn elixir_never_panics_on_elixirish_text(src in "[a-z_:.,\\(\\)\\[\\]\\{\\}'\"\\|?# \n]{0,300}") {
+        let line_map = identity_line_map(&src);
+        let _ = extract_indirect_calls_elixir(&src, &line_map);
+    }
+
+    // The same MFA in Erlang and Elixir syntax resolves to the same
+    // reference: the target is language-independent.
+    #[test]
+    fn erlang_and_elixir_extract_equal_mfas(
+        (form, m, f, arity) in elixir_occurrence()
+    ) {
+        let elixir = format!("def go do\n  {form}\nend\n");
+        let out_ex = extract_indirect_calls_elixir(&elixir, &identity_line_map(&elixir));
+
+        let args = vec!["x"; arity].join(", ");
+        let erlang = format!("go(Node) -> rabbit_misc:rpc_call(Node, {m}, {f}, [{args}]).\n");
+        let out_erl = extract_indirect_calls(&erlang, &identity_line_map(&erlang));
+
+        prop_assert_eq!(
+            out_ex.sites.iter().map(|s| s.mfa.clone()).collect::<Vec<_>>(),
+            out_erl.sites.iter().map(|s| s.mfa.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    // Piping shifts arguments left, so no piped form ever extracts.
+    #[test]
+    fn a_piped_elixir_form_never_extracts((_, m, f, arity) in elixir_occurrence()) {
+        let args = vec!["x"; arity].join(", ");
+        let src = format!("node |> :rabbit_misc.rpc_call(:{m}, :{f}, [{args}], 5000)\n");
+        let out = extract_indirect_calls_elixir(&src, &identity_line_map(&src));
+        prop_assert!(out.sites.is_empty());
     }
 }

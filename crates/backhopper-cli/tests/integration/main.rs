@@ -18,6 +18,7 @@ mod end_to_end_doctor_coverage_integration_tests;
 mod end_to_end_doctor_integration_tests;
 mod end_to_end_extractor_version_integration_tests;
 mod end_to_end_indirect_calls_integration_tests;
+mod end_to_end_indirect_elixir_integration_tests;
 mod end_to_end_init_integration_tests;
 mod end_to_end_integration_tests;
 mod end_to_end_json_integration_tests;

@@ -3,25 +3,62 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! Extractor for `m:f/a` references carried as arguments to a known
-//! indirection form: meck expectations, `rpc:call`, `erpc:call`, and
-//! the RabbitMQ CT broker rpc helpers. The atoms naming the referenced
-//! function are argument payload to the call-site extractor, so without
-//! this pass a test ported from a newer branch can reference a function
-//! the target branch never had and the target-tree axis reports
-//! nothing. One level of unwrapping covers a meck expectation reached
-//! through an rpc helper, the shape the motivating round shipped.
+//! indirection form: meck expectations, `rpc:call`, `erpc:call`,
+//! `rabbit_misc:rpc_call`, and the RabbitMQ CT broker rpc helpers. The
+//! atoms naming the referenced function are argument payload to the
+//! call-site extractor, so without this pass a test ported from a newer
+//! branch can reference a function the target branch never had and the
+//! target-tree axis reports nothing. One level of unwrapping covers a
+//! meck expectation reached through an rpc helper, the shape the
+//! motivating round shipped.
+//!
+//! The same forms are read in Elixir sources, where the call is written
+//! `:module.function(args)` and the argument atoms carry a leading `:`.
+//! The referenced module is Erlang whatever the source language, so the
+//! form table, the arity readers, and the unwrap are shared; only the
+//! call-site matcher, the atom parser, and the comment stripper differ.
 //!
 //! A non-literal module or function is skipped without counting: it is
 //! not a reference this axis claims to see. A literal `m:f` whose arity
 //! source is unreadable is counted as withheld, never guessed.
 
+use std::mem;
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use backhopper_erlang_scan::{ScannedArgs, ScannedList, scan_list_elements, scan_top_level_args};
+use regex::Regex;
 
-use crate::compat::call_sites::{body_runs, call_re, run_line_at};
+use crate::compat::call_sites::{BodyRun, body_runs, call_re, run_line_at};
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName};
 use crate::model::verdict::IndirectCallForm;
+
+/// Which source language a form was written in: selects the atom parser
+/// and the fun-arity policy, nothing else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Syntax {
+    Erlang,
+    Elixir,
+}
+
+impl Syntax {
+    fn parse_atom(self, raw: &str) -> Option<String> {
+        match self {
+            Self::Erlang => parse_atom(raw),
+            Self::Elixir => parse_elixir_atom(raw),
+        }
+    }
+
+    /// Erlang reads a `fun` head or capture; Elixir withholds, since no
+    /// observed escape rides an Elixir meck-with-fun and the grammar is
+    /// separate.
+    fn fun_arity(self, raw: Option<&&str>) -> Option<Arity> {
+        match self {
+            Self::Erlang => raw.and_then(|a| fun_arity(a)),
+            Self::Elixir => None,
+        }
+    }
+}
 
 /// One statically readable `m:f/a` carried as arguments to a
 /// recognized indirection form.
@@ -87,6 +124,12 @@ fn form_spec(module: &str, function: &str, argc: usize) -> Option<FormSpec> {
             2,
             AritySource::ArgumentList(3),
         )),
+        ("rabbit_misc", "rpc_call", 4 | 5) => Some(spec(
+            IndirectCallForm::RabbitMiscRpcCall,
+            1,
+            2,
+            AritySource::ArgumentList(3),
+        )),
         ("erpc", "call", 4 | 5) => Some(spec(
             IndirectCallForm::ErpcCall,
             1,
@@ -129,7 +172,31 @@ pub fn extract_indirect_calls(src: &str, line_map: &[u32]) -> IndirectExtraction
                 continue;
             };
             let line = run_line_at(&run.line_starts, group.start());
-            read_reference(&spec, &args, line, &mut out);
+            read_reference(&spec, &args, line, Syntax::Erlang, &mut out);
+        }
+    }
+    out
+}
+
+/// Every statically readable indirect MFA reference in an Elixir
+/// `src`, from `:module.function(args)` calls whose form is in the
+/// shared table. The referenced module resolves against the same Erlang
+/// target tree as the Erlang sites.
+pub fn extract_indirect_calls_elixir(src: &str, line_map: &[u32]) -> IndirectExtraction {
+    let mut out = IndirectExtraction::default();
+    for run in elixir_body_runs(src, line_map) {
+        for caps in elixir_call_re().captures_iter(&run.text) {
+            let group = caps.get(0).expect("capture");
+            let ScannedArgs::Terminated { args, .. } =
+                scan_top_level_args(&run.text[group.end()..])
+            else {
+                continue;
+            };
+            let Some(spec) = form_spec(&caps[1], &caps[2], args.len()) else {
+                continue;
+            };
+            let line = run_line_at(&run.line_starts, group.start());
+            read_reference(&spec, &args, line, Syntax::Elixir, &mut out);
         }
     }
     out
@@ -138,10 +205,17 @@ pub fn extract_indirect_calls(src: &str, line_map: &[u32]) -> IndirectExtraction
 /// Reads one occurrence of a recognized form. A non-atom module or
 /// function skips silently; a readable pair with an unreadable arity
 /// counts as withheld.
-fn read_reference(spec: &FormSpec, args: &[&str], line: u32, out: &mut IndirectExtraction) {
+fn read_reference(
+    spec: &FormSpec,
+    args: &[&str],
+    line: u32,
+    syntax: Syntax,
+    out: &mut IndirectExtraction,
+) {
     let (Some(module), Some(function)) = (
-        args.get(spec.module_pos).and_then(|a| parse_atom(a)),
-        args.get(spec.function_pos).and_then(|a| parse_atom(a)),
+        args.get(spec.module_pos).and_then(|a| syntax.parse_atom(a)),
+        args.get(spec.function_pos)
+            .and_then(|a| syntax.parse_atom(a)),
     ) else {
         return;
     };
@@ -153,7 +227,7 @@ fn read_reference(spec: &FormSpec, args: &[&str], line: u32, out: &mut IndirectE
     };
     let arity = match &spec.arity {
         AritySource::IntegerLiteral(pos) => integer_arity(args.get(*pos)),
-        AritySource::FunExpression(pos) => args.get(*pos).and_then(|a| fun_arity(a)),
+        AritySource::FunExpression(pos) => syntax.fun_arity(args.get(*pos)),
         AritySource::ArgumentList(pos) => match list_elements(args.get(*pos)) {
             Some(elements) => {
                 // One level of unwrapping: the rpc'd callee is itself
@@ -162,7 +236,7 @@ fn read_reference(spec: &FormSpec, args: &[&str], line: u32, out: &mut IndirectE
                 if module.as_str() == "meck" && function.as_str() == "expect" {
                     if let Some(inner) = form_spec("meck", "expect", elements.len()) {
                         let elements: Vec<&str> = elements.iter().map(String::as_str).collect();
-                        read_reference(&inner, &elements, line, out);
+                        read_reference(&inner, &elements, line, syntax, out);
                     } else {
                         out.withheld_dynamic += 1;
                     }
@@ -202,6 +276,118 @@ fn parse_atom(raw: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// An Elixir atom naming an Erlang module or function: `:name`,
+/// `:"name"`, or `:'name'`. A bare identifier without the leading `:`
+/// is a variable or an alias in Elixir, not an atom, so it is `None`
+/// and the occurrence skips uncounted.
+fn parse_elixir_atom(raw: &str) -> Option<String> {
+    let rest = raw.trim().strip_prefix(':')?;
+    for quote in ['"', '\''] {
+        if let Some(inner) = rest.strip_prefix(quote) {
+            let inner = inner.strip_suffix(quote)?;
+            if inner.contains(quote) {
+                return None;
+            }
+            return Some(inner.to_owned());
+        }
+    }
+    let mut chars = rest.chars();
+    let first = chars.next()?;
+    if (first.is_ascii_lowercase() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
+    {
+        Some(rest.to_owned())
+    } else {
+        None
+    }
+}
+
+/// `:module.function(` for an Erlang module called from Elixir. The
+/// module and function are bare lowercase atoms, the same shape the
+/// Erlang matcher expects for the argument positions.
+fn elixir_call_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r":([a-z][a-zA-Z0-9_@]*)\.([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex")
+    })
+}
+
+/// Elixir run assembly: join file-adjacent added lines after stripping
+/// `#` comments, so a form wrapped across lines is scanned whole. No
+/// attribute classification, since every Elixir added line is body.
+fn elixir_body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
+    let mut out = Vec::new();
+    let mut run = String::new();
+    let mut run_lines: Vec<(usize, u32)> = Vec::new();
+    let mut prev_file_line: Option<u32> = None;
+    for (idx, line) in src.lines().enumerate() {
+        let stripped = strip_elixir_line_comment(line);
+        let file_line = line_map.get(idx).copied();
+        let adjacent = matches!((prev_file_line, file_line), (Some(p), Some(c)) if c == p + 1);
+        if !adjacent && !run.is_empty() {
+            out.push(BodyRun {
+                text: mem::take(&mut run),
+                line_starts: mem::take(&mut run_lines),
+            });
+        }
+        prev_file_line = file_line;
+        run_lines.push((run.len(), (idx + 1) as u32));
+        run.push_str(stripped);
+        run.push('\n');
+    }
+    if !run.is_empty() {
+        out.push(BodyRun {
+            text: run,
+            line_starts: run_lines,
+        });
+    }
+    out
+}
+
+/// The prefix of `line` before an Elixir `#` line comment, leaving a
+/// `#` inside a string, charlist, or `?#` char literal in place.
+fn strip_elixir_line_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_str = false;
+    let mut in_charlist = false;
+    let mut prev_ident = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_str || in_charlist {
+            match b {
+                b'\\' => i += 1,
+                b'"' if in_str => in_str = false,
+                b'\'' if in_charlist => in_charlist = false,
+                _ => {}
+            }
+            i += 1;
+            prev_ident = false;
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'\'' => in_charlist = true,
+            // `?c` char literal, only at a token boundary so a `foo?`
+            // function suffix is not read as one.
+            b'?' if !prev_ident => {
+                i += 1;
+                if bytes.get(i) == Some(&b'\\') {
+                    i += 1;
+                }
+                i += 1;
+                prev_ident = false;
+                continue;
+            }
+            b'#' => return &line[..i],
+            _ => {}
+        }
+        prev_ident = b.is_ascii_alphanumeric() || b == b'_';
+        i += 1;
+    }
+    line
 }
 
 /// An integer-literal arity, or `None`.

@@ -1,9 +1,12 @@
 # Changelog
 
-## v0.24.0 (in development)
+## v0.25.0 (in development)
 
 ### Enhancements
 
+ * `m:f/a` references in Elixir parts of the diff
+   are now analyzed for `rpc` use and resolved against the Erlang target tree and
+   can be caught at `check` time
  * Symbol findings on the target are no longer dropped when every
    verdict is inapplicable: each row checked against a target carries a
    `target_findings` list beside the pin verdicts, and the clearance,

@@ -960,7 +960,8 @@
           "meck_expect",
           "rpc_call",
           "erpc_call",
-          "ct_broker_helper_rpc"
+          "ct_broker_helper_rpc",
+          "rabbit_misc_rpc_call"
         ],
         "type": "string"
       },
@@ -4430,7 +4431,8 @@
               "meck_expect",
               "rpc_call",
               "erpc_call",
-              "ct_broker_helper_rpc"
+              "ct_broker_helper_rpc",
+              "rabbit_misc_rpc_call"
             ],
             "type": "string"
           },
