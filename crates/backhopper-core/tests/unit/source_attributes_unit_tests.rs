@@ -9,11 +9,11 @@
 use std::str::FromStr;
 
 use backhopper_core::compat::source_attributes::{
-    declares_parse_transform, extract_behaviours, extract_defined_macro_values,
+    ImportedFunction, declares_parse_transform, extract_behaviours, extract_defined_macro_values,
     extract_defined_macros, extract_defined_records, extract_function_signatures, extract_imports,
     extract_includes, extract_macro_uses, extract_record_uses, extract_specs, is_predefined_macro,
 };
-use backhopper_core::model::names::{Arity, FunctionName};
+use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
 use backhopper_core::model::spec_parser::parse_signature_return;
 use backhopper_core::model::verdict::IncludeDirective;
@@ -135,11 +135,28 @@ fn a_call_after_an_attribute_is_still_found() {
     );
 }
 
+fn imported(module: &str, function: &str, arity: u8) -> ImportedFunction {
+    ImportedFunction {
+        module: ModuleName::from_str(module).unwrap(),
+        function: FunctionName::from_str(function).unwrap(),
+        arity: Arity::try_from(usize::from(arity)).unwrap(),
+    }
+}
+
 #[test]
-fn imports_are_extracted_by_name_and_arity() {
+fn imports_are_extracted_with_module_name_and_arity() {
     let imps = extract_imports("-import(lists, [map/2, foldl/3]).\n");
-    assert!(imps.contains(&("map".to_owned(), 2)));
-    assert!(imps.contains(&("foldl".to_owned(), 3)));
+    assert!(imps.contains(&imported("lists", "map", 2)));
+    assert!(imps.contains(&imported("lists", "foldl", 3)));
+}
+
+#[test]
+fn imports_from_distinct_modules_keep_their_own_module() {
+    let imps = extract_imports(
+        "-import(lists, [foldl/3]).\n-import(rabbit_data_coercion, [to_binary/1]).\n",
+    );
+    assert!(imps.contains(&imported("lists", "foldl", 3)));
+    assert!(imps.contains(&imported("rabbit_data_coercion", "to_binary", 1)));
 }
 
 #[test]

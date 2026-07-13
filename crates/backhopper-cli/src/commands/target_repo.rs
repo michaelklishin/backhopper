@@ -22,7 +22,7 @@ use backhopper_core::compat::define_resolve::{
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    IndirectCallAnalysis, QualifiedCallAnalysis, analyse_indirect_elixir_calls,
+    IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceContext, analyse_indirect_elixir_calls,
     analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
@@ -365,12 +365,17 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
 
 /// Resolve unqualified calls the patch adds against the target
 /// module's function set, and compare resolved calls' `-spec` return
-/// shapes between the checkouts. `.erl` files only: a `.hrl` defines
-/// no function set of its own. `source_repo_dir` is the live source
-/// checkout; `None` withholds every shape check (counted, not silent).
+/// shapes between the checkouts. A call the patch imports beside its
+/// first use is resolved against the imported module on the target
+/// tree, so `covered_modules` and the patch's cross-file additions
+/// feed the same gate the qualified axis uses. `.erl` files only: a
+/// `.hrl` defines no function set of its own. `source_repo_dir` is the
+/// live source checkout; `None` withholds every shape check (counted,
+/// not silent).
 pub fn collect_local_call_findings(
     files: &[PatchedFile],
     ctx: &TargetContext,
+    covered_modules: &BTreeSet<ModuleName>,
     source_repo_dir: Option<&Path>,
 ) -> LocalCallAnalysis {
     let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
@@ -380,10 +385,19 @@ pub fn collect_local_call_findings(
     if subjects_text.is_empty() {
         return LocalCallAnalysis::default();
     }
+    let per_file: Vec<(ModuleName, &str)> = subjects_text
+        .iter()
+        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+        .collect();
+    let patch_added = patch_provided(&per_file);
     let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
         return LocalCallAnalysis::default();
     };
     let commit = ctx.index.resolved_commit().clone();
+    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
+        let path = ctx.index.module_erl_path(m)?;
+        RelativePath::new(path.to_str()?.to_owned()).ok()
+    };
     let read_target = |path: &RelativePath| -> Option<String> {
         read_target_text(&repo, &commit, &ctx.translations, path)
     };
@@ -400,7 +414,14 @@ pub fn collect_local_call_findings(
             line_map: lm,
         })
         .collect();
-    analyse_local_calls(&subjects, &read_target, read_source)
+    let reference_ctx = ReferenceContext {
+        covered_modules,
+        patch_added: &patch_added,
+        resolve_module_path: &resolve_module_path,
+        read_target: &read_target,
+        read_source,
+    };
+    analyse_local_calls(&subjects, &reference_ctx)
 }
 
 /// Resolve qualified `m:f/a` calls the patch adds against the called

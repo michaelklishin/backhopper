@@ -14,18 +14,27 @@
 //! module, not its includes. To keep false positives near zero it is
 //! conservative: it suppresses when the target file is unreadable or
 //! declares a `parse_transform` (which injects unseeable functions),
-//! and never flags an auto-imported BIF or an imported function. An
-//! imported resolution is withheld from the shape check too: the
-//! callee's `-spec` lives in another module.
+//! and never flags an auto-imported BIF or a call resolved through the
+//! target's own `-import`. A target-import resolution is withheld from
+//! the shape check too: the callee's `-spec` lives in another module.
+//!
+//! An `-import` the patch adds beside its first use is a cross-module
+//! reference to `m:f/arity` once applied, so it is resolved against the
+//! imported module's exports on the target tree through the shared
+//! qualified-reference gate: a function the target's copy of the module
+//! still exports is clean, one it lacks is flagged.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
-use crate::compat::qualified_call_resolve::{ShapeComparison, TreeReader, compare_return_shapes};
+use crate::compat::qualified_call_resolve::{
+    ReferenceCaches, ReferenceContext, ShapeComparison, TreeReader, compare_return_shapes,
+    resolve_qualified_reference,
+};
 use crate::compat::source_attributes::{
-    FunctionSignature, SpecTable, declares_parse_transform, extract_function_signatures,
-    extract_imports, extract_specs,
+    FunctionSignature, ImportedFunction, SpecTable, declares_parse_transform,
+    extract_function_signatures, extract_imports, extract_specs,
 };
 use crate::model::names::{Arity, FunctionName};
 use crate::model::verdict::{Reason, ShapeCheckTally};
@@ -45,16 +54,16 @@ pub struct LocalCallAnalysis {
 /// arity)`.
 pub fn analyse_local_calls(
     subjects: &[AddedLinesSubject<'_>],
-    read_target: TreeReader<'_>,
-    read_source: Option<TreeReader<'_>>,
+    ctx: &ReferenceContext<'_>,
 ) -> LocalCallAnalysis {
     let mut analysis = LocalCallAnalysis::default();
+    let mut caches = ReferenceCaches::default();
     for subject in subjects {
         let sigs = extract_function_signatures(subject.added_text);
         if sigs.iter().all(|s| s.is_definition) {
             continue;
         }
-        let Some(target) = read_target(subject.source_path) else {
+        let Some(target) = (ctx.read_target)(subject.source_path) else {
             continue;
         };
         // A parse_transform injects functions the scanner cannot see.
@@ -66,12 +75,14 @@ pub fn analyse_local_calls(
         // no pre-existing drift to compare.
         let patch_specs = extract_specs(subject.added_text);
         let target_defined = defined_set(&extract_function_signatures(&target));
-        let imported = extract_imports(&target);
+        let target_imported = imported_keys(&target);
+        let patch_imports = patch_import_map(subject.added_text);
         // The callee module is the subject file itself: one table pair
         // per subject, filled on the first resolved call.
         let mut spec_tables: Option<(SpecTable, Option<SpecTable>)> = None;
         let mut flagged = BTreeSet::new();
         let mut shape_seen = BTreeSet::new();
+        caches.begin_subject();
         for call in sigs.iter().filter(|s| !s.is_definition) {
             let key = (call.name.clone(), call.arity);
             if is_auto_imported_bif(&call.name) || patch_defs.contains(&key) {
@@ -86,16 +97,33 @@ pub fn analyse_local_calls(
                     &target,
                     call,
                     &patch_specs,
-                    read_source,
+                    ctx.read_source,
                     &mut spec_tables,
                     &mut analysis,
                 );
                 continue;
             }
-            if imported.contains(&key) {
+            if target_imported.contains(&key) {
                 if shape_seen.insert(key) {
                     analysis.shape_checks.withheld_imported += 1;
                 }
+                continue;
+            }
+            // A call the patch imports beside its first use is a
+            // cross-module reference: resolve it against the imported
+            // module on the target tree, not the subject file.
+            if let Some(import) = patch_imports.get(&key) {
+                let qkey = (import.function.clone(), import.arity);
+                resolve_qualified_reference(
+                    subject,
+                    &import.module,
+                    &qkey,
+                    call.line,
+                    ctx,
+                    &mut caches,
+                    &mut analysis.reasons,
+                    &mut analysis.shape_checks,
+                );
                 continue;
             }
             if !flagged.insert(key) {
@@ -116,6 +144,29 @@ pub fn analyse_local_calls(
         }
     }
     analysis
+}
+
+/// The `(name, arity)` view of a module's own `-import`s, keyed the way
+/// the call scanner keys a call site.
+fn imported_keys(src: &str) -> BTreeSet<(String, usize)> {
+    extract_imports(src)
+        .into_iter()
+        .map(|i| (i.function.as_str().to_owned(), usize::from(i.arity.get())))
+        .collect()
+}
+
+/// The patch's own added `-import`s, keyed by `(name, arity)` so a call
+/// site resolves to the module it names for cross-module resolution.
+fn patch_import_map(src: &str) -> BTreeMap<(String, usize), ImportedFunction> {
+    extract_imports(src)
+        .into_iter()
+        .map(|i| {
+            (
+                (i.function.as_str().to_owned(), usize::from(i.arity.get())),
+                i,
+            )
+        })
+        .collect()
 }
 
 fn check_local_return_shape(

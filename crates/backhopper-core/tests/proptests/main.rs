@@ -16,6 +16,7 @@ mod evaluation_typestate_proptests;
 mod forecast_fold_proptests;
 mod function_signature_scanner_proptests;
 mod indirect_calls_proptests;
+mod local_call_import_resolve_proptests;
 mod macro_scan_proptests;
 mod mfa_round_trip_proptests;
 mod non_self_tracked_proptests;

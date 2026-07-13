@@ -375,10 +375,21 @@ fn is_form_terminator(bytes: &[u8], pos: usize) -> bool {
     }
 }
 
-/// `(Module, Function, Arity)` triples imported via `-import(mod, [f/a,
-/// ...])`, by function and arity (the module is irrelevant once
-/// imported into the local namespace).
-pub fn extract_imports(src: &str) -> BTreeSet<(String, usize)> {
+/// A function brought into a module's namespace by `-import(Module,
+/// [f/a, ...])`. The module is retained so a patch-added import can be
+/// resolved as the cross-module reference `m:f/a` it actually is.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ImportedFunction {
+    pub module: ModuleName,
+    pub function: FunctionName,
+    pub arity: Arity,
+}
+
+/// The functions imported via `-import(mod, [f/a, ...])`, each carrying
+/// its source module. An entry whose module or name fails newtype
+/// validation is dropped: it would not compile, so nothing resolves
+/// against it.
+pub fn extract_imports(src: &str) -> BTreeSet<ImportedFunction> {
     let mut out = BTreeSet::new();
     for hit in iter_attribute_bodies(src, &["import"]) {
         let Some(open) = hit.body.find('[') else {
@@ -387,9 +398,20 @@ pub fn extract_imports(src: &str) -> BTreeSet<(String, usize)> {
         let Some(close) = hit.body[open..].find(']') else {
             continue;
         };
+        let module_text = hit.body[..open].trim().trim_end_matches(',').trim();
+        let Ok(module) = ModuleName::from_str(module_text) else {
+            continue;
+        };
         for entry in hit.body[open + 1..open + close].split(',') {
-            if let Some((name, arity)) = parse_fun_arity(entry) {
-                out.insert((name, arity));
+            if let Some((name, arity)) = parse_fun_arity(entry)
+                && let (Ok(function), Ok(arity)) =
+                    (FunctionName::from_str(&name), Arity::try_from(arity))
+            {
+                out.insert(ImportedFunction {
+                    module: module.clone(),
+                    function,
+                    arity,
+                });
             }
         }
     }

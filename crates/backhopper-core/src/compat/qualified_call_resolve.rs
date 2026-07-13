@@ -16,6 +16,7 @@
 //! the build.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
@@ -49,6 +50,132 @@ pub struct PatchProvided {
 /// Reads one module file's text by tree-relative path: a git blob for
 /// the target side, the on-disk checkout for the source side.
 pub type TreeReader<'a> = &'a dyn Fn(&RelativePath) -> Option<String>;
+
+/// The immutable inputs a single `m:f/arity` resolution needs. Shared
+/// by the qualified-call axis and the import-resolved local-call path
+/// so both resolve a reference against the target tree the same way.
+pub struct ReferenceContext<'a> {
+    pub covered_modules: &'a BTreeSet<ModuleName>,
+    pub patch_added: &'a PatchProvided,
+    pub resolve_module_path: &'a dyn Fn(&ModuleName) -> Option<RelativePath>,
+    pub read_target: TreeReader<'a>,
+    pub read_source: Option<TreeReader<'a>>,
+}
+
+impl fmt::Debug for ReferenceContext<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReferenceContext")
+            .field("covered_modules", self.covered_modules)
+            .field("patch_added", self.patch_added)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The caches a run of reference resolutions accumulates. The module
+/// surface and spec caches persist across subjects; the dedup sets are
+/// per-subject and cleared by `begin_subject`.
+#[derive(Debug, Default)]
+pub struct ReferenceCaches {
+    surfaces: BTreeMap<ModuleName, Option<TargetModuleSurface>>,
+    specs: BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)>,
+    flagged: BTreeSet<(ModuleName, FunctionName, Arity)>,
+    shape_seen: BTreeSet<(ModuleName, FunctionName, Arity)>,
+}
+
+impl ReferenceCaches {
+    /// Clear the per-subject dedup sets while keeping the module surface
+    /// and spec caches, so one `m:f/a` flags once per subject but a
+    /// module is read once per run.
+    pub fn begin_subject(&mut self) {
+        self.flagged.clear();
+        self.shape_seen.clear();
+    }
+}
+
+/// Resolve one `m:f/arity` reference against the target tree: classify
+/// the module, read its surface once, and push a reason when the callee
+/// is undefined or its `-spec` return shape drifts. The single
+/// definition of undefined-on-target for both the qualified-call axis
+/// and a call resolved through a patch-added `-import`.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_qualified_reference(
+    subject: &AddedLinesSubject<'_>,
+    module: &ModuleName,
+    key: &(FunctionName, Arity),
+    call_line: u32,
+    ctx: &ReferenceContext<'_>,
+    caches: &mut ReferenceCaches,
+    reasons: &mut Vec<Reason>,
+    shape_checks: &mut ShapeCheckTally,
+) {
+    let surface = caches.surfaces.entry(module.clone()).or_insert_with(|| {
+        target_module_surface(
+            module,
+            ctx.covered_modules,
+            ctx.resolve_module_path,
+            ctx.read_target,
+        )
+    });
+    let Some(surface) = surface.as_ref() else {
+        return;
+    };
+    let is_exported = surface.exports.exports.contains(key);
+    let path = surface.path.clone();
+    // A callee the patch itself introduces has no meaningful
+    // pre-existing shape on either tree.
+    if ctx
+        .patch_added
+        .functions
+        .get(module)
+        .is_some_and(|s| s.contains(key))
+    {
+        return;
+    }
+    if is_exported {
+        // A spec the patch rewrites lands on the target with the pick:
+        // no pre-existing drift to compare.
+        if ctx
+            .patch_added
+            .specs
+            .get(module)
+            .is_some_and(|s| s.contains(key))
+        {
+            return;
+        }
+        if !caches
+            .shape_seen
+            .insert((module.clone(), key.0.clone(), key.1))
+        {
+            return;
+        }
+        check_return_shape(
+            subject,
+            module,
+            &path,
+            key,
+            call_line,
+            ctx.read_target,
+            ctx.read_source,
+            &mut caches.specs,
+            reasons,
+            shape_checks,
+        );
+        return;
+    }
+    if !caches
+        .flagged
+        .insert((module.clone(), key.0.clone(), key.1))
+    {
+        return;
+    }
+    reasons.push(Reason::QualifiedCallUndefinedOnTarget {
+        source_path: subject.source_path.clone(),
+        module: module.clone(),
+        function: key.0.clone(),
+        arity: key.1,
+        line: file_line(subject.line_map, call_line),
+    });
+}
 
 /// Where a called module sits relative to this axis. Only `FirstParty`
 /// is resolved; the other two are withheld, so a dependency call or an
@@ -153,91 +280,36 @@ pub fn analyse_qualified_calls(
     read_source: Option<TreeReader<'_>>,
 ) -> QualifiedCallAnalysis {
     let mut analysis = QualifiedCallAnalysis::default();
-    // None caches a withheld module (covered, absent, or unreadable
-    // export surface), so a second call into it skips the work too.
-    // The path rides along for the spec tables, whose cache fills
-    // lazily and only for modules that receive a resolved call.
-    let mut exports_by_module: BTreeMap<ModuleName, Option<TargetModuleSurface>> = BTreeMap::new();
-    // The source side is Option: a failed read means the module is not
-    // readable on the source checkout (counted as withheld_no_source),
-    // which is not the same fact as a readable module with no spec.
-    let mut specs_by_module: BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)> = BTreeMap::new();
+    let ctx = ReferenceContext {
+        covered_modules,
+        patch_added,
+        resolve_module_path,
+        read_target,
+        read_source,
+    };
+    let mut caches = ReferenceCaches::default();
     for subject in subjects {
         let calls = extract_qualified_calls(subject.added_text, subject.line_map);
         if calls.is_empty() {
             continue;
         }
-        let mut flagged: BTreeSet<(ModuleName, FunctionName, Arity)> = BTreeSet::new();
-        let mut shape_seen: BTreeSet<(ModuleName, FunctionName, Arity)> = BTreeSet::new();
+        caches.begin_subject();
         for call in calls {
-            let module = &call.mfa.module;
-            let entry = exports_by_module.entry(module.clone()).or_insert_with(|| {
-                target_module_surface(module, covered_modules, resolve_module_path, read_target)
-            });
-            let Some(surface) = entry.as_ref() else {
-                continue;
-            };
-            let (exports, path) = (&surface.exports, &surface.path);
             let key = (call.mfa.function.clone(), call.mfa.arity);
-            // A callee the patch itself introduces has no meaningful
-            // pre-existing shape on either tree.
-            if patch_added
-                .functions
-                .get(module)
-                .is_some_and(|s| s.contains(&key))
-            {
-                continue;
-            }
-            if exports.exports.contains(&key) {
-                // A spec the patch rewrites lands on the target with
-                // the pick: no pre-existing drift to compare.
-                if patch_added
-                    .specs
-                    .get(module)
-                    .is_some_and(|s| s.contains(&key))
-                {
-                    continue;
-                }
-                if !shape_seen.insert((module.clone(), key.0.clone(), key.1)) {
-                    continue;
-                }
-                check_return_shape(
-                    subject,
-                    module,
-                    path,
-                    &key,
-                    call.line,
-                    read_target,
-                    read_source,
-                    &mut specs_by_module,
-                    &mut analysis,
-                );
-                continue;
-            }
-            if !flagged.insert((module.clone(), call.mfa.function.clone(), call.mfa.arity)) {
-                continue;
-            }
-            analysis
-                .reasons
-                .push(Reason::QualifiedCallUndefinedOnTarget {
-                    source_path: subject.source_path.clone(),
-                    module: module.clone(),
-                    function: call.mfa.function,
-                    arity: call.mfa.arity,
-                    line: file_line(subject.line_map, call.line),
-                });
+            resolve_qualified_reference(
+                subject,
+                &call.mfa.module,
+                &key,
+                call.line,
+                &ctx,
+                &mut caches,
+                &mut analysis.reasons,
+                &mut analysis.shape_checks,
+            );
         }
     }
     for subject in subjects {
-        resolve_indirect_calls(
-            subject,
-            covered_modules,
-            patch_added,
-            resolve_module_path,
-            read_target,
-            &mut exports_by_module,
-            &mut analysis,
-        );
+        resolve_indirect_calls(subject, &ctx, &mut caches, &mut analysis);
     }
     analysis
 }
@@ -325,22 +397,19 @@ pub struct IndirectCallAnalysis {
 /// qualified-call analysis.
 fn resolve_indirect_calls(
     subject: &AddedLinesSubject<'_>,
-    covered_modules: &BTreeSet<ModuleName>,
-    patch_added: &PatchProvided,
-    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
-    read_target: TreeReader<'_>,
-    exports_by_module: &mut BTreeMap<ModuleName, Option<TargetModuleSurface>>,
+    ctx: &ReferenceContext<'_>,
+    caches: &mut ReferenceCaches,
     analysis: &mut QualifiedCallAnalysis,
 ) {
     let extraction = extract_indirect_calls(subject.added_text, subject.line_map);
     resolve_extraction(
         &extraction,
         subject,
-        covered_modules,
-        patch_added,
-        resolve_module_path,
-        read_target,
-        exports_by_module,
+        ctx.covered_modules,
+        ctx.patch_added,
+        ctx.resolve_module_path,
+        ctx.read_target,
+        &mut caches.surfaces,
         &mut analysis.reasons,
         &mut analysis.indirect_checks,
     );
@@ -462,9 +531,9 @@ fn check_return_shape(
     read_target: TreeReader<'_>,
     read_source: Option<TreeReader<'_>>,
     specs_by_module: &mut BTreeMap<ModuleName, (SpecTable, Option<SpecTable>)>,
-    analysis: &mut QualifiedCallAnalysis,
+    reasons: &mut Vec<Reason>,
+    tally: &mut ShapeCheckTally,
 ) {
-    let tally = &mut analysis.shape_checks;
     let Some(read_source) = read_source else {
         tally.withheld_no_source += 1;
         return;
@@ -490,17 +559,15 @@ fn check_return_shape(
             target_signature,
         } => {
             tally.compared += 1;
-            analysis
-                .reasons
-                .push(Reason::QualifiedCallReturnShapeDrift {
-                    source_path: subject.source_path.clone(),
-                    module: module.clone(),
-                    function: key.0.clone(),
-                    arity: key.1,
-                    source_signature,
-                    target_signature,
-                    line: file_line(subject.line_map, call_line),
-                });
+            reasons.push(Reason::QualifiedCallReturnShapeDrift {
+                source_path: subject.source_path.clone(),
+                module: module.clone(),
+                function: key.0.clone(),
+                arity: key.1,
+                source_signature,
+                target_signature,
+                line: file_line(subject.line_map, call_line),
+            });
         }
     }
 }

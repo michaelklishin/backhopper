@@ -47,6 +47,8 @@
 
 ### Bug Fixes
 
+ * Import tracking: a call resolved through an `-import` the patch itself adds is no
+   longer flagged as undefined on the target branch.
  * Reported line numbers no longer shift on generated commit diffs:
    backhopper now assembles hunk headers itself instead of trusting the
    imara-diff printer

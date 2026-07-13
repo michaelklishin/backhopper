@@ -784,8 +784,12 @@ fn apply_target_context(
     };
     let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
     merge_symbol_reasons(define_reasons, evaluation);
-    let local_calls =
-        target_repo::collect_local_call_findings(&parsed.files, target_ctx, source_repo_dir);
+    let local_calls = target_repo::collect_local_call_findings(
+        &parsed.files,
+        target_ctx,
+        covered_modules,
+        source_repo_dir,
+    );
     merge_symbol_reasons(local_calls.reasons, evaluation);
     evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
     let macro_values =

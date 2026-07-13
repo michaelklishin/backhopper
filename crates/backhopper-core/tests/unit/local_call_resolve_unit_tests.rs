@@ -2,25 +2,33 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! `analyse_local_calls` against an injected target-module reader.
+//! `analyse_local_calls` against injected target-module readers. A
+//! call the patch imports beside its first use is resolved as the
+//! cross-module reference it is, so the harness also serves the
+//! imported module's file and maps module names to paths.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
-use backhopper_core::model::names::RelativePath;
+use backhopper_core::compat::qualified_call_resolve::{
+    PatchProvided, ReferenceContext, patch_provided,
+};
+use backhopper_core::model::names::{ModuleName, RelativePath};
 use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
-
-fn reader(files: &[(&str, &str)]) -> impl Fn(&RelativePath) -> Option<String> {
-    let map: BTreeMap<String, String> = files
-        .iter()
-        .map(|(p, c)| ((*p).to_owned(), (*c).to_owned()))
-        .collect();
-    move |path: &RelativePath| map.get(path.as_str()).cloned()
-}
 
 fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
+}
+
+fn module_of_path(p: &str) -> ModuleName {
+    let stem = p
+        .rsplit('/')
+        .next()
+        .and_then(|f| f.strip_suffix(".erl"))
+        .unwrap();
+    ModuleName::from_str(stem).unwrap()
 }
 
 fn flagged(reasons: &[Reason]) -> Vec<(&str, u8)> {
@@ -35,9 +43,28 @@ fn flagged(reasons: &[Reason]) -> Vec<(&str, u8)> {
         .collect()
 }
 
-fn analyse_full(
+fn qualified_flagged(reasons: &[Reason]) -> Vec<(String, String, u8)> {
+    reasons
+        .iter()
+        .filter_map(|r| match r {
+            Reason::QualifiedCallUndefinedOnTarget {
+                module,
+                function,
+                arity,
+                ..
+            } => Some((module.to_string(), function.to_string(), arity.get())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `target` rows are `(path, file text)`; the module a path names is
+/// its `.erl` stem, so an imported module resolves to its own row.
+fn analyse_ctx(
     path: &RelativePath,
     added: &str,
+    covered: &[&str],
+    patch_added: &PatchProvided,
     target: &[(&str, &str)],
     source: Option<&[(&str, &str)]>,
 ) -> LocalCallAnalysis {
@@ -46,12 +73,48 @@ fn analyse_full(
         added_text: added,
         line_map: &[],
     }];
-    let read_target = reader(target);
-    let read_source_fn = source.map(reader);
+    let target_map: BTreeMap<String, String> = target
+        .iter()
+        .map(|(p, c)| ((*p).to_owned(), (*c).to_owned()))
+        .collect();
+    let module_to_path: BTreeMap<ModuleName, RelativePath> = target
+        .iter()
+        .map(|(p, _)| (module_of_path(p), rp(p)))
+        .collect();
+    let source_map: Option<BTreeMap<String, String>> = source.map(|rows| {
+        rows.iter()
+            .map(|(p, c)| ((*p).to_owned(), (*c).to_owned()))
+            .collect()
+    });
+    let covered: BTreeSet<ModuleName> = covered
+        .iter()
+        .map(|s| ModuleName::from_str(s).unwrap())
+        .collect();
+    let resolve = |m: &ModuleName| module_to_path.get(m).cloned();
+    let read = |p: &RelativePath| target_map.get(p.as_str()).cloned();
+    let read_source_fn = source_map
+        .as_ref()
+        .map(|m| move |p: &RelativePath| m.get(p.as_str()).cloned());
     let read_source = read_source_fn
         .as_ref()
         .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-    analyse_local_calls(&subjects, &read_target, read_source)
+    let ctx = ReferenceContext {
+        covered_modules: &covered,
+        patch_added,
+        resolve_module_path: &resolve,
+        read_target: &read,
+        read_source,
+    };
+    analyse_local_calls(&subjects, &ctx)
+}
+
+fn analyse_full(
+    path: &RelativePath,
+    added: &str,
+    target: &[(&str, &str)],
+    source: Option<&[(&str, &str)]>,
+) -> LocalCallAnalysis {
+    analyse_ctx(path, added, &[], &PatchProvided::default(), target, source)
 }
 
 fn analyse(path: &RelativePath, added: &str, target: &[(&str, &str)]) -> Vec<Reason> {
@@ -410,4 +473,203 @@ fn a_bif_is_never_shape_checked() {
         analysis.reasons
     );
     assert_eq!(analysis.shape_checks, ShapeCheckTally::default());
+}
+
+// Calls the patch resolves through its own added -import
+
+const CALLER: &str = "deps/rabbitmq_auth_backend_oauth2/test/unit_SUITE.erl";
+const COERCION: &str = "deps/rabbit_common/src/rabbit_data_coercion.erl";
+
+fn module(s: &str) -> ModuleName {
+    ModuleName::from_str(s).unwrap()
+}
+
+// The imported module is absent from the target tree, as an OTP or
+// stdlib module would be: the call is neither flagged as a local
+// undefined nor as a qualified one.
+#[test]
+fn a_patch_imported_call_to_an_absent_module_is_not_flagged() {
+    let path = rp(CALLER);
+    let analysis = analyse_full(
+        &path,
+        "-import(lists, [foldl/3]).\ng(L) -> foldl(fun(X, A) -> A end, 0, L).\n",
+        &[(CALLER, "-module(unit_SUITE).\n")],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+}
+
+// The same call without the patch import is a local undefined.
+#[test]
+fn the_same_call_without_the_patch_import_is_flagged_locally() {
+    let path = rp(CALLER);
+    let reasons = analyse(
+        &path,
+        "g(L) -> foldl(fun(X, A) -> A end, 0, L).\n",
+        &[(CALLER, "-module(unit_SUITE).\n")],
+    );
+    assert_eq!(flagged(&reasons), [("foldl", 3)]);
+}
+
+// The import sets are arity-exact: importing f/1 does not suppress a
+// call to f/2.
+#[test]
+fn a_patch_import_of_one_arity_does_not_suppress_another() {
+    let path = rp(CALLER);
+    let reasons = analyse(
+        &path,
+        "-import(rabbit_data_coercion, [to_binary/1]).\ng(A, B) -> to_binary(A, B).\n",
+        &[(CALLER, "-module(unit_SUITE).\n")],
+    );
+    assert_eq!(flagged(&reasons), [("to_binary", 2)]);
+}
+
+// The HF-36 incident: the added text imports nothing for the helper,
+// so the target module that neither defines nor imports it is flagged.
+#[test]
+fn a_call_the_patch_neither_defines_nor_imports_is_flagged_locally() {
+    let path = rp(CALLER);
+    let reasons = analyse(
+        &path,
+        "t(C) -> user_login_authentication(rabbit_auth_backend_oauth2, C).\n",
+        &[(CALLER, "-module(unit_SUITE).\n")],
+    );
+    assert_eq!(flagged(&reasons), [("user_login_authentication", 2)]);
+}
+
+// The imported module is first-party and lacks the function: the call
+// resolves as a qualified reference and is flagged there, not locally.
+#[test]
+fn a_patch_import_of_a_first_party_absent_function_is_flagged_qualified() {
+    let path = rp(CALLER);
+    let analysis = analyse_full(
+        &path,
+        "-import(rabbit_data_coercion, [to_binary/1]).\ng(X) -> to_binary(X).\n",
+        &[
+            (CALLER, "-module(unit_SUITE).\n"),
+            (
+                COERCION,
+                "-module(rabbit_data_coercion).\n-export([to_atom/1]).\nto_atom(X) -> X.\n",
+            ),
+        ],
+        None,
+    );
+    assert!(flagged(&analysis.reasons).is_empty());
+    assert_eq!(
+        qualified_flagged(&analysis.reasons),
+        [("rabbit_data_coercion".to_owned(), "to_binary".to_owned(), 1)]
+    );
+}
+
+// The imported module is first-party and exports the function: clean.
+#[test]
+fn a_patch_import_of_a_first_party_exported_function_is_clean() {
+    let path = rp(CALLER);
+    let analysis = analyse_full(
+        &path,
+        "-import(rabbit_data_coercion, [to_binary/1]).\ng(X) -> to_binary(X).\n",
+        &[
+            (CALLER, "-module(unit_SUITE).\n"),
+            (
+                COERCION,
+                "-module(rabbit_data_coercion).\n-export([to_binary/1]).\nto_binary(X) -> X.\n",
+            ),
+        ],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+}
+
+// A patch-imported call whose target -spec return shape drifts yields
+// the qualified shape-drift reason.
+#[test]
+fn a_patch_imported_call_with_drifted_target_spec_yields_qualified_drift() {
+    let path = rp(CALLER);
+    let target_coercion = "-module(rabbit_data_coercion).\n-export([to_binary/1]).\n\
+-spec to_binary(term()) -> binary().\nto_binary(X) -> X.\n";
+    let source_coercion = "-module(rabbit_data_coercion).\n-export([to_binary/1]).\n\
+-spec to_binary(term()) -> list().\nto_binary(X) -> X.\n";
+    let analysis = analyse_full(
+        &path,
+        "-import(rabbit_data_coercion, [to_binary/1]).\ng(X) -> to_binary(X).\n",
+        &[
+            (CALLER, "-module(unit_SUITE).\n"),
+            (COERCION, target_coercion),
+        ],
+        Some(&[(COERCION, source_coercion)]),
+    );
+    let drift: Vec<_> = analysis
+        .reasons
+        .iter()
+        .filter(|r| matches!(r, Reason::QualifiedCallReturnShapeDrift { .. }))
+        .collect();
+    assert_eq!(drift.len(), 1, "reasons: {:?}", analysis.reasons);
+}
+
+// The patch adds both the import and the callee's definition and
+// -export in the module's own file: patch_provided suppresses it.
+#[test]
+fn a_patch_that_adds_the_import_and_the_definition_is_not_flagged() {
+    let path = rp(CALLER);
+    let caller_added = "-import(rabbit_data_coercion, [to_binary/1]).\ng(X) -> to_binary(X).\n";
+    let patch_added = patch_provided(&[
+        (module("unit_SUITE"), caller_added),
+        (
+            module("rabbit_data_coercion"),
+            "-export([to_binary/1]).\nto_binary(X) -> X.\n",
+        ),
+    ]);
+    let analysis = analyse_ctx(
+        &path,
+        caller_added,
+        &[],
+        &patch_added,
+        &[
+            (CALLER, "-module(unit_SUITE).\n"),
+            (
+                COERCION,
+                "-module(rabbit_data_coercion).\n-export([to_atom/1]).\nto_atom(X) -> X.\n",
+            ),
+        ],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+}
+
+// A tracked-dependency import defers to its snapshot: the module is in
+// covered_modules, so the live tree is not consulted and nothing flags.
+#[test]
+fn a_patch_import_of_a_covered_module_is_withheld() {
+    let path = rp(CALLER);
+    let analysis = analyse_ctx(
+        &path,
+        "-import(ra, [members/1]).\ng(S) -> members(S).\n",
+        &["ra"],
+        &PatchProvided::default(),
+        &[
+            (CALLER, "-module(unit_SUITE).\n"),
+            (
+                "deps/ra/src/ra.erl",
+                "-module(ra).\n-export([overview/1]).\noverview(X) -> X.\n",
+            ),
+        ],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
 }
