@@ -9,11 +9,6 @@
  * `siblings doctor` no longer renders a run that analysed nothing the
    same as a run that found nothing: the text formatter now helps
    tell one case from the other
-
-## v0.25.0 (July 15, 2026)
-
-### Enhancements
-
  * `m:f/a` references in Elixir parts of the diff
    are now analyzed for `rpc` use and resolved against the Erlang target tree and
    can be caught at `check` time
