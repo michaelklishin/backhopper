@@ -30,7 +30,7 @@ use backhopper_erlang_scan::{
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
-use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
+use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath, TypeName};
 use crate::model::verdict::IncludeDirective;
 use crate::snapshot::spec_normalize::normalize_signature;
 
@@ -477,6 +477,161 @@ pub fn extract_exports(src: &str) -> ExportSet {
         }
     }
     ExportSet { exports, complete }
+}
+
+/// A type a module exports, and the line its entry sits on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedType {
+    pub name: TypeName,
+    pub arity: Arity,
+    pub line: u32,
+}
+
+/// A module's `-export_type([t/a, ...])` set. `complete` is false when
+/// the surface cannot be read from source: a declared `parse_transform`,
+/// or an entry naming a macro the scanner cannot expand.
+/// `-compile(export_all)` exports functions, not types, so it does not
+/// make this set incomplete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedTypeSet {
+    pub types: Vec<ExportedType>,
+    pub complete: bool,
+}
+
+/// The types a module exports. An entry whose name fails newtype
+/// validation is dropped: it would not compile, so nothing resolves
+/// against it.
+pub fn extract_exported_types(src: &str) -> ExportedTypeSet {
+    let mut types = Vec::new();
+    let mut complete = !declares_parse_transform(src);
+    for hit in iter_attribute_bodies(src, &["export_type"]) {
+        let Some(open) = hit.body.find('[') else {
+            continue;
+        };
+        let Some(close) = hit.body[open..].find(']') else {
+            continue;
+        };
+        for entry in hit.body[open + 1..open + close].split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            // A macro in the export list hides which type it names.
+            if entry.contains('?') {
+                complete = false;
+                continue;
+            }
+            if let Some((name, arity)) = parse_fun_arity(entry)
+                && let (Ok(name), Ok(arity)) = (TypeName::from_str(&name), Arity::try_from(arity))
+            {
+                types.push(ExportedType {
+                    name,
+                    arity,
+                    line: hit.line,
+                });
+            }
+        }
+    }
+    ExportedTypeSet { types, complete }
+}
+
+/// All three declare a name; their visibility and equivalence rules
+/// differ, which does not bear on whether an export resolves.
+const TYPE_DECL_KEYWORDS: [&[u8]; 3] = [b"type", b"opaque", b"nominal"];
+
+/// True when the source declares a macro-expanded attribute form
+/// (`-?PROTOCOL_TYPE(t()).`), which can expand to any attribute:
+/// `rabbit_framing` declares its whole type surface this way. No
+/// attribute-derived set from such a file is knowable.
+pub fn has_macro_expanded_attribute(src: &str) -> bool {
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'-' if at_form_start(bytes, i) => {
+                let rest = &bytes[i + 1..];
+                let after_space = rest.iter().position(|b| !b.is_ascii_whitespace());
+                if after_space.is_some_and(|p| rest[p] == b'?') {
+                    return true;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    false
+}
+
+/// The types a module declares. Walks form starts, not parenthesised
+/// attribute bodies: `-type t() :: term().` is not an `-attr(...)`
+/// form, though the equivalent `-type(t() :: term()).` is also legal.
+pub fn extract_defined_types(src: &str) -> BTreeSet<(TypeName, Arity)> {
+    let bytes = src.as_bytes();
+    let mut out = BTreeSet::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'"' => i = skip_string(bytes, i, b'"'),
+            b'$' => i += 2.min(bytes.len() - i),
+            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'-' if at_form_start(bytes, i) => {
+                let Some(keyword) = TYPE_DECL_KEYWORDS
+                    .iter()
+                    .find(|k| at_keyword(bytes, i + 1, k))
+                else {
+                    i += 1;
+                    continue;
+                };
+                let body_start = i + 1 + keyword.len();
+                let body_end = form_end(bytes, body_start);
+                let body = str::from_utf8(&bytes[body_start..body_end]).unwrap_or("");
+                if let Some((name, arity)) = parse_type_name_arity(strip_outer_parens(body))
+                    && let (Ok(name), Ok(arity)) =
+                        (TypeName::from_str(&name), Arity::try_from(arity))
+                {
+                    out.insert((name, arity));
+                }
+                i = body_end;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// `name(Arg, ...) :: Body` to `(name, arity)`. The `::` is required:
+/// without it the form does not declare a type.
+fn parse_type_name_arity(body: &str) -> Option<(String, usize)> {
+    let trimmed = body.trim();
+    let name_end = trimmed
+        .bytes()
+        .position(|b| !is_name_char(b))
+        .unwrap_or(trimmed.len());
+    if name_end == 0 {
+        return None;
+    }
+    let name = &trimmed[..name_end];
+    let (args, rest) = take_balanced_parens(trimmed[name_end..].trim_start())?;
+    rest.trim_start().strip_prefix("::")?;
+    let arity = if args.trim().is_empty() {
+        0
+    } else {
+        count_top_level_commas(args) + 1
+    };
+    Some((name.to_owned(), arity))
 }
 
 /// A module's `-spec` signatures, keyed by `(function, arity)`.

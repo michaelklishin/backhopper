@@ -501,6 +501,19 @@ pub enum Reason {
         via: IndirectCallForm,
         line: u32,
     },
+    /// A touched `.erl` file adds an `-export_type([t/a])` entry naming
+    /// a type neither the target version of the same module declares
+    /// nor the patch adds. An `erlc` error, unlike `MissingType`, which
+    /// is dialyzer-level; non-blocking regardless, being a target-tree
+    /// finding rather than a pin verdict. Withheld when the target file
+    /// is unreadable or declares a `parse_transform`, or when the added
+    /// list names a macro.
+    ExportedTypeUndefinedOnTarget {
+        source_path: RelativePath,
+        type_name: TypeName,
+        arity: Arity,
+        line: u32,
+    },
 }
 
 /// Which side of a snapshot comparison the data is missing from.
@@ -711,6 +724,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::ExportedTypeUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
@@ -736,6 +750,7 @@ impl Reason {
                 Some(ResolverClass::Macro)
             }
             Self::RecordUndefinedOnTarget { .. } => Some(ResolverClass::Record),
+            Self::ExportedTypeUndefinedOnTarget { .. } => Some(ResolverClass::Type),
             Self::LocalCallUndefinedOnTarget { .. } | Self::LocalCallReturnShapeDrift { .. } => {
                 Some(ResolverClass::LocalCall)
             }
@@ -824,6 +839,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::ExportedTypeUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }
@@ -876,6 +892,7 @@ impl Reason {
             | Self::MacroUndefinedOnTarget { .. }
             | Self::RecordUndefinedOnTarget { .. }
             | Self::LocalCallUndefinedOnTarget { .. }
+            | Self::ExportedTypeUndefinedOnTarget { .. }
             | Self::QualifiedCallUndefinedOnTarget { .. }
             | Self::IndirectCallUndefinedOnTarget { .. }
             | Self::QualifiedCallReturnShapeDrift { .. }

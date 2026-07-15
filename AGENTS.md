@@ -9,8 +9,6 @@ primary purpose is to remove the manual research step gating RabbitMQ
 patch backports across release branches and dependency versions
 (`ra`, `khepri`, `osiris`, `cowboy`).
 
-Full design: `~/Development/md/backhopper/design.md`. Read it before
-making non-trivial changes.
 
 ## Build and Test
 
@@ -163,6 +161,20 @@ Compatibility pipeline (`src/compat/`):
    `otp.rs`, `test_suite.rs`: diff slicing, added-file handling,
    source-side attribute and macro extraction, target-tree lookup, OTP
    specifics, and test-suite facts
+ * the target-tree axes, each resolving references a patch adds against
+   a `--target-repo-dir-path` checkout rather than a snapshot, and each
+   non-blocking: `define_resolve.rs` (`?MACRO` and `#record`, plus the
+   shared `-include` walk in `collect_target_defines`),
+   `local_call_resolve.rs` (unqualified calls),
+   `qualified_call_resolve.rs` (`m:f/a`, plus the `ModuleProvenance`
+   gate and `-spec` return-shape drift the other axes reuse),
+   `indirect_calls.rs` (MFAs passed to meck and rpc),
+   `behaviour_callback_resolve.rs` (`-callback` sets), and
+   `exported_type_resolve.rs` (`-export_type` entries). Findings ride
+   `model/findings.rs`'s row-level `TargetFindings`, which survives
+   inapplicable pin verdicts
+ * `added_lines.rs`: `AddedLinesSubject`, the per-file added-lines blob
+   and its map back to file lines, shared by every target-tree axis
 
 Suites (`src/suites/`):
 

@@ -19,6 +19,7 @@ use backhopper_core::compat::classify_hunks_against_target;
 use backhopper_core::compat::define_resolve::{
     MacroValueAnalysis, analyse_define_symbols, analyse_macro_values,
 };
+use backhopper_core::compat::exported_type_resolve::analyse_exported_types;
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
@@ -361,6 +362,34 @@ pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext
         })
         .collect();
     analyse_define_symbols(&subjects, &ctx.index, &read_target)
+}
+
+/// Resolve `-export_type` entries the patch adds against the type
+/// declarations the target module reaches. `.erl` files only.
+pub fn collect_exported_type_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
+    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
+        .into_iter()
+        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
+        .collect();
+    if subjects_text.is_empty() {
+        return Vec::new();
+    }
+    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
+        return Vec::new();
+    };
+    let commit = ctx.index.resolved_commit().clone();
+    let read_target = |path: &RelativePath| -> Option<String> {
+        read_target_text(&repo, &commit, &ctx.translations, path)
+    };
+    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
+        .iter()
+        .map(|(p, t, lm)| AddedLinesSubject {
+            source_path: p,
+            added_text: t,
+            line_map: lm,
+        })
+        .collect();
+    analyse_exported_types(&subjects, &ctx.index, &read_target)
 }
 
 /// Resolve unqualified calls the patch adds against the target

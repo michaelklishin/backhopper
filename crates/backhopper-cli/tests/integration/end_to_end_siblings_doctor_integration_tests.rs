@@ -328,6 +328,20 @@ fn generic_family_reports_empty_vocabulary_and_exits_zero() {
 }
 
 #[test]
+fn an_empty_vocabulary_run_exits_zero_under_the_text_formatter() {
+    let fx = DoctorFixture::new("generic");
+    let args: Vec<String> = fx
+        .doctor_args()
+        .into_iter()
+        .map(|a| if a == "json" { "text".to_owned() } else { a })
+        .collect();
+    let assert = run(args).code(0);
+    let out = stdout(&assert);
+    assert!(out.contains("no vocabulary in effect"), "{out}");
+    assert!(!out.contains("no sibling-drift candidates found"), "{out}");
+}
+
+#[test]
 fn series_without_self_pin_requires_target_branch() {
     let fx = DoctorFixture::new("rabbitmq");
     let config = format!(

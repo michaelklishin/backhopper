@@ -6,8 +6,9 @@
 //! target tree: the case where a hunk applies cleanly but the symbol it
 //! references is defined nowhere the target reaches. Both are
 //! directive-defined (`-define`, `-record`) and live in the file or its
-//! includes, so one tree walk gathers both. `read_target` is injected:
-//! core stays I/O-free.
+//! includes, so one tree walk gathers both. It gathers type
+//! declarations too: the exported-type axis needs the same closure.
+//! `read_target` is injected: core stays I/O-free.
 
 use std::collections::BTreeSet;
 use std::str::FromStr;
@@ -17,11 +18,11 @@ use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::qualified_call_resolve::TreeReader;
 use crate::compat::source_attributes::{
     MacroDef, extract_defined_macro_values, extract_defined_macros, extract_defined_records,
-    extract_includes, extract_macro_uses, extract_record_uses, is_predefined_macro,
-    resolve_include,
+    extract_defined_types, extract_includes, extract_macro_uses, extract_record_uses,
+    has_macro_expanded_attribute, is_predefined_macro, resolve_include,
 };
 use crate::compat::target_tree_index::TargetTreeIndex;
-use crate::model::names::{RecordName, RelativePath};
+use crate::model::names::{Arity, RecordName, RelativePath, TypeName};
 use crate::model::verdict::{MacroValueTally, Reason};
 
 /// `-include` follow depth bound: real header chains are a handful deep.
@@ -45,7 +46,7 @@ pub fn analyse_define_symbols(
         let defs = collect_target_defines(subject.source_path, target, read_target);
         // Incomplete define set: the symbol could live in a header we
         // could not read, so suppress rather than risk a false positive.
-        if !defs.complete {
+        if !defs.defines_complete() {
             continue;
         }
         let patch_macros = extract_defined_macros(subject.added_text);
@@ -86,17 +87,38 @@ pub fn analyse_define_symbols(
     reasons
 }
 
-/// Macros and records defined in the target version of `source_path` or
-/// a header it transitively includes, plus whether the set is complete.
-/// Incomplete when a non-stdlib include of a file we read could not be
-/// resolved or read: a definition might hide in the header we missed.
-struct TargetDefines {
-    macros: BTreeSet<String>,
-    records: BTreeSet<String>,
-    complete: bool,
+/// Macros, records, and types defined in the target version of
+/// `source_path` or a header it transitively includes. `complete` is
+/// false when a first-party include could not be resolved or read: a
+/// definition might hide in the header we missed. A skipped stdlib
+/// header is tracked separately, since which sets it can hide differs
+/// by axis.
+#[derive(Debug)]
+pub struct TargetDefines {
+    pub macros: BTreeSet<String>,
+    pub records: BTreeSet<String>,
+    pub types: BTreeSet<(TypeName, Arity)>,
+    pub complete: bool,
+    /// A stdlib `include_lib` was skipped: it is outside the repo, so
+    /// it cannot be read. It can hide a macro or a record, so those
+    /// axes must treat it as incomplete. It cannot practically hide a
+    /// type a first-party module then re-exports, since a module can
+    /// only export a type declared in its own text.
+    pub stdlib_unread: bool,
+    /// A macro-expanded attribute form in the closure: any
+    /// attribute-derived set here may be missing what it expands to.
+    pub macro_attributes: bool,
 }
 
-fn collect_target_defines(
+impl TargetDefines {
+    /// Macros and records can hide in any unread header, stdlib or not.
+    #[must_use]
+    pub fn defines_complete(&self) -> bool {
+        self.complete && !self.stdlib_unread
+    }
+}
+
+pub fn collect_target_defines(
     source_path: &RelativePath,
     target: &TargetTreeIndex,
     read_target: &dyn Fn(&RelativePath) -> Option<String>,
@@ -104,7 +126,10 @@ fn collect_target_defines(
     let mut out = TargetDefines {
         macros: BTreeSet::new(),
         records: BTreeSet::new(),
+        types: BTreeSet::new(),
         complete: true,
+        stdlib_unread: false,
+        macro_attributes: false,
     };
     let mut visited: BTreeSet<RelativePath> = BTreeSet::new();
     let mut stack = vec![(source_path.clone(), 0usize)];
@@ -126,10 +151,11 @@ fn collect_target_defines(
         };
         out.macros.extend(extract_defined_macros(&content));
         out.records.extend(extract_defined_records(&content));
+        out.types.extend(extract_defined_types(&content));
+        out.macro_attributes |= has_macro_expanded_attribute(&content);
         for inc in extract_includes(&content) {
             if is_stdlib_include_lib(&inc.directive) {
-                // Unreadable header: cannot prove a symbol undefined
-                out.complete = false;
+                out.stdlib_unread = true;
                 continue;
             }
             match resolve_include(target, &path, &inc.directive) {
