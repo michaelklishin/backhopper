@@ -52,6 +52,9 @@ const SCHEMA_V12_FROZEN: &str = include_str!("schema_v12_snapshot.json");
 /// live payload types (`SeriesEvaluation.target_findings`,
 /// `BatchResult.target_findings`, `SummaryRow.target_findings`).
 const SCHEMA_V13_FROZEN: &str = include_str!("schema_v13_snapshot.json");
+/// v14 froze when v15 added `ExportedTypeUndefinedOnTarget` to
+/// `Reason`, which every payload carrying a verdict embeds.
+const SCHEMA_V14_FROZEN: &str = include_str!("schema_v14_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -94,7 +97,10 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         13 => {
             Ok(serde_json::from_str(SCHEMA_V13_FROZEN).expect("frozen v13 snapshot is valid JSON"))
         }
-        14 => Ok(combined_v14()),
+        14 => {
+            Ok(serde_json::from_str(SCHEMA_V14_FROZEN).expect("frozen v14 snapshot is valid JSON"))
+        }
+        15 => Ok(combined_v15()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -142,19 +148,21 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v14() -> Value {
-    let series = envelope_with_payload::<SeriesEvaluation>(
-        14,
-        "check",
-        "v14 adds the symbol axis: `SeriesEvaluation`, `BatchResult`, and the check \
-         payload gain `target_findings`, the row-level copy of every reason the \
-         live-axis target checks produced. The same reasons still merge into applicable \
-         pin verdicts; the row-level field survives inapplicable ones, so a suite-only \
-         pick cannot silently drop what the target checks found. Absent when no target \
-         context was supplied: absence means the axis was not evaluated, never that it \
-         was clean. `SummaryRow` gains a `target_findings` count. The round clearance \
-         and exit code fold over all three axes.",
-    );
+fn combined_v15() -> Value {
+    combined_live(
+        15,
+        "v15 adds `ExportedTypeUndefinedOnTarget` to `Reason`: an `-export_type` entry \
+         a patch adds naming a type the target version of the same module does not \
+         declare. An `erlc` error rather than the dialyzer-level concern `MissingType` \
+         reports, but non-blocking like the other target-tree axes, and carried on \
+         `target_findings` so an inapplicable pin cannot drop it.",
+    )
+}
+
+/// The live payload schema: generated from the current types, so it
+/// must be frozen to a snapshot before the next version changes them.
+fn combined_live(version: u32, description: &str) -> Value {
+    let series = envelope_with_payload::<SeriesEvaluation>(version, "check", description);
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
     let batch_payload =
@@ -182,8 +190,11 @@ fn combined_v14() -> Value {
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
     obj.insert("suite_plan_payload".into(), suite_plan_payload);
-    obj.insert("schema_version".into(), json!(14));
-    obj.insert("title".into(), json!("backhopper envelope v14"));
+    obj.insert("schema_version".into(), json!(version));
+    obj.insert(
+        "title".into(),
+        json!(format!("backhopper envelope v{version}")),
+    );
     Value::Object(obj)
 }
 

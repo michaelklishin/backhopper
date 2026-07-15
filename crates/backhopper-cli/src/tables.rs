@@ -145,6 +145,7 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::TargetPathAbsent { .. } => "TargetPathAbsent",
         Reason::MacroUndefinedOnTarget { .. } => "MacroUndefinedOnTarget",
         Reason::RecordUndefinedOnTarget { .. } => "RecordUndefinedOnTarget",
+        Reason::ExportedTypeUndefinedOnTarget { .. } => "ExportedTypeUndefinedOnTarget",
         Reason::LocalCallUndefinedOnTarget { .. } => "LocalCallUndefinedOnTarget",
         Reason::QualifiedCallUndefinedOnTarget { .. } => "QualifiedCallUndefinedOnTarget",
         Reason::IndirectCallUndefinedOnTarget { .. } => "IndirectCallUndefinedOnTarget",
@@ -394,6 +395,14 @@ pub(crate) fn reason_detail(r: &Reason) -> String {
             record_name,
             line,
         } => format!("#{record_name} undefined on target ({source_path}:{line})"),
+        Reason::ExportedTypeUndefinedOnTarget {
+            source_path,
+            type_name,
+            arity,
+            line,
+        } => format!(
+            "type {type_name}/{arity} exported but undefined on target ({source_path}:{line})"
+        ),
         Reason::LocalCallUndefinedOnTarget {
             source_path,
             function,

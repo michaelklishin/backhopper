@@ -784,6 +784,8 @@ fn apply_target_context(
     };
     let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
     merge_symbol_reasons(define_reasons, evaluation);
+    let exported_types = target_repo::collect_exported_type_findings(&parsed.files, target_ctx);
+    merge_symbol_reasons(exported_types, evaluation);
     let local_calls = target_repo::collect_local_call_findings(
         &parsed.files,
         target_ctx,
@@ -1615,6 +1617,12 @@ fn reason_md_label(r: &Reason) -> String {
             record_name,
             line,
         } => format!("RecordUndefinedOnTarget #{record_name} in {source_path}:{line}"),
+        Reason::ExportedTypeUndefinedOnTarget {
+            source_path,
+            type_name,
+            arity,
+            line,
+        } => format!("ExportedTypeUndefinedOnTarget {type_name}/{arity} in {source_path}:{line}"),
         Reason::LocalCallUndefinedOnTarget {
             source_path,
             function,

@@ -43,6 +43,8 @@ mod evaluation_unit_tests;
 mod explain_payload_unit_tests;
 mod export_set_unit_tests;
 mod export_without_body_unit_tests;
+mod exported_type_extraction_unit_tests;
+mod exported_type_resolve_unit_tests;
 mod file_kind_and_family_unit_tests;
 mod forecast_eval_unit_tests;
 mod format_v2_unit_tests;

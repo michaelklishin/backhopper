@@ -625,14 +625,23 @@ struct CandidateRowWithBranches {
     branches: String,
 }
 
-fn render_doctor_text(
+pub fn render_doctor_text(
     w: &mut dyn Write,
     report: &SiblingDoctorReport,
     branch_columns: Option<&BTreeMap<CommitSha, Vec<String>>>,
     style: bel7_cli::TableStyle,
 ) -> CliResult<()> {
     if report.candidates.is_empty() {
-        writeln!(w, "no sibling-drift candidates found")?;
+        match report.vocabulary_source {
+            // An empty vocabulary analysed nothing: not the same as no drift.
+            VocabularySource::Empty => writeln!(
+                w,
+                "no vocabulary in effect: this run matched nothing and does not bound sibling-drift risk"
+            )?,
+            VocabularySource::FamilyDefault | VocabularySource::File => {
+                writeln!(w, "no sibling-drift candidates found")?;
+            }
+        }
     } else if let Some(by_sha) = branch_columns {
         let rows: Vec<CandidateRowWithBranches> = report
             .candidates

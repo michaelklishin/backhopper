@@ -1,6 +1,16 @@
 # Changelog
 
-## v0.25.0 (in development)
+## v0.26.0 (in development)
+
+### Enhancements
+
+ * `backhopper` now can detect `-export_type` entries a patch that
+   export a type that does not exist on the target branch
+ * `siblings doctor` no longer renders a run that analysed nothing the
+   same as a run that found nothing: the text formatter now helps
+   tell one case from the other
+
+## v0.25.0 (July 15, 2026)
 
 ### Enhancements
 
