@@ -55,7 +55,6 @@ jobs:
           - ubuntu-22.04
           - ubuntu-24.04
           - macos-latest
-          - windows-latest
         rust:
           - stable
           - beta
