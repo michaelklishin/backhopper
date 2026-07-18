@@ -63,6 +63,7 @@ jobs:
         uses: rust-lang/crates-io-auth-action@v1
 
       - name: Publish backhopper-erlang-scan
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -75,6 +76,7 @@ jobs:
         run: sleep 30
 
       - name: Publish backhopper-core
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -87,6 +89,7 @@ jobs:
         run: sleep 30
 
       - name: Publish backhopper-cache
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -96,6 +99,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-cuttlefish
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -105,6 +109,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-driver
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -114,6 +119,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-elixir
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -123,6 +129,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-erlang
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -132,6 +139,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-git
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -141,6 +149,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish backhopper-xref-graph
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -153,6 +162,7 @@ jobs:
         run: sleep 30
 
       - name: Publish backhopper-xref-reader
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -165,6 +175,7 @@ jobs:
         run: sleep 30
 
       - name: Publish backhopper-xref
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -177,6 +188,7 @@ jobs:
         run: sleep 30
 
       - name: Publish backhopper-cli
+        continue-on-error: true
         uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: publish-crate
@@ -331,7 +343,7 @@ jobs:
           cp ${{ steps.sbom.outputs.sbom_cyclonedx }} release/ || true
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4
+        uses: sigstore/cosign-installer@v3
 
       - name: Sign release archives
         run: |
