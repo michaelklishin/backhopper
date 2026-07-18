@@ -7,8 +7,10 @@
 //! report a blob line; the map turns it into the file line the reason
 //! shows.
 
+use crate::compat::call_sites::{AttrCtxScanner, strip_line_comment};
 use crate::compat::patch::{Hunk, HunkLine};
 use crate::model::names::RelativePath;
+use crate::model::symbol::RefContext;
 
 /// One touched source file projected for the target-axis resolvers: its
 /// source-relative path, the text of its added lines where new symbols
@@ -43,6 +45,41 @@ pub fn added_lines_with_offsets(hunks: &[Hunk]) -> (String, Vec<u32>) {
         }
     }
     (blob, line_map)
+}
+
+/// Added-line text and line map, like `added_lines_with_offsets`, plus
+/// each blob line's attribute-region classification. The classifier
+/// walks every hunk line, `Context` included, so a continuation line
+/// whose multi-line `-spec`, `-callback`, `-type`, or `-opaque` opener
+/// is unchanged (and so absent from the blob) still classifies against
+/// the region its unseen opener started. Only `Added` lines push into
+/// the blob, the line map, and the context vector; a `Context` line
+/// advances the classifier and contributes nothing else.
+pub fn added_lines_with_context(hunks: &[Hunk]) -> (String, Vec<u32>, Vec<RefContext>) {
+    let mut blob = String::new();
+    let mut line_map = Vec::new();
+    let mut ctx = Vec::new();
+    let mut scanner = AttrCtxScanner::new();
+    for hunk in hunks {
+        let mut new_line = hunk.new_start as u32;
+        for line in &hunk.lines {
+            match line {
+                HunkLine::Added(s) => {
+                    ctx.push(scanner.classify(strip_line_comment(s)));
+                    blob.push_str(s);
+                    blob.push('\n');
+                    line_map.push(new_line);
+                    new_line += 1;
+                }
+                HunkLine::Context(s) => {
+                    scanner.classify(strip_line_comment(s));
+                    new_line += 1;
+                }
+                HunkLine::Removed(_) => {}
+            }
+        }
+    }
+    (blob, line_map, ctx)
 }
 
 /// Translate a 1-based blob line to its file line. An empty or

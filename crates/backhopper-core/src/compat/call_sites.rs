@@ -114,8 +114,21 @@ pub struct QualifiedCallSite {
 /// gaps on purpose: resetting would misread a still-open `-spec` as
 /// body text.
 pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCallSite> {
+    extract_qualified_calls_with_context(src, line_map, &line_context(src))
+}
+
+/// `extract_qualified_calls` over a precomputed per-line classification
+/// rather than one derived from `src` alone: a caller that classified
+/// against fuller context (a hunk's `Context` lines, which never enter
+/// `src`) passes it here so an orphaned continuation line still
+/// resolves against its real attribute region.
+pub fn extract_qualified_calls_with_context(
+    src: &str,
+    line_map: &[u32],
+    ctx: &[RefContext],
+) -> Vec<QualifiedCallSite> {
     let mut out = Vec::new();
-    for run in body_runs(src, line_map) {
+    for run in body_runs_from_context(src, line_map, ctx) {
         let mut calls = Vec::new();
         push_call_args_with_offsets(&run.text, &mut calls);
         for ((mfa, _shapes), offset) in calls {
@@ -187,12 +200,34 @@ pub(crate) fn body_runs_with<'a>(
     out
 }
 
-/// Joins consecutive `Body` lines into runs, breaking on attribute
-/// context and on file-line gaps.
-pub(crate) fn body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
+/// Per-line attribute-region classification of `src`'s own lines, with
+/// no outside context: the classifier starts fresh and walks `src` top
+/// to bottom. Correct when `src` already holds every line whose
+/// classification matters; a caller whose relevant lines extend beyond
+/// `src` (a hunk's `Context` lines, dropped from the added-only blob)
+/// should classify those too and feed the result to
+/// `body_runs_from_context` instead.
+pub fn line_context(src: &str) -> Vec<RefContext> {
     let mut scanner = AttrCtxScanner::new();
-    body_runs_with(src, line_map, strip_line_comment, |s| {
-        scanner.classify(s) == RefContext::Body
+    src.lines()
+        .map(|line| scanner.classify(strip_line_comment(line)))
+        .collect()
+}
+
+/// Joins consecutive `Body` lines into runs, breaking on attribute
+/// context and on file-line gaps, from a precomputed classification
+/// rather than one derived from `src` alone: `ctx[i]` is text line
+/// `i`'s context.
+pub(crate) fn body_runs_from_context(
+    src: &str,
+    line_map: &[u32],
+    ctx: &[RefContext],
+) -> Vec<BodyRun> {
+    let mut idx = 0usize;
+    body_runs_with(src, line_map, strip_line_comment, |_line| {
+        let body = ctx.get(idx).copied() == Some(RefContext::Body);
+        idx += 1;
+        body
     })
 }
 

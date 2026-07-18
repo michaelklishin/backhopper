@@ -20,9 +20,9 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
-use crate::compat::call_sites::extract_qualified_calls;
+use crate::compat::call_sites::extract_qualified_calls_with_context;
 use crate::compat::indirect_calls::{
-    IndirectExtraction, extract_indirect_calls, extract_indirect_calls_elixir,
+    IndirectExtraction, extract_indirect_calls_elixir, extract_indirect_calls_with_context,
 };
 use crate::compat::source_attributes::{
     ExportSet, SpecTable, extract_exports, extract_function_signatures, extract_specs,
@@ -30,10 +30,25 @@ use crate::compat::source_attributes::{
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
+use crate::model::symbol::RefContext;
 use crate::model::verdict::{IndirectCallForm, IndirectCallTally, Reason, ShapeCheckTally};
 
 /// `(function, arity)` pairs per module.
 pub type PerModuleFunctionSet = BTreeMap<ModuleName, BTreeSet<(FunctionName, Arity)>>;
+
+/// An `AddedLinesSubject` paired with its per-blob-line attribute-region
+/// classification, computed against the full hunk (`Context` lines
+/// included) rather than the added-only blob: a continuation line whose
+/// multi-line attribute opener is unchanged, and so absent from
+/// `added_text`, still classifies against the region its unseen opener
+/// started. Only the qualified-call and Erlang indirect-call extractors
+/// need this; every other axis over `AddedLinesSubject` carries no
+/// attribute-context concept.
+#[derive(Debug, Clone, Copy)]
+pub struct ContextAwareSubject<'a> {
+    pub subject: AddedLinesSubject<'a>,
+    pub line_context: &'a [RefContext],
+}
 
 /// What the patch's added lines themselves provide per module. A
 /// qualified call to an added function is not flagged, since the patch
@@ -272,7 +287,7 @@ struct TargetModuleSurface {
 /// call into one of them is the snapshot axis's, not this one's. One
 /// reason per `(file, module, function, arity)`.
 pub fn analyse_qualified_calls(
-    subjects: &[AddedLinesSubject<'_>],
+    subjects: &[ContextAwareSubject<'_>],
     covered_modules: &BTreeSet<ModuleName>,
     patch_added: &PatchProvided,
     resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
@@ -289,7 +304,11 @@ pub fn analyse_qualified_calls(
     };
     let mut caches = ReferenceCaches::default();
     for subject in subjects {
-        let calls = extract_qualified_calls(subject.added_text, subject.line_map);
+        let calls = extract_qualified_calls_with_context(
+            subject.subject.added_text,
+            subject.subject.line_map,
+            subject.line_context,
+        );
         if calls.is_empty() {
             continue;
         }
@@ -297,7 +316,7 @@ pub fn analyse_qualified_calls(
         for call in calls {
             let key = (call.mfa.function.clone(), call.mfa.arity);
             resolve_qualified_reference(
-                subject,
+                &subject.subject,
                 &call.mfa.module,
                 &key,
                 call.line,
@@ -390,15 +409,19 @@ pub struct IndirectCallAnalysis {
 /// target modules' surfaces, folding the reasons and tally into the
 /// qualified-call analysis.
 fn resolve_indirect_calls(
-    subject: &AddedLinesSubject<'_>,
+    subject: &ContextAwareSubject<'_>,
     ctx: &ReferenceContext<'_>,
     caches: &mut ReferenceCaches,
     analysis: &mut QualifiedCallAnalysis,
 ) {
-    let extraction = extract_indirect_calls(subject.added_text, subject.line_map);
+    let extraction = extract_indirect_calls_with_context(
+        subject.subject.added_text,
+        subject.subject.line_map,
+        subject.line_context,
+    );
     resolve_extraction(
         &extraction,
-        subject,
+        &subject.subject,
         ctx,
         caches,
         &mut analysis.reasons,

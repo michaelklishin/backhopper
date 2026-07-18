@@ -28,8 +28,11 @@ use std::sync::OnceLock;
 use backhopper_erlang_scan::{ScannedArgs, ScannedList, scan_list_elements, scan_top_level_args};
 use regex::Regex;
 
-use crate::compat::call_sites::{BodyRun, body_runs, body_runs_with, call_re, run_line_at};
+use crate::compat::call_sites::{
+    BodyRun, body_runs_from_context, body_runs_with, call_re, line_context, run_line_at,
+};
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName};
+use crate::model::symbol::RefContext;
 use crate::model::verdict::IndirectCallForm;
 
 /// Which source language a form was written in: selects the atom parser
@@ -158,8 +161,21 @@ fn form_spec(module: &str, function: &str, argc: usize) -> Option<FormSpec> {
 /// wrapped form recovers its exact arity. `line_map[i]` is text line
 /// `i`'s file line.
 pub fn extract_indirect_calls(src: &str, line_map: &[u32]) -> IndirectExtraction {
+    extract_indirect_calls_with_context(src, line_map, &line_context(src))
+}
+
+/// `extract_indirect_calls` over a precomputed per-line classification
+/// rather than one derived from `src` alone, for the same reason
+/// `extract_qualified_calls_with_context` exists: a wrapped form whose
+/// opener sits in a hunk's `Context` line, outside `src`, still
+/// classifies against its real attribute region.
+pub fn extract_indirect_calls_with_context(
+    src: &str,
+    line_map: &[u32],
+    ctx: &[RefContext],
+) -> IndirectExtraction {
     let mut out = IndirectExtraction::default();
-    for run in body_runs(src, line_map) {
+    for run in body_runs_from_context(src, line_map, ctx) {
         for caps in call_re().captures_iter(&run.text) {
             let group = caps.get(0).expect("capture");
             let ScannedArgs::Terminated { args, .. } =

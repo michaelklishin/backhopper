@@ -9,9 +9,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::added_lines::{AddedLinesSubject, added_lines_with_context};
+use backhopper_core::compat::call_sites::line_context;
+use backhopper_core::compat::patch::{Hunk, HunkLine};
 use backhopper_core::compat::qualified_call_resolve::{
-    PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
+    ContextAwareSubject, PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls,
+    patch_provided,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
@@ -82,10 +85,14 @@ fn analyse_full(
     } else {
         line_map
     };
-    let subjects = [AddedLinesSubject {
-        source_path: &path,
-        added_text: added,
-        line_map,
+    let ctx = line_context(added);
+    let subjects = [ContextAwareSubject {
+        subject: AddedLinesSubject {
+            source_path: &path,
+            added_text: added,
+            line_map,
+        },
+        line_context: &ctx,
     }];
     let module_to_path: BTreeMap<ModuleName, RelativePath> =
         target.iter().map(|(m, p, _)| (module(m), rp(p))).collect();
@@ -752,4 +759,92 @@ fn repro_e2e_line_attribution_through_the_gate() {
         Some(&[(IDX_PATH, "-spec info(state()) -> list().\n")]),
     );
     assert_eq!(drifted(&analysis.reasons)[0].3, 6);
+}
+
+// HF-45: a hunk changes one continuation line of a multi-line `-spec`;
+// the opener naming `rabbit_net:socket()` is unchanged context and
+// never enters the added-only blob. Both type references on the
+// continuation must classify as type context, not calls, so neither
+// produces `QualifiedCallUndefinedOnTarget` against `rabbit_net`'s
+// function exports.
+fn analyse_from_hunks(hunks: &[Hunk], target: &[(&str, &str, &str)]) -> Vec<Reason> {
+    let path = rp("deps/rabbitmq_mqtt/src/rabbit_mqtt_processor.erl");
+    let (added, line_map, ctx) = added_lines_with_context(hunks);
+    let subjects = [ContextAwareSubject {
+        subject: AddedLinesSubject {
+            source_path: &path,
+            added_text: &added,
+            line_map: &line_map,
+        },
+        line_context: &ctx,
+    }];
+    let module_to_path: BTreeMap<ModuleName, RelativePath> =
+        target.iter().map(|(m, p, _)| (module(m), rp(p))).collect();
+    let path_to_src: BTreeMap<String, String> = target
+        .iter()
+        .map(|(_, p, s)| ((*p).to_owned(), (*s).to_owned()))
+        .collect();
+    let resolve = |m: &ModuleName| module_to_path.get(m).cloned();
+    let read = |p: &RelativePath| path_to_src.get(p.as_str()).cloned();
+    analyse_qualified_calls(
+        &subjects,
+        &BTreeSet::new(),
+        &PatchProvided::default(),
+        &resolve,
+        &read,
+        None,
+    )
+    .reasons
+}
+
+fn rabbit_net_target() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![(
+        "rabbit_net",
+        "deps/rabbit_common/src/rabbit_net.erl",
+        "-module(rabbit_net).\n-export([socket/1]).\n-export_type([socket/0, proxy_socket/0]).\nsocket(S) -> S.\n",
+    )]
+}
+
+#[test]
+fn a_type_reference_on_an_orphaned_spec_continuation_is_not_flagged() {
+    let hunks = [Hunk {
+        old_start: 118,
+        old_count: 2,
+        new_start: 118,
+        new_count: 2,
+        lines: vec![
+            HunkLine::Context("-spec init(ConnectPacket :: mqtt_packet(),".into()),
+            HunkLine::Removed("           RawSocket :: rabbit_net:socket()) -> ok.".into()),
+            HunkLine::Added(
+                "           Socket :: rabbit_net:socket() | rabbit_net:proxy_socket()) -> ok."
+                    .into(),
+            ),
+        ],
+    }];
+    let reasons = analyse_from_hunks(&hunks, &rabbit_net_target());
+    assert!(flagged(&reasons).is_empty(), "unexpected: {reasons:?}");
+}
+
+// Negative control: a genuine wrapped call, added in full after a Body
+// context line, must still be flagged. Without this, the fix could
+// trivially "pass" by withholding every hunk with a context line rather
+// than classifying attribute regions correctly.
+#[test]
+fn a_genuine_wrapped_call_after_context_is_still_flagged() {
+    let hunks = [Hunk {
+        old_start: 10,
+        old_count: 1,
+        new_start: 10,
+        new_count: 2,
+        lines: vec![
+            HunkLine::Context("f(V) -> ok.".into()),
+            HunkLine::Added("g(V) -> rabbit_net:socket_ends(V,".into()),
+            HunkLine::Added("    3).".into()),
+        ],
+    }];
+    let reasons = analyse_from_hunks(&hunks, &rabbit_net_target());
+    assert_eq!(
+        flagged(&reasons),
+        [("rabbit_net".to_owned(), "socket_ends".to_owned(), 2, 11)]
+    );
 }

@@ -10,9 +10,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::indirect_calls::{IndirectExtraction, extract_indirect_calls};
 use backhopper_core::compat::qualified_call_resolve::{
-    PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls, patch_provided,
+    ContextAwareSubject, PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls,
+    patch_provided,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{IndirectCallForm, Reason};
@@ -442,10 +444,14 @@ fn analyse(
 ) -> QualifiedCallAnalysis {
     let path = rp("deps/rabbit/test/maintenance_mode_SUITE.erl");
     let line_map: Vec<u32> = (1..=added.lines().count() as u32).collect();
-    let subjects = [AddedLinesSubject {
-        source_path: &path,
-        added_text: added,
-        line_map: &line_map,
+    let ctx = line_context(added);
+    let subjects = [ContextAwareSubject {
+        subject: AddedLinesSubject {
+            source_path: &path,
+            added_text: added,
+            line_map: &line_map,
+        },
+        line_context: &ctx,
     }];
     let module_to_path: BTreeMap<ModuleName, RelativePath> =
         target.iter().map(|(m, p, _)| (module(m), rp(p))).collect();

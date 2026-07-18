@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
-use backhopper_core::compat::added_lines::{AddedLinesSubject, added_lines_with_offsets};
+use backhopper_core::compat::added_lines::{
+    AddedLinesSubject, added_lines_with_context, added_lines_with_offsets,
+};
 use backhopper_core::compat::behaviour_callback_resolve::analyse_behaviour_callbacks;
 use backhopper_core::compat::classify_hunks_against_target;
 use backhopper_core::compat::define_resolve::{
@@ -23,8 +25,8 @@ use backhopper_core::compat::exported_type_resolve::analyse_exported_types;
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceCaches, ReferenceContext,
-    analyse_indirect_elixir_calls, analyse_qualified_calls, patch_provided,
+    ContextAwareSubject, IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceCaches,
+    ReferenceContext, analyse_indirect_elixir_calls, analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
@@ -33,6 +35,7 @@ use backhopper_core::compat::{
 use backhopper_core::config::{Config, PathTranslations};
 use backhopper_core::model::apply::{ApplyForecast, PathApplyOutcome, UnassessedReason};
 use backhopper_core::model::names::{CommitSha, GitRef, ModuleName, RelativePath};
+use backhopper_core::model::symbol::RefContext;
 use backhopper_core::model::verdict::{
     ApplyConflictKind, Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation,
     SeriesSummary, SeriesVerdict, TranslationSource, Verdict,
@@ -360,6 +363,57 @@ fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedL
         .collect()
 }
 
+/// Added-line text of every touched `.erl` file, with the blob-line to
+/// file-line map and each blob line's attribute-region classification,
+/// walked against the full hunk so an orphaned attribute continuation
+/// still classifies correctly (055). Only the qualified-call and
+/// Erlang indirect-call axes need the classification.
+fn erl_subject_context(
+    files: &[PatchedFile],
+) -> Vec<(RelativePath, String, Vec<u32>, Vec<RefContext>)> {
+    let mut out = Vec::new();
+    for file in files {
+        if file.binary {
+            continue;
+        }
+        let Some(new_path) = file.new_path.as_ref() else {
+            continue;
+        };
+        if new_path == Path::new("/dev/null") || !is_erl_or_hrl(new_path) {
+            continue;
+        }
+        let Some(path) = new_path.to_str().and_then(|s| RelativePath::new(s).ok()) else {
+            continue;
+        };
+        if !path.as_str().ends_with(".erl") {
+            continue;
+        }
+        let (added, line_map, ctx) = added_lines_with_context(&file.hunks);
+        if !added.is_empty() {
+            out.push((path, added, line_map, ctx));
+        }
+    }
+    out
+}
+
+/// Borrow the context-carrying subject tuples as the `ContextAwareSubject`
+/// shape `analyse_qualified_calls` takes.
+fn to_context_subjects(
+    subjects: &[(RelativePath, String, Vec<u32>, Vec<RefContext>)],
+) -> Vec<ContextAwareSubject<'_>> {
+    subjects
+        .iter()
+        .map(|(p, t, lm, ctx)| ContextAwareSubject {
+            subject: AddedLinesSubject {
+                source_path: p,
+                added_text: t,
+                line_map: lm,
+            },
+            line_context: ctx,
+        })
+        .collect()
+}
+
 /// The Erlang module a `.erl` path defines, by basename.
 fn module_of_erl_path(path: &RelativePath) -> Option<ModuleName> {
     let stem = Path::new(path.as_str()).file_stem()?.to_str()?;
@@ -469,13 +523,13 @@ impl<'a> TargetResolveSession<'a> {
         files: &[PatchedFile],
         covered_modules: &BTreeSet<ModuleName>,
     ) -> QualifiedCallAnalysis {
-        let subjects_text = erl_subject_text(files);
-        if subjects_text.is_empty() {
+        let subjects_ctx = erl_subject_context(files);
+        if subjects_ctx.is_empty() {
             return QualifiedCallAnalysis::default();
         }
-        let per_file: Vec<(ModuleName, &str)> = subjects_text
+        let per_file: Vec<(ModuleName, &str)> = subjects_ctx
             .iter()
-            .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+            .filter_map(|(p, t, _, _)| Some((module_of_erl_path(p)?, t.as_str())))
             .collect();
         let patch_added = patch_provided(&per_file);
         let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
@@ -486,7 +540,7 @@ impl<'a> TargetResolveSession<'a> {
         let read_source = read_source_fn
             .as_ref()
             .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-        let subjects = to_subjects(&subjects_text);
+        let subjects = to_context_subjects(&subjects_ctx);
         analyse_qualified_calls(
             &subjects,
             covered_modules,
