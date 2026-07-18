@@ -1,9 +1,10 @@
 # Changelog
 
-## v0.26.0 (in development)
+## v0.27.0 (in development)
 
 ### Enhancements
 
+ * Major internal refactoring
  * `backhopper` now can detect `-export_type` entries a patch that
    export a type that does not exist on the target branch
  * `siblings doctor` no longer renders a run that analysed nothing the
@@ -52,6 +53,7 @@
 
 ### Bug Fixes
 
+ * Multi-line patch numbers could drift in some scenarios
  * Import tracking: a call resolved through an `-import` the patch itself adds is no
    longer flagged as undefined on the target branch.
  * Reported line numbers no longer shift on generated commit diffs:
