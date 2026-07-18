@@ -298,15 +298,18 @@ pins = [ ... ]
 
 The `projects`, `series`, and `config` command groups inspect the loaded
 configuration: `projects list`, `series show`, `config validate`, and so
-on. `series sync` rebuilds a `[[series]]` stanza from a RabbitMQ
-branch's `rabbitmq-components.mk`.
+on.
+
+`series sync` rebuilds a `[[series]]` stanza from a RabbitMQ
+branch's `rabbitmq-components.mk` dependency list.
 
 
 ### Tracking Erlang/OTP
 
 `backhopper` has built-in support for Erlang/OTP, which is a
-multi-app monorepo of ~35 applications under `lib/`, plus `erts/`. Set
-`layout = "erlang_otp"` and sensible defaults apply:
+multi-app monorepo of ~35 applications under `lib/`, plus `erts/`.
+
+Use `layout = "erlang_otp"` for Erlang/OTP dependencies
 
 ```toml
 [[project]]
@@ -319,8 +322,8 @@ The defaults, each overridable field by field:
 
 * `app_roots`: `["lib/*", "erts/preloaded"]`
 * `exclude_apps`: `odbc`, `snmp`, `ssh`, `tftp`, `ftp`, `wx`, `megaco`,
-  `edoc`, `jinterface`, `diameter` (the RabbitMQ `erlang-rpm` exclusion
-  set)
+  `edoc`, `jinterface`, `diameter` (RabbitMQ does not use these, Team RabbitMQ's
+  zero dependency RPM excludes the same list of apps)
 * `excluded_subdirs`: `doc`, `example`, `examples`, `test` (matches the
   zero-dependency Erlang RPM from Team RabbitMQ plus CT suites, and a
   few library-specific idiosyncrasies)
