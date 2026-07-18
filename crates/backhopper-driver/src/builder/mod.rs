@@ -13,7 +13,8 @@ pub mod suites;
 
 pub use check::{
     Check, CheckBatchBuilder, CheckCommitBuilder, CheckMergeBuilder, CheckPatchBuilder,
-    CheckRangeBuilder, ExplainFormat, PatchSource, SeriesEvaluation,
+    CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind, PatchSource, PositionalKind,
+    RangeKind,
 };
 pub use siblings::{Siblings, SiblingsDoctorBuilder};
 pub use snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};

@@ -53,23 +53,6 @@ fn loc_span_preserves_distinct_start_and_end() {
 }
 
 #[test]
-fn loc_with_expansion_chains() {
-    let outer = Loc::point(PathId::new(0), Position::new(1, 1, 0));
-    let inner = Loc::point(PathId::new(1), Position::new(5, 5, 50)).with_expansion(outer.clone());
-    assert_eq!(inner.expanded_from.as_deref(), Some(&outer));
-}
-
-#[test]
-fn loc_expansion_chain_supports_two_levels() {
-    let a = Loc::point(PathId::new(0), Position::new(1, 1, 0));
-    let b = Loc::point(PathId::new(1), Position::new(2, 2, 5)).with_expansion(a);
-    let c = Loc::point(PathId::new(2), Position::new(3, 3, 10)).with_expansion(b);
-    let inner = c.expanded_from.unwrap();
-    let outer = inner.expanded_from.unwrap();
-    assert_eq!(outer.start, Position::new(1, 1, 0));
-}
-
-#[test]
 fn interner_assigns_sequential_ids() {
     let mut p = PathInterner::new();
     let a = p.intern(Path::new("/a"));

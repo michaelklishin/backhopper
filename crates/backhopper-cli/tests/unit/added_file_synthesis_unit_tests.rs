@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use backhopper_cli::commands::target_repo::{
     collect_search_path_globs, synthesise_added_file_content,
 };
-use backhopper_core::compat::patch::{Hunk, HunkLine, Language, PatchedFile};
+use backhopper_core::compat::patch::{Hunk, HunkLine, PatchedFile, SourceKind};
 use backhopper_core::config::{
     Config, Language as ConfigLanguage, Project, ProjectFamily, ProjectKind, ProjectLayout,
 };
@@ -22,7 +22,7 @@ fn fully_added(path: &str, added_lines: &[&str]) -> PatchedFile {
     PatchedFile {
         old_path: None,
         new_path: Some(PathBuf::from(path)),
-        language: Language::Erlang,
+        language: SourceKind::Erlang,
         binary: false,
         hunks: vec![Hunk {
             old_start: 0,
@@ -82,7 +82,7 @@ fn added_lines_only_returns_none_when_hunk_carries_no_addition() {
     let file = PatchedFile {
         old_path: None,
         new_path: Some(PathBuf::from("deps/rabbit/src/x.erl")),
-        language: Language::Erlang,
+        language: SourceKind::Erlang,
         binary: false,
         hunks: vec![Hunk {
             old_start: 0,

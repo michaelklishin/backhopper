@@ -174,7 +174,7 @@ fn envelope_warnings_and_exit_code_round_trip() {
     assert_eq!(env.warnings().len(), 1);
     assert_eq!(env.warnings()[0].code, "stale-extractor");
     assert_eq!(env.exit_code(), 0);
-    assert_eq!(env.command(), Verb::Version);
+    assert_eq!(env.command(), Some(Verb::Version));
 }
 
 #[test]

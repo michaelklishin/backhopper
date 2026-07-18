@@ -17,7 +17,6 @@ workspace = true
 
 [dependencies]
 backhopper-core   = { workspace = true, features = ["schemars"] }
-backhopper-driver = { workspace = true, features = ["schemars"] }
 
 anyhow     = { workspace = true }
 clap       = { workspace = true }

@@ -5,6 +5,8 @@
 use backhopper_core::schema::{
     CURRENT_SCHEMA_VERSION, SchemaError, embedded_versions, schema_value_for,
 };
+
+use crate::outcome::CommandOutcome;
 use backhopper_core::schema_diff::{SchemaDiff, diff};
 use serde::Serialize;
 use serde_json::Value;
@@ -13,7 +15,7 @@ use crate::cli::{GlobalArgs, SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
 
-pub fn handle(args: &GlobalArgs, cmd: SchemaCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: SchemaCmd) -> CliResult<CommandOutcome> {
     match cmd {
         SchemaCmd::Show(a) => show(args, a),
         SchemaCmd::Diff(a) => diff_cmd(args, a),
@@ -21,7 +23,7 @@ pub fn handle(args: &GlobalArgs, cmd: SchemaCmd) -> CliResult<i32> {
     }
 }
 
-fn supported_envelope_versions(args: &GlobalArgs) -> CliResult<i32> {
+fn supported_envelope_versions(args: &GlobalArgs) -> CliResult<CommandOutcome> {
     let payload = SupportedEnvelopeVersionsPayload {
         current_envelope_version: CURRENT_SCHEMA_VERSION,
         supported_envelope_versions: embedded_versions(),
@@ -47,10 +49,10 @@ fn supported_envelope_versions(args: &GlobalArgs) -> CliResult<i32> {
         writeln!(w, "backhopper_version: {}", payload.backhopper_version)?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
-fn show(args: &GlobalArgs, a: SchemaShowArgs) -> CliResult<i32> {
+fn show(args: &GlobalArgs, a: SchemaShowArgs) -> CliResult<CommandOutcome> {
     let value = schema_value_for(a.version).map_err(map_schema_err)?;
     let ctx = OutputContext::new(args.formatter, "schema show");
     let payload = ShowPayload {
@@ -63,10 +65,10 @@ fn show(args: &GlobalArgs, a: SchemaShowArgs) -> CliResult<i32> {
         writeln!(w)?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
-fn diff_cmd(args: &GlobalArgs, a: SchemaDiffArgs) -> CliResult<i32> {
+fn diff_cmd(args: &GlobalArgs, a: SchemaDiffArgs) -> CliResult<CommandOutcome> {
     let from = schema_value_for(a.from).map_err(map_schema_err)?;
     let to = schema_value_for(a.to).map_err(map_schema_err)?;
     let result: SchemaDiff = diff(a.from, a.to, &from, &to);
@@ -91,7 +93,7 @@ fn diff_cmd(args: &GlobalArgs, a: SchemaDiffArgs) -> CliResult<i32> {
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn map_schema_err(e: SchemaError) -> CliError {

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::compat::arg_shape::ArgShape;
-use crate::compat::call_sites::{DynamicCall, extract_into_with_macros, scan_hunk};
+use crate::compat::call_sites::{DynamicCall, scan_hunk};
 use crate::compat::diff;
 use crate::compat::evaluate::{AnalyzedInputs, PinEvalOptions, PostimageTally, evaluate_pin};
 use crate::compat::patch_facts::{
@@ -41,28 +41,25 @@ pub mod patch_state {
 
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
     pub struct Analyzed;
-
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-    pub struct Verdicted;
 }
 
-pub use patch_state::{Analyzed, Raw, Verdicted};
+pub use patch_state::{Analyzed, Raw};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Language {
+pub enum SourceKind {
     Erlang,
     Elixir,
     /// Cuttlefish `.schema`, `.snippets`, and `.partial` files: Erlang
-    /// fragments embedded in a config-key DSL. We run the call-site
-    /// extractor over every line so MFA references inside
-    /// `{translation, ..., fun(Conf) -> M:F(...) end}` blocks land in
-    /// `Patch.referenced`. The `.partial` extension was introduced in
-    /// cuttlefish 3.8.0.
+    /// fragments embedded in a config-key DSL. Locating the
+    /// `{translation, ..., fun(Conf) -> M:F(...) end}` fun bodies needs
+    /// the whole file and the cuttlefish parser, so the CLI extracts the
+    /// references and folds them in with `with_extra_references`. The
+    /// `.partial` extension was introduced in cuttlefish 3.8.0.
     CuttlefishSchema,
     Other,
 }
 
-impl Language {
+impl SourceKind {
     pub fn from_path(path: &str) -> Self {
         if path.ends_with(".erl") || path.ends_with(".hrl") {
             Self::Erlang
@@ -83,7 +80,7 @@ impl Language {
 pub struct PatchedFile {
     pub old_path: Option<PathBuf>,
     pub new_path: Option<PathBuf>,
-    pub language: Language,
+    pub language: SourceKind,
     pub binary: bool,
     pub hunks: Vec<Hunk>,
 }
@@ -132,7 +129,6 @@ pub struct Patch<S = Raw> {
     dynamic_calls: Vec<DynamicCall>,
     unsupported_files: Vec<PathBuf>,
     call_args: Vec<(Mfa, Vec<ArgShape>)>,
-    verdicts: Vec<PinVerdict>,
     _state: PhantomData<S>,
 }
 
@@ -146,7 +142,6 @@ impl Patch<Raw> {
             dynamic_calls: Vec::new(),
             unsupported_files: Vec::new(),
             call_args: Vec::new(),
-            verdicts: Vec::new(),
             _state: PhantomData,
         })
     }
@@ -159,11 +154,11 @@ impl Patch<Raw> {
     }
 
     /// Run the per-file analyzer. Each `PatchedFile` already carries a
-    /// `Language` tag from the diff parser; the analyzer dispatches per
+    /// `SourceKind` tag from the diff parser; the analyzer dispatches per
     /// file. Erlang files run through the call-site extractor; Elixir
     /// files are recorded as unsupported so the evaluator can emit
     /// `Reason::UnsupportedFileType` rather than silently flagging the
-    /// patch as `Compatible`. Files with `Language::Other` (build
+    /// patch as `Compatible`. Files with `SourceKind::Other` (build
     /// scripts, markdown, etc.) are still silent-skipped.
     ///
     /// `macros_by_path` supplies a per-file macro table built from the
@@ -191,7 +186,7 @@ impl Patch<Raw> {
                 .and_then(|p| macros_by_path.get(p))
                 .unwrap_or(&empty);
             match file.language {
-                Language::Erlang => {
+                SourceKind::Erlang => {
                     for hunk in &file.hunks {
                         let lines: Vec<(RefOrigin, &str)> = hunk
                             .lines
@@ -211,28 +206,18 @@ impl Patch<Raw> {
                         call_args.extend(scan.call_args);
                     }
                 }
-                Language::CuttlefishSchema => {
-                    for hunk in &file.hunks {
-                        for line in &hunk.lines {
-                            let (text, origin) = match line {
-                                HunkLine::Added(text) => (text, RefOrigin::Added),
-                                HunkLine::Context(text) => (text, RefOrigin::Context),
-                                HunkLine::Removed(_) => continue,
-                            };
-                            let mut line_refs: Vec<SymbolRef> = Vec::new();
-                            extract_into_with_macros(text, file_macros, &mut line_refs);
-                            for r in line_refs {
-                                referenced.push(r.with_origin(origin));
-                            }
-                        }
-                    }
-                }
-                Language::Elixir => {
+                // A `.schema` file is Erlang fragments embedded in a
+                // config-key DSL. Locating the `fun(...) -> ... end` bodies
+                // needs the whole file and the cuttlefish parser, which
+                // lives above this crate: the caller extracts references
+                // there and injects them with `with_extra_references`.
+                SourceKind::CuttlefishSchema => {}
+                SourceKind::Elixir => {
                     if let Some(path) = file.primary_path() {
                         unsupported_files.push(path.to_path_buf());
                     }
                 }
-                Language::Other => {}
+                SourceKind::Other => {}
             }
         }
         referenced.sort();
@@ -250,7 +235,6 @@ impl Patch<Raw> {
             dynamic_calls,
             unsupported_files,
             call_args,
-            verdicts: Vec::new(),
             _state: PhantomData,
         }
     }
@@ -465,6 +449,19 @@ impl Patch<Analyzed> {
         &self.defined
     }
 
+    /// Fold in references a caller extracted from a source the core
+    /// analyzer does not parse itself, such as the Erlang bodies inside a
+    /// cuttlefish `.schema` file. The merged set is re-sorted and deduped
+    /// on kind, keeping the strongest origin, exactly as `analyze` leaves
+    /// its own references.
+    #[must_use]
+    pub fn with_extra_references(mut self, refs: impl IntoIterator<Item = SymbolRef>) -> Self {
+        self.referenced.extend(refs);
+        self.referenced.sort();
+        self.referenced.dedup_by(|a, b| a.kind == b.kind);
+        self
+    }
+
     /// True when every changed `.erl` hunk is a Variant A unwrap of
     /// test-only `-ifdef(TEST)` machinery (see
     /// `InapplicableReason::OnlyTestVisibilityChanged`). Callers stamp
@@ -482,50 +479,6 @@ impl Patch<Analyzed> {
             unsupported_files: &self.unsupported_files,
             call_args: &self.call_args,
         }
-    }
-
-    pub fn against(self, snapshot: &Snapshot<state::Canonical>, pin: Pin) -> Patch<Verdicted> {
-        let result = evaluate_pin(self.analyzed_inputs(), snapshot, PinEvalOptions::default());
-        let mut verdicts = self.verdicts;
-        verdicts.push(PinVerdict::new(pin, result.verdict));
-        Patch {
-            files: self.files,
-            referenced: self.referenced,
-            defined: self.defined,
-            dynamic_calls: self.dynamic_calls,
-            unsupported_files: self.unsupported_files,
-            call_args: self.call_args,
-            verdicts,
-            _state: PhantomData,
-        }
-    }
-
-    pub fn against_series(self, snapshots: &[(Pin, Snapshot<state::Canonical>)]) -> SeriesVerdict {
-        let mut results = Vec::with_capacity(snapshots.len());
-        for (pin, snap) in snapshots {
-            let r = evaluate_pin(self.analyzed_inputs(), snap, PinEvalOptions::default());
-            results.push(PinVerdict::new(pin.clone(), r.verdict));
-        }
-        SeriesVerdict::from_results(results)
-    }
-
-    pub fn against_series_with_files(
-        self,
-        snapshots: &[(Pin, Snapshot<state::Canonical>, EvaluationFiles)],
-    ) -> SeriesVerdict {
-        let mut results = Vec::with_capacity(snapshots.len());
-        for (pin, snap, files) in snapshots {
-            let r = evaluate_pin(
-                self.analyzed_inputs(),
-                snap,
-                PinEvalOptions {
-                    pin_files: Some(files),
-                    ..PinEvalOptions::default()
-                },
-            );
-            results.push(PinVerdict::new(pin.clone(), r.verdict));
-        }
-        SeriesVerdict::from_results(results)
     }
 
     /// Scope-aware evaluation. Out-of-scope call sites and record
@@ -640,10 +593,6 @@ impl Patch<Analyzed> {
     }
 }
 
-/// Iterate `PatchedFile`s in diff order, project to `RelativePath`,
-/// dedup by first occurrence. Paths that can't be expressed as UTF-8
-/// relative paths (extremely rare in practice; never seen in RabbitMQ)
-/// are dropped silently: the alternative is failing the verdict.
 /// Project a per-pin tally into the envelope shape, converting the
 /// per-file keys to `RelativePath` with the same drop-on-failure
 /// policy as `collect_touched_paths`.
@@ -684,10 +633,4 @@ fn collect_touched_paths(files: &[PatchedFile]) -> Vec<RelativePath> {
         }
     }
     out
-}
-
-impl Patch<Verdicted> {
-    pub fn verdicts(&self) -> &[PinVerdict] {
-        &self.verdicts
-    }
 }

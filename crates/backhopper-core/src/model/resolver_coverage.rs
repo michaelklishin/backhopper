@@ -63,6 +63,9 @@ impl ResolverClass {
     /// behaviour, record, local call, and indirect call resolve on the
     /// target tree; qualified call and type resolve through the
     /// snapshot and self-pin.
+    // every class is covered today: the arm exists so a newly added,
+    // not-yet-resolved class fails to compile here rather than silently
+    // returning true
     #[must_use]
     pub fn is_covered(self) -> bool {
         match self {

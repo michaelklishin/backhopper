@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use clap::{CommandFactory, crate_version};
 use serde::Serialize;
 
@@ -20,7 +21,7 @@ struct VersionPayload<'a> {
     verbs: Vec<String>,
 }
 
-pub fn handle(args: &GlobalArgs) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs) -> CliResult<CommandOutcome> {
     let payload = VersionPayload {
         name: "backhopper",
         version: crate_version!(),
@@ -31,7 +32,7 @@ pub fn handle(args: &GlobalArgs) -> CliResult<i32> {
         writeln!(w, "{} {}", payload.name, payload.version)?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 /// Walk the clap command tree so the list can never drift from the

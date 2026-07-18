@@ -252,9 +252,17 @@ fn scan_uses(
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
+            b'"' => {
+                let end = skip_string(bytes, i, b'"');
+                line += newline_count(&bytes[i..end]);
+                i = end;
+            }
             b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'\'' => {
+                let end = skip_string(bytes, i, b'\'');
+                line += newline_count(&bytes[i..end]);
+                i = end;
+            }
             b if b == sigil => {
                 let (start, end) = name_span(bytes, i + 1);
                 if end > start {
@@ -1058,11 +1066,15 @@ fn iter_attribute_bodies<'a>(src: &'a str, names: &'a [&'a str]) -> Vec<AttrHit<
             continue;
         }
         if b == b'"' {
-            i = skip_string(bytes, i, b'"');
+            let end = skip_string(bytes, i, b'"');
+            line += newline_count(&bytes[i..end]);
+            i = end;
             continue;
         }
         if b == b'\'' {
-            i = skip_string(bytes, i, b'\'');
+            let end = skip_string(bytes, i, b'\'');
+            line += newline_count(&bytes[i..end]);
+            i = end;
             continue;
         }
         if b == b'-'
@@ -1081,6 +1093,7 @@ fn iter_attribute_bodies<'a>(src: &'a str, names: &'a [&'a str]) -> Vec<AttrHit<
             if let Some(body_end) = match_parens(bytes, body_start) {
                 let body = str::from_utf8(&bytes[body_start..body_end]).unwrap_or("");
                 out.push(AttrHit { name, body, line });
+                line += newline_count(&bytes[i..=body_end]);
                 i = body_end + 1;
                 continue;
             }
@@ -1165,6 +1178,16 @@ fn skip_string(bytes: &[u8], start: usize, quote: u8) -> usize {
         i += 1;
     }
     i
+}
+
+fn newline_count(span: &[u8]) -> u32 {
+    let mut n = 0;
+    for &b in span {
+        if b == b'\n' {
+            n += 1;
+        }
+    }
+    n
 }
 
 fn parse_single_atom_argument(body: &str) -> Option<String> {

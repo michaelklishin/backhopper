@@ -19,7 +19,7 @@ use time::OffsetDateTime;
 
 use backhopper_core::model::names::CommitSha;
 
-use crate::errors::GitError;
+use crate::errors::{GitError, gix_err};
 use crate::patch_input::diff_bytes;
 use crate::pr_commits::commit_subject;
 use crate::repo::GitRepo;
@@ -86,24 +86,23 @@ pub fn first_parent_walk_since(
 
 fn read_walked(repo: &GitRepo, sha: &CommitSha) -> Result<WalkedCommit, GitError> {
     let gix_repo = repo.gix();
-    let oid = gix::ObjectId::from_hex(sha.as_str().as_bytes())
-        .map_err(|e| GitError::Gix(e.to_string()))?;
+    let oid = gix::ObjectId::from_hex(sha.as_str().as_bytes()).map_err(gix_err)?;
     let commit = gix_repo
         .find_object(oid)
         .map_err(|_| GitError::CommitNotFound(sha.to_string()))?
         .try_into_commit()
-        .map_err(|e| GitError::Gix(e.to_string()))?;
+        .map_err(gix_err)?;
     let mut parents = Vec::new();
     for id in commit.parent_ids() {
-        parents.push(CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?);
+        parents.push(CommitSha::new(id.to_string()).map_err(gix_err)?);
     }
-    let time = commit.time().map_err(|e| GitError::Gix(e.to_string()))?;
+    let time = commit.time().map_err(gix_err)?;
     let committed_at = OffsetDateTime::from_unix_timestamp(time.seconds)
         .map_err(|e| GitError::Gix(format!("committer time out of range: {e}")))?;
     let subject = commit_subject(&commit)?;
     let message = commit
         .message_raw()
-        .map_err(|e| GitError::Gix(e.to_string()))?
+        .map_err(gix_err)?
         .to_str_lossy()
         .into_owned();
     Ok(WalkedCommit {

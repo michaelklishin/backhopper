@@ -60,7 +60,6 @@ pub struct Loc {
     pub path: PathId,
     pub start: Position,
     pub end: Position,
-    pub expanded_from: Option<Box<Loc>>,
 }
 
 impl Loc {
@@ -69,22 +68,11 @@ impl Loc {
             path,
             start: pos,
             end: pos,
-            expanded_from: None,
         }
     }
 
     pub fn span(path: PathId, start: Position, end: Position) -> Self {
-        Self {
-            path,
-            start,
-            end,
-            expanded_from: None,
-        }
-    }
-
-    pub fn with_expansion(mut self, parent: Loc) -> Self {
-        self.expanded_from = Some(Box::new(parent));
-        self
+        Self { path, start, end }
     }
 }
 

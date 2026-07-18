@@ -118,8 +118,9 @@ Model (`src/model/`):
    `SymbolKind`, `RefContext`, `RefOrigin`)
  * `batch.rs`: `BatchPayload`, `BatchQuery`, `BatchResult` (the
    `compatibility batch` surface)
- * `evaluation.rs`: `SeriesEvaluation`, `AggregateVerdict`, and the
-   per-series finding views
+ * `evaluation.rs`: `AggregateVerdict`, `SeriesEvaluationView`, and the
+   per-series finding views (`SeriesEvaluation` itself lives in
+   `verdict.rs`)
  * `spec_ast.rs`, `spec_parser.rs`: `-spec` AST and parser feeding the
    normalizer
  * `summary.rs`, `pr_commit.rs`, `cache.rs`: run-summary, PR-commit, and

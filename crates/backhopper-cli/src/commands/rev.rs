@@ -5,6 +5,7 @@
 //! `backhopper rev resolve <COMMIT_SHA>`: expand a SHA prefix to its
 //! full 40-character form using the shared resolver.
 
+use crate::outcome::CommandOutcome;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -20,7 +21,7 @@ use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, emit_jsonl, render_with_exit};
 
 // envelope renders first; the typed `CliError` below sets the non-zero exit.
-const ENVELOPE_ONLY_EXIT: i32 = 0;
+const ENVELOPE_ONLY_EXIT: CommandOutcome = CommandOutcome::Success;
 
 #[derive(Debug, Serialize)]
 struct ResolvePayload {
@@ -50,7 +51,7 @@ struct NotFoundPayload {
     input: String,
 }
 
-pub fn handle(args: &GlobalArgs, cmd: RevCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: RevCmd) -> CliResult<CommandOutcome> {
     match cmd {
         RevCmd::Resolve {
             repo_dir_path,
@@ -65,7 +66,7 @@ fn run_resolve(
     repo_dir_path: &Path,
     want_subject: bool,
     prefix: &CommitShaPrefix,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     match resolve_with_kind(repo_dir_path, prefix) {
         Ok(resolved) => render_resolved(
             args,
@@ -97,7 +98,7 @@ fn render_resolved(
     kind: ObjectKind,
     repo_dir_path: &Path,
     want_subject: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let subject = if want_subject {
         GitRepo::open(repo_dir_path.to_path_buf())
             .ok()
@@ -120,10 +121,10 @@ fn render_resolved(
             }
             SummaryFormatter::Jsonl => emit_jsonl(&mut stdout, &[payload])?,
         }
-        return Ok(0);
+        return Ok(CommandOutcome::Success);
     }
     let ctx = OutputContext::new(args.formatter, "rev resolve");
-    render_with_exit(&ctx, &payload, 0, |w| {
+    render_with_exit(&ctx, &payload, CommandOutcome::Success, |w| {
         writeln!(w, "input:       {}", payload.input)?;
         writeln!(w, "resolved:    {}", payload.resolved)?;
         writeln!(w, "object_kind: {}", payload.object_kind)?;
@@ -134,22 +135,36 @@ fn render_resolved(
     })
 }
 
+/// Emit the failure envelope (exit 0), then carry the non-zero exit and
+/// the operator message through the typed `CliError`.
+fn render_failure<P: Serialize>(
+    args: &GlobalArgs,
+    payload: &P,
+    message: String,
+) -> CliResult<CommandOutcome> {
+    let ctx = OutputContext::new(args.formatter, "rev resolve");
+    render_with_exit(&ctx, payload, ENVELOPE_ONLY_EXIT, |_| Ok(()))?;
+    Err(CliError::InvalidInput(message))
+}
+
 fn render_ambiguous(
     args: &GlobalArgs,
     prefix: &str,
     candidates: &[String],
     truncated_at: u32,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let payload = AmbiguousPayload {
         input: prefix.to_owned(),
         candidates: candidates.to_vec(),
         truncated_at,
     };
-    let ctx = OutputContext::new(args.formatter, "rev resolve");
-    render_with_exit(&ctx, &payload, ENVELOPE_ONLY_EXIT, |_| Ok(()))?;
-    Err(CliError::InvalidInput(format!(
-        "prefix {prefix:?} matched {truncated_at} object(s); extend the prefix by one or more characters and try again"
-    )))
+    render_failure(
+        args,
+        &payload,
+        format!(
+            "prefix {prefix:?} matched {truncated_at} object(s); extend the prefix by one or more characters and try again"
+        ),
+    )
 }
 
 fn render_not_a_commit(
@@ -157,26 +172,26 @@ fn render_not_a_commit(
     prefix: &str,
     kind: &str,
     resolved: &str,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let payload = NotACommitPayload {
         input: prefix.to_owned(),
         object_kind: kind.to_owned(),
         resolved: resolved.to_owned(),
     };
-    let ctx = OutputContext::new(args.formatter, "rev resolve");
-    render_with_exit(&ctx, &payload, ENVELOPE_ONLY_EXIT, |_| Ok(()))?;
-    Err(CliError::InvalidInput(format!(
-        "prefix {prefix:?} resolved to a {kind} (object {resolved}), not a commit"
-    )))
+    render_failure(
+        args,
+        &payload,
+        format!("prefix {prefix:?} resolved to a {kind} (object {resolved}), not a commit"),
+    )
 }
 
-fn render_not_found(args: &GlobalArgs, prefix: &str) -> CliResult<i32> {
+fn render_not_found(args: &GlobalArgs, prefix: &str) -> CliResult<CommandOutcome> {
     let payload = NotFoundPayload {
         input: prefix.to_owned(),
     };
-    let ctx = OutputContext::new(args.formatter, "rev resolve");
-    render_with_exit(&ctx, &payload, ENVELOPE_ONLY_EXIT, |_| Ok(()))?;
-    Err(CliError::InvalidInput(format!(
-        "commit prefix {prefix:?} not found in repository"
-    )))
+    render_failure(
+        args,
+        &payload,
+        format!("commit prefix {prefix:?} not found in repository"),
+    )
 }

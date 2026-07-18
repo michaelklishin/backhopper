@@ -11,7 +11,6 @@
 //! prior PR-branch commits.
 
 use std::collections::BTreeSet;
-use std::fmt::Display;
 use std::ops::ControlFlow;
 use std::sync::LazyLock;
 
@@ -22,12 +21,8 @@ use time::OffsetDateTime;
 use backhopper_core::model::names::{CommitSha, RelativePath};
 use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
 
-use crate::errors::GitError;
+use crate::errors::{GitError, gix_err};
 use crate::repo::GitRepo;
-
-fn gix_err<E: Display>(e: E) -> GitError {
-    GitError::Gix(e.to_string())
-}
 
 /// Enumerate the PR-branch commits inside a 2-parent merge.
 ///

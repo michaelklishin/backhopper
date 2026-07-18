@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod driver_repo_dir_seam_integration_tests;
 mod end_to_end_apply_forecast_integration_tests;
 mod end_to_end_auto_generate_integration_tests;
 mod end_to_end_bel7_cli_integration_tests;
@@ -12,6 +13,7 @@ mod end_to_end_compat_batch_integration_tests;
 mod end_to_end_compat_commit_integration_tests;
 mod end_to_end_compat_integration_tests;
 mod end_to_end_config_discovery_integration_tests;
+mod end_to_end_cuttlefish_schema_integration_tests;
 mod end_to_end_dep_availability_integration_tests;
 mod end_to_end_diff_integration_tests;
 mod end_to_end_doctor_coverage_integration_tests;

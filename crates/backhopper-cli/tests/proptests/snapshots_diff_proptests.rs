@@ -99,8 +99,9 @@ proptest! {
             .symmetric_difference(&b_names)
             .map(|s| (*s).to_owned())
             .collect();
-        let mut diff_total: BTreeSet<String> = d.modules_added.iter().cloned().collect();
-        diff_total.extend(d.modules_removed.iter().cloned());
+        let mut diff_total: BTreeSet<String> =
+            d.modules_added.iter().map(|m| m.as_str().to_owned()).collect();
+        diff_total.extend(d.modules_removed.iter().map(|m| m.as_str().to_owned()));
         prop_assert_eq!(symmetric, diff_total);
     }
 }

@@ -177,14 +177,18 @@ impl ResolvedPatchInput {
 /// noise.
 pub const COMPONENTS_MK_PATH: &str = "rabbitmq-components.mk";
 
-/// Paths worth carrying in analysis diffs: Erlang and Elixir sources
-/// plus the root dep-pin manifest, so commit-shaped inputs classify
-/// and detect pin bumps the same way patch-file inputs do.
+/// Paths worth carrying in analysis diffs: Erlang and Elixir sources,
+/// cuttlefish `.schema`, `.snippets`, and `.partial` files, plus the root
+/// dep-pin manifest, so commit-shaped inputs classify and detect pin
+/// bumps the same way patch-file inputs do.
 pub fn analyzable_diff_path(p: &str) -> bool {
     p.ends_with(".erl")
         || p.ends_with(".hrl")
         || p.ends_with(".ex")
         || p.ends_with(".exs")
+        || p.ends_with(".schema")
+        || p.ends_with(".snippets")
+        || p.ends_with(".partial")
         || p == COMPONENTS_MK_PATH
 }
 
@@ -197,12 +201,13 @@ pub(crate) fn diff_bytes(
     Ok(text.into_bytes())
 }
 
-/// Read every `.erl` and `.hrl` blob at `commit` into a `FileMap`.
-/// The full-tree macro context evaluation builds tables from; callers
-/// that can prove a patch is empty should skip this entirely.
+/// Read every `.erl` and `.hrl` blob at `commit` into a `FileMap`, plus
+/// the cuttlefish `.schema`, `.snippets`, and `.partial` files whose full
+/// content the reference extractor needs. The evaluation builds macro
+/// tables from the Erlang entries; callers that can prove a patch is
+/// empty should skip this entirely.
 pub fn load_files_at(repo: &GitRepo, commit: &CommitSha) -> Result<FileMap, GitError> {
-    let blobs =
-        repo.read_paths_at_commit(commit, |p| p.ends_with(".erl") || p.ends_with(".hrl"))?;
+    let blobs = repo.read_paths_at_commit(commit, source_content_path)?;
     let mut map = FileMap::new();
     for blob in blobs {
         if let Ok(text) = String::from_utf8(blob.bytes) {
@@ -210,4 +215,15 @@ pub fn load_files_at(repo: &GitRepo, commit: &CommitSha) -> Result<FileMap, GitE
         }
     }
     Ok(map)
+}
+
+/// Paths whose full content the evaluator loads: Erlang sources and
+/// headers for macro context, and cuttlefish files for schema reference
+/// extraction.
+pub fn source_content_path(p: &str) -> bool {
+    p.ends_with(".erl")
+        || p.ends_with(".hrl")
+        || p.ends_with(".schema")
+        || p.ends_with(".snippets")
+        || p.ends_with(".partial")
 }

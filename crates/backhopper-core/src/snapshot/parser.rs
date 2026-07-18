@@ -263,12 +263,12 @@ impl<'a> Parser<'a> {
             } else if let Some(rest) = trimmed.strip_prefix("export ") {
                 state.advance(EntryClass::Export, lineno)?;
                 let fa = parse_fun_arity(rest.trim()).map_err(SnapshotError::Name)?;
-                check_fun_arity_order(&module.exports, &fa, lineno, "export")?;
+                check_order(&module.exports, &fa, lineno, "export")?;
                 module.exports.push(fa);
             } else if let Some(rest) = trimmed.strip_prefix("export_type ") {
                 state.advance(EntryClass::ExportType, lineno)?;
                 let ta = parse_type_arity(rest.trim()).map_err(SnapshotError::Name)?;
-                check_type_arity_order(&module.export_types, &ta, lineno, "export_type")?;
+                check_order(&module.export_types, &ta, lineno, "export_type")?;
                 module.export_types.push(ta);
             } else if let Some(rest) = trimmed.strip_prefix("callback ") {
                 state.advance(EntryClass::Callback, lineno)?;
@@ -287,12 +287,7 @@ impl<'a> Parser<'a> {
             } else if let Some(rest) = trimmed.strip_prefix("optional_callback ") {
                 state.advance(EntryClass::OptionalCallback, lineno)?;
                 let fa = parse_fun_arity(rest.trim()).map_err(SnapshotError::Name)?;
-                check_fun_arity_order(
-                    &module.optional_callbacks,
-                    &fa,
-                    lineno,
-                    "optional_callback",
-                )?;
+                check_order(&module.optional_callbacks, &fa, lineno, "optional_callback")?;
                 module.optional_callbacks.push(fa);
             } else if let Some(rest) = trimmed.strip_prefix("spec ") {
                 state.advance(EntryClass::Spec, lineno)?;
@@ -324,7 +319,7 @@ impl<'a> Parser<'a> {
             } else if let Some(rest) = trimmed.strip_prefix("opaque ") {
                 state.advance(EntryClass::Opaque, lineno)?;
                 let ta = parse_type_arity(rest.trim()).map_err(SnapshotError::Name)?;
-                check_type_arity_order(&module.opaques, &ta, lineno, "opaque")?;
+                check_order(&module.opaques, &ta, lineno, "opaque")?;
                 module.opaques.push(ta);
             } else if let Some(rest) = trimmed.strip_prefix("deprecated ") {
                 state.advance(EntryClass::Deprecated, lineno)?;
@@ -797,38 +792,45 @@ fn unescape_reason(s: &str) -> String {
     out
 }
 
-fn check_fun_arity_order(
-    existing: &[FunArity],
-    fa: &FunArity,
-    lineno: usize,
-    label: &str,
-) -> Result<(), SnapshotError> {
-    if let Some(prev) = existing.last() {
-        let prev_key = (&prev.name, prev.arity);
-        let new_key = (&fa.name, fa.arity);
-        if new_key <= prev_key {
-            return Err(SnapshotError::NotCanonical {
-                line: lineno,
-                detail: format!("{} {}/{} out of order", label, fa.name, fa.arity),
-            });
-        }
-    }
-    Ok(())
+/// A `name/arity` entry with a canonical order, so one `check_order`
+/// gates both the function-arity and type-arity streams.
+trait ArityOrdered {
+    type Key: Ord;
+    fn order_key(&self) -> Self::Key;
+    fn describe(&self) -> String;
 }
 
-fn check_type_arity_order(
-    existing: &[TypeArity],
-    ta: &TypeArity,
+impl ArityOrdered for FunArity {
+    type Key = (FunctionName, Arity);
+    fn order_key(&self) -> Self::Key {
+        (self.name.clone(), self.arity)
+    }
+    fn describe(&self) -> String {
+        format!("{}/{}", self.name, self.arity)
+    }
+}
+
+impl ArityOrdered for TypeArity {
+    type Key = (TypeName, Arity);
+    fn order_key(&self) -> Self::Key {
+        (self.name.clone(), self.arity)
+    }
+    fn describe(&self) -> String {
+        format!("{}/{}", self.name, self.arity)
+    }
+}
+
+fn check_order<T: ArityOrdered>(
+    existing: &[T],
+    item: &T,
     lineno: usize,
     label: &str,
 ) -> Result<(), SnapshotError> {
     if let Some(prev) = existing.last() {
-        let prev_key = (&prev.name, prev.arity);
-        let new_key = (&ta.name, ta.arity);
-        if new_key <= prev_key {
+        if item.order_key() <= prev.order_key() {
             return Err(SnapshotError::NotCanonical {
                 line: lineno,
-                detail: format!("{} {}/{} out of order", label, ta.name, ta.arity),
+                detail: format!("{label} {} out of order", item.describe()),
             });
         }
     }

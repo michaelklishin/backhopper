@@ -117,7 +117,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cache"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "blake3",
@@ -132,12 +132,13 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cli"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "backhopper-cache",
  "backhopper-core",
+ "backhopper-cuttlefish",
  "backhopper-driver",
  "backhopper-elixir",
  "backhopper-erlang",
@@ -165,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-erlang-scan",
  "backhopper-test-support",
@@ -183,16 +184,16 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
- "backhopper-erlang",
+ "backhopper-erlang-scan",
  "proptest",
 ]
 
 [[package]]
 name = "backhopper-driver"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -202,29 +203,25 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
- "tracing",
 ]
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "proptest",
  "regex",
- "serde",
- "thiserror",
  "tracing",
 ]
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
  "proptest",
- "regex",
  "serde",
  "thiserror",
  "time",
@@ -233,14 +230,14 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang-scan"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "backhopper-git"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "backhopper-test-support",
@@ -256,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-test-support"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "tempfile",
@@ -265,22 +262,20 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
- "backhopper-erlang",
  "backhopper-xref-graph",
  "backhopper-xref-reader",
  "proptest",
  "serde",
  "tempfile",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -291,17 +286,15 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "backhopper-core",
- "backhopper-erlang",
  "backhopper-erlang-scan",
  "backhopper-xref-graph",
  "proptest",
  "serde",
  "tempfile",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -3003,11 +2996,10 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xtask"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "backhopper-core",
- "backhopper-driver",
  "clap",
  "schemars",
  "serde_json",

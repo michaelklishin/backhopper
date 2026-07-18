@@ -19,7 +19,7 @@ use time::OffsetDateTime;
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix, TagName};
 use backhopper_core::versions::version_cmp;
 
-use crate::errors::GitError;
+use crate::errors::{GitError, gix_err};
 use crate::pr_commits;
 
 pub const AMBIGUOUS_SHA_CANDIDATE_CAP: usize = 8;
@@ -144,8 +144,7 @@ impl GitRepo {
         };
         match kind {
             ObjectKind::Commit => {
-                let commit =
-                    CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?;
+                let commit = CommitSha::new(id.to_string()).map_err(gix_err)?;
                 Ok(ResolvedSha {
                     commit,
                     kind: ObjectKind::Commit,
@@ -160,8 +159,7 @@ impl GitRepo {
                     }
                 })?;
                 let commit_id = commit_object.detach().id;
-                let commit = CommitSha::new(commit_id.to_string())
-                    .map_err(|e| GitError::Gix(e.to_string()))?;
+                let commit = CommitSha::new(commit_id.to_string()).map_err(gix_err)?;
                 Ok(ResolvedSha {
                     commit,
                     kind: ObjectKind::Tag,
@@ -217,15 +215,12 @@ impl GitRepo {
     }
 
     pub fn list_tag_refs(&self) -> Result<TagListing, GitError> {
-        let platform = self
-            .repo
-            .references()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let iter = platform.tags().map_err(|e| GitError::Gix(e.to_string()))?;
+        let platform = self.repo.references().map_err(gix_err)?;
+        let iter = platform.tags().map_err(gix_err)?;
         let mut tags: Vec<TagName> = Vec::new();
         let mut skipped: Vec<String> = Vec::new();
         for r in iter {
-            let r = r.map_err(|e| GitError::Gix(e.to_string()))?;
+            let r = r.map_err(gix_err)?;
             let full = r.name().as_bstr().to_string();
             let Some(short) = full.strip_prefix("refs/tags/") else {
                 skipped.push(full);
@@ -247,7 +242,7 @@ impl GitRepo {
             .rev_parse_single(spec)
             .map_err(|_| GitError::CommitNotFound(spec.to_owned()))?;
         let id = object.detach();
-        CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))
+        CommitSha::new(id.to_string()).map_err(gix_err)
     }
 
     pub fn resolve_tag(&self, tag: &TagName) -> Result<CommitSha, GitError> {
@@ -257,16 +252,7 @@ impl GitRepo {
             .rev_parse_single(spec.as_str())
             .map_err(|_| GitError::TagNotFound(tag.to_string()))?;
         let id = object.detach();
-        CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))
-    }
-
-    pub fn read_paths_at_tag(
-        &self,
-        tag: &TagName,
-        path_filter: impl Fn(&str) -> bool,
-    ) -> Result<Vec<BlobAtPath>, GitError> {
-        let commit_id = self.resolve_tag(tag)?;
-        self.read_paths_at_commit(&commit_id, path_filter)
+        CommitSha::new(id.to_string()).map_err(gix_err)
     }
 
     pub fn read_paths_at_commit(
@@ -274,57 +260,69 @@ impl GitRepo {
         commit: &CommitSha,
         path_filter: impl Fn(&str) -> bool,
     ) -> Result<Vec<BlobAtPath>, GitError> {
-        let tree = self.tree_of(commit)?;
         let mut out = Vec::new();
-        let mut stack: Vec<(PathBuf, gix::Tree<'_>)> = Vec::new();
-        stack.push((PathBuf::new(), tree));
-        while let Some((prefix, current)) = stack.pop() {
-            for entry in current.iter() {
-                let entry = entry.map_err(|e| GitError::Gix(e.to_string()))?;
-                let mut path = prefix.clone();
-                path.push(entry.filename().to_string());
-                let mode = entry.mode();
-                if mode.is_tree() {
-                    let sub = entry
-                        .object()
-                        .map_err(|e| GitError::Gix(e.to_string()))?
-                        .try_into_tree()
-                        .map_err(|e| GitError::Gix(e.to_string()))?;
-                    stack.push((path, sub));
-                } else if mode.is_blob() {
-                    let path_str = path.to_string_lossy();
-                    if !path_filter(&path_str) {
-                        continue;
-                    }
-                    let blob = entry.object().map_err(|e| GitError::Gix(e.to_string()))?;
-                    out.push(BlobAtPath {
-                        path,
-                        bytes: blob.data.clone(),
-                    });
-                }
+        self.walk_tree(commit, |path, entry| {
+            if !path_filter(&path) {
+                return Ok(());
             }
-        }
+            let blob = entry.object().map_err(gix_err)?;
+            out.push(BlobAtPath {
+                path: PathBuf::from(path),
+                bytes: blob.data.clone(),
+            });
+            Ok(())
+        })?;
         out.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(out)
     }
 
+    /// Depth-first walk of `commit`'s tree, calling `on_blob` with each
+    /// blob's path and tree entry. Tree names join with `/`, git's own
+    /// separator, so the paths match diff-derived paths on every
+    /// platform rather than picking up `\` from `PathBuf::push`.
+    fn walk_tree(
+        &self,
+        commit: &CommitSha,
+        mut on_blob: impl FnMut(String, &gix::object::tree::EntryRef<'_, '_>) -> Result<(), GitError>,
+    ) -> Result<(), GitError> {
+        let tree = self.tree_of(commit)?;
+        let mut stack: Vec<(String, gix::Tree<'_>)> = vec![(String::new(), tree)];
+        while let Some((prefix, current)) = stack.pop() {
+            for entry in current.iter() {
+                let entry = entry.map_err(gix_err)?;
+                let name = entry.filename().to_string();
+                let path = if prefix.is_empty() {
+                    name
+                } else {
+                    format!("{prefix}/{name}")
+                };
+                let mode = entry.mode();
+                if mode.is_tree() {
+                    let sub = entry
+                        .object()
+                        .map_err(gix_err)?
+                        .try_into_tree()
+                        .map_err(gix_err)?;
+                    stack.push((path, sub));
+                } else if mode.is_blob() {
+                    on_blob(path, &entry)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Local branch names and the commit each tip points at.
     pub fn local_branch_tips(&self) -> Result<Vec<(String, CommitSha)>, GitError> {
-        let platform = self
-            .repo
-            .references()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let iter = platform
-            .local_branches()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let platform = self.repo.references().map_err(gix_err)?;
+        let iter = platform.local_branches().map_err(gix_err)?;
         let mut out: Vec<(String, CommitSha)> = Vec::new();
         for r in iter {
-            let r = r.map_err(|e| GitError::Gix(e.to_string()))?;
+            let r = r.map_err(gix_err)?;
             let head = r.id().detach();
             let full = r.name().as_bstr().to_string();
             if let Some(short) = full.strip_prefix("refs/heads/") {
-                let sha =
-                    CommitSha::new(head.to_string()).map_err(|e| GitError::Gix(e.to_string()))?;
+                let sha = CommitSha::new(head.to_string()).map_err(gix_err)?;
                 out.push((short.to_owned(), sha));
             }
         }
@@ -334,16 +332,11 @@ impl GitRepo {
 
     pub fn branches_containing(&self, commit: &CommitSha) -> Result<Vec<String>, GitError> {
         let oid = oid_of(commit)?;
-        let platform = self
-            .repo
-            .references()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
-        let iter = platform
-            .local_branches()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let platform = self.repo.references().map_err(gix_err)?;
+        let iter = platform.local_branches().map_err(gix_err)?;
         let mut branches: Vec<String> = Vec::new();
         for r in iter {
-            let r = r.map_err(|e| GitError::Gix(e.to_string()))?;
+            let r = r.map_err(gix_err)?;
             let head = r.id().detach();
             if head == oid {
                 let full = r.name().as_bstr().to_string();
@@ -365,7 +358,7 @@ impl GitRepo {
         let c = self.commit_of(commit)?;
         let mut out = Vec::new();
         for id in c.parent_ids() {
-            out.push(CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?);
+            out.push(CommitSha::new(id.to_string()).map_err(gix_err)?);
         }
         Ok(out)
     }
@@ -374,7 +367,7 @@ impl GitRepo {
     pub fn commit_message(&self, commit: &CommitSha) -> Result<String, GitError> {
         let c = self.commit_of(commit)?;
         Ok(c.message_raw()
-            .map_err(|e| GitError::Gix(e.to_string()))?
+            .map_err(gix_err)?
             .to_str_lossy()
             .into_owned())
     }
@@ -408,12 +401,11 @@ impl GitRepo {
         let b = oid_of(two)?;
         match self.repo.merge_base(a, b) {
             Ok(id) => {
-                let sha =
-                    CommitSha::new(id.to_string()).map_err(|e| GitError::Gix(e.to_string()))?;
+                let sha = CommitSha::new(id.to_string()).map_err(gix_err)?;
                 Ok(Some(sha))
             }
             Err(gix::repository::merge_base::Error::NotFound { .. }) => Ok(None),
-            Err(e) => Err(GitError::Gix(e.to_string())),
+            Err(e) => Err(gix_err(e)),
         }
     }
 
@@ -427,9 +419,7 @@ impl GitRepo {
         let from_tree = self.tree_of(from)?;
         let to_tree = self.tree_of(to)?;
         let mut out: BTreeSet<PathBuf> = BTreeSet::new();
-        let mut platform = from_tree
-            .changes()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let mut platform = from_tree.changes().map_err(gix_err)?;
         platform
             .options(|opts| {
                 opts.track_rewrites(None);
@@ -457,7 +447,7 @@ impl GitRepo {
                 }
                 Ok(ControlFlow::Continue(()))
             })
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+            .map_err(gix_err)?;
         Ok(out)
     }
 
@@ -468,7 +458,7 @@ impl GitRepo {
     /// Committer timestamp of a commit: when it landed on its branch.
     pub fn commit_timestamp(&self, commit: &CommitSha) -> Result<OffsetDateTime, GitError> {
         let c = self.commit_of(commit)?;
-        let time = c.time().map_err(|e| GitError::Gix(e.to_string()))?;
+        let time = c.time().map_err(gix_err)?;
         OffsetDateTime::from_unix_timestamp(time.seconds)
             .map_err(|e| GitError::Gix(format!("committer time out of range: {e}")))
     }
@@ -482,13 +472,8 @@ impl GitRepo {
     ) -> Result<bool, GitError> {
         let target = oid_of(ancestor)?;
         let from = oid_of(descendant)?;
-        for info in self
-            .repo
-            .rev_walk([from])
-            .all()
-            .map_err(|e| GitError::Gix(e.to_string()))?
-        {
-            let info = info.map_err(|e| GitError::Gix(e.to_string()))?;
+        for info in self.repo.rev_walk([from]).all().map_err(gix_err)? {
+            let info = info.map_err(gix_err)?;
             if info.id == target {
                 return Ok(true);
             }
@@ -514,13 +499,8 @@ impl GitRepo {
             wanted.insert(oid_of(sha)?, sha.clone());
         }
         let mut found: BTreeSet<CommitSha> = BTreeSet::new();
-        for info in self
-            .repo
-            .rev_walk([from])
-            .all()
-            .map_err(|e| GitError::Gix(e.to_string()))?
-        {
-            let info = info.map_err(|e| GitError::Gix(e.to_string()))?;
+        for info in self.repo.rev_walk([from]).all().map_err(gix_err)? {
+            let info = info.map_err(gix_err)?;
             if let Some(sha) = wanted.get(&info.id) {
                 found.insert(sha.clone());
                 if found.len() == wanted.len() {
@@ -548,15 +528,9 @@ impl GitRepo {
         let mut present: BTreeMap<PathBuf, (Vec<u8>, Vec<u8>)> = BTreeMap::new();
         let mut removed: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
         let read_blob = |id: gix::Id<'_>| -> Result<Vec<u8>, GitError> {
-            Ok(id
-                .object()
-                .map_err(|e| GitError::Gix(e.to_string()))?
-                .data
-                .clone())
+            Ok(id.object().map_err(gix_err)?.data.clone())
         };
-        let mut platform = from_tree
-            .changes()
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+        let mut platform = from_tree.changes().map_err(gix_err)?;
         platform
             .options(|opts| {
                 opts.track_rewrites(None);
@@ -601,7 +575,7 @@ impl GitRepo {
                 }
                 Ok(ControlFlow::Continue(()))
             })
-            .map_err(|e| GitError::Gix(e.to_string()))?;
+            .map_err(gix_err)?;
         let mut out = String::new();
         for (path, (old_bytes, new_bytes)) in &present {
             append_unified_diff(&mut out, path, old_bytes, new_bytes);
@@ -616,35 +590,11 @@ impl GitRepo {
     /// Use this instead of `read_paths_at_commit` when only the path
     /// set matters (e.g. building a `TargetTreeIndex`).
     pub fn list_paths_at_commit(&self, commit: &CommitSha) -> Result<Vec<PathBuf>, GitError> {
-        let tree = self.tree_of(commit)?;
         let mut out: Vec<PathBuf> = Vec::new();
-        let mut stack: Vec<(String, gix::Tree<'_>)> = vec![(String::new(), tree)];
-        while let Some((prefix, current)) = stack.pop() {
-            for entry in current.iter() {
-                let entry = entry.map_err(|e| GitError::Gix(e.to_string()))?;
-                let name = entry.filename().to_string();
-                // Tree entry names are joined with `/`, git's own separator,
-                // rather than `PathBuf::push`, which would use `\` on Windows
-                // and desync these paths from diff-derived paths that are
-                // always `/`-separated.
-                let path = if prefix.is_empty() {
-                    name
-                } else {
-                    format!("{prefix}/{name}")
-                };
-                let mode = entry.mode();
-                if mode.is_tree() {
-                    let sub = entry
-                        .object()
-                        .map_err(|e| GitError::Gix(e.to_string()))?
-                        .try_into_tree()
-                        .map_err(|e| GitError::Gix(e.to_string()))?;
-                    stack.push((path, sub));
-                } else if mode.is_blob() {
-                    out.push(PathBuf::from(path));
-                }
-            }
-        }
+        self.walk_tree(commit, |path, _entry| {
+            out.push(PathBuf::from(path));
+            Ok(())
+        })?;
         out.sort();
         Ok(out)
     }
@@ -657,23 +607,18 @@ impl GitRepo {
         path: &Path,
     ) -> Result<Option<Vec<u8>>, GitError> {
         let tree = self.tree_of(commit)?;
-        let Some(entry) = tree
-            .lookup_entry_by_path(path)
-            .map_err(|e| GitError::Gix(e.to_string()))?
-        else {
+        let Some(entry) = tree.lookup_entry_by_path(path).map_err(gix_err)? else {
             return Ok(None);
         };
         if !entry.mode().is_blob() {
             return Ok(None);
         }
-        let object = entry.object().map_err(|e| GitError::Gix(e.to_string()))?;
+        let object = entry.object().map_err(gix_err)?;
         Ok(Some(object.data.clone()))
     }
 
     fn tree_of(&self, commit: &CommitSha) -> Result<gix::Tree<'_>, GitError> {
-        self.commit_of(commit)?
-            .tree()
-            .map_err(|e| GitError::Gix(e.to_string()))
+        self.commit_of(commit)?.tree().map_err(gix_err)
     }
 
     /// Find `commit`'s object and peel it to a commit. A missing object
@@ -685,14 +630,14 @@ impl GitRepo {
             .find_object(oid_of(commit)?)
             .map_err(|_| GitError::CommitNotFound(commit.to_string()))?
             .try_into_commit()
-            .map_err(|e| GitError::Gix(e.to_string()))
+            .map_err(gix_err)
     }
 }
 
 /// Decode a `CommitSha` into a `gix::ObjectId`, mapping a malformed
 /// hex string to `GitError::Gix`.
 fn oid_of(commit: &CommitSha) -> Result<gix::ObjectId, GitError> {
-    gix::ObjectId::from_hex(commit.as_str().as_bytes()).map_err(|e| GitError::Gix(e.to_string()))
+    gix::ObjectId::from_hex(commit.as_str().as_bytes()).map_err(gix_err)
 }
 
 fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {

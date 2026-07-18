@@ -10,9 +10,7 @@ use std::path::PathBuf;
 
 use backhopper_driver::mock::{Fallthrough, MockBackend, MockMatcher, MockResponse};
 use backhopper_driver::types::{CommitSha, SeriesName};
-use backhopper_driver::{
-    AggregateVerdict, Backhopper, ErrorKind, ExplainFormat, RawOutcome, StdinPayload, Verb,
-};
+use backhopper_driver::{AggregateVerdict, Backhopper, ErrorKind, RawOutcome, StdinPayload, Verb};
 use serde_json::{Value, json};
 
 // Batch is repo-operating, so its driver needs a source repo dir.
@@ -112,7 +110,7 @@ fn batch_builder_assembles_series_explain_target_and_stdin_commits() {
         .series(series("rabbitmq-4.2"))
         .target_repo_dir_path("/tmp/target")
         .target_ref("v4.2.x")
-        .explain(ExplainFormat::Text)
+        .explain(true)
         .commits([commit_sha(&"a".repeat(40)), commit_sha(&"b".repeat(40))])
         .run()
         .expect("batch payload parses");

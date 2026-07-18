@@ -26,9 +26,8 @@ pub use model::apply::{ApplyForecast, ApplySummary, PathApplyOutcome, Unassessed
 pub use model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 pub use model::findings::TargetFindings;
 pub use model::names::{
-    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FieldName,
-    FunctionName, Mfa, ModuleName, ProjectName, RecordName, RelativePath, SeriesName, TagGlob,
-    TagName, TypeName,
+    ApplicationName, Arity, BehaviourName, CommitSha, FieldName, FunctionName, Mfa, ModuleName,
+    ProjectName, RecordName, RelativePath, SeriesName, TagGlob, TagName, TypeName,
 };
 pub use model::pin::{Pin, PinSelect, PinSpec};
 pub use model::pr_commit::{PrCommit, PrCommitKind};

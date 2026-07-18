@@ -6,7 +6,7 @@
 //! `backhopper_driver::types`, and the wire-recorded `self_projects`
 //! drives `clearance_self_inferred` and `tracked_refs`.
 
-use backhopper_driver::SeriesEvaluation;
+use backhopper_driver::CheckPayload;
 use backhopper_driver::types::{
     BatchPayload, BumpStatus, BumpSummary, ClearanceFacts, Diagnostics, PatchFacts, PinBump,
     ReasonHistogram, RoundClearance, SeriesSummary, SourceDelta,
@@ -83,7 +83,7 @@ fn self_inferred_is_none_for_a_pre_field_producer() {
     assert!(payload.clearance_self_inferred().is_none());
 }
 
-fn series_evaluation(self_projects: serde_json::Value) -> SeriesEvaluation {
+fn series_evaluation(self_projects: serde_json::Value) -> CheckPayload {
     let mut value = json!({
         "queried_against": { "kind": "series", "name": "v4.1.x", "pins": [] },
         "results": {
@@ -109,7 +109,7 @@ fn series_evaluation(self_projects: serde_json::Value) -> SeriesEvaluation {
             .unwrap()
             .insert("self_projects".into(), self_projects);
     }
-    serde_json::from_value(value).expect("SeriesEvaluation deserializes")
+    serde_json::from_value(value).expect("CheckPayload deserializes")
 }
 
 #[test]

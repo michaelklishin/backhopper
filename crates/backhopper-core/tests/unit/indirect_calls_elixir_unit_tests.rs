@@ -13,7 +13,8 @@ use std::str::FromStr;
 use backhopper_core::compat::added_lines::AddedLinesSubject;
 use backhopper_core::compat::indirect_calls::{IndirectExtraction, extract_indirect_calls_elixir};
 use backhopper_core::compat::qualified_call_resolve::{
-    IndirectCallAnalysis, PatchProvided, analyse_indirect_elixir_calls, patch_provided,
+    IndirectCallAnalysis, PatchProvided, ReferenceCaches, ReferenceContext,
+    analyse_indirect_elixir_calls, patch_provided,
 };
 use backhopper_core::model::names::{ModuleName, RelativePath};
 use backhopper_core::model::verdict::{IndirectCallForm, Reason};
@@ -236,7 +237,15 @@ fn analyse(
     let covered: BTreeSet<ModuleName> = covered.iter().map(|s| module(s)).collect();
     let resolve = |m: &ModuleName| module_to_path.get(m).cloned();
     let read = |p: &RelativePath| path_to_src.get(p.as_str()).cloned();
-    analyse_indirect_elixir_calls(&subjects, &covered, patch_added, &resolve, &read)
+    let ctx = ReferenceContext {
+        covered_modules: &covered,
+        patch_added,
+        resolve_module_path: &resolve,
+        read_target: &read,
+        read_source: None,
+    };
+    let mut caches = ReferenceCaches::default();
+    analyse_indirect_elixir_calls(&subjects, &ctx, &mut caches)
 }
 
 fn indirect_flags(reasons: &[Reason]) -> Vec<(String, String, u8, IndirectCallForm, u32)> {

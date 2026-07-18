@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use proptest::collection::vec;
 use proptest::proptest;
 
-use backhopper_core::compat::patch::{EvaluationFiles, Patch};
+use backhopper_core::compat::patch::{Analyzed, EvaluationContext, EvaluationFiles, Patch};
+use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{Snapshot, state};
@@ -22,6 +23,15 @@ fn pin() -> Pin {
         ProjectName::new("demo").unwrap(),
         TagName::new("v1.0.0").unwrap(),
     )
+}
+
+fn evaluate(patch: Patch<Analyzed>, files: EvaluationFiles) {
+    let snap = snapshot();
+    let scope = PinScope::from_snapshot(pin().project.clone(), &snap, Vec::new());
+    let ctx = EvaluationContext::for_pin(pin(), snap)
+        .with_scope(scope)
+        .with_files(files);
+    let _ = patch.evaluate_series(&[ctx]);
 }
 
 proptest! {
@@ -42,10 +52,7 @@ diff --git a/src/x.erl b/src/x.erl
 ";
         let files = EvaluationFiles::new()
             .with(PathBuf::from("src/x.erl"), Some(target.into_bytes()));
-        let _ = Patch::parse(patch.as_bytes())
-            .unwrap()
-            .analyze()
-            .against_series_with_files(&[(pin(), snapshot(), files)]);
+        evaluate(Patch::parse(patch.as_bytes()).unwrap().analyze(), files);
     }
 
     #[test]
@@ -68,9 +75,7 @@ diff --git a/src/x.erl b/src/x.erl
         let files = EvaluationFiles::new()
             .with(PathBuf::from("src/x.erl"), Some(target.into_bytes()));
         if let Ok(p) = Patch::parse(patch.as_bytes()) {
-            let _ = p
-                .analyze()
-                .against_series_with_files(&[(pin(), snapshot(), files)]);
+            evaluate(p.analyze(), files);
         }
     }
 }

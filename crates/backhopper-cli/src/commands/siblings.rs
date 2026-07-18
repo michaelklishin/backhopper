@@ -11,12 +11,12 @@
 //! patch-id equivalence against the target window), then score and
 //! rank. Nothing here mutates a repository.
 
+use crate::outcome::CommandOutcome;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use bel7_cli::PARTIAL_SUCCESS_I32;
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use time::OffsetDateTime;
@@ -38,7 +38,7 @@ use backhopper_git::{
 use crate::cli::{Formatter, GlobalArgs, SiblingsCmd, SiblingsDoctorArgs};
 use crate::commands::context::{load_config, snapshot_dir};
 use crate::commands::self_snapshot::effective_self_repo;
-use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
+use crate::commands::sha_prefix::expand_prefix_enriched;
 use crate::commands::summary::SummaryFormatter;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, emit_jsonl, render_with_exit};
@@ -46,13 +46,13 @@ use crate::tables::styled_table;
 
 const CACHE_DIR_NAME: &str = ".siblings_doctor_cache";
 
-pub fn handle(args: &GlobalArgs, cmd: SiblingsCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: SiblingsCmd) -> CliResult<CommandOutcome> {
     match cmd {
         SiblingsCmd::Doctor(doctor_args) => run_doctor(args, &doctor_args),
     }
 }
 
-fn run_doctor(global: &GlobalArgs, args: &SiblingsDoctorArgs) -> CliResult<i32> {
+fn run_doctor(global: &GlobalArgs, args: &SiblingsDoctorArgs) -> CliResult<CommandOutcome> {
     let cfg = load_config(global)?;
     let series = cfg.series_by_name(&args.series)?;
     let target = resolve_target(series, args)?;
@@ -106,11 +106,7 @@ fn run_doctor(global: &GlobalArgs, args: &SiblingsDoctorArgs) -> CliResult<i32> 
         walked_count: computed.walked_count,
         candidates,
     };
-    let exit = if report.candidates.is_empty() {
-        0
-    } else {
-        PARTIAL_SUCCESS_I32
-    };
+    let exit = CommandOutcome::from_success(report.candidates.is_empty());
     emit_report(global, args, &repo, &report, exit)
 }
 
@@ -164,8 +160,7 @@ fn resolve_since(
                 "--since {raw:?} is neither a tag in this repository nor a commit SHA prefix"
             ))
         })?;
-        let sha =
-            expand_prefix_with(repo, &prefix).map_err(|e| enrich_with_repo_path(e, repo.path()))?;
+        let sha = expand_prefix_enriched(repo, &prefix, repo.path())?;
         return Ok(SinceDerivation::ExplicitSha { sha });
     }
 
@@ -541,8 +536,8 @@ fn emit_report(
     args: &SiblingsDoctorArgs,
     repo: &GitRepo,
     report: &SiblingDoctorReport,
-    exit: i32,
-) -> CliResult<i32> {
+    exit: CommandOutcome,
+) -> CliResult<CommandOutcome> {
     if let Some(fmt) = SummaryFormatter::from_cli(global.formatter) {
         let mut stdout = io::stdout().lock();
         match fmt {

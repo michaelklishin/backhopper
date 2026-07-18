@@ -10,6 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use backhopper_core::ApplicationName;
+pub use backhopper_core::app_src::SKIP_DIRS;
 use backhopper_xref::{Functions, ProjectLayout, Xref, XrefBuilder};
 
 use crate::cli::TreeSource;
@@ -32,16 +33,6 @@ pub fn build_xref(tree: &TreeSource) -> CliResult<Xref<Functions>> {
     let xref = b.build().map_err(|e| CliError::Other(e.to_string()))?;
     Ok(xref)
 }
-
-pub const SKIP_DIRS: &[&str] = &[
-    ".git",
-    "_build",
-    "_rel",
-    "logs",
-    "node_modules",
-    ".direnv",
-    "target",
-];
 
 pub fn collect_erlang_files(root: &Path) -> io::Result<Vec<(PathBuf, Vec<u8>)>> {
     let mut out = Vec::new();

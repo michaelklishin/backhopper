@@ -6,8 +6,8 @@ use std::str::FromStr;
 
 use backhopper_core::errors::NameError;
 use backhopper_core::model::names::{
-    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, FunctionName,
-    Mfa, ModuleName, ProjectName, SeriesName, TagName,
+    ApplicationName, Arity, BehaviourName, CommitSha, FunctionName, Mfa, ModuleName, ProjectName,
+    SeriesName, TagName,
 };
 
 #[test]
@@ -148,18 +148,6 @@ fn application_name_rejects_uppercase_and_dashes() {
 fn behaviour_name_round_trips() {
     let b = BehaviourName::from_str("gen_server").unwrap();
     assert_eq!(b.to_string(), "gen_server");
-}
-
-#[test]
-fn attribute_name_accepts_erlang_atoms() {
-    assert!(AttributeName::new("vsn".to_owned()).is_ok());
-    assert!(AttributeName::new("compile".to_owned()).is_ok());
-}
-
-#[test]
-fn callback_name_round_trips() {
-    let c = CallbackName::from_str("handle_call").unwrap();
-    assert_eq!(c.to_string(), "handle_call");
 }
 
 #[test]

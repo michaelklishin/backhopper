@@ -544,6 +544,8 @@ impl<S> Snapshot<S> {
 }
 
 impl Snapshot<state::Canonical> {
+    /// True when `module` exports `function/arity`. O(log n): canonical
+    /// snapshots keep `modules` and each module's `exports` sorted.
     pub fn lookup_export(
         &self,
         module: &ModuleName,

@@ -29,12 +29,22 @@ pub fn expand_prefix_with(repo: &GitRepo, prefix: &CommitShaPrefix) -> CliResult
     Ok(resolved.commit)
 }
 
+/// Expand a prefix against an already-open repo. If the commit is not
+/// found, the error names `repo_path` and suggests running `git fetch`.
+pub fn expand_prefix_enriched(
+    repo: &GitRepo,
+    prefix: &CommitShaPrefix,
+    repo_path: &Path,
+) -> CliResult<CommitSha> {
+    expand_prefix_with(repo, prefix).map_err(|e| enrich_with_repo_path(e, repo_path))
+}
+
 pub fn resolve_with_kind(repo_dir_path: &Path, prefix: &CommitShaPrefix) -> CliResult<ResolvedSha> {
     let g = GitRepo::open(repo_dir_path.to_path_buf())?;
     Ok(g.resolve_sha_prefix(prefix)?)
 }
 
-pub(crate) fn enrich_with_repo_path(err: CliError, repo: &Path) -> CliError {
+fn enrich_with_repo_path(err: CliError, repo: &Path) -> CliError {
     match err {
         CliError::Git(GitError::CommitNotFound(prefix)) => CliError::InvalidInput(format!(
             "commit {prefix} not found in repository {}: did you forget to `git fetch`?",

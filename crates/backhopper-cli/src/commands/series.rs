@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Write as _};
 use std::fs;
@@ -205,7 +206,7 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
     Ok(())
 }
 
-pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<CommandOutcome> {
     // `pins` is a pure repo read: it must work without a config.
     if let SeriesCmd::Pins(pins_args) = &cmd {
         return pins(args, pins_args);
@@ -220,10 +221,10 @@ pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<i32> {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-pub struct DepPinPayload {
-    pub name: String,
-    pub source: String,
-    pub version: String,
+struct DepPinPayload {
+    name: String,
+    source: String,
+    version: String,
 }
 
 impl DepPinPayload {
@@ -243,12 +244,12 @@ struct BranchPins {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-pub struct DivergedPin {
-    pub name: String,
-    pub branch_source: String,
-    pub branch_version: String,
-    pub against_source: String,
-    pub against_version: String,
+struct DivergedPin {
+    name: String,
+    branch_source: String,
+    branch_version: String,
+    against_source: String,
+    against_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -260,7 +261,7 @@ struct PinsDivergence {
     only_on_against: Vec<DepPinPayload>,
 }
 
-fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<i32> {
+fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<CommandOutcome> {
     let repo = GitRepo::open(pins_args.repo_dir_path.clone())?;
     let branch_pins = read_sorted_pins(&repo, &pins_args.branch)?;
     let Some(against) = &pins_args.against_branch else {
@@ -275,7 +276,7 @@ fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<i32> {
             }
             Ok(())
         })?;
-        return Ok(0);
+        return Ok(CommandOutcome::Success);
     };
     let against_pins = read_sorted_pins(&repo, against)?;
     let payload = divergence(&pins_args.branch, against, &branch_pins, &against_pins);
@@ -317,7 +318,7 @@ fn pins(args: &GlobalArgs, pins_args: &PinsArgs) -> CliResult<i32> {
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn read_sorted_pins(repo: &GitRepo, branch: &str) -> CliResult<Vec<DepPinPayload>> {
@@ -375,7 +376,7 @@ fn divergence(
     }
 }
 
-fn list(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
+fn list(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
     let entries: Vec<_> = cfg
         .series
         .iter()
@@ -391,10 +392,10 @@ fn list(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
-fn sync_dispatch(args: &GlobalArgs, cfg: &Config, cmd: SyncCmd) -> CliResult<i32> {
+fn sync_dispatch(args: &GlobalArgs, cfg: &Config, cmd: SyncCmd) -> CliResult<CommandOutcome> {
     match cmd {
         SyncCmd::Preview(preview) => sync_preview(args, cfg, preview),
         SyncCmd::Diff {
@@ -473,7 +474,11 @@ pub fn resolve_branch(repo: &GitRepo, branch: &str) -> Result<CommitSha, String>
     Err(format!("could not resolve branch or rev {branch:?}"))
 }
 
-fn sync_preview(args: &GlobalArgs, cfg: &Config, preview: PreviewArgs) -> CliResult<i32> {
+fn sync_preview(
+    args: &GlobalArgs,
+    cfg: &Config,
+    preview: PreviewArgs,
+) -> CliResult<CommandOutcome> {
     let targets = preview_targets(&preview)?;
     let multi_branch = targets.len() > 1;
     let repo = GitRepo::open(&preview.repo_dir_path)?;
@@ -504,7 +509,7 @@ fn sync_preview(args: &GlobalArgs, cfg: &Config, preview: PreviewArgs) -> CliRes
     render(&ctx, &output, |w| {
         render_preview_text(&output, w).map_err(CliError::from)
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn preview_targets(preview: &PreviewArgs) -> CliResult<Vec<String>> {
@@ -551,7 +556,7 @@ pub fn render_preview_text<W: Write + ?Sized>(output: &PreviewOutput, w: &mut W)
     Ok(())
 }
 
-fn sync_replace(args: &GlobalArgs, cfg: &Config, common: SyncCommon) -> CliResult<i32> {
+fn sync_replace(args: &GlobalArgs, cfg: &Config, common: SyncCommon) -> CliResult<CommandOutcome> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
     let existing = read_config_file(path)?;
@@ -568,7 +573,7 @@ fn sync_replace(args: &GlobalArgs, cfg: &Config, common: SyncCommon) -> CliResul
         writeln!(w, "wrote {}", path.display())?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn sync_merge(
@@ -576,7 +581,7 @@ fn sync_merge(
     cfg: &Config,
     common: SyncCommon,
     overwrite_existing: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
     let existing = read_config_file(path)?;
@@ -592,7 +597,7 @@ fn sync_merge(
     render(&ctx, &report, |w| {
         render_merge_report_text(&report, w).map_err(CliError::from)
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn sync_diff(
@@ -601,7 +606,7 @@ fn sync_diff(
     common: SyncCommon,
     replace: bool,
     overwrite_existing: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let payload = build_payload(cfg, &common)?;
     let path = &cfg.config_path;
     let existing = read_config_file(path)?;
@@ -625,7 +630,7 @@ fn sync_diff(
     render(&ctx, &report, |w| {
         render_diff_report_text(&report, w).map_err(CliError::from)
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn read_config_file(path: &Path) -> CliResult<String> {
@@ -991,7 +996,7 @@ fn pin_payload_for(pin: &DepPin, project: &Project) -> Result<PinPayload, String
     })
 }
 
-fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<i32> {
+fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<CommandOutcome> {
     let s = cfg.series_by_name(&series)?;
     let payload = SeriesShow {
         name: s.name.to_string(),
@@ -1005,5 +1010,5 @@ fn show(args: &GlobalArgs, cfg: &Config, series: SeriesName) -> CliResult<i32> {
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }

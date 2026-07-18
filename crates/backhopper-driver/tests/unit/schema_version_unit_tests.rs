@@ -17,16 +17,6 @@ fn display_writes_the_integer() {
 }
 
 #[test]
-fn saturating_next_caps_at_u32_max() {
-    let max = SchemaVersion::new(u32::MAX);
-    assert_eq!(max.saturating_next(), max);
-    assert_eq!(
-        SchemaVersion::new(5).saturating_next(),
-        SchemaVersion::new(6)
-    );
-}
-
-#[test]
 fn range_contains_bounds_inclusive() {
     let r = SchemaVersionRange {
         min: SchemaVersion::new(1),
@@ -40,8 +30,11 @@ fn range_contains_bounds_inclusive() {
 }
 
 #[test]
-fn singleton_is_a_one_element_range() {
-    let r = SchemaVersionRange::singleton(SchemaVersion::new(2));
+fn one_element_range_contains_only_its_value() {
+    let r = SchemaVersionRange {
+        min: SchemaVersion::new(2),
+        max: SchemaVersion::new(2),
+    };
     assert!(r.contains(SchemaVersion::new(2)));
     assert!(!r.contains(SchemaVersion::new(1)));
 }
@@ -75,6 +68,9 @@ fn supported_schema_rejects_the_next_version_and_beyond() {
 
 #[test]
 fn range_display_uses_inclusive_form() {
-    let r = SchemaVersionRange::singleton(SchemaVersion::new(2));
+    let r = SchemaVersionRange {
+        min: SchemaVersion::new(2),
+        max: SchemaVersion::new(2),
+    };
     assert_eq!(format!("{r}"), "2..=2");
 }

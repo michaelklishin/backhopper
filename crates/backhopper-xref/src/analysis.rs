@@ -10,17 +10,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
-use backhopper_core::{ApplicationName, BehaviourName, Mfa, ModuleName};
+use backhopper_core::{BehaviourName, Mfa, ModuleName};
 use backhopper_xref_graph::{
     CallKind, Deprecation, FunctionRef, FunctionSig, Functions, Loc, Mode, PathId, Position,
     Relation, Vertex, VertexSet,
 };
 
 use crate::result::{
-    AppDependencies, CalleeEntry, CalleesOf, CallerEntry, CallersOf, DeprecatedCall,
-    DeprecatedFunctionCalls, ExportsNotUsed, LocalsNotUsed, ModuleCallers, ModuleDependencies,
-    NonConformance, UndefinedFunctionCall, UndefinedFunctionCalls, UnresolvedCalls, UnusedExport,
-    UnusedLocal,
+    CalleeEntry, CalleesOf, CallerEntry, CallersOf, DeprecatedCall, DeprecatedFunctionCalls,
+    ExportsNotUsed, LocalsNotUsed, ModuleCallers, ModuleDependencies, UndefinedFunctionCall,
+    UndefinedFunctionCalls, UnresolvedCalls, UnusedExport, UnusedLocal,
 };
 use crate::xref::Xref;
 
@@ -59,21 +58,6 @@ impl Xref<Functions> {
             })
             .collect();
         UndefinedFunctionCalls { entries }
-    }
-
-    /// Distinct undefined MFAs (no call-site information).
-    pub fn undefined_functions(&self) -> BTreeSet<Mfa> {
-        let defined = self.graph().defined_functions();
-        let builtins = self.graph().builtins();
-        let mut out = BTreeSet::new();
-        for (_, tgt) in self.graph().external_calls().iter() {
-            if !defined.contains(tgt) && !builtins.contains(tgt) {
-                if let Vertex::Function(mfa) = tgt {
-                    out.insert(mfa.clone());
-                }
-            }
-        }
-        out
     }
 
     /// Exports that no other module calls.
@@ -255,20 +239,6 @@ impl Xref<Functions> {
             entries: self.graph().unresolved_calls().iter().cloned().collect(),
         }
     }
-
-    /// Functions that appear in their own transitive call set.
-    pub fn recursive_functions(&self) -> BTreeSet<Mfa> {
-        let closure = self.all_calls_closure();
-        let mut out = BTreeSet::new();
-        for (s, t) in closure.iter() {
-            if s == t {
-                if let Vertex::Function(mfa) = s {
-                    out.insert(mfa.clone());
-                }
-            }
-        }
-        out
-    }
 }
 
 impl<M: Mode> Xref<M> {
@@ -303,32 +273,6 @@ impl<M: Mode> Xref<M> {
             .collect()
     }
 
-    pub fn nonconformant_implementers(&self) -> Vec<NonConformance> {
-        let mut out = Vec::new();
-        for (module, summary) in self.graph().modules() {
-            for b in &summary.behaviours {
-                let beh_module = ModuleName::new(b.as_str().to_owned()).ok();
-                let Some(beh) = beh_module.and_then(|m| self.graph().module(&m)) else {
-                    continue;
-                };
-                let mut missing = BTreeSet::new();
-                for required in &beh.callbacks_required {
-                    if !summary.exports.contains(required) {
-                        missing.insert(required.clone());
-                    }
-                }
-                if !missing.is_empty() {
-                    out.push(NonConformance {
-                        implementer: module.clone(),
-                        behaviour: b.clone(),
-                        missing,
-                    });
-                }
-            }
-        }
-        out
-    }
-
     /// Strongly connected components of the module call graph that contain
     /// more than one module.
     pub fn module_cycles(&self) -> Vec<Vec<ModuleName>> {
@@ -360,21 +304,5 @@ impl<M: Mode> Xref<M> {
             out.push(cycle);
         }
         out
-    }
-
-    /// Applications a module's edges reach.
-    pub fn application_call(&self, source: &ApplicationName) -> AppDependencies {
-        let set: VertexSet = iter::once(Vertex::Application(source.clone())).collect();
-        let entries: BTreeSet<ApplicationName> = self
-            .graph()
-            .application_edges()
-            .image(&set)
-            .iter()
-            .filter_map(|v| v.as_application().cloned())
-            .collect();
-        AppDependencies {
-            source: source.clone(),
-            entries,
-        }
     }
 }

@@ -35,7 +35,7 @@ fn aten_cluster_resolves_internal_edge_and_reports_otp_calls() {
     .unwrap();
     let x = b.build().unwrap();
 
-    assert_eq!(x.graph().module_count(), 2);
+    assert_eq!(x.graph().modules().count(), 2);
 
     // aten:register/1 calls aten_detector:register/1, a real internal edge.
     let deps = x.module_call(&mname("aten"));

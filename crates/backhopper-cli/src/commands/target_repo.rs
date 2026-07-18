@@ -23,8 +23,8 @@ use backhopper_core::compat::exported_type_resolve::analyse_exported_types;
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::compat::qualified_call_resolve::{
-    IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceContext, analyse_indirect_elixir_calls,
-    analyse_qualified_calls, patch_provided,
+    IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceCaches, ReferenceContext,
+    analyse_indirect_elixir_calls, analyse_qualified_calls, patch_provided,
 };
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
@@ -338,330 +338,26 @@ fn collect_define_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, Stri
     out
 }
 
-/// Resolve `?MACRO` and `#record` uses the patch adds against the
-/// target tree, reading target blobs through `repo` at the indexed
-/// commit (the path as-is, then any configured translation).
-pub fn collect_define_symbol_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
-    let subjects_text = collect_define_subject_text(files);
-    if subjects_text.is_empty() {
-        return Vec::new();
-    }
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    analyse_define_symbols(&subjects, &ctx.index, &read_target)
-}
-
-/// Resolve `-export_type` entries the patch adds against the type
-/// declarations the target module reaches. `.erl` files only.
-pub fn collect_exported_type_findings(files: &[PatchedFile], ctx: &TargetContext) -> Vec<Reason> {
-    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
+/// `.erl`-only subject text: the axes keyed on a module's own function
+/// set (a `.hrl` defines none).
+fn erl_subject_text(files: &[PatchedFile]) -> Vec<(RelativePath, String, Vec<u32>)> {
+    collect_define_subject_text(files)
         .into_iter()
         .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
-        .collect();
-    if subjects_text.is_empty() {
-        return Vec::new();
-    }
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
+        .collect()
+}
+
+/// Borrow the subject-text tuples as the `AddedLinesSubject` shape the
+/// resolvers take.
+fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedLinesSubject<'_>> {
+    subjects_text
         .iter()
         .map(|(p, t, lm)| AddedLinesSubject {
             source_path: p,
             added_text: t,
             line_map: lm,
         })
-        .collect();
-    analyse_exported_types(&subjects, &ctx.index, &read_target)
-}
-
-/// Resolve unqualified calls the patch adds against the target
-/// module's function set, and compare resolved calls' `-spec` return
-/// shapes between the checkouts. A call the patch imports beside its
-/// first use is resolved against the imported module on the target
-/// tree, so `covered_modules` and the patch's cross-file additions
-/// feed the same gate the qualified axis uses. `.erl` files only: a
-/// `.hrl` defines no function set of its own. `source_repo_dir` is the
-/// live source checkout; `None` withholds every shape check (counted,
-/// not silent).
-pub fn collect_local_call_findings(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-    covered_modules: &BTreeSet<ModuleName>,
-    source_repo_dir: Option<&Path>,
-) -> LocalCallAnalysis {
-    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
-        .into_iter()
-        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
-        .collect();
-    if subjects_text.is_empty() {
-        return LocalCallAnalysis::default();
-    }
-    let per_file: Vec<(ModuleName, &str)> = subjects_text
-        .iter()
-        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
-        .collect();
-    let patch_added = patch_provided(&per_file);
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return LocalCallAnalysis::default();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
-        let path = ctx.index.module_erl_path(m)?;
-        RelativePath::new(path.to_str()?.to_owned()).ok()
-    };
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let read_source_fn = source_repo_dir
-        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
-    let read_source = read_source_fn
-        .as_ref()
-        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    let reference_ctx = ReferenceContext {
-        covered_modules,
-        patch_added: &patch_added,
-        resolve_module_path: &resolve_module_path,
-        read_target: &read_target,
-        read_source,
-    };
-    analyse_local_calls(&subjects, &reference_ctx)
-}
-
-/// Resolve qualified `m:f/a` calls the patch adds against the called
-/// module's exports on the target tree, and compare resolved calls'
-/// `-spec` return shapes between the checkouts. `.erl` files only.
-/// `covered_modules` is the union of every pin snapshot's modules: a
-/// call into one of those defers to the snapshot axis.
-/// `source_repo_dir` is the live source checkout; `None` withholds
-/// every shape check (counted, not silent).
-pub fn collect_qualified_call_findings(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-    covered_modules: &BTreeSet<ModuleName>,
-    source_repo_dir: Option<&Path>,
-) -> QualifiedCallAnalysis {
-    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
-        .into_iter()
-        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
-        .collect();
-    if subjects_text.is_empty() {
-        return QualifiedCallAnalysis::default();
-    }
-    let per_file: Vec<(ModuleName, &str)> = subjects_text
-        .iter()
-        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
-        .collect();
-    let patch_added = patch_provided(&per_file);
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return QualifiedCallAnalysis::default();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
-        let path = ctx.index.module_erl_path(m)?;
-        RelativePath::new(path.to_str()?.to_owned()).ok()
-    };
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let read_source_fn = source_repo_dir
-        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
-    let read_source = read_source_fn
-        .as_ref()
-        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    analyse_qualified_calls(
-        &subjects,
-        covered_modules,
-        &patch_added,
-        &resolve_module_path,
-        &read_target,
-        read_source,
-    )
-}
-
-/// Resolve the `m:f/a` an Elixir call carries to a recognized rpc form
-/// against the Erlang target tree. `.ex` and `.exs` files only; the
-/// referenced module is Erlang, so it resolves through the same
-/// module-path lookup and export check the qualified-call axis uses.
-/// A function the same commit adds in an `.erl` file is not flagged, so
-/// a combined server-and-CLI backport does not false-positive.
-pub fn collect_indirect_elixir_findings(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-    covered_modules: &BTreeSet<ModuleName>,
-) -> IndirectCallAnalysis {
-    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = files
-        .iter()
-        .filter(|f| !f.binary)
-        .filter_map(|f| {
-            let new_path = f.new_path.as_ref()?;
-            if new_path == Path::new("/dev/null") || !is_elixir(new_path) {
-                return None;
-            }
-            let path = new_path.to_str().and_then(|s| RelativePath::new(s).ok())?;
-            let (added, line_map) = added_lines_with_offsets(&f.hunks);
-            (!added.is_empty()).then_some((path, added, line_map))
-        })
-        .collect();
-    if subjects_text.is_empty() {
-        return IndirectCallAnalysis::default();
-    }
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return IndirectCallAnalysis::default();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let erl_subjects = collect_define_subject_text(files);
-    let erl_per_file: Vec<(ModuleName, &str)> = erl_subjects
-        .iter()
-        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
-        .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
-        .collect();
-    let patch_added = patch_provided(&erl_per_file);
-    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
-        let path = ctx.index.module_erl_path(m)?;
-        RelativePath::new(path.to_str()?.to_owned()).ok()
-    };
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    analyse_indirect_elixir_calls(
-        &subjects,
-        covered_modules,
-        &patch_added,
-        &resolve_module_path,
-        &read_target,
-    )
-}
-
-/// The source side reads the live checkout through the filesystem: no
-/// single source commit exists for patch, range, and PR inputs.
-fn read_source_text(repo_dir: &Path, path: &RelativePath) -> Option<String> {
-    fs::read_to_string(repo_dir.join(path.as_str())).ok()
-}
-
-/// Compare a declared behaviour's `-callback` surface between the two
-/// trees for behaviours the patch's added lines declare. `.erl` files
-/// only.
-pub fn collect_behaviour_callback_findings(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-    covered_modules: &BTreeSet<ModuleName>,
-    source_repo_dir: Option<&Path>,
-) -> Vec<Reason> {
-    let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = collect_define_subject_text(files)
-        .into_iter()
-        .filter(|(p, _, _)| p.as_str().ends_with(".erl"))
-        .collect();
-    if subjects_text.is_empty() {
-        return Vec::new();
-    }
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return Vec::new();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let resolve_module_path = |m: &ModuleName| -> Option<RelativePath> {
-        let path = ctx.index.module_erl_path(m)?;
-        RelativePath::new(path.to_str()?.to_owned()).ok()
-    };
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let read_source_fn = source_repo_dir
-        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
-    let read_source = read_source_fn
-        .as_ref()
-        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    analyse_behaviour_callbacks(
-        &subjects,
-        covered_modules,
-        &resolve_module_path,
-        &read_target,
-        read_source,
-    )
-}
-
-/// Compare same-file `-define` values for macros the patch uses
-/// between the two trees. `.erl` and `.hrl` alike: a define lives in
-/// either.
-pub fn collect_macro_value_findings(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-    source_repo_dir: Option<&Path>,
-) -> MacroValueAnalysis {
-    let subjects_text = collect_define_subject_text(files);
-    if subjects_text.is_empty() {
-        return MacroValueAnalysis::default();
-    }
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return MacroValueAnalysis::default();
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    let read_target = |path: &RelativePath| -> Option<String> {
-        read_target_text(&repo, &commit, &ctx.translations, path)
-    };
-    let read_source_fn = source_repo_dir
-        .map(|dir| move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) });
-    let read_source = read_source_fn
-        .as_ref()
-        .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-    let subjects: Vec<AddedLinesSubject<'_>> = subjects_text
-        .iter()
-        .map(|(p, t, lm)| AddedLinesSubject {
-            source_path: p,
-            added_text: t,
-            line_map: lm,
-        })
-        .collect();
-    analyse_macro_values(&subjects, &read_target, read_source)
+        .collect()
 }
 
 /// The Erlang module a `.erl` path defines, by basename.
@@ -670,70 +366,295 @@ fn module_of_erl_path(path: &RelativePath) -> Option<ModuleName> {
     ModuleName::from_str(stem).ok()
 }
 
+/// One target-tree resolution context shared by every symbol axis.
+/// Opens the target repo once and lends the `read_target` and
+/// `resolve_module_path` closures each axis would otherwise rebuild,
+/// so a batch row opens the git directory once instead of per axis.
+pub(crate) struct TargetResolveSession<'a> {
+    repo: GitRepo,
+    commit: CommitSha,
+    ctx: &'a TargetContext,
+    source_repo_dir: Option<&'a Path>,
+}
+
+impl<'a> TargetResolveSession<'a> {
+    /// `None` when the target repo cannot be opened, in which case
+    /// every axis falls back to its empty default.
+    pub(crate) fn open(ctx: &'a TargetContext, source_repo_dir: Option<&'a Path>) -> Option<Self> {
+        let repo = GitRepo::open(ctx.index.target_repo().to_path_buf()).ok()?;
+        let commit = ctx.index.resolved_commit().clone();
+        Some(Self {
+            repo,
+            commit,
+            ctx,
+            source_repo_dir,
+        })
+    }
+
+    fn read_target_text(&self, path: &RelativePath) -> Option<String> {
+        read_target_text(&self.repo, &self.commit, &self.ctx.translations, path)
+    }
+
+    fn resolve_module_path(&self, m: &ModuleName) -> Option<RelativePath> {
+        let path = self.ctx.index.module_erl_path(m)?;
+        RelativePath::new(path.to_str()?.to_owned()).ok()
+    }
+
+    /// Resolve `?MACRO` and `#record` uses the patch adds against the
+    /// target tree.
+    pub(crate) fn define_symbol_findings(&self, files: &[PatchedFile]) -> Vec<Reason> {
+        let subjects_text = collect_define_subject_text(files);
+        if subjects_text.is_empty() {
+            return Vec::new();
+        }
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let subjects = to_subjects(&subjects_text);
+        analyse_define_symbols(&subjects, &self.ctx.index, &read_target)
+    }
+
+    /// Resolve `-export_type` entries the patch adds against the type
+    /// declarations the target module reaches. `.erl` files only.
+    pub(crate) fn exported_type_findings(&self, files: &[PatchedFile]) -> Vec<Reason> {
+        let subjects_text = erl_subject_text(files);
+        if subjects_text.is_empty() {
+            return Vec::new();
+        }
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let subjects = to_subjects(&subjects_text);
+        analyse_exported_types(&subjects, &self.ctx.index, &read_target)
+    }
+
+    /// Resolve unqualified calls the patch adds against the target
+    /// module's function set, and compare resolved calls' `-spec`
+    /// return shapes between the checkouts. `.erl` files only.
+    pub(crate) fn local_call_findings(
+        &self,
+        files: &[PatchedFile],
+        covered_modules: &BTreeSet<ModuleName>,
+    ) -> LocalCallAnalysis {
+        let subjects_text = erl_subject_text(files);
+        if subjects_text.is_empty() {
+            return LocalCallAnalysis::default();
+        }
+        let per_file: Vec<(ModuleName, &str)> = subjects_text
+            .iter()
+            .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+            .collect();
+        let patch_added = patch_provided(&per_file);
+        let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let read_source_fn = self.source_repo_dir.map(|dir| {
+            move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) }
+        });
+        let read_source = read_source_fn
+            .as_ref()
+            .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+        let subjects = to_subjects(&subjects_text);
+        let reference_ctx = ReferenceContext {
+            covered_modules,
+            patch_added: &patch_added,
+            resolve_module_path: &resolve_module_path,
+            read_target: &read_target,
+            read_source,
+        };
+        analyse_local_calls(&subjects, &reference_ctx)
+    }
+
+    /// Resolve qualified `m:f/a` calls the patch adds against the
+    /// called module's exports on the target tree, and compare resolved
+    /// calls' `-spec` return shapes between the checkouts. `.erl` files
+    /// only.
+    pub(crate) fn qualified_call_findings(
+        &self,
+        files: &[PatchedFile],
+        covered_modules: &BTreeSet<ModuleName>,
+    ) -> QualifiedCallAnalysis {
+        let subjects_text = erl_subject_text(files);
+        if subjects_text.is_empty() {
+            return QualifiedCallAnalysis::default();
+        }
+        let per_file: Vec<(ModuleName, &str)> = subjects_text
+            .iter()
+            .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+            .collect();
+        let patch_added = patch_provided(&per_file);
+        let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let read_source_fn = self.source_repo_dir.map(|dir| {
+            move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) }
+        });
+        let read_source = read_source_fn
+            .as_ref()
+            .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+        let subjects = to_subjects(&subjects_text);
+        analyse_qualified_calls(
+            &subjects,
+            covered_modules,
+            &patch_added,
+            &resolve_module_path,
+            &read_target,
+            read_source,
+        )
+    }
+
+    /// Resolve the `m:f/a` an Elixir call carries to a recognized rpc
+    /// form against the Erlang target tree. `.ex` and `.exs` files only.
+    /// A function the same commit adds in an `.erl` file is not flagged.
+    pub(crate) fn indirect_elixir_findings(
+        &self,
+        files: &[PatchedFile],
+        covered_modules: &BTreeSet<ModuleName>,
+    ) -> IndirectCallAnalysis {
+        let subjects_text: Vec<(RelativePath, String, Vec<u32>)> = files
+            .iter()
+            .filter(|f| !f.binary)
+            .filter_map(|f| {
+                let new_path = f.new_path.as_ref()?;
+                if new_path == Path::new("/dev/null") || !is_elixir(new_path) {
+                    return None;
+                }
+                let path = new_path.to_str().and_then(|s| RelativePath::new(s).ok())?;
+                let (added, line_map) = added_lines_with_offsets(&f.hunks);
+                (!added.is_empty()).then_some((path, added, line_map))
+            })
+            .collect();
+        if subjects_text.is_empty() {
+            return IndirectCallAnalysis::default();
+        }
+        let erl_subjects = erl_subject_text(files);
+        let erl_per_file: Vec<(ModuleName, &str)> = erl_subjects
+            .iter()
+            .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+            .collect();
+        let patch_added = patch_provided(&erl_per_file);
+        let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let subjects = to_subjects(&subjects_text);
+        let ctx = ReferenceContext {
+            covered_modules,
+            patch_added: &patch_added,
+            resolve_module_path: &resolve_module_path,
+            read_target: &read_target,
+            read_source: None,
+        };
+        let mut caches = ReferenceCaches::default();
+        analyse_indirect_elixir_calls(&subjects, &ctx, &mut caches)
+    }
+
+    /// Compare a declared behaviour's `-callback` surface between the
+    /// two trees for behaviours the patch's added lines declare. `.erl`
+    /// files only.
+    pub(crate) fn behaviour_callback_findings(
+        &self,
+        files: &[PatchedFile],
+        covered_modules: &BTreeSet<ModuleName>,
+    ) -> Vec<Reason> {
+        let subjects_text = erl_subject_text(files);
+        if subjects_text.is_empty() {
+            return Vec::new();
+        }
+        let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let read_source_fn = self.source_repo_dir.map(|dir| {
+            move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) }
+        });
+        let read_source = read_source_fn
+            .as_ref()
+            .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+        let subjects = to_subjects(&subjects_text);
+        analyse_behaviour_callbacks(
+            &subjects,
+            covered_modules,
+            &resolve_module_path,
+            &read_target,
+            read_source,
+        )
+    }
+
+    /// Compare same-file `-define` values for macros the patch uses
+    /// between the two trees. `.erl` and `.hrl` alike: a define lives in
+    /// either.
+    pub(crate) fn macro_value_findings(&self, files: &[PatchedFile]) -> MacroValueAnalysis {
+        let subjects_text = collect_define_subject_text(files);
+        if subjects_text.is_empty() {
+            return MacroValueAnalysis::default();
+        }
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        let read_source_fn = self.source_repo_dir.map(|dir| {
+            move |path: &RelativePath| -> Option<String> { read_source_text(dir, path) }
+        });
+        let read_source = read_source_fn
+            .as_ref()
+            .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
+        let subjects = to_subjects(&subjects_text);
+        analyse_macro_values(&subjects, &read_target, read_source)
+    }
+
+    /// Classify every touched file's hunks against the target tree.
+    /// `Missing` predicts a textual conflict, `Drifted` a clean shifted
+    /// apply. Each path also lands in the forecast: an absent path is a
+    /// `FileAbsent` conflict, a binary or non-text path is stated
+    /// unassessed, and a fully clean file is recorded rather than skipped.
+    pub(crate) fn target_apply_analysis(&self, files: &[PatchedFile]) -> TargetApplyAnalysis {
+        let mut analysis = TargetApplyAnalysis {
+            reasons: Vec::new(),
+            forecast: ApplyForecast::default(),
+        };
+        for file in files {
+            let Some(path) = file.new_path.as_deref().or(file.old_path.as_deref()) else {
+                continue;
+            };
+            if path == Path::new("/dev/null") {
+                continue;
+            }
+            let Some(rel) = path
+                .to_str()
+                .and_then(|s| RelativePath::new(s.to_owned()).ok())
+            else {
+                continue;
+            };
+            if file.binary {
+                analysis.forecast.record(
+                    rel,
+                    PathApplyOutcome::Unassessed {
+                        reason: UnassessedReason::BinaryFile,
+                    },
+                );
+                continue;
+            }
+            let outcome = match read_target(&self.repo, &self.commit, &self.ctx.translations, &rel)
+            {
+                TargetRead::Text(content) => {
+                    let file_reasons = classify_hunks_against_target(path, &file.hunks, &content);
+                    let outcome = path_outcome(&file_reasons);
+                    analysis.reasons.extend(file_reasons);
+                    outcome
+                }
+                TargetRead::NotText => PathApplyOutcome::Unassessed {
+                    reason: UnassessedReason::TargetNotText,
+                },
+                TargetRead::Absent => PathApplyOutcome::Conflict {
+                    kind: ApplyConflictKind::FileAbsent,
+                },
+            };
+            analysis.forecast.record(rel, outcome);
+        }
+        analysis
+    }
+}
+
+/// The source side reads the live checkout through the filesystem: no
+/// single source commit exists for patch, range, and PR inputs.
+fn read_source_text(repo_dir: &Path, path: &RelativePath) -> Option<String> {
+    fs::read_to_string(repo_dir.join(path.as_str())).ok()
+}
+
 /// The target-tree apply pass: unchanged per-pin reasons plus the
 /// per-path forecast that survives inapplicable verdicts.
 #[derive(Debug)]
 pub struct TargetApplyAnalysis {
     pub reasons: Vec<Reason>,
     pub forecast: ApplyForecast,
-}
-
-/// Classify every touched file's hunks against the target tree.
-/// `Missing` predicts a textual conflict, `Drifted` a clean shifted
-/// apply. Each path also lands in the forecast: an absent path is a
-/// `FileAbsent` conflict, a binary or non-text path is stated
-/// unassessed, and a fully clean file is recorded rather than skipped.
-pub fn collect_target_apply_analysis(
-    files: &[PatchedFile],
-    ctx: &TargetContext,
-) -> TargetApplyAnalysis {
-    let mut analysis = TargetApplyAnalysis {
-        reasons: Vec::new(),
-        forecast: ApplyForecast::default(),
-    };
-    let Ok(repo) = GitRepo::open(ctx.index.target_repo().to_path_buf()) else {
-        return analysis;
-    };
-    let commit = ctx.index.resolved_commit().clone();
-    for file in files {
-        let Some(path) = file.new_path.as_deref().or(file.old_path.as_deref()) else {
-            continue;
-        };
-        if path == Path::new("/dev/null") {
-            continue;
-        }
-        let Some(rel) = path
-            .to_str()
-            .and_then(|s| RelativePath::new(s.to_owned()).ok())
-        else {
-            continue;
-        };
-        if file.binary {
-            analysis.forecast.record(
-                rel,
-                PathApplyOutcome::Unassessed {
-                    reason: UnassessedReason::BinaryFile,
-                },
-            );
-            continue;
-        }
-        let outcome = match read_target(&repo, &commit, &ctx.translations, &rel) {
-            TargetRead::Text(content) => {
-                let file_reasons = classify_hunks_against_target(path, &file.hunks, &content);
-                let outcome = path_outcome(&file_reasons);
-                analysis.reasons.extend(file_reasons);
-                outcome
-            }
-            TargetRead::NotText => PathApplyOutcome::Unassessed {
-                reason: UnassessedReason::TargetNotText,
-            },
-            TargetRead::Absent => PathApplyOutcome::Conflict {
-                kind: ApplyConflictKind::FileAbsent,
-            },
-        };
-        analysis.forecast.record(rel, outcome);
-    }
-    analysis
 }
 
 /// Fold one file's hunk classifications into its path outcome: the

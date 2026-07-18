@@ -5,17 +5,14 @@
 //! Whole-program cross-reference analysis for Erlang projects.
 //!
 //! This is the consumer-facing façade. Build an [`Xref`] with
-//! [`XrefBuilder`], then run [predefined analyses](analysis) (undefined-call
-//! detection, dead-export detection, behaviour conformance, reverse
-//! traversal, cycle detection, and [`XrefDiff`] across
-//! two tags).
+//! [`XrefBuilder`], then run [predefined analyses](analysis) (dead-export
+//! detection, behaviour conformance, cycle detection).
 //!
 //! The test-suite-selection adapter [`suites`] consumes the graph to
 //! answer "which `_SUITE` modules should I run for this diff?".
 
 pub mod analysis;
 pub mod builder;
-pub mod diff;
 pub mod display;
 pub mod errors;
 pub mod result;
@@ -23,7 +20,6 @@ pub mod suites;
 pub mod xref;
 
 pub use builder::XrefBuilder;
-pub use diff::{XrefDiff, diff_xrefs};
 pub use errors::XrefError;
 pub use result::{
     AnalysisResult, AppDependencies, CalleeEntry, CalleesOf, CallerEntry, CallersOf,

@@ -41,12 +41,6 @@ impl SchemaVersion {
     pub const fn get(self) -> u32 {
         self.0
     }
-
-    /// Next version, saturating at `u32::MAX`.
-    #[must_use]
-    pub const fn saturating_next(self) -> Self {
-        Self(self.0.saturating_add(1))
-    }
 }
 
 impl Display for SchemaVersion {
@@ -55,16 +49,7 @@ impl Display for SchemaVersion {
     }
 }
 
-/// A free-form warning the CLI may attach to an envelope.
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct EnvelopeWarning {
-    /// Stable warning code, kebab-case (e.g. `stale-extractor`).
-    pub code: String,
-    /// Human-readable message.
-    pub message: String,
-}
+pub use backhopper_core::model::wire_envelope::EnvelopeWarning;
 
 /// A parsed JSON envelope from a `backhopper` invocation.
 ///
@@ -77,7 +62,8 @@ pub struct EnvelopeWarning {
 #[must_use = "an Envelope carries the verb's payload"]
 pub struct Envelope<T> {
     schema_version: SchemaVersion,
-    command: Verb,
+    command: Option<Verb>,
+    command_raw: String,
     data: T,
     exit_code: i32,
     warnings: Vec<EnvelopeWarning>,
@@ -90,7 +76,8 @@ impl<T> Envelope<T> {
     /// without exposing the field shape.
     pub(crate) fn new(
         schema_version: SchemaVersion,
-        command: Verb,
+        command: Option<Verb>,
+        command_raw: String,
         data: T,
         exit_code: i32,
         warnings: Vec<EnvelopeWarning>,
@@ -99,6 +86,7 @@ impl<T> Envelope<T> {
         Self {
             schema_version,
             command,
+            command_raw,
             data,
             exit_code,
             warnings,
@@ -111,9 +99,17 @@ impl<T> Envelope<T> {
         self.schema_version
     }
 
-    /// Verb the CLI emitted.
-    pub fn command(&self) -> Verb {
+    /// The verb the CLI's `command` string parsed to, `None` when it
+    /// names a verb this driver does not know. See [`Self::command_raw`]
+    /// for the string as emitted.
+    pub fn command(&self) -> Option<Verb> {
         self.command
+    }
+
+    /// The raw `command` string the CLI emitted, whether or not it
+    /// parsed to a known [`Verb`].
+    pub fn command_raw(&self) -> &str {
+        &self.command_raw
     }
 
     /// Exit code carried inside the JSON envelope. The process
@@ -159,6 +155,7 @@ impl<T> Envelope<T> {
         Envelope {
             schema_version: self.schema_version,
             command: self.command,
+            command_raw: self.command_raw,
             data: f(self.data),
             exit_code: self.exit_code,
             warnings: self.warnings,
@@ -166,13 +163,15 @@ impl<T> Envelope<T> {
         }
     }
 
-    /// Tear the envelope apart into its constituent pieces.
+    /// Tear the envelope apart into its constituent pieces. The verb is
+    /// `None` when the `command` string named an unknown verb; the raw
+    /// string stays reachable through [`Self::command_raw`] before this.
     #[must_use]
     pub fn into_parts(
         self,
     ) -> (
         SchemaVersion,
-        Verb,
+        Option<Verb>,
         T,
         i32,
         Vec<EnvelopeWarning>,

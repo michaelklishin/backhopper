@@ -47,7 +47,7 @@ fn unresolved_helper_emits_test_module_symbol_missing() {
         "deps/rabbitmq_ct_helpers/src".to_owned(),
     ];
     let resolved = parsed.resolve(&target, &globs);
-    let reasons = resolved.into_reasons();
+    let reasons = resolved.into_findings().reasons;
     assert_eq!(reasons.len(), 1);
     match &reasons[0] {
         Reason::TestModuleSymbolMissing {
@@ -136,7 +136,7 @@ fn diagnostic_entry_captures_call_site_count() {
         .parse()
         .unwrap();
     let resolved = parsed.resolve(&target, &["deps/*/test".to_owned()]);
-    let (suite, by_module) = resolved.into_diagnostic_entry().unwrap();
+    let (suite, by_module) = resolved.into_findings().diagnostic_entry.unwrap();
     assert_eq!(suite.as_str(), "deps/rabbit/test/x_SUITE.erl");
     assert_eq!(by_module.len(), 2);
     assert_eq!(

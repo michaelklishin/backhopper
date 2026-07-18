@@ -8,13 +8,14 @@
 //! against the target branch's snapshot `test_only_exports` and emits
 //! per-row applicability verdicts.
 
+use crate::outcome::CommandOutcome;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
 
-use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
+use bel7_cli::TableStyle;
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
@@ -58,32 +59,32 @@ impl ReferenceVariant {
 }
 
 #[derive(Debug, Serialize)]
-pub struct BackportApplicabilityPayload {
-    pub rows: Vec<RowOutput>,
-    pub totals: Totals,
+pub(crate) struct BackportApplicabilityPayload {
+    rows: Vec<RowOutput>,
+    totals: Totals,
 }
 
 #[derive(Debug, Serialize, Default)]
-pub struct Totals {
-    pub applies: usize,
-    pub applies_with_adaptation: usize,
-    pub n_a: usize,
+pub(crate) struct Totals {
+    applies: usize,
+    applies_with_adaptation: usize,
+    n_a: usize,
 }
 
 #[derive(Debug, Serialize)]
-pub struct RowOutput {
-    pub file: String,
-    pub module: Option<String>,
-    pub reference_variant: &'static str,
-    pub outcome: &'static str,
-    pub detail: Option<String>,
+pub(crate) struct RowOutput {
+    file: String,
+    module: Option<String>,
+    reference_variant: &'static str,
+    outcome: &'static str,
+    detail: Option<String>,
 }
 
 pub fn handle(
     global: &GlobalArgs,
     reference_file_path: &Path,
     snapshot_file_path: &Path,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let ref_bytes = fs::read_to_string(reference_file_path).map_err(CliError::Io)?;
     let reference: ReferenceFile = toml::from_str(&ref_bytes)
         .map_err(|e| CliError::InvalidInput(format!("reference file parse error: {e}")))?;
@@ -103,11 +104,8 @@ pub fn handle(
 pub fn backport_applicability_exit_code(
     applies_with_adaptation: usize,
     not_applicable: usize,
-) -> i32 {
-    if applies_with_adaptation == 0 && not_applicable == 0 {
-        return 0;
-    }
-    PARTIAL_SUCCESS_I32
+) -> CommandOutcome {
+    CommandOutcome::from_success(applies_with_adaptation == 0 && not_applicable == 0)
 }
 
 fn build_payload(

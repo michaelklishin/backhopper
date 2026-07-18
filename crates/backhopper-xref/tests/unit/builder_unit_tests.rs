@@ -10,7 +10,7 @@ use backhopper_xref::XrefBuilder;
 #[test]
 fn empty_builder_produces_empty_xref() {
     let x = XrefBuilder::new().build().unwrap();
-    assert_eq!(x.graph().module_count(), 0);
+    assert_eq!(x.graph().modules().count(), 0);
     assert!(x.warnings().is_empty());
 }
 
@@ -23,7 +23,7 @@ fn xref_clone_shares_underlying_graph() {
         .unwrap();
     let x = b.build().unwrap();
     let y = x.clone();
-    assert_eq!(x.graph().module_count(), y.graph().module_count());
+    assert_eq!(x.graph().modules().count(), y.graph().modules().count());
     // Arc-backed: graph and warnings reference-equal.
     assert!(std::ptr::eq(x.graph(), y.graph()));
 }
@@ -64,7 +64,7 @@ fn add_application_collects_module_data() {
     b.add_application(app, vec![(PathBuf::from("a.erl"), src)])
         .unwrap();
     let x = b.build().unwrap();
-    assert_eq!(x.graph().module_count(), 1);
+    assert_eq!(x.graph().modules().count(), 1);
 }
 
 #[test]
@@ -103,5 +103,5 @@ fn add_modules_inserts_from_iterator() {
     let mut b = XrefBuilder::new();
     b.add_modules(std::iter::once(m));
     let x = b.build().unwrap();
-    assert_eq!(x.graph().module_count(), 1);
+    assert_eq!(x.graph().modules().count(), 1);
 }

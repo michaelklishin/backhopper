@@ -360,23 +360,17 @@ fn target_module_surface(
 /// resolution, gate, and reason are shared.
 pub fn analyse_indirect_elixir_calls(
     subjects: &[AddedLinesSubject<'_>],
-    covered_modules: &BTreeSet<ModuleName>,
-    patch_added: &PatchProvided,
-    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
-    read_target: TreeReader<'_>,
+    ctx: &ReferenceContext<'_>,
+    caches: &mut ReferenceCaches,
 ) -> IndirectCallAnalysis {
-    let mut exports_by_module: BTreeMap<ModuleName, Option<TargetModuleSurface>> = BTreeMap::new();
     let mut out = IndirectCallAnalysis::default();
     for subject in subjects {
         let extraction = extract_indirect_calls_elixir(subject.added_text, subject.line_map);
         resolve_extraction(
             &extraction,
             subject,
-            covered_modules,
-            patch_added,
-            resolve_module_path,
-            read_target,
-            &mut exports_by_module,
+            ctx,
+            caches,
             &mut out.reasons,
             &mut out.tally,
         );
@@ -405,11 +399,8 @@ fn resolve_indirect_calls(
     resolve_extraction(
         &extraction,
         subject,
-        ctx.covered_modules,
-        ctx.patch_added,
-        ctx.resolve_module_path,
-        ctx.read_target,
-        &mut caches.surfaces,
+        ctx,
+        caches,
         &mut analysis.reasons,
         &mut analysis.indirect_checks,
     );
@@ -418,16 +409,14 @@ fn resolve_indirect_calls(
 /// Resolve extracted indirect sites against the target modules' export
 /// and definition sets, language-independent below the extractor. A
 /// site is flagged only when the target module neither exports nor
-/// defines it and the patch does not add it.
-#[allow(clippy::too_many_arguments)]
+/// defines it and the patch does not add it. Shares `ReferenceContext`
+/// and the surface cache with the qualified-call axis, so a module read
+/// once serves both.
 fn resolve_extraction(
     extraction: &IndirectExtraction,
     subject: &AddedLinesSubject<'_>,
-    covered_modules: &BTreeSet<ModuleName>,
-    patch_added: &PatchProvided,
-    resolve_module_path: &dyn Fn(&ModuleName) -> Option<RelativePath>,
-    read_target: TreeReader<'_>,
-    exports_by_module: &mut BTreeMap<ModuleName, Option<TargetModuleSurface>>,
+    ctx: &ReferenceContext<'_>,
+    caches: &mut ReferenceCaches,
     reasons: &mut Vec<Reason>,
     tally: &mut IndirectCallTally,
 ) {
@@ -440,8 +429,13 @@ fn resolve_extraction(
             site.mfa.arity,
             site.via,
         );
-        let entry = exports_by_module.entry(module.clone()).or_insert_with(|| {
-            target_module_surface(module, covered_modules, resolve_module_path, read_target)
+        let entry = caches.surfaces.entry(module.clone()).or_insert_with(|| {
+            target_module_surface(
+                module,
+                ctx.covered_modules,
+                ctx.resolve_module_path,
+                ctx.read_target,
+            )
         });
         let Some(surface) = entry.as_ref() else {
             continue;
@@ -453,7 +447,8 @@ fn resolve_extraction(
         let key = (function.clone(), arity);
         if surface.exports.exports.contains(&key)
             || surface.defined.contains(&key)
-            || patch_added
+            || ctx
+                .patch_added
                 .functions
                 .get(module)
                 .is_some_and(|s| s.contains(&key))

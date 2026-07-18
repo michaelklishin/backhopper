@@ -8,6 +8,8 @@
 //! need schema metadata don't pay the build cost.
 
 use schemars::{JsonSchema, schema_for};
+
+use crate::model::wire_envelope::WireEnvelope;
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -15,9 +17,9 @@ use crate::model::batch::BatchPayload;
 use crate::model::cache::{
     CacheListPayload, CacheMutationPayload, CacheShowPayload, CacheStatsPayload,
 };
+use crate::model::check_payload::CheckPayload;
 use crate::model::sibling_drift::SiblingDoctorReport;
 use crate::model::summary::SummaryRow;
-use crate::model::verdict::SeriesEvaluation;
 use crate::suites::SuitePlan;
 
 pub use crate::envelope_version::{
@@ -162,7 +164,7 @@ fn combined_v15() -> Value {
 /// The live payload schema: generated from the current types, so it
 /// must be frozen to a snapshot before the next version changes them.
 fn combined_live(version: u32, description: &str) -> Value {
-    let series = envelope_with_payload::<SeriesEvaluation>(version, "check", description);
+    let series = envelope_with_payload::<CheckPayload>(version, "check", description);
     let summary_row =
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
     let batch_payload =
@@ -198,53 +200,22 @@ fn combined_live(version: u32, description: &str) -> Value {
     Value::Object(obj)
 }
 
+// The envelope frame is derived from `WireEnvelope<T>` itself, the same
+// type the CLI serializes and the driver parses, so the documented shape
+// cannot drift from the wire. The payload `T` inlines as `data`.
 fn envelope_with_payload<T: JsonSchema>(
     version: u32,
     command_family: &str,
     description: &str,
 ) -> Value {
-    let payload = serde_json::to_value(schema_for!(T)).expect("payload schema serialises");
+    let envelope =
+        serde_json::to_value(schema_for!(WireEnvelope<T>)).expect("envelope schema serialises");
     json!({
         "$schema": "https://json-schema.org/draft-07/schema",
         "title": format!("backhopper envelope v{version}"),
         "schema_version": version,
         "command_family": command_family,
         "description": description,
-        "envelope": envelope_wrapper(payload),
-    })
-}
-
-fn envelope_wrapper(payload_schema: Value) -> Value {
-    json!({
-        "type": "object",
-        "required": ["schema_version", "command", "data", "exit_code"],
-        "properties": {
-            "schema_version": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Wire-format schema version. Bumps when envelope shape changes."
-            },
-            "command": {
-                "type": "string",
-                "description": "Verb identifier in kebab-case, e.g. \"check merge\"."
-            },
-            "data": payload_schema,
-            "exit_code": {
-                "type": "integer",
-                "description": "Process exit code carried inside the envelope; matches the process status."
-            },
-            "warnings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["code", "message"],
-                    "properties": {
-                        "code": { "type": "string" },
-                        "message": { "type": "string" }
-                    }
-                },
-                "description": "Free-form CLI warnings attached to the envelope."
-            }
-        }
+        "envelope": envelope,
     })
 }

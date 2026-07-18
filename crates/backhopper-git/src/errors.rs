@@ -2,10 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::fmt::Display;
 use std::io;
 use std::path::PathBuf;
 
 use thiserror::Error;
+
+/// Wrap any `gix` error as a `GitError::Gix`, the one conversion the
+/// crate's `.map_err` sites share.
+pub(crate) fn gix_err<E: Display>(e: E) -> GitError {
+    GitError::Gix(e.to_string())
+}
 
 #[derive(Debug, Error)]
 pub enum GitError {

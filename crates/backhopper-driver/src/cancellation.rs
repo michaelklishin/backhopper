@@ -54,9 +54,9 @@ impl CancellationToken {
     /// elapses. Returns `true` if cancellation tripped, `false` on
     /// timeout. With `timeout = None` waits forever.
     ///
-    /// The polling interval is small and bounded; not appropriate
-    /// for long sleeps but adequate for the millisecond-scale
-    /// shutdown coordination the backend uses internally.
+    /// The polling interval is small and bounded: not appropriate for
+    /// long sleeps. The subprocess backend polls `is_cancelled`
+    /// directly rather than this method.
     pub fn wait(&self, timeout: Option<Duration>) -> bool {
         let deadline = timeout.map(|d| Instant::now() + d);
         let interval = Duration::from_millis(5);
@@ -86,12 +86,5 @@ impl Aborter {
     /// Signal cancellation. Idempotent.
     pub fn abort(&self) {
         self.flag.store(true, Ordering::Release);
-    }
-
-    /// True if the matching [`CancellationToken`] is still alive
-    /// in any clone.
-    #[must_use]
-    pub fn is_attached(&self) -> bool {
-        Arc::strong_count(&self.flag) > 1
     }
 }

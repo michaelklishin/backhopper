@@ -11,10 +11,14 @@ use backhopper_driver::{Backhopper, GlobalOptions, StdinPayload, Verb, VerbId};
 use serde_json::{Value, json};
 
 fn capture_argv() -> (MockBackend, Arc<Mutex<Vec<String>>>) {
+    capture_verb(Verb::Version)
+}
+
+fn capture_verb(verb: Verb) -> (MockBackend, Arc<Mutex<Vec<String>>>) {
     let captured: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let writer = Arc::clone(&captured);
     let backend = MockBackend::builder()
-        .respond_with(MockMatcher::Verb(Verb::Version), move |inv| {
+        .respond_with(MockMatcher::Verb(verb), move |inv| {
             let args = inv
                 .args
                 .iter()
@@ -28,6 +32,16 @@ fn capture_argv() -> (MockBackend, Arc<Mutex<Vec<String>>>) {
     (backend, captured)
 }
 
+fn argv_for(verb: Verb, set: impl FnOnce(&mut GlobalOptions)) -> Vec<String> {
+    let (backend, captured) = capture_verb(verb);
+    let mut driver = Backhopper::with_backend(backend);
+    set(driver.options_mut());
+    let _ = driver
+        .invoke::<Value, &str>(VerbId::Known(verb), &[], StdinPayload::None)
+        .unwrap();
+    captured.lock().unwrap().clone()
+}
+
 #[test]
 fn quiet_flag_is_forwarded_when_set() {
     let (backend, captured) = capture_argv();
@@ -38,12 +52,15 @@ fn quiet_flag_is_forwarded_when_set() {
 }
 
 #[test]
-fn dry_run_flag_is_forwarded_when_set() {
-    let (backend, captured) = capture_argv();
-    let mut driver = Backhopper::with_backend(backend);
-    driver.options_mut().dry_run = true;
-    let _ = driver.version().unwrap();
-    assert!(captured.lock().unwrap().iter().any(|a| a == "--dry-run"));
+fn dry_run_flag_is_forwarded_for_snapshot_verbs() {
+    let args = argv_for(Verb::SnapshotsMigrate, |o| o.dry_run = true);
+    assert!(args.iter().any(|a| a == "--dry-run"), "{args:?}");
+}
+
+#[test]
+fn dry_run_flag_is_not_forwarded_for_verbs_that_reject_it() {
+    let args = argv_for(Verb::Version, |o| o.dry_run = true);
+    assert!(!args.iter().any(|a| a == "--dry-run"), "{args:?}");
 }
 
 #[test]
@@ -68,12 +85,10 @@ fn config_path_and_snapshot_dir_are_forwarded_with_value() {
 }
 
 #[test]
-fn repo_dir_path_is_forwarded_with_value() {
-    let (backend, captured) = capture_argv();
-    let mut driver = Backhopper::with_backend(backend);
-    driver.options_mut().repo_dir_path = Some("/home/user/proj.git".into());
-    let _ = driver.version().unwrap();
-    let args = captured.lock().unwrap().clone();
+fn repo_dir_path_is_forwarded_for_verbs_that_accept_it() {
+    let args = argv_for(Verb::CheckPatch, |o| {
+        o.repo_dir_path = Some("/home/user/proj.git".into());
+    });
     let pairs: Vec<(&String, &String)> = args.windows(2).map(|w| (&w[0], &w[1])).collect();
     assert!(
         pairs
@@ -81,6 +96,14 @@ fn repo_dir_path_is_forwarded_with_value() {
             .any(|(k, v)| k.as_str() == "--repo-dir-path" && v.as_str() == "/home/user/proj.git"),
         "expected --repo-dir-path in args: {args:?}",
     );
+}
+
+#[test]
+fn repo_dir_path_is_not_forwarded_for_repo_free_verbs() {
+    let args = argv_for(Verb::Version, |o| {
+        o.repo_dir_path = Some("/home/user/proj.git".into());
+    });
+    assert!(!args.iter().any(|a| a == "--repo-dir-path"), "{args:?}");
 }
 
 #[test]

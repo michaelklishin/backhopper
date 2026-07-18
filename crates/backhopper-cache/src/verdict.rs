@@ -461,6 +461,6 @@ pub fn ttl_from_days(ttl_days: u32) -> Option<Duration> {
     if ttl_days == 0 {
         None
     } else {
-        Some(Duration::from_secs(u64::from(ttl_days) * 24 * 60 * 60))
+        Some(Duration::from_hours(u64::from(ttl_days) * 24))
     }
 }

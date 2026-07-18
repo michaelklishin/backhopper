@@ -6,8 +6,6 @@
 //! Resolve-against-target is exercised in
 //! `integration/test_suite_resolve_integration_tests.rs` because it
 //! needs a real `TargetTreeIndex` (and therefore a real git repo).
-//! `into_reasons` and `into_diagnostic_entry` ride along in the
-//! integration test for the same reason.
 
 use backhopper_core::compat::test_suite::{
     HelperCall, MissingHelper, ParseError, TestSuiteFile, is_stdlib_or_otp,

@@ -5,19 +5,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 
-use serde::Serialize;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::model::names::{ModuleName, ProjectName};
 use backhopper_core::model::verdict::Diagnostics;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ProjectSuggestion {
-    pub name: String,
-    pub modules: Vec<String>,
-    pub call_sites: usize,
-}
+pub use backhopper_core::model::check_payload::ProjectSuggestion;
+
+use crate::output::plural;
 
 pub fn build_suggestions(
     diagnostics: &Diagnostics,
@@ -67,7 +63,7 @@ pub fn render_suggestion<W: Write + ?Sized>(
     s: &ProjectSuggestion,
     module_preview_limit: usize,
 ) -> io::Result<()> {
-    let plural = if s.call_sites == 1 { "" } else { "s" };
+    let plural = plural(s.call_sites);
     writeln!(
         w,
         "# {} untracked call{} would become tracked if this project is added",

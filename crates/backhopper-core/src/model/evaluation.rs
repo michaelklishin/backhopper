@@ -22,8 +22,8 @@ use crate::model::pin::Pin;
 use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::summary::VerdictKind;
 use crate::model::verdict::{
-    ApplyConflictKind, Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesVerdict,
-    SnapshotSide, TestCallSite, Verdict, non_self_tracked,
+    ApplyConflictKind, Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesEvaluation,
+    SeriesVerdict, SnapshotSide, TestCallSite, Verdict, non_self_tracked,
 };
 
 /// Aggregate verdict across the pins of a series.
@@ -50,6 +50,18 @@ impl AggregateVerdict {
     #[must_use]
     pub fn flagged(self) -> bool {
         matches!(self, Self::Incompatible | Self::RequiresAdaptation)
+    }
+
+    /// Snake-case wire form, matching the `#[serde(rename_all)]` projection.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Compatible => "compatible",
+            Self::RequiresAdaptation => "requires_adaptation",
+            Self::Incompatible => "incompatible",
+            Self::Inapplicable => "inapplicable",
+            Self::Empty => "empty",
+        }
     }
 }
 
@@ -254,6 +266,25 @@ impl<'a> SeriesEvaluationView<'a> {
     }
 }
 
+/// Owned projection of one batch row into a [`SeriesEvaluation`], moving
+/// every shared field across. The batch-only fields (`commit`, `series`,
+/// `parent_count`, `verdict_fingerprint`) are dropped. A consumer that
+/// needs one row's evaluation without a field-by-field repack uses this;
+/// a new shared field is carried here or it fails to compile.
+impl From<BatchResult> for SeriesEvaluation {
+    fn from(row: BatchResult) -> Self {
+        Self {
+            verdict: row.verdict,
+            diagnostics: row.diagnostics,
+            patch_facts: row.patch_facts,
+            touched_paths: row.touched_paths,
+            pr_commits: row.pr_commits,
+            apply: row.apply,
+            target_findings: row.target_findings,
+        }
+    }
+}
+
 impl BatchResult {
     /// A borrowed [`SeriesEvaluationView`] over this row's verdict and
     /// diagnostics, exposing the same accessors as a single-check evaluation.
@@ -387,10 +418,5 @@ pub struct WireConstantBindingsMissingFinding<'a> {
 }
 
 fn pin_reasons(pin: &PinVerdict) -> impl Iterator<Item = &Reason> {
-    match &pin.verdict {
-        Verdict::Compatible | Verdict::Inapplicable { .. } => [].iter(),
-        Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
-            reasons.iter()
-        }
-    }
+    pin.verdict.reasons().iter()
 }

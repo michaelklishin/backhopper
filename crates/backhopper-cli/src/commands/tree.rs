@@ -8,6 +8,7 @@
 //! own, so the text matches `snapshots show --module` for the same
 //! module.
 
+use crate::outcome::CommandOutcome;
 use std::path::Path;
 
 use serde::Serialize;
@@ -36,7 +37,7 @@ struct TreeShowPayload {
     rendered: String,
 }
 
-pub fn handle(args: &GlobalArgs, cmd: TreeCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: TreeCmd) -> CliResult<CommandOutcome> {
     match cmd {
         TreeCmd::Show {
             repo_dir_path,
@@ -53,7 +54,7 @@ fn run_show(
     r#ref: &str,
     class: Option<EntryClass>,
     module: &ModuleName,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let repo = GitRepo::open(repo_dir_path.to_path_buf())
         .map_err(|e| CliError::Other(format!("{}: {e}", repo_dir_path.display())))?;
     let git_ref = GitRef::new(r#ref.to_owned()).map_err(|e| CliError::Other(e.to_string()))?;
@@ -89,23 +90,20 @@ fn run_show(
         r#ref: r#ref.to_owned(),
         resolved_commit: commit,
         path: path_str,
-        rendered: rendered.clone(),
+        rendered,
     };
     let ctx = OutputContext::new(args.formatter, "tree show");
-    render_with_exit(&ctx, &payload, 0, |w| {
-        write!(w, "{rendered}")?;
+    render_with_exit(&ctx, &payload, CommandOutcome::Success, |w| {
+        write!(w, "{}", payload.rendered)?;
         Ok(())
     })
 }
 
 fn read_blob(repo: &GitRepo, commit: &CommitSha, path: &str) -> CliResult<Option<String>> {
-    let blobs = repo
-        .read_paths_at_commit(commit, |p| p == path)
+    let bytes = repo
+        .read_blob_at(commit, Path::new(path))
         .map_err(|e| CliError::Other(e.to_string()))?;
-    Ok(blobs
-        .into_iter()
-        .next()
-        .and_then(|b| String::from_utf8(b.bytes).ok()))
+    Ok(bytes.and_then(|b| String::from_utf8(b).ok()))
 }
 
 /// Keep the `module` line, entry lines whose keyword matches, and any

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use backhopper_driver::mock::{Fallthrough, MockBackend, MockMatcher, MockResponse};
 use backhopper_driver::types::SeriesName;
-use backhopper_driver::{Backhopper, DriverError, ErrorKind, ExplainFormat, Verb, VerbId};
+use backhopper_driver::{Backhopper, DriverError, ErrorKind, Verb, VerbId};
 use serde_json::{Value, json};
 
 fn series(name: &str) -> SeriesName {
@@ -79,7 +79,7 @@ fn invocation_log_captures_every_call() {
             .patch()
             .series(series("rabbitmq-4.2"))
             .patch_bytes(b"--- a\n+++ b\n".to_vec())
-            .explain(ExplainFormat::Markdown)
+            .explain(true)
             .run()
             .unwrap();
         driver.backend().invocations()
@@ -214,7 +214,7 @@ fn verb_where_filters_by_predicate() {
         .patch()
         .series(series("rabbitmq-4.2"))
         .patch_bytes(b"".to_vec())
-        .explain(ExplainFormat::Markdown)
+        .explain(true)
         .run();
     assert!(with_explain.is_ok());
 

@@ -10,8 +10,9 @@ use std::str::FromStr;
 
 use backhopper_core::compat::source_attributes::{
     ImportedFunction, declares_parse_transform, extract_behaviours, extract_defined_macro_values,
-    extract_defined_macros, extract_defined_records, extract_function_signatures, extract_imports,
-    extract_includes, extract_macro_uses, extract_record_uses, extract_specs, is_predefined_macro,
+    extract_defined_macros, extract_defined_records, extract_exported_types,
+    extract_function_signatures, extract_imports, extract_includes, extract_macro_uses,
+    extract_record_uses, extract_specs, is_predefined_macro,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
@@ -447,4 +448,26 @@ fn macro_values_keep_commas_inside_the_body() {
     let src = "-define(PAIR, {a, b}).\n";
     let values = extract_defined_macro_values(src);
     assert_eq!(values["PAIR"][0].body, "{a, b}");
+}
+
+// A multi-line attribute body must not undercount the line of every
+// attribute that follows it.
+#[test]
+fn exported_type_line_survives_a_multiline_earlier_attribute() {
+    let src = "-module(m).\n-export_type([\n    a/0,\n    b/0]).\n-export_type([c/0]).\n";
+    let set = extract_exported_types(src);
+    let c = set
+        .types
+        .iter()
+        .find(|t| t.name.as_str() == "c")
+        .expect("c/0 is exported");
+    assert_eq!(c.line, 5);
+}
+
+#[test]
+fn include_line_survives_a_multiline_string_literal() {
+    let src = "-module(m).\n-define(BANNER, \"line one\nline two\").\n-include(\"a.hrl\").\n";
+    let incs = extract_includes(src);
+    assert_eq!(incs.len(), 1);
+    assert_eq!(incs[0].line, 4);
 }

@@ -4,13 +4,13 @@
 
 use std::path::{Path, PathBuf};
 
-use backhopper_core::compat::patch::{Language, PatchedFile};
+use backhopper_core::compat::patch::{PatchedFile, SourceKind};
 
 fn file(old: Option<&str>, new: Option<&str>) -> PatchedFile {
     PatchedFile {
         old_path: old.map(PathBuf::from),
         new_path: new.map(PathBuf::from),
-        language: Language::Erlang,
+        language: SourceKind::Erlang,
         binary: false,
         hunks: Vec::new(),
     }

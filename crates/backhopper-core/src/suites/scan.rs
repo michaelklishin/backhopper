@@ -7,19 +7,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::app_src::AppSrcSpec;
+use crate::app_src::{AppSrcSpec, SKIP_DIRS};
 use crate::model::names::{ApplicationName, ModuleName};
 use crate::suites::model::SuiteRef;
-
-const SKIP_DIRS: &[&str] = &[
-    ".git",
-    "_build",
-    "_rel",
-    "logs",
-    "node_modules",
-    ".direnv",
-    "target",
-];
 
 pub(crate) use crate::app_src::{app_root_dir, application_of_path};
 

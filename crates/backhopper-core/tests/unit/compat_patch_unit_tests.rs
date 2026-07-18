@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::compat::patch::{HunkLine, Language, Patch};
+use backhopper_core::compat::patch::{HunkLine, Patch, SourceKind};
 use backhopper_core::errors::PatchError;
 
 const SIMPLE_DIFF: &str = "\
@@ -20,7 +20,7 @@ diff --git a/src/ra_server.erl b/src/ra_server.erl
 fn parses_a_minimal_unified_diff() {
     let p = Patch::parse(SIMPLE_DIFF.as_bytes()).unwrap();
     assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, Language::Erlang);
+    assert_eq!(p.files[0].language, SourceKind::Erlang);
     assert_eq!(p.files[0].hunks.len(), 1);
 }
 

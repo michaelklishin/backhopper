@@ -5,7 +5,7 @@
 //! Structured shape for Erlang type expressions inside `-spec` and
 //! `-callback` declarations. `signature: String` stays the source of
 //! truth on disk; this AST is built on demand from that string by
-//! `backhopper-erlang::spec_parser`. Comparators on top drive the
+//! this crate's `model::spec_parser`. Comparators on top drive the
 //! Stage 9 return-shape conformance check.
 
 use std::cmp::Ordering;

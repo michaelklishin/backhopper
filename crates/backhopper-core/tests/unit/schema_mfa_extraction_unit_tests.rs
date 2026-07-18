@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::SymbolKind;
-use backhopper_core::compat::patch::{Language, Patch};
+use std::str::FromStr;
+
+use backhopper_core::compat::patch::{Patch, SourceKind};
+use backhopper_core::model::names::Mfa;
+use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
 
 const SCHEMA_DIFF: &str = "\
 diff --git a/deps/rabbit/priv/schema/rabbit.schema b/deps/rabbit/priv/schema/rabbit.schema
@@ -31,14 +34,14 @@ diff --git a/test/snippets/definitions.snippets b/test/snippets/definitions.snip
 fn schema_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap();
     assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, Language::CuttlefishSchema);
+    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
 }
 
 #[test]
 fn snippets_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(SNIPPETS_DIFF.as_bytes()).unwrap();
     assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, Language::CuttlefishSchema);
+    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
 }
 
 const PARTIAL_DIFF: &str = "\
@@ -55,31 +58,23 @@ diff --git a/deps/rabbit/priv/schema/ssl_options.partial b/deps/rabbit/priv/sche
 fn partial_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(PARTIAL_DIFF.as_bytes()).unwrap();
     assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, Language::CuttlefishSchema);
+    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
 }
 
+// Core no longer parses `.schema` fragments: that needs the whole file
+// and the cuttlefish parser, which lives above this crate. The caller
+// extracts references and folds them in with `with_extra_references`.
 #[test]
-fn analyze_picks_up_partial_mfa_references() {
-    let p = Patch::parse(PARTIAL_DIFF.as_bytes()).unwrap().analyze();
-    let calls: Vec<String> = p
-        .referenced()
-        .iter()
-        .filter_map(|sym| match &sym.kind {
-            SymbolKind::Function { mfa } => Some(mfa.to_string()),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        calls
-            .iter()
-            .any(|c| c == "rabbit_cuttlefish:optionally_tagged_string/2"),
-        "expected partial-resident MFA in referenced list; got {calls:?}"
-    );
-}
-
-#[test]
-fn analyze_picks_up_schema_mfa_references() {
+fn analyze_leaves_schema_files_without_extracting_references() {
     let p = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap().analyze();
+    assert!(p.referenced().is_empty());
+}
+
+#[test]
+fn with_extra_references_folds_in_injected_references() {
+    let p = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap().analyze();
+    let mfa = Mfa::from_str("rabbit_cuttlefish:optionally_tagged_string/2").unwrap();
+    let p = p.with_extra_references([SymbolRef::function(mfa)]);
     let calls: Vec<String> = p
         .referenced()
         .iter()
@@ -88,50 +83,5 @@ fn analyze_picks_up_schema_mfa_references() {
             _ => None,
         })
         .collect();
-    assert!(
-        calls
-            .iter()
-            .any(|c| c == "rabbit_cuttlefish:optionally_tagged_string/2"),
-        "expected schema-resident MFA in referenced list; got {calls:?}"
-    );
-}
-
-#[test]
-fn analyze_picks_up_snippets_mfa_references() {
-    let p = Patch::parse(SNIPPETS_DIFF.as_bytes()).unwrap().analyze();
-    let calls: Vec<String> = p
-        .referenced()
-        .iter()
-        .filter_map(|sym| match &sym.kind {
-            SymbolKind::Function { mfa } => Some(mfa.to_string()),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        calls
-            .iter()
-            .any(|c| c == "rabbit_cuttlefish:optionally_tagged_binary/2"),
-        "expected snippets-resident MFA in referenced list; got {calls:?}"
-    );
-}
-
-#[test]
-fn schema_analyzer_skips_removed_lines() {
-    let diff = "\
-diff --git a/rabbit.schema b/rabbit.schema
---- a/rabbit.schema
-+++ b/rabbit.schema
-@@ -1,2 +1,1 @@
--fun(C) -> stale_module:gone_function(C) end.
- % keep
-";
-    let p = Patch::parse(diff.as_bytes()).unwrap().analyze();
-    let mentions_stale = p.referenced().iter().any(|sym| match &sym.kind {
-        SymbolKind::Function { mfa } => mfa.module.as_str() == "stale_module",
-        _ => false,
-    });
-    assert!(
-        !mentions_stale,
-        "removed lines must not contribute to referenced symbols"
-    );
+    assert_eq!(calls, ["rabbit_cuttlefish:optionally_tagged_string/2"]);
 }

@@ -18,8 +18,8 @@ workspace = true
 [dependencies]
 backhopper-cache       = { workspace = true }
 backhopper-core        = { workspace = true, features = ["schemars"] }
+backhopper-cuttlefish  = { workspace = true }
 backhopper-git         = { workspace = true }
-backhopper-driver      = { workspace = true, features = ["schemars"] }
 backhopper-erlang      = { workspace = true }
 backhopper-elixir      = { workspace = true }
 backhopper-xref        = { workspace = true }
@@ -42,6 +42,7 @@ tracing-subscriber     = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
+backhopper-driver = { workspace = true }
 backhopper-test-support = { path = "../backhopper-test-support" }
 predicates = { workspace = true }
 proptest   = { workspace = true }

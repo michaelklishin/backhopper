@@ -14,9 +14,8 @@ fn mfa(m: &str, f: &str, a: u8) -> Mfa {
 }
 
 #[test]
-fn function_vertex_extracts_mfa() {
+fn function_vertex_is_not_a_module() {
     let v = Vertex::Function(mfa("ra_log", "append", 2));
-    assert_eq!(v.as_function().unwrap().function.as_str(), "append");
     assert!(v.as_module().is_none());
 }
 
@@ -24,7 +23,7 @@ fn function_vertex_extracts_mfa() {
 fn module_vertex_extracts_module_name() {
     let v = Vertex::Module(ModuleName::new("ra_log".to_owned()).unwrap());
     assert_eq!(v.as_module().unwrap().as_str(), "ra_log");
-    assert!(v.as_function().is_none());
+    assert!(v.as_application().is_none());
 }
 
 #[test]

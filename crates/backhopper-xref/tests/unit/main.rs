@@ -5,6 +5,5 @@
 mod analyses_unit_tests;
 mod analysis_findings_unit_tests;
 mod builder_unit_tests;
-mod diff_unit_tests;
 mod result_display_unit_tests;
 mod suites_unit_tests;

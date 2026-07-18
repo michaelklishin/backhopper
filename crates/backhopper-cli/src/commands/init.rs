@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
@@ -41,7 +42,7 @@ pub struct SkippedBranch {
     pub reason: String,
 }
 
-pub fn handle(args: &GlobalArgs, cmd: InitCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: InitCmd) -> CliResult<CommandOutcome> {
     let config_dir = resolve_config_dir(&cmd)?;
     let config_path = config_dir.join(CONFIG_FILE_NAME);
     if config_path.exists() && !cmd.force {
@@ -69,7 +70,9 @@ pub fn handle(args: &GlobalArgs, cmd: InitCmd) -> CliResult<i32> {
         skipped_branches: inferred.skipped,
     };
     let ctx = OutputContext::new(args.formatter, "init");
-    render_with_exit(&ctx, &payload, 0, |w| render_text(w, &payload))
+    render_with_exit(&ctx, &payload, CommandOutcome::Success, |w| {
+        render_text(w, &payload)
+    })
 }
 
 fn resolve_config_dir(cmd: &InitCmd) -> CliResult<PathBuf> {

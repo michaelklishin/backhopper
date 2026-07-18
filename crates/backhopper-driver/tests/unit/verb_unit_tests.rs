@@ -108,3 +108,57 @@ fn iter_includes_schema_subverbs() {
     assert!(all.contains(&Verb::SchemaShow));
     assert!(all.contains(&Verb::SchemaDiff));
 }
+
+#[test]
+fn accepts_global_repo_dir_is_a_superset_of_requires() {
+    for verb in Verb::iter() {
+        if verb.requires_global_repo_dir() {
+            assert!(
+                verb.accepts_global_repo_dir(),
+                "{verb} requires repo dir but does not accept it"
+            );
+        }
+    }
+}
+
+#[test]
+fn repo_free_verbs_do_not_accept_repo_dir_or_dry_run() {
+    for verb in [
+        Verb::Version,
+        Verb::Doctor,
+        Verb::SnapshotsList,
+        Verb::CacheStats,
+    ] {
+        assert!(!verb.accepts_global_repo_dir(), "{verb}");
+        assert!(!verb.accepts_dry_run(), "{verb}");
+    }
+}
+
+#[test]
+fn only_snapshot_write_verbs_accept_dry_run() {
+    for verb in Verb::iter() {
+        let expected = matches!(
+            verb,
+            Verb::SnapshotsGenerate | Verb::SnapshotsRebuild | Verb::SnapshotsMigrate
+        );
+        assert_eq!(verb.accepts_dry_run(), expected, "{verb}");
+    }
+}
+
+#[test]
+fn resolved_verb_parses_known_and_custom_paths() {
+    assert_eq!(
+        VerbId::Known(Verb::CheckBatch).resolved_verb(),
+        Some(Verb::CheckBatch)
+    );
+    let custom = VerbId::Custom(Cow::Owned(vec![
+        Cow::Borrowed("check"),
+        Cow::Borrowed("batch"),
+    ]));
+    assert_eq!(custom.resolved_verb(), Some(Verb::CheckBatch));
+    let unknown = VerbId::Custom(Cow::Owned(vec![
+        Cow::Borrowed("future"),
+        Cow::Borrowed("verb"),
+    ]));
+    assert_eq!(unknown.resolved_verb(), None);
+}

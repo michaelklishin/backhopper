@@ -519,7 +519,7 @@ fn classify_literal_arg(slice: &str) -> LiteralArg {
         if trimmed_inner.is_empty() {
             return LiteralArg::List { length: Some(0) };
         }
-        let length = count_top_level_commas(trimmed_inner) + 1;
+        let length = backhopper_erlang_scan::count_top_level_commas(trimmed_inner) + 1;
         return LiteralArg::List {
             length: u8::try_from(length).ok(),
         };
@@ -534,46 +534,6 @@ fn looks_like_lowercase_atom(s: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
-}
-
-fn count_top_level_commas(s: &str) -> u32 {
-    let bytes = s.as_bytes();
-    let mut depth = 0i32;
-    let mut in_str = false;
-    let mut in_atom = false;
-    let mut commas = 0u32;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if c == b'\\' && (in_str || in_atom) {
-            i = (i + 2).min(bytes.len());
-            continue;
-        }
-        match c {
-            b'"' if !in_atom => in_str = !in_str,
-            b'\'' if !in_str => in_atom = !in_atom,
-            b'(' | b'[' | b'{' if !in_str && !in_atom => depth += 1,
-            b')' | b']' | b'}' if !in_str && !in_atom => depth -= 1,
-            // << and >> are binary delimiters: nest like brackets and consume
-            // the second byte so interior commas are not counted.
-            b'<' if !in_str && !in_atom && bytes.get(i + 1) == Some(&b'<') => {
-                depth += 1;
-                i += 1;
-            }
-            b'>' if !in_str && !in_atom && bytes.get(i + 1) == Some(&b'>') => {
-                depth -= 1;
-                i += 1;
-            }
-            // $c char literal: skip the quoted char so $, $[ $" do not miscount
-            b'$' if !in_str && !in_atom => {
-                i += 1;
-            }
-            b',' if depth == 0 && !in_str && !in_atom => commas += 1,
-            _ => {}
-        }
-        i += 1;
-    }
-    commas
 }
 
 fn resolve_apply_family(name: &str, args: &[LiteralArg]) -> ApplyResolution {

@@ -55,10 +55,6 @@ impl FunctionRef {
         }
     }
 
-    pub fn is_unresolved(&self) -> bool {
-        !matches!(self, FunctionRef::Concrete(_))
-    }
-
     pub fn module(&self) -> Option<&ModuleName> {
         match self {
             FunctionRef::Concrete(m) => Some(&m.module),
@@ -127,8 +123,6 @@ pub enum CallKind {
     Apply,
     Spawn,
     FunRef,
-    FunBody,
-    BehaviourDispatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

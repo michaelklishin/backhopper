@@ -5,11 +5,11 @@
 use std::str::FromStr;
 
 use backhopper_driver::types::{ProjectName, TagName};
-use backhopper_driver::{AggregateVerdict, SeriesEvaluation, VerdictKind};
+use backhopper_driver::{AggregateVerdict, CheckPayload, VerdictKind};
 use serde_json::json;
 
-fn parse_evaluation(value: serde_json::Value) -> SeriesEvaluation {
-    serde_json::from_value(value).expect("SeriesEvaluation deserializes")
+fn parse_evaluation(value: serde_json::Value) -> CheckPayload {
+    serde_json::from_value(value).expect("CheckPayload deserializes")
 }
 
 #[test]

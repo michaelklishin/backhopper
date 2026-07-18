@@ -9,6 +9,10 @@
 //! Erlang referencing host-repo modules. This crate locates the fun
 //! bodies and reports their source location so the Erlang extractor
 //! can be invoked over the embedded fragment.
+//!
+//! The CLI's `check` handler drives this over the `.schema`, `.snippets`,
+//! and `.partial` files a patch touches, folding the extracted references
+//! into the evaluated patch.
 
 pub mod extract;
 pub mod fragments;
@@ -18,6 +22,6 @@ pub use extract::extract_references;
 pub use fragments::{CuttlefishFragment, FragmentKind};
 pub use parser::{ParseError, parse_schema};
 
-/// Version of the cuttlefish extractor's output shape. See
-/// `backhopper_erlang::EXTRACTOR_VERSION`.
+/// Version of the cuttlefish extractor's output shape. Bumped when the
+/// extracted reference set changes for the same input.
 pub const EXTRACTOR_VERSION: &str = "1";

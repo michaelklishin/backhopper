@@ -8,6 +8,7 @@
 
 use bel7_cli::PARTIAL_SUCCESS_I32;
 
+use backhopper_cli::CommandOutcome;
 use backhopper_cli::commands::doctor::{Totals, doctor_exit_code};
 use backhopper_cli::commands::snapshots::verify_all_exit_code;
 use backhopper_cli::commands::xref_backport_applicability::backport_applicability_exit_code;
@@ -29,33 +30,51 @@ fn verdict_module_constants_match_bel7_cli_convention() {
 
 #[test]
 fn doctor_returns_zero_when_no_pins_missing() {
-    assert_eq!(doctor_exit_code(&totals(0, 0)), 0);
+    assert_eq!(doctor_exit_code(&totals(0, 0)), CommandOutcome::Success);
 }
 
 #[test]
 fn doctor_returns_partial_success_when_any_pin_missing() {
-    assert_eq!(doctor_exit_code(&totals(1, 0)), PARTIAL_SUCCESS_I32);
-    assert_eq!(doctor_exit_code(&totals(50, 0)), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        doctor_exit_code(&totals(1, 0)),
+        CommandOutcome::PartialSuccess
+    );
+    assert_eq!(
+        doctor_exit_code(&totals(50, 0)),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
 fn doctor_returns_partial_success_when_any_pin_stale() {
-    assert_eq!(doctor_exit_code(&totals(0, 1)), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        doctor_exit_code(&totals(0, 1)),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
 fn verify_all_returns_zero_when_all_clean() {
-    assert_eq!(verify_all_exit_code(10, 0, 0).unwrap(), 0);
+    assert_eq!(
+        verify_all_exit_code(10, 0, 0).unwrap(),
+        CommandOutcome::Success
+    );
 }
 
 #[test]
 fn verify_all_returns_zero_for_empty_store() {
-    assert_eq!(verify_all_exit_code(0, 0, 0).unwrap(), 0);
+    assert_eq!(
+        verify_all_exit_code(0, 0, 0).unwrap(),
+        CommandOutcome::Success
+    );
 }
 
 #[test]
 fn verify_all_returns_partial_success_for_stale_extractor_only() {
-    assert_eq!(verify_all_exit_code(10, 0, 3).unwrap(), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        verify_all_exit_code(10, 0, 3).unwrap(),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
@@ -63,12 +82,18 @@ fn verify_all_returns_partial_success_for_stale_with_zero_verified() {
     // The store may legitimately have only stale snapshots if every read
     // succeeded but every extractor version mismatched. This stays in
     // PartialSuccess (not Failure) because the loads succeeded.
-    assert_eq!(verify_all_exit_code(0, 0, 5).unwrap(), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        verify_all_exit_code(0, 0, 5).unwrap(),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
 fn verify_all_returns_partial_success_when_some_failed_some_loaded() {
-    assert_eq!(verify_all_exit_code(8, 2, 0).unwrap(), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        verify_all_exit_code(8, 2, 0).unwrap(),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
@@ -82,20 +107,32 @@ fn verify_all_returns_error_when_every_snapshot_failed() {
 
 #[test]
 fn backport_applicability_returns_zero_when_every_row_applies() {
-    assert_eq!(backport_applicability_exit_code(0, 0), 0);
+    assert_eq!(
+        backport_applicability_exit_code(0, 0),
+        CommandOutcome::Success
+    );
 }
 
 #[test]
 fn backport_applicability_returns_partial_success_for_with_adaptation() {
-    assert_eq!(backport_applicability_exit_code(1, 0), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        backport_applicability_exit_code(1, 0),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
 fn backport_applicability_returns_partial_success_for_not_applicable() {
-    assert_eq!(backport_applicability_exit_code(0, 1), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        backport_applicability_exit_code(0, 1),
+        CommandOutcome::PartialSuccess
+    );
 }
 
 #[test]
 fn backport_applicability_returns_partial_success_for_mixed_attention_rows() {
-    assert_eq!(backport_applicability_exit_code(3, 2), PARTIAL_SUCCESS_I32);
+    assert_eq!(
+        backport_applicability_exit_code(3, 2),
+        CommandOutcome::PartialSuccess
+    );
 }

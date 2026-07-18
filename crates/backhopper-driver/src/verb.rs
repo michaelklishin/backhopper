@@ -110,6 +110,32 @@ impl Verb {
         )
     }
 
+    /// True for verbs that define a `--repo-dir-path` argument. A
+    /// superset of `requires_global_repo_dir`: the check verbs and
+    /// `siblings doctor` accept it but default it.
+    #[must_use]
+    pub const fn accepts_global_repo_dir(self) -> bool {
+        matches!(
+            self,
+            Self::CheckPatch
+                | Self::CheckCommit
+                | Self::CheckRange
+                | Self::CheckMerge
+                | Self::CheckBatch
+                | Self::SiblingsDoctor
+                | Self::SuitesPlan
+        )
+    }
+
+    /// True for verbs that define a `--dry-run` argument.
+    #[must_use]
+    pub const fn accepts_dry_run(self) -> bool {
+        matches!(
+            self,
+            Self::SnapshotsGenerate | Self::SnapshotsRebuild | Self::SnapshotsMigrate
+        )
+    }
+
     /// The argv prefix the CLI expects, e.g. `["check", "patch"]`.
     #[must_use]
     pub const fn cli_path(self) -> &'static [&'static str] {
@@ -274,6 +300,16 @@ impl VerbId<'_> {
         match self {
             Self::Known(v) => Some(*v),
             Self::Custom(_) => None,
+        }
+    }
+
+    /// `Some(verb)` when this id is known or its custom path parses to a
+    /// known verb; `None` otherwise.
+    #[must_use]
+    pub fn resolved_verb(&self) -> Option<Verb> {
+        match self {
+            Self::Known(v) => Some(*v),
+            Self::Custom(path) => Verb::parse(&path.join(" ")).ok(),
         }
     }
 

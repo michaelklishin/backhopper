@@ -49,31 +49,9 @@ fn difference_self_is_empty() {
 }
 
 #[test]
-fn sources_and_targets_are_set_projections() {
+fn targets_is_the_target_set_projection() {
     let a = rel(&[("a", "b"), ("a", "c"), ("d", "b")]);
-    assert_eq!(a.sources(), vs(&["a", "d"]));
     assert_eq!(a.targets(), vs(&["b", "c"]));
-}
-
-#[test]
-fn filter_sources_in_keeps_only_matching_edges() {
-    let a = rel(&[("a", "b"), ("c", "d")]);
-    let got = a.filter_sources_in(&vs(&["a"]));
-    assert_eq!(got, rel(&[("a", "b")]));
-}
-
-#[test]
-fn filter_targets_in_keeps_only_matching_edges() {
-    let a = rel(&[("a", "b"), ("c", "d")]);
-    let got = a.filter_targets_in(&vs(&["b"]));
-    assert_eq!(got, rel(&[("a", "b")]));
-}
-
-#[test]
-fn filter_both_in_keeps_edges_where_both_endpoints_are_in_set() {
-    let a = rel(&[("a", "b"), ("b", "c"), ("c", "d")]);
-    let got = a.filter_both_in(&vs(&["a", "b"]));
-    assert_eq!(got, rel(&[("a", "b")]));
 }
 
 #[test]
@@ -86,21 +64,6 @@ fn image_is_forward_reachable_in_one_step() {
 fn preimage_is_backward_reachable_in_one_step() {
     let a = rel(&[("a", "b"), ("c", "b")]);
     assert_eq!(a.preimage(&vs(&["b"])), vs(&["a", "c"]));
-}
-
-#[test]
-fn compose_produces_two_hop_pairs() {
-    let r = rel(&[("a", "b")]);
-    let s = rel(&[("b", "c")]);
-    assert_eq!(r.compose(&s), rel(&[("a", "c")]));
-}
-
-#[test]
-fn compose_with_identity_is_self() {
-    let r = rel(&[("a", "b"), ("c", "d")]);
-    let id = rel(&[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")]);
-    assert_eq!(r.compose(&id), r);
-    assert_eq!(id.compose(&r), r);
 }
 
 #[test]
@@ -170,24 +133,6 @@ fn transitive_closure_finds_cycle_self_edges() {
 }
 
 #[test]
-fn reflexive_closure_always_includes_self_edges() {
-    let r = rel(&[("a", "b")]);
-    let rc = r.reflexive_transitive_closure();
-    assert!(rc.contains(&m("a"), &m("a")));
-    assert!(rc.contains(&m("b"), &m("b")));
-}
-
-#[test]
-fn reflexive_closure_superset_of_irreflexive() {
-    let r = rel(&[("a", "b"), ("b", "c")]);
-    let tc = r.transitive_closure();
-    let rc = r.reflexive_transitive_closure();
-    for (s, t) in tc.iter() {
-        assert!(rc.contains(s, t));
-    }
-}
-
-#[test]
 fn image_of_empty_set_is_empty() {
     let r = rel(&[("a", "b"), ("c", "d")]);
     assert!(r.image(&vs(&[])).is_empty());
@@ -197,24 +142,6 @@ fn image_of_empty_set_is_empty() {
 fn preimage_of_empty_set_is_empty() {
     let r = rel(&[("a", "b"), ("c", "d")]);
     assert!(r.preimage(&vs(&[])).is_empty());
-}
-
-#[test]
-fn compose_with_empty_relation_is_empty() {
-    let r = rel(&[("a", "b")]);
-    let empty = Relation::new();
-    assert!(r.compose(&empty).is_empty());
-    assert!(empty.compose(&r).is_empty());
-}
-
-#[test]
-fn compose_is_not_commutative_on_asymmetric_input() {
-    let r = rel(&[("a", "b")]);
-    let s = rel(&[("b", "c")]);
-    let lhs = r.compose(&s);
-    let rhs = s.compose(&r);
-    assert_eq!(lhs, rel(&[("a", "c")]));
-    assert!(rhs.is_empty());
 }
 
 #[test]
@@ -258,22 +185,18 @@ fn relation_iteration_order_is_sorted() {
     assert_eq!(edges, sorted);
 }
 
+// A deep chain would overflow the thread stack under a per-edge recursive
+// SCC pass; the iterative pass handles it. Kept modest so the O(n^2)
+// closure stays cheap while the SCC recursion depth is still 800.
 #[test]
-fn vertex_set_complement_against_universe() {
-    let universe = vs(&["a", "b", "c"]);
-    let s = vs(&["a"]);
-    assert_eq!(s.complement(&universe), vs(&["b", "c"]));
-}
-
-#[test]
-fn vertex_set_de_morgan_intersection() {
-    let universe = vs(&["a", "b", "c", "d"]);
-    let s1 = vs(&["a", "b"]);
-    let s2 = vs(&["b", "c"]);
-    // (s1 ∪ s2)' == s1' ∩ s2'
-    let left = s1.union(&s2).complement(&universe);
-    let right = s1
-        .complement(&universe)
-        .intersection(&s2.complement(&universe));
-    assert_eq!(left, right);
+fn transitive_closure_handles_a_deep_chain_without_overflow() {
+    let mut r = Relation::new();
+    let names: Vec<String> = (0..800).map(|i| format!("m{i:04}")).collect();
+    for pair in names.windows(2) {
+        r.insert(m(&pair[0]), m(&pair[1]));
+    }
+    let tc = r.transitive_closure();
+    let first = m(&names[0]);
+    let last = m(&names[names.len() - 1]);
+    assert!(tc.contains(&first, &last));
 }

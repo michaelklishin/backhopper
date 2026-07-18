@@ -202,10 +202,6 @@ impl<M: Mode> CallGraph<M, Built> {
         self.modules.get(name)
     }
 
-    pub fn module_count(&self) -> usize {
-        self.modules.len()
-    }
-
     pub fn def_at(&self, mfa: &Mfa) -> Option<&Loc> {
         self.def_at.get(mfa)
     }
@@ -242,13 +238,6 @@ impl<M: Mode> CallGraph<M, Built> {
         &self.unresolved
     }
 
-    pub fn exports_as_vertices(&self) -> VertexSet {
-        self.modules
-            .iter()
-            .flat_map(|(m, s)| s.exports.iter().map(move |f| function_vertex(m, f)))
-            .collect()
-    }
-
     pub fn defined_functions(&self) -> VertexSet {
         self.modules
             .iter()
@@ -277,12 +266,5 @@ impl CallGraph<Functions, Built> {
 
     pub fn all_calls(&self) -> Relation {
         self.local_calls.union(&self.external_calls)
-    }
-
-    pub fn locals_as_vertices(&self) -> VertexSet {
-        self.modules
-            .iter()
-            .flat_map(|(m, s)| s.locals.iter().map(move |f| function_vertex(m, f)))
-            .collect()
     }
 }

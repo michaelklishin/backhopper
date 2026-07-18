@@ -10,12 +10,17 @@
 use std::fmt::Display;
 use std::io::{self, Write};
 
+use backhopper_core::model::wire_envelope::WireEnvelope;
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
 use serde::Serialize;
-use serde_json::json;
 
-use crate::cli::Formatter;
+use crate::cli::{Formatter, GlobalArgs};
 use crate::errors::{CliError, CliResult};
+use crate::outcome::CommandOutcome;
+
+pub(crate) fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
 
 #[derive(Debug)]
 pub struct OutputContext {
@@ -32,6 +37,10 @@ impl OutputContext {
             schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
+
+    pub fn from_args(global: &GlobalArgs, command: &'static str) -> Self {
+        Self::new(global.formatter, command)
+    }
 }
 
 pub fn render<T, FT>(out: &OutputContext, payload: &T, text_render: FT) -> CliResult<()>
@@ -39,7 +48,7 @@ where
     T: Serialize,
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
 {
-    render_with_exit(out, payload, 0, text_render).map(|_| ())
+    render_with_exit(out, payload, CommandOutcome::Success, text_render).map(|_| ())
 }
 
 /// Write one JSON-serialized row per line (JSONL): no array wrap, a
@@ -57,12 +66,12 @@ where
 }
 
 /// Render a value whose text form is its `Display` impl. JSON path is
-/// unchanged; the text path writes `value` directly. Returns exit 0.
-pub fn render_display<T>(out: &OutputContext, value: &T) -> CliResult<i32>
+/// unchanged; the text path writes `value` directly. Always succeeds.
+pub fn render_display<T>(out: &OutputContext, value: &T) -> CliResult<CommandOutcome>
 where
     T: Serialize + Display,
 {
-    render_with_exit(out, value, 0, |w| {
+    render_with_exit(out, value, CommandOutcome::Success, |w| {
         write!(w, "{value}")?;
         Ok(())
     })
@@ -71,9 +80,9 @@ where
 pub fn render_with_exit<T, FT>(
     out: &OutputContext,
     payload: &T,
-    exit_code: i32,
+    outcome: CommandOutcome,
     text_render: FT,
-) -> CliResult<i32>
+) -> CliResult<CommandOutcome>
 where
     T: Serialize,
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
@@ -81,12 +90,12 @@ where
     let mut stdout = io::stdout().lock();
     match out.formatter {
         // markdown and summary fall back to text; bespoke summary projection runs before this call
-        Formatter::Json => write_json_envelope(&mut stdout, out, payload, exit_code)?,
+        Formatter::Json => write_json_envelope(&mut stdout, out, payload, outcome.exit_code())?,
         Formatter::Text | Formatter::Markdown | Formatter::Summary | Formatter::TextSummary => {
             text_render(&mut stdout)?;
         }
     }
-    Ok(exit_code)
+    Ok(outcome)
 }
 
 fn write_json_envelope<T, W>(
@@ -99,12 +108,16 @@ where
     T: Serialize,
     W: Write,
 {
-    let body = json!({
-        "schema_version": out.schema_version,
-        "command":        out.command,
-        "data":           payload,
-        "exit_code":      exit_code,
-    });
+    let envelope = WireEnvelope {
+        schema_version: out.schema_version,
+        command: Some(out.command.to_owned()),
+        data: payload,
+        exit_code,
+        warnings: Vec::new(),
+    };
+    // through a Value so the keys serialize sorted, matching the shape
+    // the driver parses and `schema show` documents
+    let body = serde_json::to_value(&envelope).map_err(|e| CliError::OutputError(e.to_string()))?;
     serde_json::to_writer_pretty(&mut *stdout, &body)
         .map_err(|e| CliError::OutputError(e.to_string()))?;
     writeln!(stdout)?;
@@ -117,10 +130,10 @@ where
 pub fn render_with_alts<T, FT, FM>(
     out: &OutputContext,
     payload: &T,
-    exit_code: i32,
+    outcome: CommandOutcome,
     text_render: FT,
     markdown_render: FM,
-) -> CliResult<i32>
+) -> CliResult<CommandOutcome>
 where
     T: Serialize,
     FT: FnOnce(&mut dyn Write) -> CliResult<()>,
@@ -128,11 +141,11 @@ where
 {
     let mut stdout = io::stdout().lock();
     match out.formatter {
-        Formatter::Json => write_json_envelope(&mut stdout, out, payload, exit_code)?,
+        Formatter::Json => write_json_envelope(&mut stdout, out, payload, outcome.exit_code())?,
         Formatter::Text | Formatter::Summary | Formatter::TextSummary => {
             text_render(&mut stdout)?;
         }
         Formatter::Markdown => markdown_render(&mut stdout)?,
     }
-    Ok(exit_code)
+    Ok(outcome)
 }

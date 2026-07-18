@@ -9,25 +9,15 @@
 //! `run` and `run_with_diagnostics`. Calling `run()` before both
 //! slots are filled is a compile-time error.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use backhopper_core::model::batch::BatchPayload;
-use backhopper_core::model::evaluation::{
-    AggregateVerdict, BehaviourModuleMissingFinding, HeaderFileMissingFinding,
-    SeriesEvaluationView, TestModuleSymbolMissingFinding, VersionedMachineSnapshotMissingFinding,
-    WireConstantBindingsMissingFinding,
-};
-use backhopper_core::model::names::{
-    CommitSha, ModuleName, ProjectName, RelativePath, SeriesName, TagName,
-};
-use backhopper_core::model::pin::Pin;
-use backhopper_core::model::summary::VerdictKind;
-use backhopper_core::model::verdict::{Diagnostics, PinVerdict, Reason, SeriesVerdict};
-use serde::Deserialize;
+use backhopper_core::model::check_payload::CheckPayload;
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 
 use crate::backend::Backend;
 use crate::builder::list_input::ListInput;
@@ -62,7 +52,7 @@ impl<'a, B: Backend> Check<'a, B> {
         CheckCommitBuilder {
             api: self,
             target: None,
-            commit: None,
+            positional: None,
             options: CheckOptions::default(),
             _state: PhantomData,
         }
@@ -73,7 +63,7 @@ impl<'a, B: Backend> Check<'a, B> {
         CheckRangeBuilder {
             api: self,
             target: None,
-            range: None,
+            positional: None,
             options: CheckOptions::default(),
             _state: PhantomData,
         }
@@ -84,7 +74,7 @@ impl<'a, B: Backend> Check<'a, B> {
         CheckMergeBuilder {
             api: self,
             target: None,
-            merge_commit: None,
+            positional: None,
             options: CheckOptions::default(),
             _state: PhantomData,
         }
@@ -111,8 +101,9 @@ impl<'a, B: Backend> Check<'a, B> {
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct CheckOptions {
-    /// `--explain` format.
-    pub explain: ExplainFormat,
+    /// Pass `--explain`. The format is fixed: the driver forces
+    /// `--formatter json`, so there is nothing to select.
+    pub explain: bool,
     /// Pass `--suggest-prereqs`.
     pub suggest_prereqs: bool,
     /// Pass `--show-untracked-calls`.
@@ -121,30 +112,6 @@ pub struct CheckOptions {
     pub auto_generate_missing_snapshots: bool,
     /// Pass `--terse`.
     pub terse: bool,
-}
-
-/// `--explain` mode.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ExplainFormat {
-    /// Off; no `--explain` flag.
-    #[default]
-    Off,
-    /// `--explain` (text default).
-    Text,
-    /// `--explain --formatter markdown` overlay.
-    Markdown,
-    /// `--explain --formatter json` overlay.
-    Json,
-}
-
-impl ExplainFormat {
-    // The CLI's `--explain` is a boolean: the format comes from the
-    // driver-forced `--formatter json`, so any non-Off value emits the
-    // bare flag.
-    fn is_on(self) -> bool {
-        !matches!(self, Self::Off)
-    }
 }
 
 /// Where the patch bytes come from.
@@ -176,8 +143,8 @@ impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckPatchBuilder
 }
 
 impl<B: Backend, T: TargetState, I: InputState> CheckPatchBuilder<'_, B, T, I> {
-    /// Set `--explain MODE`.
-    pub fn explain(mut self, explain: ExplainFormat) -> Self {
+    /// Set `--explain`.
+    pub fn explain(mut self, explain: bool) -> Self {
         self.options.explain = explain;
         self
     }
@@ -269,15 +236,13 @@ impl<'a, B: Backend, T: TargetState> CheckPatchBuilder<'a, B, T, NoInput> {
 
 impl<B: Backend> CheckPatchBuilder<'_, B, WithTarget, WithInput> {
     /// Dispatch the verb and return the parsed payload.
-    pub fn run(self) -> Result<SeriesEvaluation, DriverError> {
+    pub fn run(self) -> Result<CheckPayload, DriverError> {
         self.run_with_diagnostics().map(|(eval, _)| eval)
     }
 
     /// Dispatch the verb and return the parsed payload paired with
     /// the post-execution diagnostic snapshot.
-    pub fn run_with_diagnostics(
-        self,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+    pub fn run_with_diagnostics(self) -> Result<(CheckPayload, ExecutedInvocation), DriverError> {
         let args = patch_args(
             &self.options,
             self.target.as_ref().expect("target set"),
@@ -303,29 +268,91 @@ fn patch_args(options: &CheckOptions, target: &PinSelector, source: &PatchSource
     args
 }
 
-/// `check commit` builder.
-#[must_use = "a builder has no effect until .run() is called"]
-pub struct CheckCommitBuilder<'a, B: Backend, T: TargetState, I: InputState> {
-    api: &'a Check<'a, B>,
-    target: Option<PinSelector>,
-    commit: Option<CommitSha>,
-    options: CheckOptions,
-    _state: PhantomData<(T, I)>,
+/// A `check` verb that takes a target plus one positional argument.
+/// `commit`, `range`, and `merge` accept the same flags, so they share
+/// [`CheckPositionalBuilder`] and differ only through this kind.
+pub trait PositionalKind {
+    /// The positional value's type.
+    type Positional;
+    /// The verb dispatched to the CLI.
+    const VERB: Verb;
+    /// The builder's name, for `Debug`.
+    const NAME: &'static str;
+    /// Render the positional as one argv element.
+    fn to_arg(positional: &Self::Positional) -> OsString;
 }
 
-impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckCommitBuilder<'_, B, T, I> {
+/// `check commit`: the diff of a single commit against its parent.
+#[derive(Debug, Clone, Copy)]
+pub struct CommitKind;
+
+impl PositionalKind for CommitKind {
+    type Positional = CommitSha;
+    const VERB: Verb = Verb::CheckCommit;
+    const NAME: &'static str = "CheckCommitBuilder";
+    fn to_arg(positional: &CommitSha) -> OsString {
+        OsString::from(positional.to_string())
+    }
+}
+
+/// `check range`: a commit range or a merge commit's diff.
+#[derive(Debug, Clone, Copy)]
+pub struct RangeKind;
+
+impl PositionalKind for RangeKind {
+    type Positional = String;
+    const VERB: Verb = Verb::CheckRange;
+    const NAME: &'static str = "CheckRangeBuilder";
+    fn to_arg(positional: &String) -> OsString {
+        OsString::from(positional)
+    }
+}
+
+/// `check merge`: the two-parent diff of a merge commit.
+#[derive(Debug, Clone, Copy)]
+pub struct MergeKind;
+
+impl PositionalKind for MergeKind {
+    type Positional = CommitSha;
+    const VERB: Verb = Verb::CheckMerge;
+    const NAME: &'static str = "CheckMergeBuilder";
+    fn to_arg(positional: &CommitSha) -> OsString {
+        OsString::from(positional.to_string())
+    }
+}
+
+/// Builder for a `check` verb that takes a target and one positional.
+/// Reached through the [`CheckCommitBuilder`], [`CheckRangeBuilder`],
+/// and [`CheckMergeBuilder`] aliases.
+#[must_use = "a builder has no effect until .run() is called"]
+pub struct CheckPositionalBuilder<'a, B: Backend, K: PositionalKind, T: TargetState, I: InputState>
+{
+    api: &'a Check<'a, B>,
+    target: Option<PinSelector>,
+    positional: Option<K::Positional>,
+    options: CheckOptions,
+    _state: PhantomData<(K, T, I)>,
+}
+
+impl<B: Backend, K: PositionalKind, T: TargetState, I: InputState> fmt::Debug
+    for CheckPositionalBuilder<'_, B, K, T, I>
+where
+    K::Positional: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CheckCommitBuilder")
+        f.debug_struct(K::NAME)
             .field("target", &self.target)
-            .field("commit", &self.commit)
+            .field("positional", &self.positional)
             .field("options", &self.options)
             .finish_non_exhaustive()
     }
 }
 
-impl<B: Backend, T: TargetState, I: InputState> CheckCommitBuilder<'_, B, T, I> {
-    /// Set `--explain MODE`.
-    pub fn explain(mut self, explain: ExplainFormat) -> Self {
+impl<B: Backend, K: PositionalKind, T: TargetState, I: InputState>
+    CheckPositionalBuilder<'_, B, K, T, I>
+{
+    /// Set `--explain`.
+    pub fn explain(mut self, explain: bool) -> Self {
         self.options.explain = explain;
         self
     }
@@ -336,30 +363,53 @@ impl<B: Backend, T: TargetState, I: InputState> CheckCommitBuilder<'_, B, T, I> 
         self
     }
 
+    /// Set `--show-untracked-calls`.
+    pub fn show_untracked_calls(mut self, on: bool) -> Self {
+        self.options.show_untracked_calls = on;
+        self
+    }
+
+    /// Set `--auto-generate`.
+    pub fn auto_generate_missing_snapshots(mut self, on: bool) -> Self {
+        self.options.auto_generate_missing_snapshots = on;
+        self
+    }
+
     /// Set `--terse`.
     pub fn terse(mut self, on: bool) -> Self {
         self.options.terse = on;
         self
     }
+
+    /// Replace the entire options struct.
+    pub fn with_options(mut self, options: CheckOptions) -> Self {
+        self.options = options;
+        self
+    }
 }
 
-impl<'a, B: Backend, I: InputState> CheckCommitBuilder<'a, B, NoTarget, I> {
-    /// Set the target.
+impl<'a, B: Backend, K: PositionalKind, I: InputState>
+    CheckPositionalBuilder<'a, B, K, NoTarget, I>
+{
+    /// Set the target to a series or pin.
     pub fn target(
         self,
         selector: impl Into<PinSelector>,
-    ) -> CheckCommitBuilder<'a, B, WithTarget, I> {
-        CheckCommitBuilder {
+    ) -> CheckPositionalBuilder<'a, B, K, WithTarget, I> {
+        CheckPositionalBuilder {
             api: self.api,
             target: Some(selector.into()),
-            commit: self.commit,
+            positional: self.positional,
             options: self.options,
             _state: PhantomData,
         }
     }
 
     /// Convenience: set `--series NAME`.
-    pub fn series(self, name: impl Into<SeriesName>) -> CheckCommitBuilder<'a, B, WithTarget, I> {
+    pub fn series(
+        self,
+        name: impl Into<SeriesName>,
+    ) -> CheckPositionalBuilder<'a, B, K, WithTarget, I> {
         self.target(PinSelector::series(name))
     }
 
@@ -368,221 +418,53 @@ impl<'a, B: Backend, I: InputState> CheckCommitBuilder<'a, B, NoTarget, I> {
         self,
         project: impl Into<ProjectName>,
         tag: impl Into<TagName>,
-    ) -> CheckCommitBuilder<'a, B, WithTarget, I> {
+    ) -> CheckPositionalBuilder<'a, B, K, WithTarget, I> {
         self.target(PinSelector::pin(project, tag))
     }
 }
 
-impl<'a, B: Backend, T: TargetState> CheckCommitBuilder<'a, B, T, NoInput> {
-    /// Set the positional `COMMIT` argument.
-    pub fn commit(self, commit: impl Into<CommitSha>) -> CheckCommitBuilder<'a, B, T, WithInput> {
-        CheckCommitBuilder {
+impl<'a, B: Backend, K: PositionalKind, T: TargetState>
+    CheckPositionalBuilder<'a, B, K, T, NoInput>
+{
+    /// Set the positional argument (the commit, range, or merge SHA).
+    pub fn positional(
+        self,
+        positional: impl Into<K::Positional>,
+    ) -> CheckPositionalBuilder<'a, B, K, T, WithInput> {
+        CheckPositionalBuilder {
             api: self.api,
             target: self.target,
-            commit: Some(commit.into()),
+            positional: Some(positional.into()),
             options: self.options,
             _state: PhantomData,
         }
     }
 }
 
-impl<B: Backend> CheckCommitBuilder<'_, B, WithTarget, WithInput> {
+impl<B: Backend, K: PositionalKind> CheckPositionalBuilder<'_, B, K, WithTarget, WithInput> {
     /// Dispatch and return the parsed payload.
-    pub fn run(self) -> Result<SeriesEvaluation, DriverError> {
+    pub fn run(self) -> Result<CheckPayload, DriverError> {
         self.run_with_diagnostics().map(|(eval, _)| eval)
     }
 
     /// Dispatch and return the parsed payload plus the diagnostic snapshot.
-    pub fn run_with_diagnostics(
-        self,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+    pub fn run_with_diagnostics(self) -> Result<(CheckPayload, ExecutedInvocation), DriverError> {
         run_target_positional(
             self.api,
             self.target.as_ref().expect("target set"),
             &self.options,
-            Verb::CheckCommit,
-            OsString::from(self.commit.as_ref().expect("commit set").to_string()),
+            K::VERB,
+            K::to_arg(self.positional.as_ref().expect("positional set")),
         )
     }
 }
 
+/// `check commit` builder.
+pub type CheckCommitBuilder<'a, B, T, I> = CheckPositionalBuilder<'a, B, CommitKind, T, I>;
 /// `check range` builder.
-#[must_use = "a builder has no effect until .run() is called"]
-pub struct CheckRangeBuilder<'a, B: Backend, T: TargetState, I: InputState> {
-    api: &'a Check<'a, B>,
-    target: Option<PinSelector>,
-    range: Option<String>,
-    options: CheckOptions,
-    _state: PhantomData<(T, I)>,
-}
-
-impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckRangeBuilder<'_, B, T, I> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CheckRangeBuilder")
-            .field("target", &self.target)
-            .field("range", &self.range)
-            .field("options", &self.options)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<B: Backend, T: TargetState, I: InputState> CheckRangeBuilder<'_, B, T, I> {
-    /// Set `--explain MODE`.
-    pub fn explain(mut self, explain: ExplainFormat) -> Self {
-        self.options.explain = explain;
-        self
-    }
-
-    /// Set `--terse`.
-    pub fn terse(mut self, on: bool) -> Self {
-        self.options.terse = on;
-        self
-    }
-}
-
-impl<'a, B: Backend, I: InputState> CheckRangeBuilder<'a, B, NoTarget, I> {
-    /// Set the target.
-    pub fn target(
-        self,
-        selector: impl Into<PinSelector>,
-    ) -> CheckRangeBuilder<'a, B, WithTarget, I> {
-        CheckRangeBuilder {
-            api: self.api,
-            target: Some(selector.into()),
-            range: self.range,
-            options: self.options,
-            _state: PhantomData,
-        }
-    }
-
-    /// Convenience: set `--series NAME`.
-    pub fn series(self, name: impl Into<SeriesName>) -> CheckRangeBuilder<'a, B, WithTarget, I> {
-        self.target(PinSelector::series(name))
-    }
-}
-
-impl<'a, B: Backend, T: TargetState> CheckRangeBuilder<'a, B, T, NoInput> {
-    /// Set the positional `RANGE` argument.
-    pub fn range(self, range: impl Into<String>) -> CheckRangeBuilder<'a, B, T, WithInput> {
-        CheckRangeBuilder {
-            api: self.api,
-            target: self.target,
-            range: Some(range.into()),
-            options: self.options,
-            _state: PhantomData,
-        }
-    }
-}
-
-impl<B: Backend> CheckRangeBuilder<'_, B, WithTarget, WithInput> {
-    /// Dispatch and return the parsed payload.
-    pub fn run(self) -> Result<SeriesEvaluation, DriverError> {
-        self.run_with_diagnostics().map(|(eval, _)| eval)
-    }
-
-    /// Dispatch and return the parsed payload plus the diagnostic snapshot.
-    pub fn run_with_diagnostics(
-        self,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        run_target_positional(
-            self.api,
-            self.target.as_ref().expect("target set"),
-            &self.options,
-            Verb::CheckRange,
-            OsString::from(self.range.as_ref().expect("range set")),
-        )
-    }
-}
-
+pub type CheckRangeBuilder<'a, B, T, I> = CheckPositionalBuilder<'a, B, RangeKind, T, I>;
 /// `check merge` builder.
-#[must_use = "a builder has no effect until .run() is called"]
-pub struct CheckMergeBuilder<'a, B: Backend, T: TargetState, I: InputState> {
-    api: &'a Check<'a, B>,
-    target: Option<PinSelector>,
-    merge_commit: Option<CommitSha>,
-    options: CheckOptions,
-    _state: PhantomData<(T, I)>,
-}
-
-impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckMergeBuilder<'_, B, T, I> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CheckMergeBuilder")
-            .field("target", &self.target)
-            .field("merge_commit", &self.merge_commit)
-            .field("options", &self.options)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<B: Backend, T: TargetState, I: InputState> CheckMergeBuilder<'_, B, T, I> {
-    /// Set `--terse`.
-    pub fn terse(mut self, on: bool) -> Self {
-        self.options.terse = on;
-        self
-    }
-}
-
-impl<'a, B: Backend, I: InputState> CheckMergeBuilder<'a, B, NoTarget, I> {
-    /// Set the target.
-    pub fn target(
-        self,
-        selector: impl Into<PinSelector>,
-    ) -> CheckMergeBuilder<'a, B, WithTarget, I> {
-        CheckMergeBuilder {
-            api: self.api,
-            target: Some(selector.into()),
-            merge_commit: self.merge_commit,
-            options: self.options,
-            _state: PhantomData,
-        }
-    }
-
-    /// Convenience: set `--series NAME`.
-    pub fn series(self, name: impl Into<SeriesName>) -> CheckMergeBuilder<'a, B, WithTarget, I> {
-        self.target(PinSelector::series(name))
-    }
-}
-
-impl<'a, B: Backend, T: TargetState> CheckMergeBuilder<'a, B, T, NoInput> {
-    /// Set the positional `MERGE-SHA` argument.
-    pub fn merge_commit(
-        self,
-        commit: impl Into<CommitSha>,
-    ) -> CheckMergeBuilder<'a, B, T, WithInput> {
-        CheckMergeBuilder {
-            api: self.api,
-            target: self.target,
-            merge_commit: Some(commit.into()),
-            options: self.options,
-            _state: PhantomData,
-        }
-    }
-}
-
-impl<B: Backend> CheckMergeBuilder<'_, B, WithTarget, WithInput> {
-    /// Dispatch and return the parsed payload.
-    pub fn run(self) -> Result<SeriesEvaluation, DriverError> {
-        self.run_with_diagnostics().map(|(eval, _)| eval)
-    }
-
-    /// Dispatch and return the parsed payload plus the diagnostic snapshot.
-    pub fn run_with_diagnostics(
-        self,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        run_target_positional(
-            self.api,
-            self.target.as_ref().expect("target set"),
-            &self.options,
-            Verb::CheckMerge,
-            OsString::from(
-                self.merge_commit
-                    .as_ref()
-                    .expect("merge_commit set")
-                    .to_string(),
-            ),
-        )
-    }
-}
+pub type CheckMergeBuilder<'a, B, T, I> = CheckPositionalBuilder<'a, B, MergeKind, T, I>;
 
 /// `check batch` builder. Series-only (the verb takes no pin target)
 /// and merge-aware, so a mixed commit set needs no merge versus
@@ -611,7 +493,7 @@ impl<B: Backend, T: TargetState, I: InputState> fmt::Debug for CheckBatchBuilder
 
 impl<B: Backend, T: TargetState, I: InputState> CheckBatchBuilder<'_, B, T, I> {
     /// Set `--explain`.
-    pub fn explain(mut self, explain: ExplainFormat) -> Self {
+    pub fn explain(mut self, explain: bool) -> Self {
         self.options.explain = explain;
         self
     }
@@ -763,7 +645,7 @@ fn run_target_positional<B: Backend>(
     options: &CheckOptions,
     verb: Verb,
     positional: OsString,
-) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
+) -> Result<(CheckPayload, ExecutedInvocation), DriverError> {
     let mut args = Vec::new();
     push_target(&mut args, target);
     push_options(&mut args, options);
@@ -787,7 +669,7 @@ fn push_target(args: &mut Vec<OsString>, target: &PinSelector) {
 }
 
 fn push_options(args: &mut Vec<OsString>, options: &CheckOptions) {
-    if options.explain.is_on() {
+    if options.explain {
         args.push(OsString::from("--explain"));
     }
     if options.suggest_prereqs {
@@ -802,140 +684,4 @@ fn push_options(args: &mut Vec<OsString>, options: &CheckOptions) {
     if options.terse {
         args.push(OsString::from("--terse"));
     }
-}
-
-/// Parsed payload of every `check`-family verb.
-#[non_exhaustive]
-#[derive(Debug, Clone, Deserialize)]
-#[must_use = "a SeriesEvaluation describes what backhopper found; \
-              act on it or assert it"]
-pub struct SeriesEvaluation {
-    /// What the verb was queried against (a series or a pin).
-    pub queried_against: QueriedAgainst,
-    /// Per-pin verdicts plus summary.
-    pub results: SeriesVerdict,
-    /// Series-wide diagnostics (untracked calls, suggested suites).
-    #[serde(default)]
-    pub diagnostics: Diagnostics,
-    /// Projects excluded from the tracked-dependency tally. `None` when
-    /// the producing binary predates the field.
-    #[serde(default)]
-    pub self_projects: Option<BTreeSet<ProjectName>>,
-}
-
-impl SeriesEvaluation {
-    /// A borrowed view exposing every query and finding accessor. The same
-    /// view is reachable from a batch row via `BatchResult::evaluation`, so
-    /// both check paths read alike.
-    #[must_use]
-    pub fn view(&self) -> SeriesEvaluationView<'_> {
-        SeriesEvaluationView::new(&self.results, &self.diagnostics)
-    }
-
-    /// Self-excluded tracked-dependency count from the wire-recorded
-    /// self-projects. `None` when the producer predates the field.
-    #[must_use]
-    pub fn tracked_refs(&self) -> Option<u32> {
-        self.self_projects
-            .as_ref()
-            .map(|projects| self.view().tracked_refs(projects))
-    }
-
-    /// See [`SeriesEvaluationView::worst_verdict`].
-    #[must_use]
-    pub fn worst_verdict(&self) -> AggregateVerdict {
-        self.view().worst_verdict()
-    }
-
-    /// See [`SeriesEvaluationView::has_blocking_reason`].
-    #[must_use]
-    pub fn has_blocking_reason(&self) -> bool {
-        self.view().has_blocking_reason()
-    }
-
-    /// See [`SeriesEvaluationView::pins_in`].
-    pub fn pins_in(&self, verdict: VerdictKind) -> impl Iterator<Item = &PinVerdict> {
-        self.view().pins_in(verdict)
-    }
-
-    /// See [`SeriesEvaluationView::reasons_for`].
-    pub fn reasons_for(&self, pin: &Pin) -> impl Iterator<Item = &Reason> {
-        self.view().reasons_for(pin)
-    }
-
-    /// See [`SeriesEvaluationView::pin_by_project`].
-    #[must_use]
-    pub fn pin_by_project(&self, project: &ProjectName) -> Option<&PinVerdict> {
-        self.view().pin_by_project(project)
-    }
-
-    /// See [`SeriesEvaluationView::missing_test_modules`].
-    #[must_use]
-    pub fn missing_test_modules(&self) -> &BTreeMap<RelativePath, BTreeMap<ModuleName, usize>> {
-        self.view().missing_test_modules()
-    }
-
-    /// See [`SeriesEvaluationView::test_module_symbol_missing`].
-    pub fn test_module_symbol_missing(
-        &self,
-    ) -> impl Iterator<Item = TestModuleSymbolMissingFinding<'_>> {
-        self.view().test_module_symbol_missing()
-    }
-
-    /// See [`SeriesEvaluationView::header_file_missing`].
-    pub fn header_file_missing(&self) -> impl Iterator<Item = HeaderFileMissingFinding<'_>> {
-        self.view().header_file_missing()
-    }
-
-    /// See [`SeriesEvaluationView::behaviour_module_missing`].
-    pub fn behaviour_module_missing(
-        &self,
-    ) -> impl Iterator<Item = BehaviourModuleMissingFinding<'_>> {
-        self.view().behaviour_module_missing()
-    }
-
-    /// See [`SeriesEvaluationView::versioned_machine_snapshot_missing`].
-    pub fn versioned_machine_snapshot_missing(
-        &self,
-    ) -> impl Iterator<Item = VersionedMachineSnapshotMissingFinding<'_>> {
-        self.view().versioned_machine_snapshot_missing()
-    }
-
-    /// See [`SeriesEvaluationView::wire_constant_bindings_missing`].
-    pub fn wire_constant_bindings_missing(
-        &self,
-    ) -> impl Iterator<Item = WireConstantBindingsMissingFinding<'_>> {
-        self.view().wire_constant_bindings_missing()
-    }
-}
-
-/// What [`SeriesEvaluation::queried_against`] carries.
-#[non_exhaustive]
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum QueriedAgainst {
-    /// `check ... --project NAME --tag TAG`.
-    Pin {
-        /// Pinned project.
-        project: ProjectName,
-        /// Pinned tag.
-        tag: TagName,
-    },
-    /// `check ... --series NAME`.
-    Series {
-        /// Series name.
-        name: SeriesName,
-        /// Pins resolved from the series.
-        pins: Vec<PinDescriptor>,
-    },
-}
-
-/// One entry in [`QueriedAgainst::Series::pins`].
-#[non_exhaustive]
-#[derive(Debug, Clone, Deserialize)]
-pub struct PinDescriptor {
-    /// Project name.
-    pub project: ProjectName,
-    /// Pinned tag.
-    pub tag: TagName,
 }

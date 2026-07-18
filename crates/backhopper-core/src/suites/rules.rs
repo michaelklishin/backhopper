@@ -21,8 +21,6 @@ use crate::suites::scan;
 /// in (when resolvable).
 #[derive(Debug, Clone)]
 pub(crate) struct ModifiedModule {
-    #[allow(dead_code)]
-    pub path: PathBuf,
     pub module: ModuleName,
     pub application: Option<ApplicationName>,
 }
@@ -53,7 +51,6 @@ pub(crate) fn classify(
         {
             let application = scan::application_of_path(apps, repo_root, p).cloned();
             modified_modules.push(ModifiedModule {
-                path: p.clone(),
                 module,
                 application,
             });
@@ -99,19 +96,31 @@ pub(crate) fn apply_same_app_caller(
     matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
+    // Group the modified modules by application so each suite's text is
+    // scanned once against every same-app module, not once per module.
+    let mut by_app: BTreeMap<&ApplicationName, Vec<ModuleName>> = BTreeMap::new();
     for m in &classification.modified_modules {
-        let Some(app) = &m.application else { continue };
-        for suite in discovered.iter().filter(|s| &s.application == app) {
-            let refs = matcher.modules_referenced_in_suite(&suite.path, slice::from_ref(&m.module));
+        if let Some(app) = &m.application {
+            by_app.entry(app).or_default().push(m.module.clone());
+        }
+    }
+    for (app, modules) in &by_app {
+        for suite in discovered.iter().filter(|s| &s.application == *app) {
+            let refs = matcher.modules_referenced_in_suite(&suite.path, modules);
             if refs.is_empty() {
                 continue;
             }
-            out.entry(suite.clone())
-                .or_default()
-                .push(SuiteInclusionReason::SameAppCaller {
-                    application: app.clone(),
-                    module: m.module.clone(),
-                });
+            // Attribution stays per-module and in modified-module order.
+            for m in &classification.modified_modules {
+                if m.application.as_ref() == Some(*app) && refs.contains(&m.module) {
+                    out.entry(suite.clone()).or_default().push(
+                        SuiteInclusionReason::SameAppCaller {
+                            application: (*app).clone(),
+                            module: m.module.clone(),
+                        },
+                    );
+                }
+            }
         }
     }
 }
@@ -127,22 +136,32 @@ pub(crate) fn apply_cross_app_caller(
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     let library_set: BTreeSet<&ApplicationName> = library_apps.iter().collect();
+    // Group library-app modules so each suite's text is scanned once per
+    // owning application, not once per modified module.
+    let mut by_app: BTreeMap<&ApplicationName, Vec<ModuleName>> = BTreeMap::new();
     for m in &classification.modified_modules {
-        let Some(app) = &m.application else { continue };
-        if !library_set.contains(app) {
-            continue;
+        if let Some(app) = &m.application
+            && library_set.contains(app)
+        {
+            by_app.entry(app).or_default().push(m.module.clone());
         }
-        for suite in discovered.iter().filter(|s| &s.application != app) {
-            let refs = matcher.modules_referenced_in_suite(&suite.path, slice::from_ref(&m.module));
+    }
+    for (app, modules) in &by_app {
+        for suite in discovered.iter().filter(|s| &s.application != *app) {
+            let refs = matcher.modules_referenced_in_suite(&suite.path, modules);
             if refs.is_empty() {
                 continue;
             }
-            out.entry(suite.clone())
-                .or_default()
-                .push(SuiteInclusionReason::CrossAppCaller {
-                    library_application: app.clone(),
-                    module: m.module.clone(),
-                });
+            for m in &classification.modified_modules {
+                if m.application.as_ref() == Some(*app) && refs.contains(&m.module) {
+                    out.entry(suite.clone()).or_default().push(
+                        SuiteInclusionReason::CrossAppCaller {
+                            library_application: (*app).clone(),
+                            module: m.module.clone(),
+                        },
+                    );
+                }
+            }
         }
     }
 }
@@ -431,21 +450,6 @@ fn expand_template_named(
             placeholder: name.to_owned(),
         })?;
         out.push_str(v);
-        Ok(())
-    })
-}
-
-/// Substitute every `{name}` in `template` with the value of regex capture
-/// `name`. Returns `TemplateError` if a referenced capture is absent.
-pub fn expand_template(
-    template: &str,
-    captures: &regex::Captures<'_>,
-) -> Result<String, TemplateError> {
-    substitute_placeholders(template, |name, out| {
-        let m = captures.name(name).ok_or_else(|| TemplateError {
-            placeholder: name.to_owned(),
-        })?;
-        out.push_str(m.as_str());
         Ok(())
     })
 }

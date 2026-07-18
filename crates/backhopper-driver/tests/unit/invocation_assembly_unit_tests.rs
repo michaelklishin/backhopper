@@ -45,6 +45,5 @@ fn raw_outcome_builders_compose() {
         .with_duration(Duration::from_millis(7))
         .with_argv(["a"].into_iter().map(Into::into));
     assert_eq!(outcome.exit_code, 2);
-    assert_eq!(outcome.argv.len(), 1);
-    assert_eq!(outcome.argv(), &[OsString::from("a")]);
+    assert_eq!(outcome.argv, vec![OsString::from("a")]);
 }

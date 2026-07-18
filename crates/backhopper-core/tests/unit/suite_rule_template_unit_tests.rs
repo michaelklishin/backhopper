@@ -2,35 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use regex::Regex;
-
-use backhopper_core::suites::rules::{expand_template, validate_template_placeholders};
-
-#[test]
-fn expand_substitutes_named_captures() {
-    let re = Regex::new(r"^deps/(?P<plugin>[^/]+)/priv/schema/.*\.schema$").unwrap();
-    let caps = re
-        .captures("deps/rabbitmq_web_amqp/priv/schema/rabbitmq_web_amqp.schema")
-        .unwrap();
-    let out = expand_template("{plugin}_config_schema_SUITE", &caps).unwrap();
-    assert_eq!(out, "rabbitmq_web_amqp_config_schema_SUITE");
-}
-
-#[test]
-fn expand_passes_through_literal_text() {
-    let re = Regex::new(r"^(?P<a>x)$").unwrap();
-    let caps = re.captures("x").unwrap();
-    let out = expand_template("static_text_{a}_more_text", &caps).unwrap();
-    assert_eq!(out, "static_text_x_more_text");
-}
-
-#[test]
-fn expand_errors_on_unknown_placeholder() {
-    let re = Regex::new(r"^(?P<a>x)$").unwrap();
-    let caps = re.captures("x").unwrap();
-    let err = expand_template("{nope}", &caps).unwrap_err();
-    assert_eq!(err.placeholder, "nope");
-}
+use backhopper_core::suites::rules::validate_template_placeholders;
 
 #[test]
 fn validate_passes_for_known_placeholders() {

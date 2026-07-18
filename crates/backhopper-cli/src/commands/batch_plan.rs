@@ -12,7 +12,7 @@ use std::path::Path;
 use backhopper_core::model::names::{CommitSha, CommitShaPrefix};
 use backhopper_git::GitRepo;
 
-use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
+use crate::commands::sha_prefix::expand_prefix_enriched;
 use crate::errors::{CliError, CliResult};
 
 /// One resolved, parent-probed commits-file line.
@@ -40,9 +40,7 @@ impl BatchPlan {
         let mut commits = Vec::with_capacity(entries.len());
         let mut failures: Vec<String> = Vec::new();
         for (line_no, prefix) in entries {
-            let sha = match expand_prefix_with(repo, prefix)
-                .map_err(|e| enrich_with_repo_path(e, repo_path))
-            {
+            let sha = match expand_prefix_enriched(repo, prefix, repo_path) {
                 Ok(sha) => sha,
                 Err(e) => {
                     failures.push(format!("line {line_no}: {e}"));

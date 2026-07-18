@@ -233,38 +233,10 @@ fn unresolved_calls_render_and_is_clean() {
     assert!(format!("{r}").contains("ra_server:apply_cmd/3"));
 }
 
-// A behaviour declared against a module the graph does not hold (OTP's
-// gen_server) is skipped, not falsely reported; a real missing callback is
-// reported.
-#[test]
-fn nonconformant_implementers_skip_unknown_behaviour() {
-    let x = build(&[
-        ("ra_machine.erl", RA_MACHINE),
-        (
-            "ra_kv.erl",
-            "-module(ra_kv).\n-behaviour(ra_machine).\n-export([init/1]).\n\
-             init(Config) -> Config.\n",
-        ),
-        (
-            "aten_detector.erl",
-            "-module(aten_detector).\n-behaviour(gen_server).\n-export([init/1]).\n\
-             init(Args) -> {ok, Args}.\n",
-        ),
-    ]);
-    let nc = x.nonconformant_implementers();
-    assert_eq!(nc.len(), 1, "only ra_kv against ra_machine is checkable");
-    let entry = &nc[0];
-    assert!(!entry.is_clean());
-    assert_eq!(entry.implementer, mname("ra_kv"));
-    let text = format!("{entry}");
-    assert!(text.contains("ra_kv declares behaviour ra_machine"));
-    assert!(text.contains("apply/3"));
-}
-
 // ra_counters really depends on seshat (ra_counters:init/0 ->
-// seshat:new_group/1), an honest cross-module and cross-application edge.
+// seshat:new_group/1), an honest cross-module edge.
 #[test]
-fn module_and_application_dependencies_is_clean() {
+fn module_dependencies_is_clean() {
     // The deps/<app>/src layout is what assigns each module to its
     // application; bare file names would leave the application unset.
     let mut b = XrefBuilder::new().with_layout(ProjectLayout::rabbitmq_main());
@@ -295,17 +267,4 @@ fn module_and_application_dependencies_is_clean() {
     let callers = x.module_called_by(&mname("seshat"));
     assert!(!callers.is_clean());
     assert!(callers.entries.contains(&mname("ra_counters")));
-
-    let app = ApplicationName::new("ra".to_owned()).unwrap();
-    let reaches = x.application_call(&app);
-    assert!(!reaches.is_clean());
-    assert!(
-        reaches
-            .entries
-            .contains(&ApplicationName::new("seshat".to_owned()).unwrap())
-    );
-    assert!(
-        x.application_call(&ApplicationName::new("seshat".to_owned()).unwrap())
-            .is_clean()
-    );
 }

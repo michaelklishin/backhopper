@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
@@ -19,9 +20,13 @@ use bel7_cli::{
 };
 use serde::Serialize;
 
-use backhopper_core::app_src::{AppSrcSpec, application_of_path, parse as app_src_parse};
+use backhopper_core::app_src::{
+    AppSrcSpec, SKIP_DIRS, application_of_path, parse as app_src_parse,
+};
 use backhopper_core::compat::is_otp_module;
-use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
+use backhopper_core::compat::patch::{
+    EvaluationContext, EvaluationFiles, Hunk, HunkLine, Patch, PatchedFile, SourceKind,
+};
 use backhopper_core::compat::routing::{
     PathRouting, RoutedPinVerdict, classify_paths_for_pin, project_owns_path, route_pin_verdict,
 };
@@ -31,11 +36,13 @@ use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
+use backhopper_core::model::check_payload::{CheckPayload, QueriedAgainst};
 use backhopper_core::model::clearance::{
     ApplyRollup, BumpSummary, RoundClearance, TargetFindingsRollup,
 };
+use backhopper_core::model::evaluation::{AggregateVerdict, SeriesEvaluationView};
 use backhopper_core::model::findings::TargetFindings;
-use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
+use backhopper_core::model::fingerprint::FINGERPRINT_VERSION;
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
     SeriesName, TagName,
@@ -45,19 +52,19 @@ use backhopper_core::model::pr_commit::PrCommit;
 use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
-use backhopper_core::model::symbol::{SymbolKind, SymbolRef};
+use backhopper_core::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
     AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, IndirectCallTally,
-    MacroValueTally, PinBump, PinVerdict, Reason, SeriesEvaluation, SeriesSummary, SeriesVerdict,
-    ShapeCheckTally, SnapshotSide, TargetMatch, TargetMatchKind, TouchedKinds, TranslationSource,
-    Verdict,
+    MacroValueTally, PinBump, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, ShapeCheckTally,
+    TargetMatch, TargetMatchKind, TouchedKinds, Verdict, non_self_tracked,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
+use backhopper_cuttlefish::{extract_references, parse_schema};
 use backhopper_git::{
     CandidateIdentity, GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput,
     TargetWalkIndex, analyzable_diff_path, cherry_pick_trailers, load_files_at,
-    normalized_patch_hash, trailer_origin_on_target,
+    normalized_patch_hash, source_content_path, trailer_origin_on_target,
 };
 
 use crate::cli::check::{DEFAULT_TARGET_REF, DEFAULT_TARGET_WALK_LIMIT, TargetRepoArgs};
@@ -67,14 +74,16 @@ use crate::commands::auto_generate::{
 };
 use crate::commands::availability::AvailabilityProbe;
 use crate::commands::batch_plan::BatchPlan;
-use crate::commands::context::{load_config, open_store_read};
+use crate::commands::context::{
+    load_config, open_project_repo, open_store_read, read_text_or_stdin,
+};
 use crate::commands::macro_env::macro_environment_hash;
 use crate::commands::pin_bump::{BumpSnapshotGenerator, PinBumpAssessor};
 use crate::commands::rabbitmq_components::{
     COMPONENTS_MK_PATH, DepPin, detect_pin_bumps, parse_components_mk,
 };
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
-use crate::commands::sha_prefix::{enrich_with_repo_path, expand_prefix_with};
+use crate::commands::sha_prefix::expand_prefix_enriched;
 use crate::commands::snapshot_cache::SnapshotCache;
 use crate::commands::suggest::{
     ProjectSuggestion, append_suggestions_to_config, build_suggestions, render_suggestion,
@@ -85,49 +94,8 @@ use crate::commands::summary::{
 use crate::commands::target_repo;
 use crate::commands::verdict_cache::{CacheLookupOutcome, CacheSession, MacroEnv, SessionLookup};
 use crate::errors::{CliError, CliResult};
-use crate::output::{OutputContext, render_with_alts, render_with_exit};
-use crate::tables::{format_symbol, reason_detail, render_evaluation_table};
-
-#[derive(Debug, Serialize)]
-struct CompatPayload {
-    queried_against: QueriedAgainst,
-    results: SeriesVerdict,
-    #[serde(skip_serializing_if = "Diagnostics::is_empty")]
-    diagnostics: Diagnostics,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    project_suggestions: Vec<ProjectSuggestion>,
-    /// Inner PR-branch commits for 2-parent merge inputs, `None` for
-    /// everything else. The `None` vs `Some(vec![])` distinction is
-    /// wire-load-bearing, so no `skip_serializing_if`.
-    pr_commits: Option<Vec<PrCommit>>,
-    /// Projects excluded from the tracked-dependency tally. Always
-    /// emitted so a consumer can tell an empty set from an old binary.
-    self_projects: Option<BTreeSet<ProjectName>>,
-    /// Stable join key for this verdict, omitted for inputs with no
-    /// cache key (patch, range, PR, or an unresolvable pin): absent and
-    /// `None` both mean "no join key", so nothing is lost by skipping.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    verdict_fingerprint: Option<VerdictFingerprint>,
-    /// Symbol classes this binary checks, for the measurement fold.
-    /// Always emitted so a consumer tells it from an old binary.
-    resolver_coverage: Option<ResolverCoverage>,
-    /// The fingerprint generation this binary stamped. Always emitted.
-    fingerprint_version: Option<u32>,
-    /// Apply-axis prediction. Absent when no target context was
-    /// supplied: the axis was not evaluated, never "clean".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    apply: Option<ApplyForecast>,
-    /// Symbol-axis target findings, `None` when no target context.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target_findings: Option<TargetFindings>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum QueriedAgainst {
-    Pin { project: String, tag: String },
-    Series { name: String, pins: Vec<PinPayload> },
-}
+use crate::output::{OutputContext, plural, render_with_alts, render_with_exit};
+use crate::tables::{reason_detail, reason_md_label, render_evaluation_table};
 
 /// Commit identity carried into `run_check_patch` for summary rows,
 /// the `pr_commits` payload, and the verdict-cache key. Absent for
@@ -158,8 +126,7 @@ fn resolve_commit_input(
     pr: PrCommitPolicy,
 ) -> CliResult<ResolvedForCheck> {
     let repo = GitRepo::open(repo_dir_path.to_path_buf())?;
-    let sha =
-        expand_prefix_with(&repo, prefix).map_err(|e| enrich_with_repo_path(e, repo_dir_path))?;
+    let sha = expand_prefix_enriched(&repo, prefix, repo_dir_path)?;
     let input = ResolvedPatchInput::for_commit(&repo, &sha, merges, pr)?;
     let parent_count = input.source.parent_count();
     let ResolvedPatchInput {
@@ -211,7 +178,7 @@ impl SourceFilesInput<'_> {
     }
 }
 
-pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     match cmd {
         CheckCmd::Patch {
@@ -435,10 +402,33 @@ fn effective_target_args(
     out
 }
 
-fn lookup_commit_subject(sha: &CommitSha, repo: Option<&Path>) -> Option<String> {
-    let repo_path = repo?;
-    let repo = GitRepo::open(repo_path).ok()?;
-    repo.commit_subject(sha).ok()
+/// Commit subjects looked up once per distinct SHA, over a repo opened
+/// once. A missing repo or a lookup failure yields an empty subject.
+struct SubjectCache {
+    repo: Option<GitRepo>,
+    cache: RefCell<BTreeMap<CommitSha, String>>,
+}
+
+impl SubjectCache {
+    fn open(repo: Option<&Path>) -> Self {
+        Self {
+            repo: repo.and_then(|p| GitRepo::open(p.to_path_buf()).ok()),
+            cache: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    fn subject(&self, sha: &CommitSha) -> String {
+        if let Some(s) = self.cache.borrow().get(sha) {
+            return s.clone();
+        }
+        let s = self
+            .repo
+            .as_ref()
+            .and_then(|r| r.commit_subject(sha).ok())
+            .unwrap_or_default();
+        self.cache.borrow_mut().insert(sha.clone(), s.clone());
+        s
+    }
 }
 
 #[allow(clippy::disallowed_methods)]
@@ -545,8 +535,7 @@ fn build_pin_files(
         let repo = GitRepo::open(repo_path)?;
         (repo, commit)
     } else {
-        let git_url = project.require_git_url()?.to_path_buf();
-        let repo = GitRepo::open(git_url)?;
+        let repo = open_project_repo(project)?;
         let commit = repo.resolve_tag(&pin.tag)?;
         (repo, commit)
     };
@@ -568,7 +557,10 @@ fn build_pin_files(
     Ok(files)
 }
 
-fn build_pin_scope(project: &Project, snapshot: &Snapshot<state::Canonical>) -> PinScope {
+pub(crate) fn build_pin_scope(
+    project: &Project,
+    snapshot: &Snapshot<state::Canonical>,
+) -> PinScope {
     let extra: Vec<_> = parse_module_names(
         project
             .public_modules
@@ -630,15 +622,6 @@ fn resolve_untracked_modules_against_tree(
 }
 
 fn scan_erl_modules(repo_dir: &Path) -> CliResult<BTreeSet<String>> {
-    const SKIP: &[&str] = &[
-        ".git",
-        "_build",
-        "_rel",
-        "logs",
-        "node_modules",
-        ".direnv",
-        "target",
-    ];
     let mut out: BTreeSet<String> = BTreeSet::new();
     let mut stack: Vec<PathBuf> = vec![repo_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -655,7 +638,7 @@ fn scan_erl_modules(repo_dir: &Path) -> CliResult<BTreeSet<String>> {
             if file_type.is_dir() {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if SKIP.iter().any(|s| name_str == *s) {
+                if SKIP_DIRS.iter().any(|s| name_str == *s) {
                     continue;
                 }
                 stack.push(path);
@@ -695,7 +678,7 @@ fn range_source_files(repo: &Path, range: Option<&str>) -> CliResult<FileMap> {
         .split_once("..")
         .ok_or_else(|| CliError::InvalidInput("--range expects BASE..HEAD".into()))?;
     let from = resolve_rev_with_hint(&g, repo, a)?;
-    let blobs = g.read_paths_at_commit(&from, |p| p.ends_with(".erl") || p.ends_with(".hrl"))?;
+    let blobs = g.read_paths_at_commit(&from, source_content_path)?;
     let mut map = FileMap::new();
     for blob in blobs {
         if let Ok(text) = String::from_utf8(blob.bytes) {
@@ -778,53 +761,42 @@ fn apply_target_context(
     // the row-level copy of each symbol-axis stream: the pin merge
     // drops reasons on inapplicable pins, this field survives them
     let mut target_findings = TargetFindings::default();
-    let mut merge_symbol_reasons = |reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation| {
-        target_findings.reasons.extend(reasons.iter().cloned());
-        target_repo::merge_reasons_into_evaluation(reasons, evaluation);
-    };
-    let define_reasons = target_repo::collect_define_symbol_findings(&parsed.files, target_ctx);
-    merge_symbol_reasons(define_reasons, evaluation);
-    let exported_types = target_repo::collect_exported_type_findings(&parsed.files, target_ctx);
-    merge_symbol_reasons(exported_types, evaluation);
-    let local_calls = target_repo::collect_local_call_findings(
-        &parsed.files,
-        target_ctx,
-        covered_modules,
-        source_repo_dir,
-    );
-    merge_symbol_reasons(local_calls.reasons, evaluation);
-    evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
-    let macro_values =
-        target_repo::collect_macro_value_findings(&parsed.files, target_ctx, source_repo_dir);
-    merge_symbol_reasons(macro_values.reasons, evaluation);
-    evaluation.diagnostics.macro_value_checks = macro_values.checks;
-    let behaviour_callbacks = target_repo::collect_behaviour_callback_findings(
-        &parsed.files,
-        target_ctx,
-        covered_modules,
-        source_repo_dir,
-    );
-    merge_symbol_reasons(behaviour_callbacks, evaluation);
-    let qualified_calls = target_repo::collect_qualified_call_findings(
-        &parsed.files,
-        target_ctx,
-        covered_modules,
-        source_repo_dir,
-    );
-    merge_symbol_reasons(qualified_calls.reasons, evaluation);
-    evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
-    evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
-    let indirect_elixir =
-        target_repo::collect_indirect_elixir_findings(&parsed.files, target_ctx, covered_modules);
-    merge_symbol_reasons(indirect_elixir.reasons, evaluation);
-    evaluation
-        .diagnostics
-        .indirect_call_checks
-        .merge(indirect_elixir.tally);
-    // the apply axis has its own row-level record: not collected here
-    let apply_analysis = target_repo::collect_target_apply_analysis(&parsed.files, target_ctx);
-    target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
-    evaluation.apply = Some(apply_analysis.forecast);
+    let mut apply_forecast = ApplyForecast::default();
+    // one target-repo handle drives every symbol axis and the apply pass
+    if let Some(session) = target_repo::TargetResolveSession::open(target_ctx, source_repo_dir) {
+        let mut merge_symbol_reasons = |reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation| {
+            target_findings.reasons.extend(reasons.iter().cloned());
+            target_repo::merge_reasons_into_evaluation(reasons, evaluation);
+        };
+        let define_reasons = session.define_symbol_findings(&parsed.files);
+        merge_symbol_reasons(define_reasons, evaluation);
+        let exported_types = session.exported_type_findings(&parsed.files);
+        merge_symbol_reasons(exported_types, evaluation);
+        let local_calls = session.local_call_findings(&parsed.files, covered_modules);
+        merge_symbol_reasons(local_calls.reasons, evaluation);
+        evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
+        let macro_values = session.macro_value_findings(&parsed.files);
+        merge_symbol_reasons(macro_values.reasons, evaluation);
+        evaluation.diagnostics.macro_value_checks = macro_values.checks;
+        let behaviour_callbacks =
+            session.behaviour_callback_findings(&parsed.files, covered_modules);
+        merge_symbol_reasons(behaviour_callbacks, evaluation);
+        let qualified_calls = session.qualified_call_findings(&parsed.files, covered_modules);
+        merge_symbol_reasons(qualified_calls.reasons, evaluation);
+        evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
+        evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
+        let indirect_elixir = session.indirect_elixir_findings(&parsed.files, covered_modules);
+        merge_symbol_reasons(indirect_elixir.reasons, evaluation);
+        evaluation
+            .diagnostics
+            .indirect_call_checks
+            .merge(indirect_elixir.tally);
+        // the apply axis has its own row-level record: not collected here
+        let apply_analysis = session.target_apply_analysis(&parsed.files);
+        target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
+        apply_forecast = apply_analysis.forecast;
+    }
+    evaluation.apply = Some(apply_forecast);
     evaluation.target_findings = Some(target_findings);
     Ok(())
 }
@@ -1140,7 +1112,7 @@ fn run_check_patch(
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
     provenance: Option<PatchProvenance>,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     debug_assert!(
         provenance.is_none() || repo_dir_path.is_some(),
         "commit-shaped inputs always carry a repo path"
@@ -1283,11 +1255,11 @@ fn run_check_patch(
     );
     let queried = match (&selector.project, &selector.tag, &selector.series) {
         (Some(p), Some(t), None) => QueriedAgainst::Pin {
-            project: p.to_string(),
-            tag: t.to_string(),
+            project: p.clone(),
+            tag: t.clone(),
         },
         (None, None, Some(s)) => QueriedAgainst::Series {
-            name: s.to_string(),
+            name: s.clone(),
             pins: pins.iter().map(PinPayload::from).collect(),
         },
         _ => unreachable!("clap enforces either (--project + --tag) or --series"),
@@ -1301,7 +1273,7 @@ fn run_check_patch(
     if diagnostics.write_suggestions && !project_suggestions.is_empty() {
         apply_suggestions_to_config(&cfg.config_path, &project_suggestions)?;
     }
-    let payload = CompatPayload {
+    let payload = CheckPayload {
         queried_against: queried,
         results: evaluation.verdict.clone(),
         diagnostics: evaluation.diagnostics.clone(),
@@ -1315,7 +1287,7 @@ fn run_check_patch(
         target_findings: evaluation.target_findings.clone(),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
-    let exit = evaluation.worst_exit_code();
+    let exit = CommandOutcome::from_success(evaluation.worst_exit_code() == 0);
     if diagnostics.terse {
         return render_terse(&evaluation, exit);
     }
@@ -1323,7 +1295,7 @@ fn run_check_patch(
         let (sha, subject) = match &provenance {
             Some(p) => (
                 p.sha.clone(),
-                lookup_commit_subject(&p.sha, repo_dir_path).unwrap_or_default(),
+                SubjectCache::open(repo_dir_path).subject(&p.sha),
             ),
             None => (placeholder_zero_sha(), String::new()),
         };
@@ -1474,270 +1446,17 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
     Ok(())
 }
 
-fn reason_md_label(r: &Reason) -> String {
-    match r {
-        Reason::MissingSymbol { symbol, .. } => {
-            format!("MissingSymbol {}", format_symbol(&symbol.kind))
-        }
-        Reason::ArityChanged {
-            module, function, ..
-        } => {
-            format!("ArityChanged {module}:{function}")
-        }
-        Reason::SignatureChanged {
-            module,
-            function,
-            arity,
-            ..
-        } => format!("SignatureChanged {module}:{function}/{arity}"),
-        Reason::FileAbsent { path } => format!("FileAbsent {}", path.display()),
-        Reason::ContextDrift { path, hunk_index } => {
-            format!("ContextDrift {} hunk {}", path.display(), hunk_index)
-        }
-        Reason::DeprecatedUsage { symbol, .. } => {
-            format!("Deprecated {}", format_symbol(&symbol.kind))
-        }
-        Reason::NowHidden { module } => format!("NowHidden {module}"),
-        Reason::RecordFieldsChanged { record, .. } => format!("RecordFieldsChanged #{record}"),
-        Reason::UnsupportedFileType { path } => format!("Unsupported {}", path.display()),
-        Reason::UntrackedModuleMissing { module } => format!("UntrackedModuleMissing {module}"),
-        Reason::ClauseMismatch {
-            module,
-            function,
-            arity,
-            ..
-        } => format!("ClauseMismatch {module}:{function}/{arity}"),
-        Reason::MissingPrereq { symbol, .. } => {
-            format!("MissingPrereq {}", format_symbol(&symbol.kind))
-        }
-        Reason::SyntacticArtifact { path, line, .. } => {
-            format!("SyntacticArtifact {}:{line}", path.display())
-        }
-        Reason::BehaviourCallbackSignatureChanged {
-            behaviour,
-            callback,
-            arity,
-            ..
-        } => format!("CallbackSignatureChanged {behaviour}:{callback}/{arity}"),
-        Reason::BehaviourCallbackRemoved {
-            behaviour,
-            callback,
-            arity,
-            ..
-        } => format!("CallbackRemoved {behaviour}:{callback}/{arity}"),
-        Reason::BehaviourCallbackAdded {
-            behaviour,
-            callback,
-            arity,
-            ..
-        } => format!("CallbackAdded {behaviour}:{callback}/{arity}"),
-        Reason::ModuleRelocated { module, .. } => format!("ModuleRelocated {module}"),
-        Reason::WireConstantChanged {
-            module, macro_name, ..
-        } => format!("WireConstantChanged {module}.?{macro_name}"),
-        Reason::HistoricalImplementationMissing {
-            module,
-            advertised_version_before,
-            advertised_version_after,
-            ..
-        } => format!(
-            "HistoricalImplementationMissing {module} {advertised_version_before}->{advertised_version_after}"
-        ),
-        Reason::WireContractBodyDrift {
-            module,
-            advertised_version,
-            ..
-        } => format!("WireContractBodyDrift {module} @ v{advertised_version}"),
-        Reason::WireContractRegression {
-            module,
-            pin_version,
-            patch_version,
-        } => format!("WireContractRegression {module} {pin_version}->{patch_version}"),
-        Reason::ReturnShapeMismatch {
-            module,
-            function,
-            arity,
-            ..
-        } => format!("ReturnShapeMismatch {module}:{function}/{arity}"),
-        Reason::MissingType {
-            module,
-            name,
-            arity,
-        } => format!("MissingType {module}:{name}/{arity}"),
-        Reason::PreimageDrifted {
-            path,
-            hunk_index,
-            line_delta,
-        } => format!(
-            "PreimageDrifted {} hunk #{hunk_index} Δ={line_delta:+}",
-            path.display()
-        ),
-        Reason::PreimageMissing {
-            path, hunk_index, ..
-        } => format!("PreimageMissing {} hunk #{hunk_index}", path.display()),
-        Reason::PostimageCollision { path, hunk_index } => {
-            format!("PostimageCollision {} hunk #{hunk_index}", path.display())
-        }
-        Reason::PathRename {
-            source_path,
-            target_path,
-            translation,
-        } => format!(
-            "PathRename {} → {} (translation: {})",
-            source_path.display(),
-            target_path.display(),
-            translation_name(translation),
-        ),
-        Reason::TargetPathAbsent { path } => format!("TargetPathAbsent {path}"),
-        Reason::VersionedMachineSnapshotMissing { module, side } => {
-            format!(
-                "VersionedMachineSnapshotMissing {module} ({})",
-                side_label(*side)
-            )
-        }
-        Reason::WireConstantBindingsMissing {
-            module,
-            macros,
-            side,
-        } => {
-            let names: Vec<String> = macros.iter().map(|m| format!("?{m}")).collect();
-            format!(
-                "WireConstantBindingsMissing {module} [{}] ({})",
-                names.join(", "),
-                side_label(*side),
-            )
-        }
-        Reason::MacroUndefinedOnTarget {
-            source_path,
-            macro_name,
-            line,
-        } => format!("MacroUndefinedOnTarget ?{macro_name} in {source_path}:{line}"),
-        Reason::RecordUndefinedOnTarget {
-            source_path,
-            record_name,
-            line,
-        } => format!("RecordUndefinedOnTarget #{record_name} in {source_path}:{line}"),
-        Reason::ExportedTypeUndefinedOnTarget {
-            source_path,
-            type_name,
-            arity,
-            line,
-        } => format!("ExportedTypeUndefinedOnTarget {type_name}/{arity} in {source_path}:{line}"),
-        Reason::LocalCallUndefinedOnTarget {
-            source_path,
-            function,
-            arity,
-            line,
-        } => format!("LocalCallUndefinedOnTarget {function}/{arity} in {source_path}:{line}"),
-        Reason::QualifiedCallUndefinedOnTarget {
-            source_path,
-            module,
-            function,
-            arity,
-            line,
-        } => format!(
-            "QualifiedCallUndefinedOnTarget {module}:{function}/{arity} in {source_path}:{line}"
-        ),
-        Reason::IndirectCallUndefinedOnTarget {
-            source_path,
-            module,
-            function,
-            arity,
-            via,
-            line,
-        } => format!(
-            "IndirectCallUndefinedOnTarget {module}:{function}/{arity} via {} in {source_path}:{line}",
-            via.display_form()
-        ),
-        Reason::QualifiedCallReturnShapeDrift {
-            source_path,
-            module,
-            function,
-            arity,
-            source_signature,
-            target_signature,
-            line,
-        } => format!(
-            "QualifiedCallReturnShapeDrift {module}:{function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
-        ),
-        Reason::LocalCallReturnShapeDrift {
-            source_path,
-            function,
-            arity,
-            source_signature,
-            target_signature,
-            line,
-        } => format!(
-            "LocalCallReturnShapeDrift {function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
-        ),
-        Reason::MacroValueDrift {
-            source_path,
-            macro_name,
-            source_value,
-            target_value,
-            line,
-        } => format!(
-            "MacroValueDrift ?{macro_name} in {source_path}:{line}: source value {source_value:?} vs target value {target_value:?}"
-        ),
-        Reason::BehaviourCallbackAddedOnTarget {
-            source_path,
-            behaviour,
-            callback,
-            arity,
-            line,
-        } => format!(
-            "BehaviourCallbackAddedOnTarget {behaviour} requires {callback}/{arity} in {source_path}:{line}"
-        ),
-        Reason::BehaviourCallbackDriftOnTarget {
-            source_path,
-            behaviour,
-            callback,
-            arity,
-            source_signature,
-            target_signature,
-            line,
-        } => format!(
-            "BehaviourCallbackDriftOnTarget {behaviour}:{callback}/{arity} in {source_path}:{line}: source {source_signature:?} vs target {target_signature:?}"
-        ),
-        _ => format!("{r:?}"),
-    }
-}
-
-fn side_label(s: SnapshotSide) -> &'static str {
-    match s {
-        SnapshotSide::Source => "source",
-        SnapshotSide::Target => "target",
-        SnapshotSide::Both => "both",
-    }
-}
-
-fn translation_name(t: &TranslationSource) -> &str {
-    match t {
-        TranslationSource::ConfigStanza { name } | TranslationSource::ExternalFile { name, .. } => {
-            name.as_str()
-        }
-    }
-}
-
-fn render_terse(evaluation: &SeriesEvaluation, exit: i32) -> CliResult<i32> {
-    let summary_label = if evaluation.verdict.summary.incompatible > 0 {
-        "incompatible"
-    } else if evaluation.verdict.summary.requires_adaptation > 0 {
-        "requires_adaptation"
-    } else if evaluation.verdict.summary.compatible > 0 {
-        "compatible"
-    } else if evaluation.verdict.summary.inapplicable > 0 {
-        "inapplicable"
-    } else {
-        "empty"
-    };
+fn render_terse(evaluation: &SeriesEvaluation, exit: CommandOutcome) -> CliResult<CommandOutcome> {
+    let summary_label = SeriesEvaluationView::new(&evaluation.verdict, &evaluation.diagnostics)
+        .worst_verdict()
+        .as_str();
     let pins = evaluation.verdict.results.len();
     let scope = dominant_scope(&evaluation.verdict.results);
     let line = serde_json::json!({
         "summary": summary_label,
         "pins": pins,
         "scope": scope,
-        "exit": exit,
+        "exit": exit.exit_code(),
     });
     let mut out = io::stdout().lock();
     writeln!(out, "{line}").map_err(CliError::Io)?;
@@ -1870,7 +1589,7 @@ fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> Cl
     writeln!(w)?;
     writeln!(w, "Untracked paths (no configured project owns them):")?;
     for (prefix, count) in &diagnostics.unattributed_paths {
-        let plural = if *count == 1 { "" } else { "s" };
+        let plural = plural(*count);
         writeln!(w, "  {prefix:<40} {count} path{plural}")?;
     }
     Ok(())
@@ -2074,7 +1793,7 @@ fn render_untracked_section(
             "Untracked module calls (informational, not a verdict input):"
         )?;
         for (module, count, kind, hint) in call_rows {
-            let plural = if count == 1 { "" } else { "s" };
+            let plural = plural(count);
             writeln!(
                 w,
                 "  {:<40} {} call{} {}",
@@ -2089,7 +1808,7 @@ fn render_untracked_section(
         writeln!(w)?;
         writeln!(w, "Untracked records (informational, not a verdict input):")?;
         for (record, count) in &diagnostics.untracked_records {
-            let plural = if *count == 1 { "" } else { "s" };
+            let plural = plural(*count);
             writeln!(w, "  #{record:<39} {count} reference{plural}")?;
         }
     }
@@ -2100,7 +1819,7 @@ fn render_untracked_section(
             "Unresolved context-line references (pre-existing target facts, not a verdict input):"
         )?;
         for (module, count) in &diagnostics.context_refs_missing {
-            let plural = if *count == 1 { "" } else { "s" };
+            let plural = plural(*count);
             writeln!(w, "  {module:<40} {count} reference{plural}")?;
         }
     }
@@ -2156,13 +1875,7 @@ fn format_annotation(kind: &str, hint: &str) -> String {
 }
 
 fn read_commits_file(path: &Path) -> CliResult<Vec<(usize, CommitShaPrefix)>> {
-    let raw = if path == Path::new("-") {
-        let mut s = String::new();
-        io::stdin().read_to_string(&mut s).map_err(CliError::Io)?;
-        s
-    } else {
-        fs::read_to_string(path).map_err(CliError::Io)?
-    };
+    let raw = read_text_or_stdin(path)?;
     let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
     let mut out = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -2194,6 +1907,61 @@ fn read_commits_file(path: &Path) -> CliResult<Vec<(usize, CommitShaPrefix)>> {
     Ok(out)
 }
 
+/// MFA references from the cuttlefish `.schema`, `.snippets`, and
+/// `.partial` files a patch touches, scoped to the lines the patch adds
+/// or keeps as context. The parser locates each `fun(...) -> ... end`
+/// body in the full file, so references outside a fun body (config keys,
+/// docstrings) are not picked up.
+fn cuttlefish_references(files: &[PatchedFile], source_files: &FileMap) -> Vec<SymbolRef> {
+    let mut out: Vec<SymbolRef> = Vec::new();
+    for file in files {
+        if file.language != SourceKind::CuttlefishSchema {
+            continue;
+        }
+        let Some(path) = file.new_path.as_deref() else {
+            continue;
+        };
+        let Some(content) = source_files.get(path) else {
+            continue;
+        };
+        let Ok(fragments) = parse_schema(content, path) else {
+            continue;
+        };
+        let origins = touched_line_origins(&file.hunks);
+        for fragment in &fragments {
+            for reference in extract_references(fragment) {
+                if let Some(&origin) = origins.get(&reference.line) {
+                    out.push(reference.symbol.with_origin(origin));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Each new-file line a hunk adds or keeps as context, mapped to its
+/// origin. Removed lines consume no new-file line.
+fn touched_line_origins(hunks: &[Hunk]) -> BTreeMap<usize, RefOrigin> {
+    let mut out = BTreeMap::new();
+    for hunk in hunks {
+        let mut line = hunk.new_start;
+        for hunk_line in &hunk.lines {
+            match hunk_line {
+                HunkLine::Added(_) => {
+                    out.insert(line, RefOrigin::Added);
+                    line += 1;
+                }
+                HunkLine::Context(_) => {
+                    out.insert(line, RefOrigin::Context);
+                    line += 1;
+                }
+                HunkLine::Removed(_) => {}
+            }
+        }
+    }
+    out
+}
+
 #[allow(clippy::too_many_arguments)]
 fn evaluate_one(
     cfg: &Config,
@@ -2219,7 +1987,10 @@ fn evaluate_one(
             macros_by_path.insert(path.clone(), build_macro_table(body, path, source_files));
         }
     }
-    let analyzed = patch.analyze_with_macros(&macros_by_path);
+    let schema_refs = cuttlefish_references(&patch.files, source_files);
+    let analyzed = patch
+        .analyze_with_macros(&macros_by_path)
+        .with_extra_references(schema_refs);
     let mut touched_kinds = TouchedKinds::from_paths(&touched_paths);
     touched_kinds.only_test_visibility = analyzed.is_only_test_visibility_change();
     let sibling_projects: Vec<&Project> = cfg.projects.iter().collect();
@@ -2301,10 +2072,6 @@ fn is_self_only_evaluation(cfg: &Config, results: &[PinVerdict]) -> bool {
         }
     }
     saw_self
-}
-
-fn resolve_pin_specs(specs: &[PinSpec], store: &SnapshotStore<ReadOnly>) -> CliResult<Vec<Pin>> {
-    Ok(pin::resolve_all(specs, store)?)
 }
 
 fn promote_self_missing_to_prereq(
@@ -2444,7 +2211,7 @@ fn resolve_source_pins(
         }
         (None, None, Some(_), None, Some(src_series_name)) => {
             let src_series = cfg.series_by_name(src_series_name)?;
-            let src_pins = resolve_pin_specs(&src_series.pins, store)?;
+            let src_pins = pin::resolve_all(&src_series.pins, store)?;
             let mut queues: BTreeMap<ProjectName, VecDeque<Pin>> = BTreeMap::new();
             for sp in src_pins {
                 queues.entry(sp.project.clone()).or_default().push_back(sp);
@@ -2474,7 +2241,7 @@ fn run_batch(
     source: &SourcePinArgs,
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     reject_terse(diagnostics, "check batch")?;
     let store = open_store_read(args, cfg)?;
     let entries = read_commits_file(commits_file_path)?;
@@ -2502,7 +2269,7 @@ fn run_batch(
         resolver_coverage: Some(ResolverCoverage::current()),
         fingerprint_version: Some(FINGERPRINT_VERSION),
     };
-    let worst_exit = outcome.worst_exit;
+    let worst_exit = CommandOutcome::from_success(outcome.worst_exit == 0);
     if let Some(summary_fmt) = SummaryFormatter::from_cli(args.formatter) {
         let rows = batch_summary_rows(cfg, &git_repo, &payload.results);
         emit_rows(summary_fmt, &rows)?;
@@ -2740,7 +2507,7 @@ fn run_cascade(
     commits_file_path: &Path,
     source: &SourcePinArgs,
     diagnostics: CheckFlags,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     reject_terse(diagnostics, "check cascade")?;
     // Config errors surface by name before any evaluation starts.
     let mut seen: BTreeSet<&SeriesName> = BTreeSet::new();
@@ -2812,19 +2579,22 @@ fn run_cascade(
     let self_projects = self_project_names(cfg);
     let subjects = cascade_subjects(&payload, repo);
     let ctx = OutputContext::new(args.formatter, "check cascade");
-    render_with_exit(&ctx, &payload, worst_exit, |w| {
-        render_cascade_text(w, &payload, &self_projects, &subjects)
-    })
+    render_with_exit(
+        &ctx,
+        &payload,
+        CommandOutcome::from_success(worst_exit == 0),
+        |w| render_cascade_text(w, &payload, &self_projects, &subjects),
+    )
 }
 
 /// Commit subjects for the matrix, one lookup per distinct SHA.
 fn cascade_subjects(payload: &CascadePayload, repo: &Path) -> BTreeMap<CommitSha, String> {
+    let cache = SubjectCache::open(Some(repo));
     let mut out = BTreeMap::new();
     for leg in &payload.legs {
         for row in &leg.batch.results {
-            out.entry(row.commit.clone()).or_insert_with(|| {
-                lookup_commit_subject(&row.commit, Some(repo)).unwrap_or_default()
-            });
+            out.entry(row.commit.clone())
+                .or_insert_with(|| cache.subject(&row.commit));
         }
     }
     out
@@ -2860,9 +2630,10 @@ fn render_cascade_text(
                 (false, true) => "!",
                 (false, false) => "",
             };
+            let verdict = SeriesEvaluationView::new(&row.verdict, &row.diagnostics).worst_verdict();
             cells.insert(
                 (&row.commit, &leg.series),
-                format!("{}{marker}", summary_cell(&row.verdict.summary)),
+                format!("{}{marker}", summary_cell(verdict)),
             );
         }
     }
@@ -2923,15 +2694,11 @@ fn render_cascade_text(
 }
 
 /// The worst verdict in a row's summary, as the matrix cell label.
-fn summary_cell(summary: &SeriesSummary) -> &'static str {
-    if summary.incompatible > 0 {
-        "incompatible"
-    } else if summary.requires_adaptation > 0 {
-        "requires_adaptation"
-    } else if summary.compatible > 0 {
-        "compatible"
-    } else {
-        "inapplicable"
+fn summary_cell(verdict: AggregateVerdict) -> &'static str {
+    // an empty batch row reads as inapplicable in the ledger
+    match verdict {
+        AggregateVerdict::Empty => "inapplicable",
+        other => other.as_str(),
     }
 }
 
@@ -2947,27 +2714,13 @@ struct LegTallies {
 fn sum_leg_tallies(results: &[BatchResult]) -> LegTallies {
     let mut t = LegTallies::default();
     for row in results {
-        add_shape(
-            &mut t.qualified,
-            &row.diagnostics.qualified_call_shape_checks,
-        );
-        add_shape(&mut t.local, &row.diagnostics.local_call_shape_checks);
-        let m = &row.diagnostics.macro_value_checks;
-        t.macros.compared += m.compared;
-        t.macros.withheld_definition_elsewhere += m.withheld_definition_elsewhere;
-        t.macros.withheld_multiple_defines += m.withheld_multiple_defines;
-        t.macros.withheld_no_source += m.withheld_no_source;
+        t.qualified
+            .merge(row.diagnostics.qualified_call_shape_checks);
+        t.local.merge(row.diagnostics.local_call_shape_checks);
+        t.macros.merge(row.diagnostics.macro_value_checks);
         t.indirect.merge(row.diagnostics.indirect_call_checks);
     }
     t
-}
-
-fn add_shape(into: &mut ShapeCheckTally, from: &ShapeCheckTally) {
-    into.compared += from.compared;
-    into.withheld_no_spec += from.withheld_no_spec;
-    into.withheld_unknown_type += from.withheld_unknown_type;
-    into.withheld_no_source += from.withheld_no_source;
-    into.withheld_imported += from.withheld_imported;
 }
 
 /// One requested series with its resolved pins and original specs.
@@ -3090,7 +2843,7 @@ pub fn render_batch_text(
         }
         // Shown only when non-zero so a clean round's rows stay terse;
         // it points the reviewer at the rows the header total came from.
-        let tracked = row_tracked_refs(&r.verdict.results, self_projects);
+        let tracked = non_self_tracked(&r.verdict.results, self_projects);
         if tracked > 0 {
             writeln!(w, "  tracked refs: {tracked} (see --explain)")?;
         }
@@ -3317,19 +3070,4 @@ fn row_inapplicable_reasons(results: &[PinVerdict]) -> Vec<&'static str> {
         }
     }
     seen.into_iter().collect()
-}
-
-/// Tracked-dep references for one row, excluding self pins: the
-/// per-row share of the header total.
-fn row_tracked_refs(results: &[PinVerdict], self_projects: &BTreeSet<ProjectName>) -> u32 {
-    results
-        .iter()
-        .filter(|pin| !self_projects.contains(&pin.pin.project))
-        .fold(0u32, |acc, pin| {
-            acc.saturating_add(u32::try_from(pin.tracked_refs).unwrap_or(u32::MAX))
-        })
-}
-
-fn plural(n: usize) -> &'static str {
-    if n == 1 { "" } else { "s" }
 }

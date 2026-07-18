@@ -6,6 +6,8 @@ use std::error::Error;
 use std::fmt;
 use std::path::Path;
 
+use backhopper_erlang_scan::skip_char_literal_span;
+
 use crate::fragments::{CuttlefishFragment, FragmentKind};
 
 #[derive(Debug)]
@@ -48,12 +50,8 @@ pub fn parse_schema(
             b'\'' => {
                 i = skip_atom_quoted(bytes, i + 1);
             }
-            b'$' if i + 1 < bytes.len() => {
-                // character literal: skip the char and any `\X` escape
-                i += 2;
-                if bytes[i - 1] == b'\\' && i < bytes.len() {
-                    i += 1;
-                }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
             }
             b'{' => {
                 if depth == 0 {
@@ -216,11 +214,8 @@ fn find_outer_fun_keyword(span: &str) -> Option<usize> {
             }
             continue;
         }
-        if c == b'$' && i + 1 < bytes.len() {
-            i += 2;
-            if bytes[i - 1] == b'\\' && i < bytes.len() {
-                i += 1;
-            }
+        if c == b'$' {
+            i += skip_char_literal_span(bytes, i);
             continue;
         }
         if is_keyword_at(bytes, i, b"fun") && next_non_ws_is(bytes, i + 3, b'(') {
@@ -256,11 +251,8 @@ fn balanced_end_offset(span: &str, start: usize) -> Option<usize> {
             }
             continue;
         }
-        if c == b'$' && i + 1 < bytes.len() {
-            i += 2;
-            if bytes[i - 1] == b'\\' && i < bytes.len() {
-                i += 1;
-            }
+        if c == b'$' {
+            i += skip_char_literal_span(bytes, i);
             continue;
         }
         if is_keyword_at(bytes, i, b"end") {

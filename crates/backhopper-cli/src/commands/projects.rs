@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -32,7 +33,7 @@ struct ProjectShow {
     captured_tags: Vec<String>,
 }
 
-pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     match cmd {
         ProjectsCmd::List => {
@@ -58,7 +59,7 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
                 }
                 Ok(())
             })?;
-            Ok(0)
+            Ok(CommandOutcome::Success)
         }
         ProjectsCmd::Show { project } => {
             let p = cfg.project(&project)?;
@@ -88,7 +89,7 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<i32> {
                 writeln!(w, "  captured_tags {}", payload.captured_tags.len())?;
                 Ok(())
             })?;
-            Ok(0)
+            Ok(CommandOutcome::Success)
         }
     }
 }

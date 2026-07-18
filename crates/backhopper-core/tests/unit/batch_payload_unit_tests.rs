@@ -241,3 +241,30 @@ fn pin_payload_projects_from_a_resolved_pin() {
     assert_eq!(payload.project, pin.project);
     assert_eq!(payload.tag, pin.tag);
 }
+
+// The owned projection moves every shared field and drops the batch-only
+// ones, so a consumer needs no field-by-field repack.
+#[test]
+fn batch_result_converts_into_series_evaluation() {
+    use backhopper_core::model::verdict::SeriesEvaluation;
+    let path = RelativePath::new("deps/rabbit/src/rabbit.erl").unwrap();
+    let row = BatchResult {
+        commit: fixture_commit(),
+        series: SeriesName::new("rabbitmq-4.0").unwrap(),
+        verdict: empty_series_verdict(),
+        diagnostics: Diagnostics::default(),
+        patch_facts: PatchFacts::default(),
+        touched_paths: vec![path.clone()],
+        pr_commits: Some(Vec::new()),
+        parent_count: None,
+        verdict_fingerprint: None,
+        apply: None,
+        target_findings: None,
+    };
+    let eval: SeriesEvaluation = row.clone().into();
+    assert_eq!(eval.verdict, row.verdict);
+    assert_eq!(eval.touched_paths, vec![path]);
+    assert_eq!(eval.pr_commits, Some(Vec::new()));
+    assert_eq!(eval.apply, None);
+    assert_eq!(eval.target_findings, None);
+}

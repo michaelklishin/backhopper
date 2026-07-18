@@ -10,13 +10,19 @@ use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 
 use crate::compat::arg_shape::{ArgShape, satisfies_any};
-use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile};
+use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile, SourceKind};
+use crate::compat::preimage::{
+    PreimageMatch, classify_preimage, leading_added_run, postimage_lines, preimage_lines,
+    preimage_offset, tally_postimage, trailing_added_run,
+};
 use crate::compat::scope::PinScope;
 use crate::config::FamilyDefaults;
 use crate::model::names::{
     Arity, FieldName, FunctionName, MacroName, Mfa, ModuleName, RecordName, TypeName,
 };
-use crate::model::snapshot::{ArityMatch, FunArity, Module, Snapshot, Visibility, state};
+use crate::model::snapshot::{
+    ArityMatch, Deprecation, FunArity, Module, Snapshot, Visibility, state,
+};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
 use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
@@ -234,14 +240,7 @@ fn function_exported(
     function: &FunctionName,
     arity: Arity,
 ) -> bool {
-    let Some(m) = snapshot.module_named(module) else {
-        return false;
-    };
-    let target = FunArity {
-        name: function.clone(),
-        arity,
-    };
-    m.exports.binary_search(&target).is_ok()
+    snapshot.lookup_export(module, function, arity)
 }
 
 fn function_exported_any_arity(
@@ -591,6 +590,13 @@ fn check_files_against_pin(
 ) -> PostimageTally {
     let mut tally = PostimageTally::default();
     for file in files {
+        // Cuttlefish schema files are analyzed by extracting the MFA
+        // references from their fun bodies, not by comparing content
+        // against the pin, so the preimage and file-presence checks do
+        // not apply to them.
+        if file.language == SourceKind::CuttlefishSchema {
+            continue;
+        }
         let Some(path) = file.primary_path() else {
             continue;
         };
@@ -723,173 +729,6 @@ fn added_lines_collide(hunk: &Hunk, target: &[&str]) -> bool {
     false
 }
 
-fn preimage_lines(hunk: &Hunk) -> Vec<&str> {
-    hunk.lines
-        .iter()
-        .filter_map(|l| match l {
-            HunkLine::Context(t) | HunkLine::Removed(t) => Some(t.as_str()),
-            HunkLine::Added(_) => None,
-        })
-        .collect()
-}
-
-fn postimage_lines(hunk: &Hunk) -> Vec<&str> {
-    hunk.lines
-        .iter()
-        .filter_map(|l| match l {
-            HunkLine::Context(t) | HunkLine::Added(t) => Some(t.as_str()),
-            HunkLine::Removed(_) => None,
-        })
-        .collect()
-}
-
-fn leading_added_run(hunk: &Hunk) -> Vec<&str> {
-    hunk.lines
-        .iter()
-        .map_while(|l| match l {
-            HunkLine::Added(t) => Some(t.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn trailing_added_run(hunk: &Hunk) -> Vec<&str> {
-    let mut run: Vec<&str> = hunk
-        .lines
-        .iter()
-        .rev()
-        .map_while(|l| match l {
-            HunkLine::Added(t) => Some(t.as_str()),
-            _ => None,
-        })
-        .collect();
-    run.reverse();
-    run
-}
-
-fn preimage_offset(preimage: &[&str], old_start: usize, target: &[&str]) -> Option<usize> {
-    let expected = old_start.saturating_sub(1);
-    if matches_at(preimage, target, expected) {
-        return Some(expected);
-    }
-    find_subsequence(preimage, target)
-}
-
-/// The dual of `classify_preimage`: does the hunk's post-image
-/// (Context plus Added lines) already exist in the pin's file? Only
-/// hunks that add lines are considered; deletions get no signal.
-fn tally_postimage(
-    hunk: &Hunk,
-    pre: &PreimageMatch,
-    target_lines: &[&str],
-    path: &Path,
-    tally: &mut PostimageTally,
-) {
-    let added = hunk
-        .lines
-        .iter()
-        .filter(|l| matches!(l, HunkLine::Added(_)))
-        .count();
-    if added == 0 {
-        return;
-    }
-    let postimage: Vec<&str> = hunk
-        .lines
-        .iter()
-        .filter_map(|l| match l {
-            HunkLine::Context(t) | HunkLine::Added(t) => Some(t.as_str()),
-            HunkLine::Removed(_) => None,
-        })
-        .collect();
-    let context = hunk
-        .lines
-        .iter()
-        .filter(|l| matches!(l, HunkLine::Context(_)))
-        .count();
-    let preimage_empty = hunk.lines.iter().all(|l| matches!(l, HunkLine::Added(_)));
-    tally.considered += 1;
-    let entry = tally.per_file.entry(path.to_path_buf()).or_default();
-    entry.considered += 1;
-    if find_subsequence(&postimage, target_lines).is_none() {
-        return;
-    }
-    // An empty preimage classifies `Exact`, so added files must be
-    // decided by the postimage alone.
-    let pre_matches = !preimage_empty && !matches!(pre, PreimageMatch::Missing { .. });
-    if pre_matches {
-        tally.ambiguous += 1;
-        entry.ambiguous += 1;
-        return;
-    }
-    // Context lines make the postimage block a distinctive needle; a
-    // context-less near-empty block is too weak to call applied.
-    if context == 0 && postimage.len() < 2 {
-        tally.low_confidence += 1;
-        entry.low_confidence += 1;
-    } else {
-        tally.applied += 1;
-        entry.applied += 1;
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum PreimageMatch {
-    Exact,
-    Drifted { line_delta: isize },
-    Missing { excerpt: String },
-}
-
-/// Classify how the hunk's preimage block (Context and Removed lines)
-/// matches against `target_lines`. `Exact` is the happy path (preimage
-/// at `hunk.old_start - 1`); `Drifted` recovers an offset; `Missing`
-/// returns up to the first three preimage lines as an excerpt.
-fn classify_preimage(hunk: &Hunk, target_lines: &[&str]) -> PreimageMatch {
-    let preimage: Vec<&str> = hunk
-        .lines
-        .iter()
-        .filter_map(|l| match l {
-            HunkLine::Context(t) | HunkLine::Removed(t) => Some(t.as_str()),
-            HunkLine::Added(_) => None,
-        })
-        .collect();
-    if preimage.is_empty() {
-        return PreimageMatch::Exact;
-    }
-    let expected = hunk.old_start.saturating_sub(1);
-    if matches_at(&preimage, target_lines, expected) {
-        return PreimageMatch::Exact;
-    }
-    if let Some(found) = find_subsequence(&preimage, target_lines) {
-        let delta = found as isize - expected as isize;
-        return PreimageMatch::Drifted { line_delta: delta };
-    }
-    let excerpt = preimage
-        .iter()
-        .take(3)
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
-    PreimageMatch::Missing { excerpt }
-}
-
-fn matches_at(preimage: &[&str], target: &[&str], start: usize) -> bool {
-    if start + preimage.len() > target.len() {
-        return false;
-    }
-    preimage
-        .iter()
-        .enumerate()
-        .all(|(i, line)| target[start + i] == *line)
-}
-
-fn find_subsequence(preimage: &[&str], target: &[&str]) -> Option<usize> {
-    if preimage.is_empty() || preimage.len() > target.len() {
-        return None;
-    }
-    let last = target.len() - preimage.len();
-    (0..=last).find(|&i| matches_at(preimage, target, i))
-}
-
 fn analyze_function_reference(
     r: &SymbolRef,
     mfa: &Mfa,
@@ -912,11 +751,20 @@ fn analyze_function_reference(
         });
         return;
     }
-    if is_function_deprecated_in(module, &mfa.function, mfa.arity) {
+    if let Some(dep) = deprecation_of(module, &mfa.function, mfa.arity) {
+        // the replacement carries no module of its own: it names a
+        // function in the same module as the deprecated call
+        let replacement = dep.replacement.as_ref().map(|rep| {
+            SymbolRef::function(Mfa::new(
+                mfa.module.clone(),
+                rep.function.clone(),
+                rep.arity,
+            ))
+        });
         reasons.push(Reason::DeprecatedUsage {
             symbol: r.clone(),
-            since: None,
-            replacement: None,
+            since: dep.since.clone(),
+            replacement,
         });
     }
     let target = FunArity {
@@ -1180,22 +1028,28 @@ fn find_record_fields(
         .map(|r| r.fields.iter().map(|f| f.name.clone()).collect())
 }
 
-fn is_function_deprecated_in(module: &Module, function: &FunctionName, arity: Arity) -> bool {
-    for d in &module.deprecations {
+/// The first deprecation covering `function/arity` in `module`, so the
+/// reason can carry its `since` and `replacement`. A module-wide
+/// deprecation covers every function.
+fn deprecation_of<'a>(
+    module: &'a Module,
+    function: &FunctionName,
+    arity: Arity,
+) -> Option<&'a Deprecation> {
+    module.deprecations.iter().find(|d| {
         if d.module_wide {
             return true;
         }
         if let Some(f) = &d.function
             && f == function
         {
-            match d.arity_match {
-                ArityMatch::Any => return true,
-                ArityMatch::Exact { arity: a } if a == arity => return true,
-                ArityMatch::Exact { .. } => {}
-            }
+            return match d.arity_match {
+                ArityMatch::Any => true,
+                ArityMatch::Exact { arity: a } => a == arity,
+            };
         }
-    }
-    false
+        false
+    })
 }
 
 fn record_present(snapshot: &Snapshot<state::Canonical>, name: &RecordName) -> bool {

@@ -165,33 +165,6 @@ fn deprecated_function_calls_lists_callers() {
 }
 
 #[test]
-fn recursive_functions_detects_mutual_recursion() {
-    let x = build(&[
-        (
-            "ra_server.erl",
-            "-module(ra_server).\n-export([loop/0]).\nloop() -> ra_log:tick().\n",
-        ),
-        (
-            "ra_log.erl",
-            "-module(ra_log).\n-export([tick/0]).\ntick() -> ra_server:loop().\n",
-        ),
-    ]);
-    let rec = x.recursive_functions();
-    assert!(rec.contains(&mfa("ra_server", "loop", 0)));
-    assert!(rec.contains(&mfa("ra_log", "tick", 0)));
-}
-
-#[test]
-fn recursive_functions_detects_self_call_via_external_chain() {
-    let x = build(&[(
-        "ra_server.erl",
-        "-module(ra_server).\n-export([loop/0]).\nloop() -> ra_server:loop().\n",
-    )]);
-    let rec = x.recursive_functions();
-    assert!(rec.contains(&mfa("ra_server", "loop", 0)));
-}
-
-#[test]
 fn module_cycles_finds_two_module_cycle() {
     let x = build(&[
         (
@@ -247,28 +220,6 @@ fn module_cycles_empty_for_dag() {
 }
 
 #[test]
-fn nonconformant_implementers_lists_missing_required_callbacks() {
-    let x = build(&[
-        (
-            "ra_machine.erl",
-            "-module(ra_machine).\n-callback init(X) -> ok.\n-callback apply(X, Y) -> ok.\n",
-        ),
-        (
-            "rabbit_fifo.erl",
-            "-module(rabbit_fifo).\n-behaviour(ra_machine).\n-export([init/1, apply/2]).\ninit(_) -> ok.\napply(_, _) -> ok.\n",
-        ),
-        (
-            "rabbit_quorum_queue.erl",
-            "-module(rabbit_quorum_queue).\n-behaviour(ra_machine).\n-export([init/1]).\ninit(_) -> ok.\n",
-        ),
-    ]);
-    let nc = x.nonconformant_implementers();
-    assert_eq!(nc.len(), 1);
-    assert_eq!(nc[0].implementer.as_str(), "rabbit_quorum_queue");
-    assert!(nc[0].missing.iter().any(|s| s.name.as_str() == "apply"));
-}
-
-#[test]
 fn calls_from_returns_callees_at_one_hop() {
     let x = build(&[
         (
@@ -294,18 +245,6 @@ fn called_by_empty_for_unreachable_target() {
     let target = mfa("ra_log", "append", 0);
     let c = x.called_by(&target, false);
     assert!(c.entries.is_empty());
-}
-
-#[test]
-fn undefined_functions_distinct_from_undefined_function_calls() {
-    let x = build(&[(
-        "ra_server.erl",
-        "-module(ra_server).\n-export([recover/0]).\nrecover() ->\n  ra_log:append(),\n  ra_log:append(),\n  ra_log:fold().\n",
-    )]);
-    let unique = x.undefined_functions();
-    let with_callers = x.undefined_function_calls();
-    assert_eq!(unique.len(), 2);
-    assert_eq!(with_callers.entries.len(), 2);
 }
 
 #[test]
@@ -351,34 +290,6 @@ fn exports_not_used_marks_on_load_function() {
         .find(|u| u.mfa.function.as_str() == "init")
         .unwrap();
     assert!(entry.is_on_load);
-}
-
-#[test]
-fn application_call_returns_typed_app_dependencies() {
-    use backhopper_xref::ProjectLayout;
-    let mut b = XrefBuilder::new().with_layout(ProjectLayout::rabbitmq_main());
-    let ra = ApplicationName::new("ra".to_owned()).unwrap();
-    let khepri = ApplicationName::new("khepri".to_owned()).unwrap();
-    b.add_application(
-        ra.clone(),
-        vec![(
-            PathBuf::from("deps/ra/src/ra_server.erl"),
-            b"-module(ra_server).\n-export([handle/0]).\nhandle() -> khepri_machine:get().\n"
-                .to_vec(),
-        )],
-    )
-    .unwrap();
-    b.add_application(
-        khepri,
-        vec![(
-            PathBuf::from("deps/khepri/src/khepri_machine.erl"),
-            b"-module(khepri_machine).\n-export([get/0]).\nget() -> ok.\n".to_vec(),
-        )],
-    )
-    .unwrap();
-    let x = b.build().unwrap();
-    let deps = x.application_call(&ra);
-    assert!(deps.entries.iter().any(|a| a.as_str() == "khepri"));
 }
 
 #[test]

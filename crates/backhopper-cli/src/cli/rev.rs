@@ -27,7 +27,7 @@ pub enum RevCmd {
         subject: bool,
         #[arg(
             value_name = "COMMIT_SHA",
-            long_help = "Commit SHA prefix (7 to 40 hex characters; case-insensitive)"
+            long_help = crate::cli::COMMIT_SHA_PREFIX_HELP
         )]
         commit: CommitShaPrefix,
     },

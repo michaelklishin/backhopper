@@ -20,6 +20,7 @@ use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
 use backhopper_core::store::SnapshotStore;
 
+use backhopper_cli::CommandOutcome;
 use backhopper_cli::commands::doctor::{
     SnapshotStatus, Totals, build_pin_row, count_newer_tags, doctor_exit_code, snapshot_cell,
     staleness_note,
@@ -179,7 +180,7 @@ fn stale_extractor_pin_is_flagged_with_remedy_and_nonzero_exit() {
     let mut totals = Totals::default();
     totals.record(row.snapshot());
     assert_eq!(totals.stale_extractor, 1);
-    assert_ne!(doctor_exit_code(&totals), 0);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 
 #[test]
@@ -202,7 +203,7 @@ fn present_current_pin_reports_ok_and_zero_exit() {
     totals.record(row.snapshot());
     assert_eq!(totals.present, 1);
     assert_eq!(totals.stale_extractor, 0);
-    assert_eq!(doctor_exit_code(&totals), 0);
+    assert_eq!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 
 #[test]
@@ -224,12 +225,15 @@ fn missing_alongside_stale_counts_both_and_exits_nonzero() {
     assert_eq!(totals.stale_extractor, 1);
     assert_eq!(totals.missing, 1);
     assert_eq!(totals.present, 1);
-    assert_ne!(doctor_exit_code(&totals), 0);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 
 #[test]
 fn doctor_exit_code_is_zero_when_clean() {
-    assert_eq!(doctor_exit_code(&Totals::default()), 0);
+    assert_eq!(
+        doctor_exit_code(&Totals::default()),
+        CommandOutcome::Success
+    );
 }
 
 #[test]
@@ -238,7 +242,7 @@ fn doctor_exit_code_is_nonzero_for_missing() {
         missing: 1,
         ..Totals::default()
     };
-    assert_ne!(doctor_exit_code(&totals), 0);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 
 #[test]
@@ -247,5 +251,5 @@ fn doctor_exit_code_is_nonzero_for_stale_extractor() {
         stale_extractor: 1,
         ..Totals::default()
     };
-    assert_ne!(doctor_exit_code(&totals), 0);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }

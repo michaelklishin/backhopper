@@ -18,10 +18,6 @@ pub fn is_otp_module(module: &ModuleName) -> bool {
     set().contains(module.as_str())
 }
 
-pub fn allowlist() -> &'static [&'static str] {
-    OTP_MODULES
-}
-
 fn set() -> &'static HashSet<&'static str> {
     static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
     SET.get_or_init(|| OTP_MODULES.iter().copied().collect())

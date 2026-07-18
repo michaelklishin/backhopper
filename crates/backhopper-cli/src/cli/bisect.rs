@@ -24,7 +24,7 @@ pub enum BisectCmd {
         no_cache: bool,
         #[arg(
             value_name = "COMMIT_SHA",
-            long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"
+            long_help = crate::cli::COMMIT_SHA_HELP
         )]
         commit: CommitShaPrefix,
     },

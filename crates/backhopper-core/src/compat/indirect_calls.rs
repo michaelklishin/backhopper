@@ -22,14 +22,13 @@
 //! not a reference this axis claims to see. A literal `m:f` whose arity
 //! source is unreadable is counted as withheld, never guessed.
 
-use std::mem;
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 use backhopper_erlang_scan::{ScannedArgs, ScannedList, scan_list_elements, scan_top_level_args};
 use regex::Regex;
 
-use crate::compat::call_sites::{BodyRun, body_runs, call_re, run_line_at};
+use crate::compat::call_sites::{BodyRun, body_runs, body_runs_with, call_re, run_line_at};
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName};
 use crate::model::verdict::IndirectCallForm;
 
@@ -318,32 +317,8 @@ fn elixir_call_re() -> &'static Regex {
 /// `#` comments, so a form wrapped across lines is scanned whole. No
 /// attribute classification, since every Elixir added line is body.
 fn elixir_body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
-    let mut out = Vec::new();
-    let mut run = String::new();
-    let mut run_lines: Vec<(usize, u32)> = Vec::new();
-    let mut prev_file_line: Option<u32> = None;
-    for (idx, line) in src.lines().enumerate() {
-        let stripped = strip_elixir_line_comment(line);
-        let file_line = line_map.get(idx).copied();
-        let adjacent = matches!((prev_file_line, file_line), (Some(p), Some(c)) if c == p + 1);
-        if !adjacent && !run.is_empty() {
-            out.push(BodyRun {
-                text: mem::take(&mut run),
-                line_starts: mem::take(&mut run_lines),
-            });
-        }
-        prev_file_line = file_line;
-        run_lines.push((run.len(), (idx + 1) as u32));
-        run.push_str(stripped);
-        run.push('\n');
-    }
-    if !run.is_empty() {
-        out.push(BodyRun {
-            text: run,
-            line_starts: run_lines,
-        });
-    }
-    out
+    // every Elixir added line is body, so the classifier is always true
+    body_runs_with(src, line_map, strip_elixir_line_comment, |_| true)
 }
 
 /// The prefix of `line` before an Elixir `#` line comment, leaving a

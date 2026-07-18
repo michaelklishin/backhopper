@@ -156,14 +156,13 @@ fn inapplicable_reason_distinguishes_docs_tests_schema() {
         Some(InapplicableReason::OnlyTestFixturesTouched)
     );
 
+    // A cuttlefish schema file is analyzable surface: its fun bodies carry
+    // MFA references, so a schema-only diff is not inapplicable.
     let tk = TouchedKinds {
         schema: 1,
         ..TouchedKinds::default()
     };
-    assert_eq!(
-        tk.inapplicable_reason(),
-        Some(InapplicableReason::OnlySchemaTouched)
-    );
+    assert_eq!(tk.inapplicable_reason(), None);
 }
 
 #[test]

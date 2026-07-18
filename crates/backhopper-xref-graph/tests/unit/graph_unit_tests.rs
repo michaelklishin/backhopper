@@ -33,7 +33,7 @@ fn point() -> Loc {
 #[test]
 fn empty_built_graph_has_no_modules() {
     let g: CallGraph<Functions, _> = CallGraph::new().finish();
-    assert_eq!(g.module_count(), 0);
+    assert_eq!(g.modules().count(), 0);
     assert!(g.all_calls().is_empty());
 }
 
@@ -269,7 +269,7 @@ fn modules_count_matches_insert_count() {
         g.insert_module(mname(name), ModuleSummary::default());
     }
     let g = g.finish();
-    assert_eq!(g.module_count(), 5);
+    assert_eq!(g.modules().count(), 5);
 }
 
 #[test]

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
-use bel7_cli::{PARTIAL_SUCCESS_I32, TableStyle};
+use bel7_cli::TableStyle;
 use serde::Serialize;
 use tabled::Tabled;
 
@@ -17,11 +18,11 @@ use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 use backhopper_core::versions::version_cmp;
 
-use backhopper_git::GitRepo;
-
 use crate::cli::{DoctorCmd, GlobalArgs};
-use crate::commands::auto_generate::{expected_extractor_version, snapshot_generate_command};
-use crate::commands::context::{load_config, open_store_read, snapshot_dir};
+use crate::commands::auto_generate::{
+    SnapshotFreshness, classify_snapshot_freshness, snapshot_generate_command,
+};
+use crate::commands::context::{load_config, open_project_repo, open_store_read, snapshot_dir};
 use crate::commands::pin_coverage::{PinCoverage, classify_pin};
 use crate::commands::snapshots::filter_tags_for_project;
 use crate::errors::{CliError, CliResult};
@@ -131,7 +132,7 @@ enum PinDisplay {
     SelfRef { git_ref: String },
 }
 
-pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     let store = open_store_read(args, &cfg)?;
     let payload = build_payload(args, &cfg, &store, &cmd)?;
@@ -141,14 +142,10 @@ pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<i32> {
     render_with_exit(&ctx, &payload, exit, |w| render_text(w, &payload, style))
 }
 
-// 0 when every pin is present and current; 3 when any pin is missing
-// or carries a stale extractor version
-pub fn doctor_exit_code(totals: &Totals) -> i32 {
-    if totals.missing > 0 || totals.stale_extractor > 0 {
-        PARTIAL_SUCCESS_I32
-    } else {
-        0
-    }
+// Success when every pin is present and current; PartialSuccess when
+// any pin is missing or carries a stale extractor version
+pub fn doctor_exit_code(totals: &Totals) -> CommandOutcome {
+    CommandOutcome::from_success(!(totals.missing > 0 || totals.stale_extractor > 0))
 }
 
 fn build_payload(
@@ -262,21 +259,10 @@ fn snapshot_status(
     let PinCoverage::Resolved { pin, present: true } = coverage else {
         return SnapshotStatus::Missing;
     };
-    let expected = expected_extractor_version(cfg, &pin.project);
-    match store.read(&pin.project, &pin.tag) {
-        Ok(snap) => {
-            let stored = snap.header().extractor_version.as_str();
-            if !stored.is_empty() && stored != expected {
-                SnapshotStatus::Stale {
-                    stored: stored.to_owned(),
-                    expected: expected.to_owned(),
-                }
-            } else {
-                SnapshotStatus::Current
-            }
-        }
-        // A read failure on an on-disk file counts as missing, same as `coverage_report`.
-        Err(_) => SnapshotStatus::Missing,
+    match classify_snapshot_freshness(cfg, store, pin) {
+        SnapshotFreshness::Present => SnapshotStatus::Current,
+        SnapshotFreshness::Missing => SnapshotStatus::Missing,
+        SnapshotFreshness::Stale { stored, expected } => SnapshotStatus::Stale { stored, expected },
     }
 }
 
@@ -366,7 +352,7 @@ fn build_note(spec: &PinSpec, resolved: Option<&Pin>, present: bool) -> Option<S
 }
 
 fn upstream_lead(project: &Project, resolved: Option<&TagName>) -> Result<usize, CliError> {
-    let repo = GitRepo::open(project.require_git_url()?.to_path_buf())?;
+    let repo = open_project_repo(project)?;
     let listing = repo.list_tag_refs()?;
     let filtered = filter_tags_for_project(listing.tags, project, None);
     Ok(count_newer_tags(&filtered, resolved))
@@ -416,8 +402,8 @@ fn unpinned_projects(cfg: &Config) -> Vec<String> {
     let mut out: Vec<String> = cfg
         .projects
         .iter()
+        .filter(|p| !pinned.contains(p.name.as_str()))
         .map(|p| p.name.as_str().to_owned())
-        .filter(|n| !pinned.contains(n.as_str()))
         .collect();
     out.sort();
     out

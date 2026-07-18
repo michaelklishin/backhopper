@@ -6,7 +6,9 @@ use std::str::FromStr;
 
 use backhopper_cli::commands::check::render_markdown_triage;
 use backhopper_core::model::names::DependencyName;
-use backhopper_core::model::names::{Arity, FunctionName, ModuleName, ProjectName, TagName};
+use backhopper_core::model::names::{
+    Arity, FunctionName, ModuleName, ProjectName, RelativePath, TagName,
+};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
@@ -187,4 +189,52 @@ fn no_pin_bumps_means_no_bump_line_and_no_leading_blank() {
     let s = render(&eval);
     assert!(!s.contains("Pin bump"));
     assert!(s.starts_with("| Pin |"));
+}
+
+// Target-axis and wire reasons render their own label, never the Debug
+// fallback. A new variant that misses `reason_md_label`'s match would
+// print its field-braced Debug form here instead of a clean label.
+#[test]
+fn target_axis_and_wire_reasons_render_labels_not_debug_fallback() {
+    let reasons = vec![
+        Reason::TargetPathAbsent {
+            path: RelativePath::new("deps/rabbit/src/gone.erl".to_owned()).unwrap(),
+        },
+        Reason::MacroUndefinedOnTarget {
+            source_path: RelativePath::new("deps/rabbit/src/x.erl".to_owned()).unwrap(),
+            macro_name: "MAX_FRAME".to_owned(),
+            line: 12,
+        },
+        Reason::WireContractRegression {
+            module: ModuleName::new("rabbit_stream").unwrap(),
+            pin_version: 2,
+            patch_version: 3,
+        },
+        Reason::PreimageDrifted {
+            path: "deps/rabbit/src/y.erl".into(),
+            hunk_index: 1,
+            line_delta: -4,
+        },
+    ];
+    let eval = build_eval(vec![PinVerdict::new(
+        pin("rabbit", "v4.0.x"),
+        Verdict::Incompatible { reasons },
+    )]);
+    let s = render(&eval);
+    assert!(
+        s.contains("TargetPathAbsent deps/rabbit/src/gone.erl"),
+        "{s}"
+    );
+    assert!(
+        s.contains("MacroUndefinedOnTarget ?MAX_FRAME in deps/rabbit/src/x.erl:12"),
+        "{s}"
+    );
+    assert!(
+        s.contains("WireContractRegression rabbit_stream 2->3"),
+        "{s}"
+    );
+    assert!(
+        s.contains("PreimageDrifted deps/rabbit/src/y.erl hunk #1 Δ=-4"),
+        "{s}"
+    );
 }

@@ -7,11 +7,11 @@
 //! consumer surface every downstream tool (q-port, scripts) builds
 //! on, so the typed-iterator shape gets a dedicated test file.
 
-use backhopper_driver::SeriesEvaluation;
+use backhopper_driver::CheckPayload;
 use serde_json::json;
 
-fn parse(value: serde_json::Value) -> SeriesEvaluation {
-    serde_json::from_value(value).expect("SeriesEvaluation deserializes")
+fn parse(value: serde_json::Value) -> CheckPayload {
+    serde_json::from_value(value).expect("CheckPayload deserializes")
 }
 
 fn one_pin_with_reasons(reasons: serde_json::Value) -> serde_json::Value {

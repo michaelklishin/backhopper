@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use backhopper_core::compat::patch::{HunkLine, PatchedFile};
 use backhopper_core::model::names::DependencyName;
@@ -75,19 +75,16 @@ impl DepSource {
     }
 }
 
-fn dep_re() -> &'static Regex {
-    static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| {
-        Regex::new(r"^\s*dep_([a-z0-9_]+)\s*=\s*(hex|git_rmq|git)\s+(.+?)\s*$").expect("regex")
-    })
-}
+static DEP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*dep_([a-z0-9_]+)\s*=\s*(hex|git_rmq|git)\s+(.+?)\s*$").expect("regex")
+});
 
 /// Parse a single makefile line into a dep pin.
 pub fn parse_pin_line(line: &str) -> Option<DepPin> {
     if line.trim_start().starts_with('#') {
         return None;
     }
-    let caps = dep_re().captures(line)?;
+    let caps = DEP_RE.captures(line)?;
     let name = caps[1].to_owned();
     if name.ends_with("_commit") || name.ends_with("_branch") || name.ends_with("_repo") {
         return None;

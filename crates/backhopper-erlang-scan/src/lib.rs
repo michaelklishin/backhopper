@@ -322,33 +322,48 @@ pub struct ParsedSignature {
     pub signature: String,
 }
 
-/// Parses a `-spec` or `-callback` body (`name(Args) -> Ret`, no
-/// leading attribute keyword, no trailing `.`). Module-qualified forms
-/// (`Mod:f(...)`) return `None`: the `:` ends the name and the next
-/// character is not `(`.
-pub fn parse_callable_signature(body: &str) -> Option<ParsedSignature> {
-    let trimmed = body.trim();
+/// Splits a callable head `name(Args)Rest` into the name, the inner
+/// argument text, and the trailing text after the closing `)`. Returns
+/// `None` when the head does not start with an unqualified name followed
+/// by `(`: module-qualified forms (`Mod:f(...)`) fail because the `:`
+/// ends the name and the next character is not `(`.
+/// Splits a leading Erlang name off the front of `s`, returning the name
+/// and the remaining text (both trimmed). The name may be empty when `s`
+/// does not start with a name character.
+pub fn split_leading_name(s: &str) -> (&str, &str) {
+    let trimmed = s.trim_start();
     let name_end = trimmed
         .char_indices()
         .find(|(_, c)| !c.is_ascii_alphanumeric() && *c != '_' && *c != '@' && *c != '\'')
         .map(|(i, _)| i)
         .unwrap_or(trimmed.len());
-    if name_end == 0 {
+    (&trimmed[..name_end], trimmed[name_end..].trim_start())
+}
+
+pub fn split_name_and_args(body: &str) -> Option<(&str, &str, &str)> {
+    let (name, after_name) = split_leading_name(body);
+    if name.is_empty() || !after_name.starts_with('(') {
         return None;
     }
-    let name = trimmed[..name_end].to_string();
-    let after_name = trimmed[name_end..].trim_start();
-    if !after_name.starts_with('(') {
-        return None;
-    }
-    let (args, rest_after_args) = take_balanced_parens(after_name)?;
-    let arity = count_top_level_commas(args) + if args.trim().is_empty() { 0 } else { 1 };
-    let rest = rest_after_args.trim_start();
+    let (args, rest) = take_balanced_parens(after_name)?;
+    Some((name, args, rest.trim_start()))
+}
+
+/// Top-level argument count for the inner text between a call's parens.
+pub fn arity_of_args(args: &str) -> usize {
+    count_top_level_commas(args) + if args.trim().is_empty() { 0 } else { 1 }
+}
+
+/// Parses a `-spec` or `-callback` body (`name(Args) -> Ret`, no
+/// leading attribute keyword, no trailing `.`). Module-qualified forms
+/// return `None`.
+pub fn parse_callable_signature(body: &str) -> Option<ParsedSignature> {
+    let (name, args, rest) = split_name_and_args(body)?;
     let after_arrow = rest.strip_prefix("->")?.trim_start();
     let signature = format!("{}({}) -> {}", name, args.trim(), after_arrow.trim());
     Some(ParsedSignature {
-        name,
-        arity: arity.min(255) as u8,
+        name: name.to_string(),
+        arity: arity_of_args(args).min(255) as u8,
         signature,
     })
 }

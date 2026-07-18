@@ -48,6 +48,14 @@ pub use tree::TreeCmd;
 pub use tree_source::TreeSource;
 pub use xref::XrefCmd;
 
+/// Long-help phrasing for commit-SHA arguments, hoisted so the wording
+/// cannot drift across the verbs that accept one.
+pub(crate) const COMMIT_SHA_HELP: &str = "Commit SHA (7 to 40 hex characters; case-insensitive)";
+pub(crate) const MERGE_COMMIT_SHA_HELP: &str =
+    "Merge commit SHA (7 to 40 hex characters; case-insensitive)";
+pub(crate) const COMMIT_SHA_PREFIX_HELP: &str =
+    "Commit SHA prefix (7 to 40 hex characters; case-insensitive)";
+
 /// The repository commit-shaped inputs are read from. One definition
 /// so the default and the env override cannot drift across verbs.
 #[derive(Debug, Args, Clone)]

@@ -12,8 +12,11 @@ use backhopper_core::compat::arg_shape::ArgShape;
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolKind;
 use backhopper_core::model::verdict::{
-    ArtifactKind, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, Verdict,
+    ArtifactKind, InapplicableReason, PinVerdict, Reason, SeriesEvaluation, SnapshotSide,
+    TranslationSource, Verdict,
 };
+
+use crate::output::plural;
 
 #[derive(Tabled)]
 struct ReasonRow {
@@ -59,10 +62,7 @@ fn collect_rows(results: &[PinVerdict]) -> Vec<ReasonRow> {
                 pin,
                 verdict: verdict_label,
                 reason: "-",
-                detail: format!(
-                    "{symbols} tracked symbol{} referenced",
-                    if symbols == 1 { "" } else { "s" }
-                ),
+                detail: format!("{symbols} tracked symbol{} referenced", plural(symbols)),
             });
             continue;
         }
@@ -492,6 +492,258 @@ pub(crate) fn reason_detail(r: &Reason) -> String {
             )
         }
         _ => format!("{r:?}"),
+    }
+}
+
+pub(crate) fn reason_md_label(r: &Reason) -> String {
+    reason_md_label_known(r).unwrap_or_else(|| format!("{r:?}"))
+}
+
+/// `None` for a `Reason` variant no arm handles: the wrapper then falls
+/// back to the Debug form. A unit test asserts every current variant is
+/// `Some`, so a newly added variant cannot degrade to Debug unnoticed.
+fn reason_md_label_known(r: &Reason) -> Option<String> {
+    Some(match r {
+        Reason::MissingSymbol { symbol, .. } => {
+            format!("MissingSymbol {}", format_symbol(&symbol.kind))
+        }
+        Reason::ArityChanged {
+            module, function, ..
+        } => {
+            format!("ArityChanged {module}:{function}")
+        }
+        Reason::SignatureChanged {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("SignatureChanged {module}:{function}/{arity}"),
+        Reason::FileAbsent { path } => format!("FileAbsent {}", path.display()),
+        Reason::ContextDrift { path, hunk_index } => {
+            format!("ContextDrift {} hunk {}", path.display(), hunk_index)
+        }
+        Reason::DeprecatedUsage { symbol, .. } => {
+            format!("Deprecated {}", format_symbol(&symbol.kind))
+        }
+        Reason::NowHidden { module } => format!("NowHidden {module}"),
+        Reason::RecordFieldsChanged { record, .. } => format!("RecordFieldsChanged #{record}"),
+        Reason::UnsupportedFileType { path } => format!("Unsupported {}", path.display()),
+        Reason::UntrackedModuleMissing { module } => format!("UntrackedModuleMissing {module}"),
+        Reason::ClauseMismatch {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("ClauseMismatch {module}:{function}/{arity}"),
+        Reason::MissingPrereq { symbol, .. } => {
+            format!("MissingPrereq {}", format_symbol(&symbol.kind))
+        }
+        Reason::SyntacticArtifact { path, line, .. } => {
+            format!("SyntacticArtifact {}:{line}", path.display())
+        }
+        Reason::BehaviourCallbackSignatureChanged {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackSignatureChanged {behaviour}:{callback}/{arity}"),
+        Reason::BehaviourCallbackRemoved {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackRemoved {behaviour}:{callback}/{arity}"),
+        Reason::BehaviourCallbackAdded {
+            behaviour,
+            callback,
+            arity,
+            ..
+        } => format!("CallbackAdded {behaviour}:{callback}/{arity}"),
+        Reason::ModuleRelocated { module, .. } => format!("ModuleRelocated {module}"),
+        Reason::WireConstantChanged {
+            module, macro_name, ..
+        } => format!("WireConstantChanged {module}.?{macro_name}"),
+        Reason::HistoricalImplementationMissing {
+            module,
+            advertised_version_before,
+            advertised_version_after,
+            ..
+        } => format!(
+            "HistoricalImplementationMissing {module} {advertised_version_before}->{advertised_version_after}"
+        ),
+        Reason::WireContractBodyDrift {
+            module,
+            advertised_version,
+            ..
+        } => format!("WireContractBodyDrift {module} @ v{advertised_version}"),
+        Reason::WireContractRegression {
+            module,
+            pin_version,
+            patch_version,
+        } => format!("WireContractRegression {module} {pin_version}->{patch_version}"),
+        Reason::ReturnShapeMismatch {
+            module,
+            function,
+            arity,
+            ..
+        } => format!("ReturnShapeMismatch {module}:{function}/{arity}"),
+        Reason::MissingType {
+            module,
+            name,
+            arity,
+        } => format!("MissingType {module}:{name}/{arity}"),
+        Reason::PreimageDrifted {
+            path,
+            hunk_index,
+            line_delta,
+        } => format!(
+            "PreimageDrifted {} hunk #{hunk_index} Δ={line_delta:+}",
+            path.display()
+        ),
+        Reason::PreimageMissing {
+            path, hunk_index, ..
+        } => format!("PreimageMissing {} hunk #{hunk_index}", path.display()),
+        Reason::PostimageCollision { path, hunk_index } => {
+            format!("PostimageCollision {} hunk #{hunk_index}", path.display())
+        }
+        Reason::PathRename {
+            source_path,
+            target_path,
+            translation,
+        } => format!(
+            "PathRename {} → {} (translation: {})",
+            source_path.display(),
+            target_path.display(),
+            translation_name(translation),
+        ),
+        Reason::TargetPathAbsent { path } => format!("TargetPathAbsent {path}"),
+        Reason::VersionedMachineSnapshotMissing { module, side } => {
+            format!(
+                "VersionedMachineSnapshotMissing {module} ({})",
+                side_label(*side)
+            )
+        }
+        Reason::WireConstantBindingsMissing {
+            module,
+            macros,
+            side,
+        } => {
+            let names: Vec<String> = macros.iter().map(|m| format!("?{m}")).collect();
+            format!(
+                "WireConstantBindingsMissing {module} [{}] ({})",
+                names.join(", "),
+                side_label(*side),
+            )
+        }
+        Reason::MacroUndefinedOnTarget {
+            source_path,
+            macro_name,
+            line,
+        } => format!("MacroUndefinedOnTarget ?{macro_name} in {source_path}:{line}"),
+        Reason::RecordUndefinedOnTarget {
+            source_path,
+            record_name,
+            line,
+        } => format!("RecordUndefinedOnTarget #{record_name} in {source_path}:{line}"),
+        Reason::ExportedTypeUndefinedOnTarget {
+            source_path,
+            type_name,
+            arity,
+            line,
+        } => format!("ExportedTypeUndefinedOnTarget {type_name}/{arity} in {source_path}:{line}"),
+        Reason::LocalCallUndefinedOnTarget {
+            source_path,
+            function,
+            arity,
+            line,
+        } => format!("LocalCallUndefinedOnTarget {function}/{arity} in {source_path}:{line}"),
+        Reason::QualifiedCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            line,
+        } => format!(
+            "QualifiedCallUndefinedOnTarget {module}:{function}/{arity} in {source_path}:{line}"
+        ),
+        Reason::IndirectCallUndefinedOnTarget {
+            source_path,
+            module,
+            function,
+            arity,
+            via,
+            line,
+        } => format!(
+            "IndirectCallUndefinedOnTarget {module}:{function}/{arity} via {} in {source_path}:{line}",
+            via.display_form()
+        ),
+        Reason::QualifiedCallReturnShapeDrift {
+            source_path,
+            module,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "QualifiedCallReturnShapeDrift {module}:{function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
+        ),
+        Reason::LocalCallReturnShapeDrift {
+            source_path,
+            function,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "LocalCallReturnShapeDrift {function}/{arity} in {source_path}:{line}: source spec {source_signature:?} vs target spec {target_signature:?}"
+        ),
+        Reason::MacroValueDrift {
+            source_path,
+            macro_name,
+            source_value,
+            target_value,
+            line,
+        } => format!(
+            "MacroValueDrift ?{macro_name} in {source_path}:{line}: source value {source_value:?} vs target value {target_value:?}"
+        ),
+        Reason::BehaviourCallbackAddedOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            line,
+        } => format!(
+            "BehaviourCallbackAddedOnTarget {behaviour} requires {callback}/{arity} in {source_path}:{line}"
+        ),
+        Reason::BehaviourCallbackDriftOnTarget {
+            source_path,
+            behaviour,
+            callback,
+            arity,
+            source_signature,
+            target_signature,
+            line,
+        } => format!(
+            "BehaviourCallbackDriftOnTarget {behaviour}:{callback}/{arity} in {source_path}:{line}: source {source_signature:?} vs target {target_signature:?}"
+        ),
+        _ => return None,
+    })
+}
+
+fn side_label(s: SnapshotSide) -> &'static str {
+    match s {
+        SnapshotSide::Source => "source",
+        SnapshotSide::Target => "target",
+        SnapshotSide::Both => "both",
+    }
+}
+
+fn translation_name(t: &TranslationSource) -> &str {
+    match t {
+        TranslationSource::ConfigStanza { name } | TranslationSource::ExternalFile { name, .. } => {
+            name.as_str()
+        }
     }
 }
 

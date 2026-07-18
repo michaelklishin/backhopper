@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::serde_util::{is_false, is_zero};
+
 use crate::app_src::AppSrcSpec;
 use crate::model::names::{ApplicationName, ModuleName};
 
@@ -168,16 +170,6 @@ pub struct LineMatch {
     pub pattern: String,
     #[serde(default)]
     pub captures: Vec<String>,
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero(n: &usize) -> bool {
-    *n == 0
 }
 
 /// Path-glob trigger expression. `PathRegex` supports named captures

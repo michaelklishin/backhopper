@@ -4,9 +4,10 @@
 
 //! `backhopper suites ...` handler.
 
+use crate::outcome::CommandOutcome;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{self, Read};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use backhopper_core::Error as CoreError;
@@ -18,69 +19,76 @@ use backhopper_core::suites::{
     BuildSystem, ExtraRule, PlanInput, SuiteInclusionReason, SuitePlan, derive_library_apps,
     plan_with_matcher,
 };
-use backhopper_xref::{is_suite_module, suites_referencing, suites_referencing_mfas};
+use backhopper_xref::{SuiteRef, is_suite_module, suites_referencing, suites_referencing_mfas};
 use backhopper_xref_reader::AstSuiteMatcher;
 
 use crate::cli::suites::SuitesPlanArgs;
 use crate::cli::{GlobalArgs, SuitesCmd};
-use crate::commands::context::{load_config, open_store_read};
+use crate::commands::context::{load_config, open_store_read, read_text_or_stdin};
 use crate::commands::tree_source::build_xref;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
 
-fn ctx(global: &GlobalArgs, command: &'static str) -> OutputContext {
-    OutputContext::new(global.formatter, command)
+/// One suite reference per line: `app/module` when the application is
+/// known, else the bare module.
+fn render_suite_refs<'a>(
+    w: &mut dyn Write,
+    suites: impl IntoIterator<Item = &'a SuiteRef>,
+) -> CliResult<()> {
+    for s in suites {
+        match &s.application {
+            Some(a) => writeln!(w, "{}/{}", a, s.module)?,
+            None => writeln!(w, "{}", s.module)?,
+        }
+    }
+    Ok(())
 }
 
-pub fn handle(global: &GlobalArgs, cmd: SuitesCmd) -> CliResult<i32> {
+pub fn handle(global: &GlobalArgs, cmd: SuitesCmd) -> CliResult<CommandOutcome> {
     match cmd {
         SuitesCmd::ListForModules { tree, module } => {
             let xref = build_xref(&tree)?;
             let mods: BTreeSet<_> = module.into_iter().collect();
             let suites = suites_referencing(&xref, &mods, is_suite_module);
-            render(&ctx(global, "suites list_for_modules"), &suites, |w| {
-                for s in &suites {
-                    match &s.application {
-                        Some(a) => writeln!(w, "{}/{}", a, s.module)?,
-                        None => writeln!(w, "{}", s.module)?,
-                    }
-                }
-                Ok(())
-            })?;
-            Ok(0)
+            render(
+                &OutputContext::from_args(global, "suites list_for_modules"),
+                &suites,
+                |w| render_suite_refs(w, &suites),
+            )?;
+            Ok(CommandOutcome::Success)
         }
         SuitesCmd::ListForMfas { tree, mfa } => {
             let xref = build_xref(&tree)?;
             let mfas: BTreeSet<_> = mfa.into_iter().collect();
             let suites = suites_referencing_mfas(&xref, &mfas, is_suite_module);
-            render(&ctx(global, "suites list_for_mfas"), &suites, |w| {
-                for s in &suites {
-                    match &s.application {
-                        Some(a) => writeln!(w, "{}/{}", a, s.module)?,
-                        None => writeln!(w, "{}", s.module)?,
-                    }
-                }
-                Ok(())
-            })?;
-            Ok(0)
+            render(
+                &OutputContext::from_args(global, "suites list_for_mfas"),
+                &suites,
+                |w| render_suite_refs(w, &suites),
+            )?;
+            Ok(CommandOutcome::Success)
         }
         SuitesCmd::ListCallersOf { tree, mfa } => {
             let xref = build_xref(&tree)?;
             let callers = xref.called_by(&mfa, false);
-            render(&ctx(global, "suites list_callers_of"), &callers, |w| {
-                writeln!(w, "callers of {}:", callers.target)?;
-                for c in &callers.entries {
-                    writeln!(w, "  {}", c.caller)?;
-                }
-                Ok(())
-            })?;
-            Ok(0)
+            render(
+                &OutputContext::from_args(global, "suites list_callers_of"),
+                &callers,
+                |w| {
+                    writeln!(w, "callers of {}:", callers.target)?;
+                    for c in &callers.entries {
+                        writeln!(w, "  {}", c.caller)?;
+                    }
+                    Ok(())
+                },
+            )?;
+            Ok(CommandOutcome::Success)
         }
         SuitesCmd::Plan(args) => run_suites_plan(global, args),
     }
 }
 
-fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> {
+fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<CommandOutcome> {
     let modified_paths = collect_modified_paths(&args)?;
     let discovery = discover(&args.repo_dir_path);
     for w in &discovery.warnings {
@@ -129,7 +137,7 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<i32> 
     let mut matcher = AstSuiteMatcher::new();
     let result = plan_with_matcher(&input, &mut matcher);
     render_plan(global, &result, build_system)?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn build_dep_module_index(
@@ -207,13 +215,7 @@ fn collect_modified_paths(args: &SuitesPlanArgs) -> CliResult<Vec<PathBuf>> {
 }
 
 fn read_modified_paths_from_file(path: &Path) -> CliResult<Vec<PathBuf>> {
-    let text = if path == Path::new("-") {
-        let mut s = String::new();
-        io::stdin().read_to_string(&mut s)?;
-        s
-    } else {
-        fs::read_to_string(path)?
-    };
+    let text = read_text_or_stdin(path)?;
     let mut out = Vec::new();
     for line in text.lines() {
         let trimmed = line.trim();
@@ -230,55 +232,59 @@ fn render_plan(
     result: &SuitePlan,
     build_system: BuildSystem,
 ) -> CliResult<()> {
-    render(&ctx(global, "suites plan"), result, |w| {
-        if result.is_empty() {
-            writeln!(w, "no suites selected")?;
-        } else {
-            writeln!(w, "{} suite(s) selected", result.len())?;
-            for entry in &result.entries {
-                writeln!(w, "  {}/{}", entry.suite.application, entry.suite.module)?;
-                for reason in &entry.reasons {
-                    writeln!(w, "    - {}", reason_label(reason))?;
+    render(
+        &OutputContext::from_args(global, "suites plan"),
+        result,
+        |w| {
+            if result.is_empty() {
+                writeln!(w, "no suites selected")?;
+            } else {
+                writeln!(w, "{} suite(s) selected", result.len())?;
+                for entry in &result.entries {
+                    writeln!(w, "  {}/{}", entry.suite.application, entry.suite.module)?;
+                    for reason in &entry.reasons {
+                        writeln!(w, "    - {}", reason_label(reason))?;
+                    }
                 }
             }
-        }
-        for u in &result.uncovered {
-            writeln!(
-                w,
-                "uncovered: {} ({} modified module(s), {} suite(s) discovered, 0 selected)",
-                u.application, u.modified_modules, u.discovered_suites
-            )?;
-            if u.suites.is_empty() {
-                writeln!(w, "  this application has no test suites")?;
-            } else {
-                let names: Vec<&str> = u.suites.iter().map(|m| m.as_str()).collect();
-                writeln!(w, "  candidates: {}", names.join(", "))?;
+            for u in &result.uncovered {
+                writeln!(
+                    w,
+                    "uncovered: {} ({} modified module(s), {} suite(s) discovered, 0 selected)",
+                    u.application, u.modified_modules, u.discovered_suites
+                )?;
+                if u.suites.is_empty() {
+                    writeln!(w, "  this application has no test suites")?;
+                } else {
+                    let names: Vec<&str> = u.suites.iter().map(|m| m.as_str()).collect();
+                    writeln!(w, "  candidates: {}", names.join(", "))?;
+                }
             }
-        }
-        if result.unattributed_paths > 0 {
-            writeln!(
-                w,
-                "{} modified path(s) resolve to no application",
-                result.unattributed_paths
-            )?;
-        }
-        for b in &result.broad_impact {
-            writeln!(
-                w,
-                "broad: {} reaches {} of {} suites",
-                b.module, b.suite_fanout, b.total_suites
-            )?;
-            writeln!(
-                w,
-                "  treat as a broad change: run the full suite, or pick a representative subset"
-            )?;
-        }
-        if let Some(hint) = build_system_hint(build_system, result) {
-            writeln!(w)?;
-            writeln!(w, "{hint}")?;
-        }
-        Ok(())
-    })?;
+            if result.unattributed_paths > 0 {
+                writeln!(
+                    w,
+                    "{} modified path(s) resolve to no application",
+                    result.unattributed_paths
+                )?;
+            }
+            for b in &result.broad_impact {
+                writeln!(
+                    w,
+                    "broad: {} reaches {} of {} suites",
+                    b.module, b.suite_fanout, b.total_suites
+                )?;
+                writeln!(
+                    w,
+                    "  treat as a broad change: run the full suite, or pick a representative subset"
+                )?;
+            }
+            if let Some(hint) = build_system_hint(build_system, result) {
+                writeln!(w)?;
+                writeln!(w, "{hint}")?;
+            }
+            Ok(())
+        },
+    )?;
     Ok(())
 }
 

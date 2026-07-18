@@ -330,12 +330,12 @@ diff --git a/lib/status_command.ex b/lib/status_command.ex
  defmodule RabbitMQ.CLI.StatusCommand do
 +  def run, do: :ok
 ";
-    let snap = snapshot("demo", vec![module_with("demo", &[])]);
-    let verdict = Patch::parse(diff.as_bytes())
+    let ctx = make_context("demo", vec![module_with("demo", &[])]);
+    let series = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against(&snap, pin("demo", "v1.0.0"));
-    let pin_verdict = verdict.verdicts().first().unwrap();
+        .evaluate_series(&[ctx]);
+    let pin_verdict = series.verdict.results.first().unwrap();
     let reasons = pin_verdict.verdict.reasons();
     let has_unsupported = reasons
         .iter()
@@ -356,12 +356,12 @@ diff --git a/Makefile b/Makefile
  PROJECT = demo
 +DEPS = ra
 ";
-    let snap = snapshot("demo", vec![module_with("demo", &[])]);
-    let verdict = Patch::parse(diff.as_bytes())
+    let ctx = make_context("demo", vec![module_with("demo", &[])]);
+    let series = Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
-        .against(&snap, pin("demo", "v1.0.0"));
-    let pin_verdict = verdict.verdicts().first().unwrap();
+        .evaluate_series(&[ctx]);
+    let pin_verdict = series.verdict.results.first().unwrap();
     assert!(
         matches!(pin_verdict.verdict, Verdict::Compatible),
         "non-source build files must be silent-skipped, got: {:?}",

@@ -28,9 +28,9 @@ pub use backhopper_core::model::evaluation::AggregateVerdict;
 pub use backhopper_core::model::findings::TargetFindings;
 pub use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
 pub use backhopper_core::model::names::{
-    ApplicationName, Arity, AttributeName, BehaviourName, CallbackName, CommitSha, CommitShaPrefix,
-    DependencyName, DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName,
-    ProjectName, RecordName, SeriesName, TagGlob, TagName, TypeName,
+    ApplicationName, Arity, BehaviourName, CommitSha, CommitShaPrefix, DependencyName,
+    DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName, ProjectName,
+    RecordName, SeriesName, TagGlob, TagName, TypeName,
 };
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};

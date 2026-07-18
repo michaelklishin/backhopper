@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::compat::patch::{HunkLine, Language, PatchedFile};
+use crate::compat::patch::{HunkLine, PatchedFile, SourceKind};
 use crate::model::names::RecordName;
 use crate::model::verdict::{FileLoggingStyle, KhepriSignals, LoggingStyle, PatchFacts};
 
@@ -220,7 +220,7 @@ fn contains_named_branch(text: &str, suffix: &str) -> bool {
 pub(crate) fn is_only_test_visibility_change(files: &[PatchedFile]) -> bool {
     let mut saw_erlang_file = false;
     for file in files {
-        if !matches!(file.language, Language::Erlang) {
+        if !matches!(file.language, SourceKind::Erlang) {
             continue;
         }
         if file.binary {

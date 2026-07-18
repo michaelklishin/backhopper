@@ -44,7 +44,7 @@ pub struct DiscoveryOutput {
 /// `_rel` and `logs`, npm-style `node_modules`, Nix's `.direnv`,
 /// plus `.git`. `target` is included so cross-language repos that
 /// vendor Rust artifacts don't bloat the scan.
-const SKIP_DIRS: &[&str] = &[
+pub const SKIP_DIRS: &[&str] = &[
     ".git",
     "_build",
     "_rel",

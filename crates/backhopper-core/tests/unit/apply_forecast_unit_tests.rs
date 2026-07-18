@@ -107,10 +107,6 @@ fn has_conflict_and_worst_and_summary_read_a_mixed_forecast() {
         conflict(ApplyConflictKind::PreimageMissing),
     );
     assert!(forecast.has_conflict());
-    assert_eq!(
-        forecast.worst(),
-        Some(&conflict(ApplyConflictKind::PreimageMissing))
-    );
     let summary = forecast.summary();
     assert_eq!(summary.clean, 1);
     assert_eq!(summary.drifted, 1);

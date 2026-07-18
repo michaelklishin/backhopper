@@ -27,6 +27,8 @@ pub mod verb;
 pub mod mock;
 
 pub use backend::{Backend, Invocation, OutputChannel, OutputPolicy, RawOutcome};
+pub use backhopper_core::model::batch::PinPayload;
+pub use backhopper_core::model::check_payload::{CheckPayload, ProjectSuggestion, QueriedAgainst};
 pub use backhopper_core::model::evaluation::{
     AggregateVerdict, BehaviourModuleMissingFinding, HeaderFileMissingFinding,
     SeriesEvaluationView, TestModuleSymbolMissingFinding, VersionedMachineSnapshotMissingFinding,
@@ -35,8 +37,8 @@ pub use backhopper_core::model::evaluation::{
 pub use backhopper_core::model::summary::VerdictKind;
 pub use builder::check::{
     Check, CheckBatchBuilder, CheckCommitBuilder, CheckMergeBuilder, CheckOptions,
-    CheckPatchBuilder, CheckRangeBuilder, ExplainFormat, PatchSource, PinDescriptor,
-    QueriedAgainst, SeriesEvaluation,
+    CheckPatchBuilder, CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind,
+    PatchSource, PositionalKind, RangeKind,
 };
 pub use builder::siblings::{Siblings, SiblingsDoctorBuilder};
 pub use builder::snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
@@ -77,12 +79,6 @@ pub struct SchemaVersionRange {
 }
 
 impl SchemaVersionRange {
-    /// Build a single-version range.
-    #[must_use]
-    pub const fn singleton(v: SchemaVersion) -> Self {
-        Self { min: v, max: v }
-    }
-
     /// True when `v` is inside the range.
     #[must_use]
     pub const fn contains(self, v: SchemaVersion) -> bool {

@@ -5,14 +5,13 @@
 //! Vertex sets and binary relations.
 //!
 //! The algebra here is what xref-style analyses need: union, intersection,
-//! difference, the two restrictions (by source, by target, by both),
-//! forward and backward image, composition, transitive closure (irreflexive
-//! and reflexive), and edge reversal.
+//! difference, forward and backward image, transitive closure, and edge
+//! reversal.
 //!
 //! Everything is keyed on `Vertex` and stored in `BTreeSet` so iteration
 //! order is deterministic.
 
-use std::collections::{BTreeMap, BTreeSet, btree_set};
+use std::collections::{BTreeSet, btree_set};
 use std::iter::Map;
 
 use serde::{Deserialize, Serialize};
@@ -75,11 +74,6 @@ impl VertexSet {
         VertexSet {
             inner: self.inner.difference(&other.inner).cloned().collect(),
         }
-    }
-
-    /// Complement against an explicit universe: `universe - self`.
-    pub fn complement(&self, universe: &VertexSet) -> VertexSet {
-        universe.difference(self)
     }
 }
 
@@ -158,50 +152,9 @@ impl Relation {
         }
     }
 
-    /// The set of vertices that appear as a source on some edge.
-    pub fn sources(&self) -> VertexSet {
-        self.inner.iter().map(|(s, _)| s.clone()).collect()
-    }
-
     /// The set of vertices that appear as a target on some edge.
     pub fn targets(&self) -> VertexSet {
         self.inner.iter().map(|(_, t)| t.clone()).collect()
-    }
-
-    /// Keep only edges whose source is in `sources`.
-    pub fn filter_sources_in(&self, sources: &VertexSet) -> Relation {
-        Relation {
-            inner: self
-                .inner
-                .iter()
-                .filter(|(s, _)| sources.contains(s))
-                .cloned()
-                .collect(),
-        }
-    }
-
-    /// Keep only edges whose target is in `targets`.
-    pub fn filter_targets_in(&self, targets: &VertexSet) -> Relation {
-        Relation {
-            inner: self
-                .inner
-                .iter()
-                .filter(|(_, t)| targets.contains(t))
-                .cloned()
-                .collect(),
-        }
-    }
-
-    /// Keep only edges whose source and target are both in `vs`.
-    pub fn filter_both_in(&self, vs: &VertexSet) -> Relation {
-        Relation {
-            inner: self
-                .inner
-                .iter()
-                .filter(|(s, t)| vs.contains(s) && vs.contains(t))
-                .cloned()
-                .collect(),
-        }
     }
 
     /// Forward image: `{ y | exists x in sources, (x, y) in self }`.
@@ -222,23 +175,6 @@ impl Relation {
             .collect()
     }
 
-    /// Relational composition: `{ (x, z) | exists y, (x, y) in self, (y, z) in other }`.
-    pub fn compose(&self, other: &Relation) -> Relation {
-        let mut by_source: BTreeMap<&Vertex, Vec<&Vertex>> = BTreeMap::new();
-        for (s, t) in other.iter() {
-            by_source.entry(s).or_default().push(t);
-        }
-        let mut out = BTreeSet::new();
-        for (x, y) in self.iter() {
-            if let Some(zs) = by_source.get(y) {
-                for z in zs {
-                    out.insert((x.clone(), (*z).clone()));
-                }
-            }
-        }
-        Relation { inner: out }
-    }
-
     /// Reverse every edge: maps `(s, t)` to `(t, s)`.
     pub fn reversed(&self) -> Relation {
         Relation {
@@ -255,12 +191,7 @@ impl Relation {
     /// Tarjan's Strongly Connected Component algorithm, then DAG
     /// reachability propagation: O(V + E + sum(component-size^2)).
     pub fn transitive_closure(&self) -> Relation {
-        closure::compute(self, false)
-    }
-
-    /// Reflexive transitive closure (E*).
-    pub fn reflexive_transitive_closure(&self) -> Relation {
-        closure::compute(self, true)
+        closure::compute(self)
     }
 }
 
@@ -290,7 +221,7 @@ mod closure {
     use crate::relation::Relation;
     use crate::vertex::Vertex;
 
-    pub(super) fn compute(r: &Relation, reflexive: bool) -> Relation {
+    pub(super) fn compute(r: &Relation) -> Relation {
         let adj = build_adj(r);
         let sccs = tarjan_sccs(&adj);
         let mut comp_of: BTreeMap<&Vertex, usize> = BTreeMap::new();
@@ -325,9 +256,6 @@ mod closure {
             let intra_cycle =
                 scc.len() > 1 || adj.get(&scc[0]).is_some_and(|out| out.contains(&scc[0]));
             for v in scc {
-                if reflexive {
-                    out.insert(((*v).clone(), (*v).clone()));
-                }
                 if intra_cycle {
                     for u in scc {
                         out.insert(((*v).clone(), (*u).clone()));
@@ -352,82 +280,82 @@ mod closure {
         adj
     }
 
+    // Iterative Tarjan over integer vertex ids, so a deep call graph over
+    // the RabbitMQ monorepo cannot overflow the thread stack. Ids index a
+    // sorted vertex list, so the per-vertex state is `Vec`-indexed instead
+    // of map-keyed, and the SCC output keeps the same vertex ordering the
+    // recursive version produced.
     fn tarjan_sccs<'a>(adj: &BTreeMap<&'a Vertex, Vec<&'a Vertex>>) -> Vec<Vec<&'a Vertex>> {
-        let mut index_counter: usize = 0;
-        let mut stack: Vec<&'a Vertex> = Vec::new();
-        let mut on_stack: BTreeSet<&'a Vertex> = BTreeSet::new();
-        let mut indices: BTreeMap<&'a Vertex, usize> = BTreeMap::new();
-        let mut lowlinks: BTreeMap<&'a Vertex, usize> = BTreeMap::new();
+        let nodes: Vec<&'a Vertex> = adj.keys().copied().collect();
+        let id_of: BTreeMap<&Vertex, usize> =
+            nodes.iter().enumerate().map(|(i, v)| (*v, i)).collect();
+        let neighbours: Vec<Vec<usize>> = nodes
+            .iter()
+            .map(|v| adj[v].iter().map(|w| id_of[w]).collect())
+            .collect();
+        let n = nodes.len();
+
+        const UNVISITED: usize = usize::MAX;
+        let mut indices = vec![UNVISITED; n];
+        let mut lowlinks = vec![0usize; n];
+        let mut on_stack = vec![false; n];
+        let mut tarjan_stack: Vec<usize> = Vec::new();
+        let mut next_index = 0usize;
         let mut out: Vec<Vec<&'a Vertex>> = Vec::new();
-        for v in adj.keys() {
-            if !indices.contains_key(v) {
-                strongconnect(
-                    v,
-                    adj,
-                    &mut index_counter,
-                    &mut stack,
-                    &mut on_stack,
-                    &mut indices,
-                    &mut lowlinks,
-                    &mut out,
-                );
+
+        // Each frame is (vertex, index of the next child to visit).
+        let mut work: Vec<(usize, usize)> = Vec::new();
+        for start in 0..n {
+            if indices[start] != UNVISITED {
+                continue;
+            }
+            work.push((start, 0));
+            while let Some(&(v, child)) = work.last() {
+                if child == 0 {
+                    indices[v] = next_index;
+                    lowlinks[v] = next_index;
+                    next_index += 1;
+                    tarjan_stack.push(v);
+                    on_stack[v] = true;
+                }
+                let mut recursed = false;
+                let mut i = child;
+                while i < neighbours[v].len() {
+                    let w = neighbours[v][i];
+                    if indices[w] == UNVISITED {
+                        work.last_mut().unwrap().1 = i + 1;
+                        work.push((w, 0));
+                        recursed = true;
+                        break;
+                    }
+                    if on_stack[w] {
+                        lowlinks[v] = lowlinks[v].min(indices[w]);
+                    }
+                    i += 1;
+                }
+                if recursed {
+                    continue;
+                }
+                if lowlinks[v] == indices[v] {
+                    let mut scc = Vec::new();
+                    loop {
+                        let w = tarjan_stack.pop().expect("stack non-empty during SCC pop");
+                        on_stack[w] = false;
+                        scc.push(nodes[w]);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    scc.sort();
+                    out.push(scc);
+                }
+                work.pop();
+                if let Some(&(parent, _)) = work.last() {
+                    lowlinks[parent] = lowlinks[parent].min(lowlinks[v]);
+                }
             }
         }
         out
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn strongconnect<'a>(
-        v: &'a Vertex,
-        adj: &BTreeMap<&'a Vertex, Vec<&'a Vertex>>,
-        index_counter: &mut usize,
-        stack: &mut Vec<&'a Vertex>,
-        on_stack: &mut BTreeSet<&'a Vertex>,
-        indices: &mut BTreeMap<&'a Vertex, usize>,
-        lowlinks: &mut BTreeMap<&'a Vertex, usize>,
-        out: &mut Vec<Vec<&'a Vertex>>,
-    ) {
-        indices.insert(v, *index_counter);
-        lowlinks.insert(v, *index_counter);
-        *index_counter += 1;
-        stack.push(v);
-        on_stack.insert(v);
-        if let Some(neighbours) = adj.get(v) {
-            for w in neighbours {
-                if !indices.contains_key(w) {
-                    strongconnect(
-                        w,
-                        adj,
-                        index_counter,
-                        stack,
-                        on_stack,
-                        indices,
-                        lowlinks,
-                        out,
-                    );
-                    let wl = lowlinks[w];
-                    let vl = lowlinks[v];
-                    lowlinks.insert(v, vl.min(wl));
-                } else if on_stack.contains(w) {
-                    let wi = indices[w];
-                    let vl = lowlinks[v];
-                    lowlinks.insert(v, vl.min(wi));
-                }
-            }
-        }
-        if lowlinks[v] == indices[v] {
-            let mut scc = Vec::new();
-            loop {
-                let w = stack.pop().expect("stack non-empty during SCC pop");
-                on_stack.remove(w);
-                scc.push(w);
-                if w == v {
-                    break;
-                }
-            }
-            scc.sort();
-            out.push(scc);
-        }
     }
 
     fn reverse_topo(adj: &[BTreeSet<usize>]) -> Vec<usize> {

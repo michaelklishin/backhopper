@@ -7,6 +7,7 @@
 
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +24,6 @@ const MAX_RECORD_NAME_LEN: usize = 256;
 const MAX_FIELD_NAME_LEN: usize = 256;
 const MAX_APPLICATION_NAME_LEN: usize = 128;
 const MAX_BEHAVIOUR_NAME_LEN: usize = 256;
-const MAX_ATTRIBUTE_NAME_LEN: usize = 64;
-const MAX_CALLBACK_NAME_LEN: usize = 256;
 const MAX_MACRO_NAME_LEN: usize = 256;
 const MAX_DEPENDENCY_NAME_LEN: usize = 128;
 const MAX_DEPENDENCY_VERSION_LEN: usize = 128;
@@ -240,17 +239,17 @@ fn validate_module_name(kind: &'static str, value: &str, max_len: usize) -> Resu
 }
 
 macro_rules! string_newtype {
-    ($name:ident, $kind:literal, $max:expr, $validate:expr) => {
+    ($name:ident, $validate:expr) => {
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
         #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
         #[serde(transparent)]
-        pub struct $name(String);
+        pub struct $name(Arc<str>);
 
         impl $name {
             pub fn new(value: impl Into<String>) -> Result<Self, NameError> {
                 let v = value.into();
                 $validate(&v)?;
-                Ok(Self(v))
+                Ok(Self(Arc::from(v)))
             }
 
             pub fn as_str(&self) -> &str {
@@ -258,7 +257,7 @@ macro_rules! string_newtype {
             }
 
             pub fn into_inner(self) -> String {
-                self.0
+                self.0.to_string()
             }
         }
 
@@ -284,23 +283,18 @@ macro_rules! string_newtype {
     };
 }
 
-string_newtype!(
-    ProjectName,
-    "project name",
-    MAX_PROJECT_NAME_LEN,
-    |v: &str| {
-        validate_simple_name(
-            "project name",
-            v,
-            MAX_PROJECT_NAME_LEN,
-            |c| c.is_ascii_lowercase(),
-            is_project_name_char,
-            PROJECT_PATTERN,
-        )
-    }
-);
+string_newtype!(ProjectName, |v: &str| {
+    validate_simple_name(
+        "project name",
+        v,
+        MAX_PROJECT_NAME_LEN,
+        |c| c.is_ascii_lowercase(),
+        is_project_name_char,
+        PROJECT_PATTERN,
+    )
+});
 
-string_newtype!(SeriesName, "series name", MAX_SERIES_NAME_LEN, |v: &str| {
+string_newtype!(SeriesName, |v: &str| {
     validate_simple_name(
         "series name",
         v,
@@ -311,10 +305,10 @@ string_newtype!(SeriesName, "series name", MAX_SERIES_NAME_LEN, |v: &str| {
     )
 });
 
-string_newtype!(TagName, "tag", MAX_TAG_NAME_LEN, validate_tag_name);
+string_newtype!(TagName, validate_tag_name);
 
 const MAX_GIT_REF_LEN: usize = 256;
-string_newtype!(GitRef, "git ref", MAX_GIT_REF_LEN, validate_git_ref);
+string_newtype!(GitRef, validate_git_ref);
 
 fn validate_git_ref(value: &str) -> Result<(), NameError> {
     if value.is_empty() {
@@ -339,7 +333,7 @@ fn validate_git_ref(value: &str) -> Result<(), NameError> {
     Ok(())
 }
 
-string_newtype!(TagGlob, "tag glob", MAX_TAG_GLOB_LEN, validate_tag_glob);
+string_newtype!(TagGlob, validate_tag_glob);
 
 impl TagGlob {
     /// True if `tag` matches this glob. Supports `*` (zero or more) and `?` (any one).
@@ -377,83 +371,52 @@ fn glob_match(pattern: &str, text: &str) -> bool {
     pi == pattern.len()
 }
 
-string_newtype!(ModuleName, "module name", MAX_MODULE_NAME_LEN, |v: &str| {
+string_newtype!(ModuleName, |v: &str| {
     validate_module_name("module name", v, MAX_MODULE_NAME_LEN)
 });
 
-string_newtype!(
-    FunctionName,
-    "function name",
-    MAX_FUNCTION_NAME_LEN,
-    |v: &str| { validate_erlang_name("function name", v, MAX_FUNCTION_NAME_LEN) }
-);
+string_newtype!(FunctionName, |v: &str| {
+    validate_erlang_name("function name", v, MAX_FUNCTION_NAME_LEN)
+});
 
-string_newtype!(TypeName, "type name", MAX_TYPE_NAME_LEN, |v: &str| {
+string_newtype!(TypeName, |v: &str| {
     validate_erlang_name("type name", v, MAX_TYPE_NAME_LEN)
 });
 
-string_newtype!(RecordName, "record name", MAX_RECORD_NAME_LEN, |v: &str| {
+string_newtype!(RecordName, |v: &str| {
     validate_erlang_name("record name", v, MAX_RECORD_NAME_LEN)
 });
 
-string_newtype!(FieldName, "field name", MAX_FIELD_NAME_LEN, |v: &str| {
+string_newtype!(FieldName, |v: &str| {
     validate_erlang_name("field name", v, MAX_FIELD_NAME_LEN)
 });
 
-string_newtype!(
-    ApplicationName,
-    "application name",
-    MAX_APPLICATION_NAME_LEN,
-    |v: &str| {
-        validate_simple_name(
-            "application name",
-            v,
-            MAX_APPLICATION_NAME_LEN,
-            |c| c.is_ascii_lowercase(),
-            is_application_name_char,
-            APPLICATION_PATTERN,
-        )
-    }
-);
+string_newtype!(ApplicationName, |v: &str| {
+    validate_simple_name(
+        "application name",
+        v,
+        MAX_APPLICATION_NAME_LEN,
+        |c| c.is_ascii_lowercase(),
+        is_application_name_char,
+        APPLICATION_PATTERN,
+    )
+});
 
-string_newtype!(
-    BehaviourName,
-    "behaviour name",
-    MAX_BEHAVIOUR_NAME_LEN,
-    |v: &str| { validate_module_name("behaviour name", v, MAX_BEHAVIOUR_NAME_LEN) }
-);
+string_newtype!(BehaviourName, |v: &str| {
+    validate_module_name("behaviour name", v, MAX_BEHAVIOUR_NAME_LEN)
+});
 
-string_newtype!(
-    AttributeName,
-    "attribute name",
-    MAX_ATTRIBUTE_NAME_LEN,
-    |v: &str| { validate_erlang_name("attribute name", v, MAX_ATTRIBUTE_NAME_LEN) }
-);
-
-string_newtype!(
-    CallbackName,
-    "callback name",
-    MAX_CALLBACK_NAME_LEN,
-    |v: &str| { validate_erlang_name("callback name", v, MAX_CALLBACK_NAME_LEN) }
-);
-
-string_newtype!(MacroName, "macro name", MAX_MACRO_NAME_LEN, |v: &str| {
+string_newtype!(MacroName, |v: &str| {
     validate_macro_name("macro name", v, MAX_MACRO_NAME_LEN)
 });
 
-string_newtype!(
-    DependencyName,
-    "dependency name",
-    MAX_DEPENDENCY_NAME_LEN,
-    |v: &str| { validate_dependency_name("dependency name", v, MAX_DEPENDENCY_NAME_LEN) }
-);
+string_newtype!(DependencyName, |v: &str| {
+    validate_dependency_name("dependency name", v, MAX_DEPENDENCY_NAME_LEN)
+});
 
-string_newtype!(
-    DependencyVersion,
-    "dependency version",
-    MAX_DEPENDENCY_VERSION_LEN,
-    |v: &str| { validate_dependency_version("dependency version", v, MAX_DEPENDENCY_VERSION_LEN) }
-);
+string_newtype!(DependencyVersion, |v: &str| {
+    validate_dependency_version("dependency version", v, MAX_DEPENDENCY_VERSION_LEN)
+});
 
 fn validate_macro_name(kind: &'static str, value: &str, max_len: usize) -> Result<(), NameError> {
     validate_simple_name(
@@ -510,12 +473,7 @@ fn validate_dependency_version(
 
 const MAX_RELATIVE_PATH_LEN: usize = 4096;
 
-string_newtype!(
-    RelativePath,
-    "relative path",
-    MAX_RELATIVE_PATH_LEN,
-    validate_relative_path
-);
+string_newtype!(RelativePath, validate_relative_path);
 
 fn validate_relative_path(value: &str) -> Result<(), NameError> {
     if value.is_empty() {
@@ -622,7 +580,7 @@ impl TryFrom<usize> for Arity {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(transparent)]
-pub struct CommitSha(String);
+pub struct CommitSha(Arc<str>);
 
 impl CommitSha {
     pub fn new(value: impl Into<String>) -> Result<Self, NameError> {
@@ -634,7 +592,7 @@ impl CommitSha {
         {
             return Err(NameError::InvalidCommitSha { value: v });
         }
-        Ok(Self(v))
+        Ok(Self(Arc::from(v)))
     }
 
     pub fn as_str(&self) -> &str {

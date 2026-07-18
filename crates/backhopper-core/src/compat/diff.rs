@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::str;
 
-use crate::compat::patch::{Hunk, HunkLine, Language, PatchedFile};
+use crate::compat::patch::{Hunk, HunkLine, PatchedFile, SourceKind};
 use crate::errors::PatchError;
 
 pub const PATCH_SIZE_LIMIT: usize = 64 * 1024 * 1024;
@@ -42,7 +42,7 @@ fn parse_unified_diff(text: &str) -> Result<Vec<PatchedFile>, PatchError> {
             current = Some(PatchedFile {
                 old_path: None,
                 new_path: None,
-                language: Language::Other,
+                language: SourceKind::Other,
                 binary: false,
                 hunks: Vec::new(),
             });
@@ -54,7 +54,7 @@ fn parse_unified_diff(text: &str) -> Result<Vec<PatchedFile>, PatchError> {
             if let Some(f) = current.as_mut() {
                 let path = parse_diff_path(&line[4..]);
                 if let Some(p) = &path {
-                    f.language = Language::from_path(&p.to_string_lossy());
+                    f.language = SourceKind::from_path(&p.to_string_lossy());
                 }
                 f.new_path = path;
             }

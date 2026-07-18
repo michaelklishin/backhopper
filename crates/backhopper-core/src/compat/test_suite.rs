@@ -13,8 +13,8 @@
 //!
 //!  * `TestSuiteFile<Raw>::parse` → `TestSuiteFile<Parsed>`
 //!  * `TestSuiteFile<Parsed>::resolve` → `TestSuiteFile<Resolved>`
-//!  * only `TestSuiteFile<Resolved>` exposes `missing_modules`,
-//!    `into_reasons`, and `into_diagnostic_entry`
+//!  * only `TestSuiteFile<Resolved>` exposes `missing_modules` and
+//!    `into_findings`
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
@@ -227,38 +227,9 @@ impl TestSuiteFile<Resolved> {
         &self.missing
     }
 
-    /// Promote each missing helper into the typed verdict shape. The
-    /// caller stitches these into `PinVerdict.verdict` reasons.
-    pub fn into_reasons(self) -> Vec<Reason> {
-        let suite_path = self.suite_path;
-        self.missing
-            .into_iter()
-            .map(|m| Reason::TestModuleSymbolMissing {
-                suite_path: suite_path.clone(),
-                missing_module: m.module,
-                call_sites: m.call_sites,
-            })
-            .collect()
-    }
-
-    /// Collapse the missing helpers into the always-on diagnostic
-    /// shape consumed by `Diagnostics::record_missing_test_module`.
-    /// Returns `None` when nothing is missing.
-    pub fn into_diagnostic_entry(self) -> Option<(RelativePath, BTreeMap<ModuleName, usize>)> {
-        if self.missing.is_empty() {
-            return None;
-        }
-        let mut map = BTreeMap::new();
-        for m in self.missing {
-            map.insert(m.module, m.call_sites.len());
-        }
-        Some((self.suite_path, map))
-    }
-
-    /// Single-pass equivalent of calling `into_reasons` and
-    /// `into_diagnostic_entry` on a clone. Avoids cloning the
-    /// suite source plus every parsed call when the caller wants
-    /// both surfaces at once.
+    /// Promote the missing helpers into both the typed verdict reasons
+    /// and the diagnostic count map in one pass, without cloning the
+    /// suite source or the parsed calls.
     pub fn into_findings(self) -> ResolvedFindings {
         if self.missing.is_empty() {
             return ResolvedFindings {
@@ -534,6 +505,18 @@ impl<'a> HelperResolver<'a> {
         if self.wildcard_roots.is_empty() {
             return false;
         }
+        // Unique-basename fast path: the index resolves the module to its
+        // one `.erl` file, so match that single candidate against the
+        // wildcard roots instead of scanning every present path.
+        if let Some(path) = self.target.module_erl_path(module) {
+            return self
+                .wildcard_roots
+                .iter()
+                .any(|w| path_matches_wildcard(path, &w.prefix, &w.suffix));
+        }
+        // `None`: the module is absent, or two files share the basename
+        // (Erlang-invalid). Fall back to the linear scan so a clashing
+        // file stays matchable.
         for path in self.target.present_paths() {
             if path.file_name().and_then(|s| s.to_str()) != Some(filename.as_str()) {
                 continue;

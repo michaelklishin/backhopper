@@ -5,23 +5,28 @@
 //! Wire payloads of the `snapshots diff` verbs.
 //!
 //! Modeled here so the CLI emits and the driver parses one definition.
-//! Field types are the stringly wire shape the CLI already ships;
-//! newtyping them is a follow-up that keeps the same serialized form.
+//! The name-bearing fields carry the same serde-transparent newtypes the
+//! rest of core uses, so the serialized form is unchanged and a consumer
+//! stops re-validating identifiers it round-trips. The composite
+//! (`fun_arity`, `type_arity`), path (`header`), and value fields stay
+//! `String`: no name newtype fits them.
 
 use serde::{Deserialize, Serialize};
+
+use crate::model::names::{ModuleName, ProjectName, SeriesName, TagName};
 
 /// API delta between two tags of one project, oriented `from -> to`:
 /// `*_added` are present at `to` and absent at `from`; `*_removed` are
 /// present at `from` and absent at `to`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DiffPayload {
-    pub project: String,
+    pub project: ProjectName,
     /// The older tag: the baseline of the delta.
-    pub from: String,
+    pub from: TagName,
     /// The newer tag: the target of the delta.
-    pub to: String,
-    pub modules_added: Vec<String>,
-    pub modules_removed: Vec<String>,
+    pub to: TagName,
+    pub modules_added: Vec<ModuleName>,
+    pub modules_removed: Vec<ModuleName>,
     pub exports_added: Vec<QualifiedFunArity>,
     pub exports_removed: Vec<QualifiedFunArity>,
     pub types_added: Vec<QualifiedTypeArity>,
@@ -38,16 +43,48 @@ pub struct DiffPayload {
     pub wire_constant_changes: Vec<WireConstantChange>,
 }
 
+impl DiffPayload {
+    /// True when the diff records no API change on any tracked axis.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.modules_added.is_empty()
+            && self.modules_removed.is_empty()
+            && self.exports_added.is_empty()
+            && self.exports_removed.is_empty()
+            && self.types_added.is_empty()
+            && self.types_removed.is_empty()
+            && self.callbacks_added.is_empty()
+            && self.callbacks_removed.is_empty()
+            && self.headers_added.is_empty()
+            && self.headers_removed.is_empty()
+            && self.records_added.is_empty()
+            && self.records_removed.is_empty()
+            && self.versioned_machine_version_changes.is_empty()
+            && self.wire_constant_changes.is_empty()
+    }
+
+    /// Count of removed symbols: the breaking side of an API delta.
+    #[must_use]
+    pub fn breaking_removal_count(&self) -> usize {
+        self.modules_removed.len()
+            + self.exports_removed.len()
+            + self.callbacks_removed.len()
+            + self.types_removed.len()
+            + self.records_removed.len()
+            + self.headers_removed.len()
+    }
+}
+
 /// A versioned-machine version that was added, removed, or moved.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum VersionedMachineVersionChange {
     Missing {
-        module: String,
+        module: ModuleName,
         side: String,
     },
     Drift {
-        module: String,
+        module: ModuleName,
         from: Option<u64>,
         to: Option<u64>,
     },
@@ -58,12 +95,12 @@ pub enum VersionedMachineVersionChange {
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum WireConstantChange {
     Missing {
-        module: String,
+        module: ModuleName,
         side: String,
         macros: Vec<String>,
     },
     Drift {
-        module: String,
+        module: ModuleName,
         macro_name: String,
         from: String,
         to: String,
@@ -73,14 +110,14 @@ pub enum WireConstantChange {
 /// A function or callback named `module:fun/arity`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QualifiedFunArity {
-    pub module: String,
+    pub module: ModuleName,
     pub fun_arity: String,
 }
 
 /// A type named `module:type/arity`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QualifiedTypeArity {
-    pub module: String,
+    pub module: ModuleName,
     pub type_arity: String,
 }
 
@@ -97,9 +134,9 @@ pub struct QualifiedRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrossSeriesDiffPayload {
     /// The baseline series.
-    pub from_series: String,
+    pub from_series: SeriesName,
     /// The target series.
-    pub to_series: String,
+    pub to_series: SeriesName,
     /// One entry per project that differs between the two series.
     pub projects: Vec<DiffPayload>,
 }

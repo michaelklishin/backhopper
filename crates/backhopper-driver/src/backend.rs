@@ -231,9 +231,4 @@ impl RawOutcome {
         self.argv = argv.into_iter().collect();
         self
     }
-
-    /// Convenience read-only accessor.
-    pub fn argv(&self) -> &[OsString] {
-        &self.argv
-    }
 }

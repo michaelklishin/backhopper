@@ -164,7 +164,7 @@ pub enum CheckCmd {
         diagnostics: CheckFlags,
         #[arg(
             value_name = "COMMIT_SHA",
-            long_help = "Commit SHA (7 to 40 hex characters; case-insensitive)"
+            long_help = crate::cli::COMMIT_SHA_HELP
         )]
         commit: CommitShaPrefix,
     },
@@ -178,7 +178,7 @@ pub enum CheckCmd {
         range: Option<String>,
         #[arg(
             long,
-            long_help = "Merge commit SHA (7 to 40 hex characters; case-insensitive)"
+            long_help = crate::cli::MERGE_COMMIT_SHA_HELP
         )]
         merge_commit: Option<CommitShaPrefix>,
         #[command(flatten)]
@@ -204,7 +204,7 @@ pub enum CheckCmd {
         diagnostics: CheckFlags,
         #[arg(
             value_name = "MERGE_SHA",
-            long_help = "Merge commit SHA (7 to 40 hex characters; case-insensitive)"
+            long_help = crate::cli::MERGE_COMMIT_SHA_HELP
         )]
         merge_sha: CommitShaPrefix,
     },

@@ -252,16 +252,16 @@ impl CacheSession {
     /// Consult L1. A `None` key counts as bypassed.
     pub fn lookup(&self, key: Option<CacheKeyInputs>) -> SessionLookup<'_> {
         let Some(cache) = &self.cache else {
-            self.counters.bypassed.set(self.counters.bypassed.get() + 1);
+            self.counters.bypassed.update(|v| v + 1);
             return SessionLookup::Bypassed;
         };
         let Some(key) = key else {
-            self.counters.bypassed.set(self.counters.bypassed.get() + 1);
+            self.counters.bypassed.update(|v| v + 1);
             return SessionLookup::Bypassed;
         };
         match cache.lookup(&key) {
             InputOutcome::Hit(cached) => {
-                self.counters.l1_hits.set(self.counters.l1_hits.get() + 1);
+                self.counters.l1_hits.update(|v| v + 1);
                 SessionLookup::Hit(cached)
             }
             InputOutcome::MissOnInput(token) => {
@@ -288,11 +288,11 @@ impl CacheSession {
         let content = miss.key.content_key(patch_blake3, macro_env_blake3);
         match miss.token.lookup_content(&content) {
             ContentOutcome::Hit(cached) => {
-                self.counters.l2_hits.set(self.counters.l2_hits.get() + 1);
+                self.counters.l2_hits.update(|v| v + 1);
                 CacheLookupOutcome::Hit(cached)
             }
             ContentOutcome::Miss(token) => {
-                self.counters.misses.set(self.counters.misses.get() + 1);
+                self.counters.misses.update(|v| v + 1);
                 CacheLookupOutcome::Miss(SessionStore { token })
             }
         }

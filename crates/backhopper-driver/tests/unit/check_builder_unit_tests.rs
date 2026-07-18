@@ -6,7 +6,7 @@
 
 use backhopper_driver::mock::{Fallthrough, MockBackend, MockMatcher, MockResponse};
 use backhopper_driver::types::{CommitSha, ProjectName, SeriesName, TagName};
-use backhopper_driver::{Backhopper, ExplainFormat, Verb, VerbId};
+use backhopper_driver::{Backhopper, Verb, VerbId};
 use serde_json::{Value, json};
 
 fn series(name: &str) -> SeriesName {
@@ -57,7 +57,7 @@ fn patch_builder_injects_target_input_and_options() {
         .patch()
         .series(series("rabbitmq-4.2"))
         .patch_bytes(b"".to_vec())
-        .explain(ExplainFormat::Markdown)
+        .explain(true)
         .suggest_prereqs(true)
         .run()
         .unwrap();
@@ -108,7 +108,7 @@ fn commit_builder_routes_to_check_commit_verb() {
         .check()
         .commit()
         .series(series("rabbitmq-4.2"))
-        .commit(commit_sha("0123456789abcdef0123456789abcdef01234567"))
+        .positional(commit_sha("0123456789abcdef0123456789abcdef01234567"))
         .run()
         .unwrap();
 }
@@ -134,7 +134,7 @@ fn range_builder_appends_positional_range_argument() {
         .check()
         .range()
         .series(series("rabbitmq-4.2"))
-        .range("BASE..HEAD")
+        .positional("BASE..HEAD".to_string())
         .run()
         .unwrap();
 }
@@ -155,7 +155,7 @@ fn merge_builder_appends_positional_merge_sha() {
         .check()
         .merge()
         .series(series("rabbitmq-4.2"))
-        .merge_commit(commit_sha("fedcba9876543210fedcba9876543210fedcba98"))
+        .positional(commit_sha("fedcba9876543210fedcba9876543210fedcba98"))
         .run()
         .unwrap();
 }

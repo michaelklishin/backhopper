@@ -12,13 +12,6 @@ use thiserror::Error;
 pub enum ReadError {
     #[error("invalid utf-8 in {path:?} at byte offset {offset}")]
     InvalidUtf8 { path: PathBuf, offset: usize },
-
-    #[error("duplicate module {name} declared in {first:?} and {second:?}")]
-    DuplicateModule {
-        name: ModuleName,
-        first: PathBuf,
-        second: PathBuf,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -16,8 +16,8 @@ categories  = ["parsing"]
 workspace = true
 
 [dependencies]
-backhopper-core    = { workspace = true }
-backhopper-erlang  = { workspace = true }
+backhopper-core        = { workspace = true }
+backhopper-erlang-scan = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

@@ -7,9 +7,11 @@
 //! cache). Deliberately tiny; every operation is scan-and-filter
 //! over self-describing entries.
 
+use crate::outcome::CommandOutcome;
 use std::io::Write;
 use std::time::Duration;
 
+use bel7_cli::TableStyle;
 use tabled::Tabled;
 
 use backhopper_cache::{
@@ -31,7 +33,13 @@ use crate::tables::styled_table;
 /// prefix affordance.
 const MIN_KEY_PREFIX_LEN: usize = 8;
 
-pub fn handle(args: &GlobalArgs, cmd: CacheCmd) -> CliResult<i32> {
+fn commit_prefix_matches(entry: &ScannedEntry, prefix: &CommitShaPrefix) -> bool {
+    entry
+        .commit()
+        .is_some_and(|sha| sha.starts_with(prefix.as_str()))
+}
+
+pub fn handle(args: &GlobalArgs, cmd: CacheCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     let caches = WorkspaceCaches::at(&snapshot_dir(args, &cfg));
     match cmd {
@@ -67,7 +75,7 @@ struct StatsRow {
     bytes: u64,
 }
 
-fn run_stats(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<i32> {
+fn run_stats(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<CommandOutcome> {
     let payload: CacheStatsPayload = stats(caches);
     let style = args.table_style;
     let ctx = OutputContext::new(args.formatter, "cache stats");
@@ -100,7 +108,7 @@ fn run_stats(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<i32> {
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 #[derive(Tabled)]
@@ -127,13 +135,11 @@ fn run_list(
     commit: Option<&CommitShaPrefix>,
     series: Option<&SeriesName>,
     min_age_days: Option<u32>,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let entries = scan(caches);
     let rows: Vec<CacheListRow> = entries
         .iter()
-        .filter(|e| {
-            commit.is_none_or(|c| e.commit().is_some_and(|sha| sha.starts_with(c.as_str())))
-        })
+        .filter(|e| commit.is_none_or(|c| commit_prefix_matches(e, c)))
         .filter(|e| series.is_none_or(|s| e.series() == Some(s.as_str())))
         .filter(|e| min_age_days.is_none_or(|d| age_days(e) >= d))
         .map(|e| CacheListRow {
@@ -173,7 +179,7 @@ fn run_list(
         writeln!(w, "{}", styled_table(rows, style))?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn run_show(
@@ -181,7 +187,7 @@ fn run_show(
     caches: &WorkspaceCaches,
     key_prefix: &str,
     full: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let entries = scan(caches);
     let entry = resolve_prefix(&entries, key_prefix)?;
     let payload = CacheShowPayload {
@@ -202,7 +208,7 @@ fn run_show(
     let style = args.table_style;
     let ctx = OutputContext::new(args.formatter, "cache show");
     render(&ctx, &payload, |w| render_show_text(w, &payload, style))?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 #[derive(Tabled)]
@@ -228,7 +234,7 @@ struct PinRow {
 fn render_show_text(
     w: &mut dyn Write,
     payload: &CacheShowPayload,
-    style: bel7_cli::TableStyle,
+    style: TableStyle,
 ) -> CliResult<()> {
     let mut fields = vec![
         FieldRow {
@@ -309,14 +315,11 @@ fn run_evict(
     caches: &WorkspaceCaches,
     key_prefixes: &[String],
     commit: Option<&CommitShaPrefix>,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let entries = scan(caches);
     let mut payload = CacheMutationPayload::default();
     if let Some(commit) = commit {
-        for entry in entries.iter().filter(|e| {
-            e.commit()
-                .is_some_and(|sha| sha.starts_with(commit.as_str()))
-        }) {
+        for entry in entries.iter().filter(|e| commit_prefix_matches(e, commit)) {
             let removed = evict_entry(entry);
             payload.removed_entries += removed.entries;
             payload.removed_bytes += removed.bytes;
@@ -332,7 +335,11 @@ fn run_evict(
     render_mutation(args, "cache evict", &payload)
 }
 
-fn run_prune(args: &GlobalArgs, caches: &WorkspaceCaches, older_than: u32) -> CliResult<i32> {
+fn run_prune(
+    args: &GlobalArgs,
+    caches: &WorkspaceCaches,
+    older_than: u32,
+) -> CliResult<CommandOutcome> {
     let removed = prune(
         caches,
         Duration::from_secs(u64::from(older_than) * 24 * 60 * 60),
@@ -344,7 +351,7 @@ fn run_prune(args: &GlobalArgs, caches: &WorkspaceCaches, older_than: u32) -> Cl
     render_mutation(args, "cache prune", &payload)
 }
 
-fn run_clear(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<i32> {
+fn run_clear(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<CommandOutcome> {
     let removed = clear(caches);
     let payload = CacheMutationPayload {
         removed_entries: removed.entries,
@@ -357,7 +364,7 @@ fn render_mutation(
     args: &GlobalArgs,
     command: &'static str,
     payload: &CacheMutationPayload,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let ctx = OutputContext::new(args.formatter, command);
     render(&ctx, payload, |w| {
         writeln!(
@@ -373,7 +380,7 @@ fn render_mutation(
         )?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn resolve_prefix<'a>(entries: &'a [ScannedEntry], prefix: &str) -> CliResult<&'a ScannedEntry> {

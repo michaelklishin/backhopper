@@ -15,13 +15,11 @@ proptest! {
     }
 
     #[test]
-    fn saturating_next_never_overflows(v in proptest::num::u32::ANY) {
-        let _ = SchemaVersion::new(v).saturating_next();
-    }
-
-    #[test]
-    fn singleton_range_contains_only_its_value(v in 0u32..1_000_000) {
-        let r = SchemaVersionRange::singleton(SchemaVersion::new(v));
+    fn single_version_range_contains_only_its_value(v in 0u32..1_000_000) {
+        let r = SchemaVersionRange {
+            min: SchemaVersion::new(v),
+            max: SchemaVersion::new(v),
+        };
         prop_assert!(r.contains(SchemaVersion::new(v)));
         if v > 0 {
             prop_assert!(!r.contains(SchemaVersion::new(v - 1)));

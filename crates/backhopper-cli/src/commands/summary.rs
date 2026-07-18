@@ -13,11 +13,12 @@ use std::num::NonZeroU32;
 use backhopper_core::config::Config;
 use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::BatchResult;
+use backhopper_core::model::evaluation::{AggregateVerdict, SeriesEvaluationView};
 use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName};
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 use backhopper_core::model::verdict::{
-    SeriesEvaluation, SeriesVerdict, TouchedKinds, Verdict, non_self_tracked,
+    Diagnostics, SeriesEvaluation, SeriesVerdict, TouchedKinds, non_self_tracked,
 };
 
 use crate::cli::Formatter;
@@ -50,6 +51,7 @@ pub fn to_summary_row(
     summary_row(
         &eval.verdict,
         RowAxes {
+            diagnostics: &eval.diagnostics,
             apply: eval.apply.as_ref(),
             target_findings: eval.target_findings.as_ref(),
         },
@@ -72,6 +74,7 @@ pub fn batch_result_to_summary_row(
     summary_row(
         &result.verdict,
         RowAxes {
+            diagnostics: &result.diagnostics,
             apply: result.apply.as_ref(),
             target_findings: result.target_findings.as_ref(),
         },
@@ -83,9 +86,10 @@ pub fn batch_result_to_summary_row(
     )
 }
 
-/// The two row-level target axes a summary row reports beside the
-/// verdict.
+/// Row-level context beside the verdict: the two target axes plus the
+/// diagnostics the worst-verdict fold reads.
 struct RowAxes<'a> {
+    diagnostics: &'a Diagnostics,
     apply: Option<&'a ApplyForecast>,
     target_findings: Option<&'a TargetFindings>,
 }
@@ -102,7 +106,7 @@ fn summary_row(
     let tracked = non_self_tracked(&verdict.results, self_projects);
     SummaryRow {
         sha,
-        verdict: rollup_verdict_kind(verdict),
+        verdict: rollup_verdict_kind(verdict, axes.diagnostics),
         touched: rollup_touched(verdict),
         tracked,
         subject,
@@ -113,28 +117,16 @@ fn summary_row(
     }
 }
 
-/// Reduce the per-pin verdicts to a single `VerdictKind` for the row.
-///
-/// Priority: any `Incompatible` → `Incompatible`; else any
-/// `RequiresAdaptation` → `RequiresAdaptation`; else any `Compatible`
-/// → `Compatible`; else `Inapplicable`.
-fn rollup_verdict_kind(verdict: &SeriesVerdict) -> VerdictKind {
-    let mut any_compat = false;
-    let mut any_requires = false;
-    for pin in &verdict.results {
-        match pin.verdict {
-            Verdict::Incompatible { .. } => return VerdictKind::Incompatible,
-            Verdict::RequiresAdaptation { .. } => any_requires = true,
-            Verdict::Compatible => any_compat = true,
-            Verdict::Inapplicable { .. } => {}
-        }
-    }
-    if any_requires {
-        VerdictKind::RequiresAdaptation
-    } else if any_compat {
-        VerdictKind::Compatible
-    } else {
-        VerdictKind::Inapplicable
+/// Reduce the per-pin verdicts to a single `VerdictKind` for the row
+/// through the core worst-verdict fold. An empty series (no pins) rolls
+/// up to `Inapplicable`.
+fn rollup_verdict_kind(verdict: &SeriesVerdict, diagnostics: &Diagnostics) -> VerdictKind {
+    match SeriesEvaluationView::new(verdict, diagnostics).worst_verdict() {
+        AggregateVerdict::Incompatible => VerdictKind::Incompatible,
+        AggregateVerdict::RequiresAdaptation => VerdictKind::RequiresAdaptation,
+        AggregateVerdict::Compatible => VerdictKind::Compatible,
+        // Inapplicable, Empty, and any future arm roll up to inapplicable
+        _ => VerdictKind::Inapplicable,
     }
 }
 

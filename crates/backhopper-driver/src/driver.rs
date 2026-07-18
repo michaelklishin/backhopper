@@ -20,11 +20,14 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::backend::{Backend, Invocation, RawOutcome};
-use crate::builder::check::{Check, SeriesEvaluation};
+use backhopper_core::model::check_payload::CheckPayload;
+use backhopper_core::model::wire_envelope::WireEnvelope;
+
+use crate::builder::check::Check;
 use crate::builder::siblings::Siblings;
 use crate::builder::snapshots::Snapshots;
 use crate::builder::suites::Suites;
-use crate::envelope::{Envelope, EnvelopeWarning, ExecutedInvocation, SchemaVersion};
+use crate::envelope::{Envelope, ExecutedInvocation, SchemaVersion};
 use crate::error::DriverError;
 use crate::exit::ExitClass;
 use crate::options::GlobalOptions;
@@ -175,7 +178,7 @@ impl<B: Backend> Backhopper<B> {
         stdin: StdinPayload<'a>,
     ) -> Result<RawOutcome, DriverError> {
         let mut owned_args: Vec<Cow<'a, OsStr>> = Vec::new();
-        push_global_flags(&self.options, &mut owned_args);
+        push_global_flags(&self.options, &verb, &mut owned_args);
         for arg in args {
             owned_args.push(Cow::Owned(arg.as_ref().to_os_string()));
         }
@@ -200,7 +203,7 @@ impl<B: Backend> Backhopper<B> {
         A: AsRef<OsStr>,
     {
         let mut assembled: Vec<Cow<'a, OsStr>> = Vec::with_capacity(args.len() + 10);
-        push_global_flags(&self.options, &mut assembled);
+        push_global_flags(&self.options, &verb, &mut assembled);
         assembled.push(Cow::Borrowed(OsStr::new("--formatter")));
         assembled.push(Cow::Borrowed(OsStr::new("json")));
         for arg in args {
@@ -224,26 +227,27 @@ impl<B: Backend> Backhopper<B> {
                 verb: VerbId::Known(verb),
             });
         }
+        let verb_id = VerbId::Known(verb);
         let mut assembled: Vec<Cow<'a, OsStr>> = Vec::with_capacity(args.len() + 10);
-        push_global_flags(&self.options, &mut assembled);
+        push_global_flags(&self.options, &verb_id, &mut assembled);
         assembled.push(Cow::Borrowed(OsStr::new("--formatter")));
         assembled.push(Cow::Borrowed(OsStr::new("json")));
         for arg in args {
             assembled.push(Cow::Owned(arg));
         }
-        let env = self.dispatch_envelope::<T>(VerbId::Known(verb), assembled, stdin)?;
+        let env = self.dispatch_envelope::<T>(verb_id, assembled, stdin)?;
         let (_, _, data, _, _, executed) = env.into_parts();
         Ok((data, executed))
     }
 
-    /// `SeriesEvaluation`-typed dispatch for the `check` builders.
+    /// `CheckPayload`-typed dispatch for the `check` builders.
     pub(crate) fn dispatch_check<'a>(
         &'a self,
         verb: Verb,
         args: Vec<OsString>,
         stdin: StdinPayload<'a>,
-    ) -> Result<(SeriesEvaluation, ExecutedInvocation), DriverError> {
-        self.dispatch_typed::<SeriesEvaluation>(verb, args, stdin)
+    ) -> Result<(CheckPayload, ExecutedInvocation), DriverError> {
+        self.dispatch_typed::<CheckPayload>(verb, args, stdin)
     }
 
     fn dispatch_envelope<'a, T: DeserializeOwned>(
@@ -294,7 +298,15 @@ impl<B: Backend> Backhopper<B> {
     }
 }
 
-fn push_global_flags<'a>(options: &'a GlobalOptions, args: &mut Vec<Cow<'a, OsStr>>) {
+// `--repo-dir-path` and `--dry-run` are per-verb args in the CLI: a verb
+// that does not define them rejects the flag with a usage error, so push
+// them only where the verb accepts them.
+fn push_global_flags<'a>(
+    options: &'a GlobalOptions,
+    verb: &VerbId<'_>,
+    args: &mut Vec<Cow<'a, OsStr>>,
+) {
+    let resolved = verb.resolved_verb();
     if let Some(p) = &options.config_path {
         args.push(Cow::Borrowed(OsStr::new("--config-file-path")));
         args.push(Cow::Borrowed(p.as_os_str()));
@@ -303,7 +315,9 @@ fn push_global_flags<'a>(options: &'a GlobalOptions, args: &mut Vec<Cow<'a, OsSt
         args.push(Cow::Borrowed(OsStr::new("--snapshot-dir-path")));
         args.push(Cow::Borrowed(p.as_os_str()));
     }
-    if let Some(p) = &options.repo_dir_path {
+    if let Some(p) = &options.repo_dir_path
+        && resolved.is_some_and(Verb::accepts_global_repo_dir)
+    {
         args.push(Cow::Borrowed(OsStr::new("--repo-dir-path")));
         args.push(Cow::Borrowed(p.as_os_str()));
     }
@@ -316,7 +330,7 @@ fn push_global_flags<'a>(options: &'a GlobalOptions, args: &mut Vec<Cow<'a, OsSt
     if options.verbose {
         args.push(Cow::Borrowed(OsStr::new("--verbose")));
     }
-    if options.dry_run {
+    if options.dry_run && resolved.is_some_and(Verb::accepts_dry_run) {
         args.push(Cow::Borrowed(OsStr::new("--dry-run")));
     }
 }
@@ -332,8 +346,6 @@ pub struct VersionInfo {
     pub version: String,
     /// Schema version reported in the envelope.
     pub schema_version: SchemaVersion,
-    /// `git describe`, when reported.
-    pub git_describe: Option<String>,
     /// Capability list: every verb the binary ships, as
     /// space-separated paths (`"check batch"`, `"siblings doctor"`).
     /// Empty for binaries that predate the list.
@@ -397,10 +409,6 @@ fn parse_version_info(schema: SchemaVersion, data: &Value) -> VersionInfo {
         .and_then(Value::as_str)
         .unwrap_or("0.0.0")
         .to_owned();
-    let git_describe = data
-        .get("git_describe")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     let verbs = data
         .get("verbs")
         .and_then(Value::as_array)
@@ -415,21 +423,8 @@ fn parse_version_info(schema: SchemaVersion, data: &Value) -> VersionInfo {
     VersionInfo {
         version,
         schema_version: schema,
-        git_describe,
         verbs,
     }
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct EnvelopeWire<T> {
-    schema_version: u32,
-    #[serde(default)]
-    command: Option<String>,
-    data: T,
-    #[serde(default)]
-    exit_code: i32,
-    #[serde(default)]
-    warnings: Vec<EnvelopeWarning>,
 }
 
 #[derive(serde::Deserialize)]
@@ -463,7 +458,7 @@ fn parse_envelope<T: DeserializeOwned>(
             });
         }
     }
-    let wire: EnvelopeWire<T> = serde_json::from_slice(&outcome.stdout).map_err(|source| {
+    let wire: WireEnvelope<T> = serde_json::from_slice(&outcome.stdout).map_err(|source| {
         DriverError::UnparseableOutput {
             verb: verb.clone(),
             expected: "JSON envelope",
@@ -473,15 +468,18 @@ fn parse_envelope<T: DeserializeOwned>(
         }
     })?;
     let schema = SchemaVersion::new(wire.schema_version);
+    let command_raw = wire.command.clone().unwrap_or_default();
+    // the parsed verb is honest: `None` when the string names a verb this
+    // driver does not know, rather than lying with a fallback
     let command = wire
         .command
         .as_deref()
         .and_then(|s| Verb::parse(s).ok())
-        .or_else(|| verb.as_known())
-        .unwrap_or(Verb::Version);
+        .or_else(|| verb.as_known());
     Ok(Envelope::new(
         schema,
         command,
+        command_raw,
         wire.data,
         wire.exit_code,
         wire.warnings,

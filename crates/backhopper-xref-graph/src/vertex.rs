@@ -24,14 +24,6 @@ pub enum Vertex {
 }
 
 impl Vertex {
-    pub fn as_function(&self) -> Option<&Mfa> {
-        if let Vertex::Function(m) = self {
-            Some(m)
-        } else {
-            None
-        }
-    }
-
     pub fn as_module(&self) -> Option<&ModuleName> {
         if let Vertex::Module(m) = self {
             Some(m)

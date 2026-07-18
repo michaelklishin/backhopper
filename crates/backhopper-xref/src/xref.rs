@@ -37,10 +37,6 @@ impl<M: Mode> Xref<M> {
 }
 
 impl Xref<Functions> {
-    pub fn reverse_calls(&self) -> Relation {
-        self.graph.all_calls().reversed()
-    }
-
     /// Transitive closure of every function call, computed once and
     /// reused: the closure is the dominant cost of reachability queries
     /// and the graph is immutable

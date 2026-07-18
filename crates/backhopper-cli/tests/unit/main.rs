@@ -43,3 +43,4 @@ mod suggest_unit_tests;
 mod summary_emit_unit_tests;
 mod tables_unit_tests;
 mod tree_source_unit_tests;
+mod verb_parity_unit_tests;

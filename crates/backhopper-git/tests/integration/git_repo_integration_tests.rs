@@ -25,15 +25,17 @@ fn list_tags_returns_known_tags() {
 }
 
 #[test]
-fn read_paths_at_tag_returns_blobs() {
+fn read_paths_at_commit_resolved_from_tag_returns_blobs() {
     let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n-export([f/1]).\nf(X) -> X.\n");
     repo.commit("first");
     repo.tag("v1.0.0");
 
     let g = GitRepo::open(repo.dir.path()).unwrap();
-    let tag = TagName::new("v1.0.0").unwrap();
-    let blobs = g.read_paths_at_tag(&tag, |p| p.ends_with(".erl")).unwrap();
+    let commit = g.resolve_tag(&TagName::new("v1.0.0").unwrap()).unwrap();
+    let blobs = g
+        .read_paths_at_commit(&commit, |p| p.ends_with(".erl"))
+        .unwrap();
     assert_eq!(blobs.len(), 1);
     assert!(String::from_utf8_lossy(&blobs[0].bytes).contains("-module(a)"));
 }

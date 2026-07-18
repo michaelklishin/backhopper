@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use backhopper_core::{ApplicationName, BehaviourName, ModuleName};
-use backhopper_xref::{XrefBuilder, diff_xrefs, is_suite_module, suites_referencing};
+use backhopper_xref::{XrefBuilder, is_suite_module, suites_referencing};
 
 fn rabbitmq_like(modules: &[(&str, &str)]) -> backhopper_xref::Xref<backhopper_xref::Functions> {
     use backhopper_xref::ProjectLayout;
@@ -35,36 +35,9 @@ fn end_to_end_rabbitmq_like_tree_yields_expected_module_set() {
             "-module(rabbit_vhost).\n-export([list/0]).\nlist() -> rabbit_db:read(vhosts).\n",
         ),
     ]);
-    assert_eq!(x.graph().module_count(), 2);
+    assert_eq!(x.graph().modules().count(), 2);
     let callers = x.module_called_by(&ModuleName::new("rabbit_db".to_owned()).unwrap());
     assert!(callers.entries.iter().any(|m| m.as_str() == "rabbit_vhost"));
-}
-
-#[test]
-fn end_to_end_diff_detects_added_call() {
-    let from = rabbitmq_like(&[
-        (
-            "rabbit_db",
-            "-module(rabbit_db).\n-export([read/1]).\nread(_) -> ok.\n",
-        ),
-        (
-            "rabbit_vhost",
-            "-module(rabbit_vhost).\n-export([list/0]).\nlist() -> ok.\n",
-        ),
-    ]);
-    let to = rabbitmq_like(&[
-        (
-            "rabbit_db",
-            "-module(rabbit_db).\n-export([read/1]).\nread(_) -> ok.\n",
-        ),
-        (
-            "rabbit_vhost",
-            "-module(rabbit_vhost).\n-export([list/0]).\nlist() -> rabbit_db:read(vhosts).\n",
-        ),
-    ]);
-    let d = diff_xrefs(&from, &to);
-    assert_eq!(d.added_calls.len(), 1);
-    assert!(d.removed_calls.is_empty());
 }
 
 #[test]

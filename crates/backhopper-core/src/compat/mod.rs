@@ -16,6 +16,7 @@ pub mod local_call_resolve;
 pub mod otp;
 pub mod patch;
 pub(crate) mod patch_facts;
+pub(crate) mod preimage;
 pub mod qualified_call_resolve;
 pub mod routing;
 pub mod scope;
@@ -28,8 +29,8 @@ pub mod test_suite;
 pub use evaluate::classify_hunks_against_target;
 pub use otp::is_otp_module;
 pub use patch::{
-    Analyzed, EvaluationContext, EvaluationFiles, EvaluationInput, Language, Patch, Pinned, Raw,
-    Scoped, Sourced, Verdicted, evaluation_state, patch_state,
+    Analyzed, EvaluationContext, EvaluationFiles, EvaluationInput, Patch, Pinned, Raw, Scoped,
+    SourceKind, Sourced, evaluation_state, patch_state,
 };
 pub use routing::{
     PathRouting, RoutedPinVerdict, classify_paths_for_pin, project_owns_path, route_pin_verdict,

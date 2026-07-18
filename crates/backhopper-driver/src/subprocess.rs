@@ -8,10 +8,9 @@
 //!
 //! * On caller panic or early return between spawn and wait, the
 //!   child is killed via a `Drop` guard on the [`std::process::Child`]
-//! * Cancellation: terminates the child after a short grace period
-//!   (currently `kill` directly because portable signalling without
-//!   `nix` is limited; the grace period matters once a signal-based
-//!   path is wired in)
+//! * Cancellation: kills the child directly, since portable
+//!   signalling without `nix` is limited. A signal-based grace period
+//!   is not implemented
 //! * Timeout: same termination path
 //! * The argv returned in [`crate::backend::RawOutcome::argv`]
 //!   includes the program path at index 0, then the verb path, then

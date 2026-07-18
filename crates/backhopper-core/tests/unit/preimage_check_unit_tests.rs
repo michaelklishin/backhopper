@@ -4,7 +4,8 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::compat::patch::{EvaluationFiles, Patch};
+use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
+use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{Snapshot, state};
@@ -27,11 +28,16 @@ fn snapshot() -> Snapshot<state::Canonical> {
 
 fn run(patch: &str, pin_file: &[u8]) -> Vec<Reason> {
     let files = EvaluationFiles::new().with(PathBuf::from("src/demo.erl"), Some(pin_file.to_vec()));
+    let snapshot = snapshot();
+    let scope = PinScope::from_snapshot(pin().project.clone(), &snapshot, Vec::new());
+    let ctx = EvaluationContext::for_pin(pin(), snapshot)
+        .with_scope(scope)
+        .with_files(files);
     let series = Patch::parse(patch.as_bytes())
         .unwrap()
         .analyze()
-        .against_series_with_files(&[(pin(), snapshot(), files)]);
-    series.results[0].verdict.reasons().to_vec()
+        .evaluate_series(&[ctx]);
+    series.verdict.results[0].verdict.reasons().to_vec()
 }
 
 const PATCH: &str = "\

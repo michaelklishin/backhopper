@@ -19,14 +19,10 @@ pub struct TargetTreeIndex {
     target_ref: GitRef,
     resolved_commit: CommitSha,
     present_paths: BTreeSet<PathBuf>,
-    present_dirs: BTreeSet<PathBuf>,
     erl_modules: BTreeMap<ModuleName, PathBuf>,
 }
 
 impl TargetTreeIndex {
-    /// Assemble an index from already-listed blob paths. The ancestor
-    /// directories are derived here so the path and dir views can
-    /// never disagree.
     #[must_use]
     pub fn from_parts(
         target_repo: PathBuf,
@@ -34,17 +30,10 @@ impl TargetTreeIndex {
         resolved_commit: CommitSha,
         present_paths: BTreeSet<PathBuf>,
     ) -> Self {
-        let mut present_dirs: BTreeSet<PathBuf> = BTreeSet::new();
         // Erlang fixes module name to file basename. A basename seen
         // twice is a clash Erlang itself rejects, so record neither.
         let mut by_module: BTreeMap<ModuleName, Option<PathBuf>> = BTreeMap::new();
         for path in &present_paths {
-            for ancestor in path.ancestors().skip(1) {
-                if ancestor.as_os_str().is_empty() {
-                    continue;
-                }
-                present_dirs.insert(ancestor.to_path_buf());
-            }
             if path.extension().and_then(|e| e.to_str()) == Some("erl")
                 && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
                 && let Ok(module) = ModuleName::from_str(stem)
@@ -64,7 +53,6 @@ impl TargetTreeIndex {
             target_ref,
             resolved_commit,
             present_paths,
-            present_dirs,
             erl_modules,
         }
     }
@@ -83,18 +71,6 @@ impl TargetTreeIndex {
 
     pub fn contains_path(&self, p: &Path) -> bool {
         self.present_paths.contains(p)
-    }
-
-    pub fn contains_dir(&self, p: &Path) -> bool {
-        self.present_dirs.contains(p)
-    }
-
-    pub fn path_count(&self) -> usize {
-        self.present_paths.len()
-    }
-
-    pub fn dir_count(&self) -> usize {
-        self.present_dirs.len()
     }
 
     pub fn present_paths(&self) -> &BTreeSet<PathBuf> {

@@ -23,9 +23,9 @@ fn function_sig_display_uses_slash_arity() {
 }
 
 #[test]
-fn concrete_ref_is_not_unresolved() {
+fn concrete_ref_exposes_its_mfa() {
     let r = FunctionRef::Concrete(mfa("ra_log", "append", 2));
-    assert!(!r.is_unresolved());
+    assert!(r.as_concrete().is_some());
     assert_eq!(r.as_concrete().unwrap().arity, Arity::new(2));
 }
 
@@ -35,7 +35,7 @@ fn unresolved_module_keeps_function_and_arity() {
         function: FunctionName::new("handle".to_owned()).unwrap(),
         arity: Some(Arity::new(1)),
     };
-    assert!(r.is_unresolved());
+    assert!(r.as_concrete().is_none());
     assert!(r.module().is_none());
     assert_eq!(r.arity(), Some(Arity::new(1)));
 }
@@ -46,14 +46,14 @@ fn unresolved_function_keeps_module_and_arity() {
         module: ModuleName::new("rabbit".to_owned()).unwrap(),
         arity: Some(Arity::new(2)),
     };
-    assert!(r.is_unresolved());
+    assert!(r.as_concrete().is_none());
     assert_eq!(r.module().unwrap().as_str(), "rabbit");
 }
 
 #[test]
 fn unresolved_both_carries_only_arity() {
     let r = FunctionRef::UnresolvedBoth { arity: None };
-    assert!(r.is_unresolved());
+    assert!(r.as_concrete().is_none());
     assert!(r.module().is_none());
     assert_eq!(r.arity(), None);
 }

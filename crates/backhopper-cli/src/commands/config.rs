@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -16,7 +17,7 @@ struct PathPayload {
     config_path: PathBuf,
 }
 
-pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<CommandOutcome> {
     match cmd {
         ConfigCmd::Path => {
             let p = resolve_config_path(args)?;
@@ -28,7 +29,7 @@ pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {
                 writeln!(w, "{}", p.display())?;
                 Ok(())
             })?;
-            Ok(0)
+            Ok(CommandOutcome::Success)
         }
         ConfigCmd::Show => {
             let cfg = load_config(args)?;
@@ -51,7 +52,7 @@ pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {
                 }
                 Ok(())
             })?;
-            Ok(0)
+            Ok(CommandOutcome::Success)
         }
         ConfigCmd::Validate => {
             load_config(args)?;
@@ -60,7 +61,7 @@ pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<i32> {
                 writeln!(w, "ok")?;
                 Ok(())
             })?;
-            Ok(0)
+            Ok(CommandOutcome::Success)
         }
     }
 }

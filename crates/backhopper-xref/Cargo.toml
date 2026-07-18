@@ -13,12 +13,10 @@ workspace = true
 
 [dependencies]
 backhopper-core        = { workspace = true }
-backhopper-erlang      = { workspace = true }
 backhopper-xref-graph  = { workspace = true }
 backhopper-xref-reader = { workspace = true }
 serde                  = { workspace = true }
 thiserror              = { workspace = true }
-tracing                = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

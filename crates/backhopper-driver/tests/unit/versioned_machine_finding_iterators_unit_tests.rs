@@ -8,12 +8,12 @@
 //! walk these iterators rather than re-deriving from the `Reason` enum
 //! match.
 
-use backhopper_driver::SeriesEvaluation;
+use backhopper_driver::CheckPayload;
 use backhopper_driver::types::SnapshotSide;
 use serde_json::json;
 
-fn parse(value: serde_json::Value) -> SeriesEvaluation {
-    serde_json::from_value(value).expect("SeriesEvaluation deserializes")
+fn parse(value: serde_json::Value) -> CheckPayload {
+    serde_json::from_value(value).expect("CheckPayload deserializes")
 }
 
 fn one_pin_with_reasons(reasons: serde_json::Value) -> serde_json::Value {

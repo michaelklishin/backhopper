@@ -140,12 +140,6 @@ impl ApplyForecast {
         })
     }
 
-    /// The worst outcome across paths, by severity.
-    #[must_use]
-    pub fn worst(&self) -> Option<&PathApplyOutcome> {
-        self.paths.values().max_by_key(|o| o.severity())
-    }
-
     #[must_use]
     pub fn summary(&self) -> ApplySummary {
         let mut s = ApplySummary::default();

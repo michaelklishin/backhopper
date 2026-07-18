@@ -101,8 +101,20 @@ fn modules_added_and_removed_appear_in_text() {
     let a = snap("p", "v0.1.0", vec![module("only_in_a", vec![])], vec![]);
     let b = snap("p", "v0.2.0", vec![module("only_in_b", vec![])], vec![]);
     let d = compute_diff(&a, &b);
-    assert_eq!(d.modules_added, vec!["only_in_b"]);
-    assert_eq!(d.modules_removed, vec!["only_in_a"]);
+    assert_eq!(
+        d.modules_added
+            .iter()
+            .map(ModuleName::as_str)
+            .collect::<Vec<_>>(),
+        vec!["only_in_b"]
+    );
+    assert_eq!(
+        d.modules_removed
+            .iter()
+            .map(ModuleName::as_str)
+            .collect::<Vec<_>>(),
+        vec!["only_in_a"]
+    );
     let text = render(&d);
     assert!(text.contains("removed module only_in_a"), "{text}");
     assert!(text.contains("added module only_in_b"), "{text}");
@@ -294,7 +306,7 @@ fn versioned_machine_version_missing_on_from_side() {
     assert!(matches!(
         &d.versioned_machine_version_changes[0],
         VersionedMachineVersionChange::Missing { module, side }
-            if module == "rabbit_fifo" && side == "from"
+            if module.as_str() == "rabbit_fifo" && side == "from"
     ));
     let text = render(&d);
     assert!(
@@ -323,7 +335,7 @@ fn versioned_machine_version_drift_emits_kind_drift() {
         &d.versioned_machine_version_changes[0],
         VersionedMachineVersionChange::Drift {
             module, from, to,
-        } if module == "rabbit_fifo" && *from == Some(7) && *to == Some(8)
+        } if module.as_str() == "rabbit_fifo" && *from == Some(7) && *to == Some(8)
     ));
 }
 
@@ -376,7 +388,7 @@ fn wire_constant_missing_groups_by_side_and_sorts_macros() {
         })
         .collect();
     assert_eq!(missing.len(), 1);
-    assert_eq!(missing[0].0, "ra_log_segment");
+    assert_eq!(missing[0].0.as_str(), "ra_log_segment");
     assert_eq!(missing[0].1, "to");
     assert_eq!(missing[0].2, vec!["MAGIC".to_owned()]);
 }
@@ -410,7 +422,7 @@ fn wire_constant_value_drift_emits_one_row_per_macro() {
         })
         .collect();
     assert_eq!(drifts.len(), 1);
-    assert_eq!(drifts[0].0, "ra_log_segment");
+    assert_eq!(drifts[0].0.as_str(), "ra_log_segment");
     assert_eq!(drifts[0].1, "VERSION");
     assert_eq!(drifts[0].2, "u64 1");
     assert_eq!(drifts[0].3, "u64 2");

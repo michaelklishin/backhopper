@@ -64,11 +64,3 @@ fn wait_unblocks_when_another_thread_aborts() {
     });
     assert!(token.wait(Some(Duration::from_secs(1))));
 }
-
-#[test]
-fn is_attached_reflects_token_clones() {
-    let (token, aborter) = CancellationToken::new();
-    assert!(aborter.is_attached());
-    drop(token);
-    assert!(!aborter.is_attached());
-}

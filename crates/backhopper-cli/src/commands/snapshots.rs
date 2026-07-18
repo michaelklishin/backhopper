@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use crate::outcome::CommandOutcome;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -9,7 +10,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use bel7_cli::PARTIAL_SUCCESS_I32;
 use clap::crate_version;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -35,7 +35,8 @@ use backhopper_erlang::ErlangExtractor;
 use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
-use crate::commands::context::{load_config, open_store_mut, open_store_read};
+use crate::commands::auto_generate::expected_extractor_version;
+use crate::commands::context::{load_config, open_project_repo, open_store_mut, open_store_read};
 use crate::commands::pin_coverage::{PinCoverage, classify_pin};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render, render_with_exit};
@@ -49,6 +50,44 @@ struct DiscoverPayload {
     tags: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     ignored_non_tag_refs: Vec<String>,
+}
+
+impl DiscoverPayload {
+    fn skipped_one(project: &ProjectName) -> Self {
+        Self {
+            project: project.to_string(),
+            captured: 0,
+            skipped: 1,
+            failed: Vec::new(),
+            tags: Vec::new(),
+            ignored_non_tag_refs: Vec::new(),
+        }
+    }
+
+    fn captured_one(project: &ProjectName, tag: &TagName) -> Self {
+        Self {
+            project: project.to_string(),
+            captured: 1,
+            skipped: 0,
+            failed: Vec::new(),
+            tags: vec![tag.to_string()],
+            ignored_non_tag_refs: Vec::new(),
+        }
+    }
+
+    fn single_failure(project: &ProjectName, tag: &TagName, reason: String) -> Self {
+        Self {
+            project: project.to_string(),
+            captured: 0,
+            skipped: 0,
+            failed: vec![DiscoverFailure {
+                tag: tag.to_string(),
+                reason,
+            }],
+            tags: Vec::new(),
+            ignored_non_tag_refs: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -102,7 +141,7 @@ struct ModuleSummary {
 // `snapshots diff` payloads moved to `backhopper_core::model::snapshot_diff`
 // so the CLI emits and the driver parses one definition.
 
-pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
+pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     match cmd {
         SnapshotsCmd::ListTags { project } => list_tags(args, &cfg, project),
@@ -114,45 +153,39 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
             series,
         } => generate(args, &cfg, project, dry_run, since, series),
         SnapshotsCmd::List { project } => list(args, &cfg, project),
-        SnapshotsCmd::Show {
-            project,
-            tag,
-            module,
-        } => show(args, &cfg, project, tag, module),
+        SnapshotsCmd::Show { pt, module } => show(args, &cfg, pt.project, pt.tag, module),
         SnapshotsCmd::Verify {
             project,
             tag,
             all,
             coverage,
         } => verify(args, &cfg, project, tag, all, coverage),
-        SnapshotsCmd::Rebuild {
-            project,
-            tag,
-            dry_run,
-        } => rebuild(args, &cfg, project, tag, dry_run),
+        SnapshotsCmd::Rebuild { pt, dry_run } => rebuild(args, &cfg, pt.project, pt.tag, dry_run),
         SnapshotsCmd::Migrate { project, dry_run } => migrate(args, &cfg, project, dry_run),
-        SnapshotsCmd::Lookup {
-            project,
-            tag,
-            mfa,
-            include_hidden,
-        } => lookup(args, &cfg, project, tag, mfa, include_hidden),
+        SnapshotsCmd::Lookup { pt, query } => lookup(
+            args,
+            &cfg,
+            pt.project,
+            pt.tag,
+            query.mfa,
+            query.include_hidden,
+        ),
         SnapshotsCmd::Introduced {
             project,
-            mfa,
-            include_hidden,
+            query,
             timeline,
-        } => introduced(args, &cfg, project, mfa, include_hidden, timeline),
-        SnapshotsCmd::Modules {
+        } => introduced(
+            args,
+            &cfg,
             project,
-            tag,
-            include_hidden,
-        } => modules(args, &cfg, project, tag, include_hidden),
-        SnapshotsCmd::Exports {
-            project,
-            tag,
-            module,
-        } => exports(args, &cfg, project, tag, module),
+            query.mfa,
+            query.include_hidden,
+            timeline,
+        ),
+        SnapshotsCmd::Modules { pt, include_hidden } => {
+            modules(args, &cfg, pt.project, pt.tag, include_hidden)
+        }
+        SnapshotsCmd::Exports { pt, module } => exports(args, &cfg, pt.project, pt.tag, module),
         SnapshotsCmd::ProjectDiff { project, from, to } => {
             diff_single_project(args, &cfg, project, from, to)
         }
@@ -163,7 +196,11 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<i32> {
     }
 }
 
-fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> CliResult<i32> {
+fn list_tags(
+    args: &GlobalArgs,
+    cfg: &Config,
+    project: Option<ProjectName>,
+) -> CliResult<CommandOutcome> {
     let projects: Vec<&Project> = match project {
         Some(p) => vec![cfg.project(&p)?],
         None => cfg.projects.iter().collect(),
@@ -171,7 +208,7 @@ fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> C
     let store = open_store_read(args, cfg)?;
     let mut payloads: Vec<ListTagsEntry> = Vec::new();
     for p in projects {
-        let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+        let repo = open_project_repo(p)?;
         let listing = repo.list_tag_refs()?;
         let mut pending: Vec<String> = Vec::new();
         for tag in listing.tags {
@@ -199,7 +236,7 @@ fn list_tags(args: &GlobalArgs, cfg: &Config, project: Option<ProjectName>) -> C
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn generate(
@@ -209,7 +246,7 @@ fn generate(
     dry_run: bool,
     since: Option<TagName>,
     series: Option<SeriesName>,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     if let Some(name) = series {
         return generate_series(args, cfg, &name, dry_run);
     }
@@ -248,7 +285,7 @@ fn generate(
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn generate_one(
@@ -257,7 +294,7 @@ fn generate_one(
     dry_run: bool,
     since: Option<&TagName>,
 ) -> CliResult<DiscoverPayload> {
-    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+    let repo = open_project_repo(p)?;
     let listing = repo.list_tag_refs()?;
     let tags = filter_tags_for_project(listing.tags, p, since);
     let mut captured = 0usize;
@@ -329,7 +366,7 @@ fn generate_series(
     cfg: &Config,
     name: &SeriesName,
     dry_run: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let series = cfg.series_by_name(name)?;
     let store = open_store_mut(args, cfg)?;
     let mut payloads: Vec<DiscoverPayload> = Vec::with_capacity(series.pins.len());
@@ -367,11 +404,7 @@ fn generate_series(
         self_pins_skipped,
         summary,
     };
-    let exit = if payload.summary.failed > 0 {
-        PARTIAL_SUCCESS_I32
-    } else {
-        0
-    };
+    let exit = CommandOutcome::from_success(payload.summary.failed == 0);
     let ctx = OutputContext::new(args.formatter, "snapshots generate");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
@@ -413,53 +446,19 @@ fn generate_pinned_tag(
     dry_run: bool,
 ) -> CliResult<DiscoverPayload> {
     if store.has(&p.name, tag) {
-        return Ok(DiscoverPayload {
-            project: p.name.to_string(),
-            captured: 0,
-            skipped: 1,
-            failed: Vec::new(),
-            tags: Vec::new(),
-            ignored_non_tag_refs: Vec::new(),
-        });
+        return Ok(DiscoverPayload::skipped_one(&p.name));
     }
-    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+    let repo = open_project_repo(p)?;
     match build_snapshot(p, &repo, tag) {
         Ok(snapshot) => {
             if !dry_run {
                 if let Err(e) = store.write(&snapshot) {
-                    return Ok(DiscoverPayload {
-                        project: p.name.to_string(),
-                        captured: 0,
-                        skipped: 0,
-                        failed: vec![DiscoverFailure {
-                            tag: tag.to_string(),
-                            reason: e.to_string(),
-                        }],
-                        tags: Vec::new(),
-                        ignored_non_tag_refs: Vec::new(),
-                    });
+                    return Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string()));
                 }
             }
-            Ok(DiscoverPayload {
-                project: p.name.to_string(),
-                captured: 1,
-                skipped: 0,
-                failed: Vec::new(),
-                tags: vec![tag.to_string()],
-                ignored_non_tag_refs: Vec::new(),
-            })
+            Ok(DiscoverPayload::captured_one(&p.name, tag))
         }
-        Err(e) => Ok(DiscoverPayload {
-            project: p.name.to_string(),
-            captured: 0,
-            skipped: 0,
-            failed: vec![DiscoverFailure {
-                tag: tag.to_string(),
-                reason: e.to_string(),
-            }],
-            tags: Vec::new(),
-            ignored_non_tag_refs: Vec::new(),
-        }),
+        Err(e) => Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string())),
     }
 }
 
@@ -670,7 +669,7 @@ fn suffix_match(suffix: &str, path: &str) -> bool {
     }
 }
 
-fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<i32> {
+fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let tags = store.list_tags(&project)?;
     let payload = ListPayload {
@@ -684,7 +683,7 @@ fn list(args: &GlobalArgs, cfg: &Config, project: ProjectName) -> CliResult<i32>
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 #[derive(Debug, Serialize)]
@@ -700,7 +699,7 @@ fn show(
     project: ProjectName,
     tag: TagName,
     module: Option<ModuleName>,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store.read(&project, &tag)?;
     let ctx = OutputContext::new(args.formatter, "snapshots show");
@@ -712,7 +711,7 @@ fn show(
             module: module_ref,
             found,
         };
-        let exit = if found { 0 } else { PARTIAL_SUCCESS_I32 };
+        let exit = CommandOutcome::from_success(found);
         render_with_exit(&ctx, &payload, exit, |w| {
             let mut buf: Vec<u8> = Vec::new();
             format::write_module_filtered(&snapshot, name, &mut buf)?;
@@ -729,7 +728,7 @@ fn show(
         write!(w, "{text}")?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn verify(
@@ -739,7 +738,7 @@ fn verify(
     tag: Option<TagName>,
     all: bool,
     coverage: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     if coverage {
         return verify_coverage(args, cfg);
     }
@@ -755,14 +754,22 @@ fn verify(
     verify_one(args, cfg, project, tag)
 }
 
+/// A module clone with `clause_heads` dropped: the text writer cannot
+/// round-trip them yet, so verify compares modules without them.
+fn without_clause_heads(m: &Module) -> Module {
+    let mut m = m.clone();
+    m.clause_heads.clear();
+    m
+}
+
 fn verify_one(
     args: &GlobalArgs,
     cfg: &Config,
     project: ProjectName,
     tag: TagName,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let p = cfg.project(&project)?;
-    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+    let repo = open_project_repo(p)?;
     let regenerated = build_snapshot(p, &repo, &tag)?;
     let store = open_store_read(args, cfg)?;
     let stored = store.read(&project, &tag)?;
@@ -770,21 +777,9 @@ fn verify_one(
     let regenerated_modules: Vec<Module> = regenerated
         .modules()
         .iter()
-        .map(|m| {
-            let mut m = m.clone();
-            m.clause_heads.clear();
-            m
-        })
+        .map(without_clause_heads)
         .collect();
-    let stored_modules: Vec<Module> = stored
-        .modules()
-        .iter()
-        .map(|m| {
-            let mut m = m.clone();
-            m.clause_heads.clear();
-            m
-        })
-        .collect();
+    let stored_modules: Vec<Module> = stored.modules().iter().map(without_clause_heads).collect();
     let matches = regenerated_modules == stored_modules
         && regenerated.headers() == stored.headers()
         && regenerated.header().commit == stored.header().commit;
@@ -794,7 +789,7 @@ fn verify_one(
         "matches": matches,
     });
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
-    let exit = if matches { 0 } else { PARTIAL_SUCCESS_I32 };
+    let exit = CommandOutcome::from_success(matches);
     render_with_exit(&ctx, &payload, exit, |w| {
         if matches {
             writeln!(w, "ok: {project} {tag}")?;
@@ -805,8 +800,10 @@ fn verify_one(
     })
 }
 
+/// One project-tag failure row, shared by `verify --all` and `migrate`,
+/// whose JSON is identical.
 #[derive(Debug, Serialize)]
-struct VerifyAllFailure {
+struct TaggedFailure {
     project: String,
     tag: String,
     reason: String,
@@ -823,27 +820,20 @@ struct VerifyAllStale {
 #[derive(Debug, Serialize)]
 struct VerifyAllPayload {
     verified: usize,
-    failed: Vec<VerifyAllFailure>,
+    failed: Vec<TaggedFailure>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     stale_extractor: Vec<VerifyAllStale>,
 }
 
-fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
+fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let projects = store.list_projects()?;
     let mut verified = 0usize;
-    let mut failed: Vec<VerifyAllFailure> = Vec::new();
+    let mut failed: Vec<TaggedFailure> = Vec::new();
     let mut stale_extractor: Vec<VerifyAllStale> = Vec::new();
     for project in projects {
         let tags = store.list_tags(&project)?;
-        let expected = cfg
-            .project(&project)
-            .ok()
-            .map(|p| match p.language {
-                Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION,
-                Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION,
-            })
-            .unwrap_or(backhopper_erlang::EXTRACTOR_VERSION);
+        let expected = expected_extractor_version(cfg, &project);
         for tag in tags {
             match store.read(&project, &tag) {
                 Ok(snap) => {
@@ -858,7 +848,7 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
                         });
                     }
                 }
-                Err(e) => failed.push(VerifyAllFailure {
+                Err(e) => failed.push(TaggedFailure {
                     project: project.to_string(),
                     tag: tag.to_string(),
                     reason: e.to_string(),
@@ -915,7 +905,7 @@ struct CoveragePayload {
     missing_pins: Vec<MissingPin>,
 }
 
-fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
+fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let mut missing_pins: Vec<MissingPin> = Vec::new();
     let mut pins_checked = 0usize;
@@ -954,11 +944,7 @@ fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
         self_pins_skipped,
         missing_pins,
     };
-    let exit = if payload.missing_pins.is_empty() {
-        0
-    } else {
-        PARTIAL_SUCCESS_I32
-    };
+    let exit = CommandOutcome::from_success(payload.missing_pins.is_empty());
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
@@ -978,30 +964,27 @@ fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<i32> {
 }
 
 // 0 all loaded and current; 3 partial or stale; Err when zero loaded
-pub fn verify_all_exit_code(verified: usize, failed: usize, stale: usize) -> CliResult<i32> {
+pub fn verify_all_exit_code(
+    verified: usize,
+    failed: usize,
+    stale: usize,
+) -> CliResult<CommandOutcome> {
     if failed > 0 && verified == 0 {
         return Err(CliError::Other(format!(
             "snapshots verify --all: every snapshot failed to load ({failed} failure(s))"
         )));
     }
     if failed > 0 || stale > 0 {
-        return Ok(PARTIAL_SUCCESS_I32);
+        return Ok(CommandOutcome::PartialSuccess);
     }
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 #[derive(Debug, Serialize)]
 struct MigratePayload {
     migrated: usize,
     already_current: usize,
-    failed: Vec<MigrateFailure>,
-}
-
-#[derive(Debug, Serialize)]
-struct MigrateFailure {
-    project: String,
-    tag: String,
-    reason: String,
+    failed: Vec<TaggedFailure>,
 }
 
 fn migrate(
@@ -1009,7 +992,7 @@ fn migrate(
     cfg: &Config,
     project_filter: Option<ProjectName>,
     dry_run: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store_read = open_store_read(args, cfg)?;
     let store_mut = if dry_run {
         None
@@ -1022,7 +1005,7 @@ fn migrate(
     };
     let mut migrated = 0usize;
     let mut already_current = 0usize;
-    let mut failed: Vec<MigrateFailure> = Vec::new();
+    let mut failed: Vec<TaggedFailure> = Vec::new();
     for project in projects {
         let tags = store_read.list_tags(&project)?;
         for tag in tags {
@@ -1040,7 +1023,7 @@ fn migrate(
                     }
                     migrated += 1;
                 }
-                Err(e) => failed.push(MigrateFailure {
+                Err(e) => failed.push(TaggedFailure {
                     project: project.to_string(),
                     tag: tag.to_string(),
                     reason: e.to_string(),
@@ -1053,11 +1036,7 @@ fn migrate(
         already_current,
         failed,
     };
-    let exit = if payload.failed.is_empty() {
-        0
-    } else {
-        PARTIAL_SUCCESS_I32
-    };
+    let exit = CommandOutcome::from_success(payload.failed.is_empty());
     let ctx = OutputContext::new(args.formatter, "snapshots migrate");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
@@ -1080,9 +1059,9 @@ fn rebuild(
     project: ProjectName,
     tag: TagName,
     dry_run: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let p = cfg.project(&project)?;
-    let repo = GitRepo::open(p.require_git_url()?.to_path_buf())?;
+    let repo = open_project_repo(p)?;
     let snapshot = build_snapshot(p, &repo, &tag)?;
     let store = open_store_mut(args, cfg)?;
     if !dry_run {
@@ -1099,7 +1078,7 @@ fn rebuild(
         writeln!(w, "rebuilt {project} {tag}")?;
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn lookup(
@@ -1109,7 +1088,7 @@ fn lookup(
     tag: TagName,
     mfas: Vec<Mfa>,
     include_hidden: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store.read(&project, &tag)?;
     let mut results = Vec::with_capacity(mfas.len());
@@ -1140,7 +1119,7 @@ fn lookup(
         results,
     };
     let ctx = OutputContext::new(args.formatter, "snapshots lookup");
-    let exit = if all_found { 0 } else { PARTIAL_SUCCESS_I32 };
+    let exit = CommandOutcome::from_success(all_found);
     render_with_exit(&ctx, &payload, exit, |w| {
         for r in &payload.results {
             writeln!(
@@ -1194,15 +1173,11 @@ fn introduced(
     mfas: Vec<Mfa>,
     include_hidden: bool,
     timeline: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let walk = walk_project_snapshots(&store, &project, &mfas, include_hidden)?;
     let rows = compute_introduced_rows(&walk, &mfas, timeline);
-    let exit = if rows.iter().all(|r| r.tags_present > 0) {
-        0
-    } else {
-        PARTIAL_SUCCESS_I32
-    };
+    let exit = CommandOutcome::from_success(rows.iter().all(|r| r.tags_present > 0));
     let payload = IntroducedPayload {
         project: project.to_string(),
         rows,
@@ -1351,7 +1326,7 @@ fn modules(
     project: ProjectName,
     tag: TagName,
     include_hidden: bool,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store.read(&project, &tag)?;
     let mut payload = ModulesPayload {
@@ -1385,7 +1360,7 @@ fn modules(
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn exports(
@@ -1394,7 +1369,7 @@ fn exports(
     project: ProjectName,
     tag: TagName,
     module: ModuleName,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let snapshot = store.read(&project, &tag)?;
     let m: Option<&Module> = snapshot.module_named(&module);
@@ -1419,7 +1394,7 @@ fn exports(
         }
         Ok(())
     })?;
-    Ok(if m.is_some() { 0 } else { PARTIAL_SUCCESS_I32 })
+    Ok(CommandOutcome::from_success(m.is_some()))
 }
 
 fn diff_single_project(
@@ -1428,7 +1403,7 @@ fn diff_single_project(
     project: ProjectName,
     from: TagName,
     to: TagName,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let store = open_store_read(args, cfg)?;
     let a = store.read(&project, &from)?;
     let b = store.read(&project, &to)?;
@@ -1437,7 +1412,7 @@ fn diff_single_project(
     render(&ctx, &result, |w| {
         render_diff_text(w, &result).map_err(CliError::from)
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 fn diff_cross_series(
@@ -1445,7 +1420,7 @@ fn diff_cross_series(
     cfg: &Config,
     from_series: SeriesName,
     to_series: SeriesName,
-) -> CliResult<i32> {
+) -> CliResult<CommandOutcome> {
     let from = cfg.series_by_name(&from_series)?;
     let to = cfg.series_by_name(&to_series)?;
     let store = open_store_read(args, cfg)?;
@@ -1471,8 +1446,8 @@ fn diff_cross_series(
         projects.push(compute_diff(&a, &b));
     }
     let payload = CrossSeriesDiffPayload {
-        from_series: from_series.to_string(),
-        to_series: to_series.to_string(),
+        from_series,
+        to_series,
         projects,
     };
     let ctx = OutputContext::new(args.formatter, "snapshots series_diff");
@@ -1488,7 +1463,7 @@ fn diff_cross_series(
         }
         Ok(())
     })?;
-    Ok(0)
+    Ok(CommandOutcome::Success)
 }
 
 pub fn render_diff_text<W: Write + ?Sized>(w: &mut W, d: &DiffPayload) -> io::Result<()> {
@@ -1582,14 +1557,10 @@ fn fmt_opt_u64(v: Option<u64>) -> String {
 pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonical>) -> DiffPayload {
     let a_names: BTreeSet<&ModuleName> = a.modules().iter().map(|m| &m.name).collect();
     let b_names: BTreeSet<&ModuleName> = b.modules().iter().map(|m| &m.name).collect();
-    let modules_added: Vec<String> = b_names
-        .difference(&a_names)
-        .map(|s| s.to_string())
-        .collect();
-    let modules_removed: Vec<String> = a_names
-        .difference(&b_names)
-        .map(|s| s.to_string())
-        .collect();
+    let modules_added: Vec<ModuleName> =
+        b_names.difference(&a_names).map(|s| (*s).clone()).collect();
+    let modules_removed: Vec<ModuleName> =
+        a_names.difference(&b_names).map(|s| (*s).clone()).collect();
     let mut exports_added = Vec::new();
     let mut exports_removed = Vec::new();
     let mut types_added = Vec::new();
@@ -1597,37 +1568,33 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
     let mut callbacks_added = Vec::new();
     let mut callbacks_removed = Vec::new();
     for name in a_names.union(&b_names) {
-        let module_str = name.to_string();
         diff_named_set(
-            module_str.as_str(),
             module_exports(a, name),
             module_exports(b, name),
             &mut exports_added,
             &mut exports_removed,
-            |module, fa| QualifiedFunArity {
-                module: module.into(),
+            |fa| QualifiedFunArity {
+                module: (*name).clone(),
                 fun_arity: fa,
             },
         );
         diff_named_set(
-            module_str.as_str(),
             module_callbacks(a, name),
             module_callbacks(b, name),
             &mut callbacks_added,
             &mut callbacks_removed,
-            |module, fa| QualifiedFunArity {
-                module: module.into(),
+            |fa| QualifiedFunArity {
+                module: (*name).clone(),
                 fun_arity: fa,
             },
         );
         diff_named_set(
-            module_str.as_str(),
             module_types(a, name),
             module_types(b, name),
             &mut types_added,
             &mut types_removed,
-            |module, ta| QualifiedTypeArity {
-                module: module.into(),
+            |ta| QualifiedTypeArity {
+                module: (*name).clone(),
                 type_arity: ta,
             },
         );
@@ -1646,13 +1613,12 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
     let mut records_removed = Vec::new();
     for path in a_headers.union(&b_headers) {
         diff_named_set(
-            path,
             hrl_records(a, path),
             hrl_records(b, path),
             &mut records_added,
             &mut records_removed,
-            |header, record| QualifiedRecord {
-                header: header.into(),
+            |record| QualifiedRecord {
+                header: (*path).to_owned(),
                 record,
             },
         );
@@ -1664,9 +1630,9 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
         diff_wire_constants(a, b, name, &mut wire_constant_changes);
     }
     DiffPayload {
-        project: a.header().project.to_string(),
-        from: a.header().tag.to_string(),
-        to: b.header().tag.to_string(),
+        project: a.header().project.clone(),
+        from: a.header().tag.clone(),
+        to: b.header().tag.clone(),
         modules_added,
         modules_removed,
         exports_added,
@@ -1699,16 +1665,16 @@ fn diff_versioned_machine_version(
     match (from, to) {
         (None, None) => {}
         (Some(_), None) => out.push(VersionedMachineVersionChange::Missing {
-            module: name.to_string(),
+            module: name.clone(),
             side: "to".into(),
         }),
         (None, Some(_)) => out.push(VersionedMachineVersionChange::Missing {
-            module: name.to_string(),
+            module: name.clone(),
             side: "from".into(),
         }),
         (Some(x), Some(y)) if x.value != y.value => {
             out.push(VersionedMachineVersionChange::Drift {
-                module: name.to_string(),
+                module: name.clone(),
                 from: x.value,
                 to: y.value,
             });
@@ -1749,7 +1715,7 @@ fn diff_wire_constants(
         match (from_map.get(k), to_map.get(k)) {
             (Some(x), Some(y)) if x.value != y.value => {
                 out.push(WireConstantChange::Drift {
-                    module: name.to_string(),
+                    module: name.clone(),
                     macro_name: (*k).to_owned(),
                     from: wire_value_text(&x.value),
                     to: wire_value_text(&y.value),
@@ -1764,14 +1730,14 @@ fn diff_wire_constants(
     missing_to.sort();
     if !missing_from.is_empty() {
         out.push(WireConstantChange::Missing {
-            module: name.to_string(),
+            module: name.clone(),
             side: "from".into(),
             macros: missing_from,
         });
     }
     if !missing_to.is_empty() {
         out.push(WireConstantChange::Missing {
-            module: name.to_string(),
+            module: name.clone(),
             side: "to".into(),
             macros: missing_to,
         });
@@ -1787,20 +1753,19 @@ fn wire_value_text(v: &WireValue) -> String {
 }
 
 fn diff_named_set<T, F>(
-    parent: &str,
     a: BTreeSet<String>,
     b: BTreeSet<String>,
     added: &mut Vec<T>,
     removed: &mut Vec<T>,
     qualify: F,
 ) where
-    F: Fn(&str, String) -> T,
+    F: Fn(String) -> T,
 {
     for s in b.difference(&a) {
-        added.push(qualify(parent, s.clone()));
+        added.push(qualify(s.clone()));
     }
     for s in a.difference(&b) {
-        removed.push(qualify(parent, s.clone()));
+        removed.push(qualify(s.clone()));
     }
 }
 

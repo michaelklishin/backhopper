@@ -2,9 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
 use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, SeriesName, TagName};
+
+/// The required `--project` and `--tag` pair, shared by the snapshot
+/// verbs that read a single snapshot.
+#[derive(Debug, Args, Clone)]
+pub struct ProjectTagArgs {
+    #[arg(long)]
+    pub project: ProjectName,
+    #[arg(long)]
+    pub tag: TagName,
+}
+
+/// The `--mfa` list plus `--include-hidden` toggle, shared by the MFA
+/// lookup verbs.
+#[derive(Debug, Args, Clone)]
+pub struct MfaQueryArgs {
+    #[arg(long, action = clap::ArgAction::Append, required = true)]
+    pub mfa: Vec<Mfa>,
+    #[arg(long)]
+    pub include_hidden: bool,
+}
 
 #[derive(Debug, Subcommand)]
 pub enum SnapshotsCmd {
@@ -39,10 +59,8 @@ pub enum SnapshotsCmd {
     },
     /// Print a snapshot's canonical text.
     Show {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
+        #[command(flatten)]
+        pt: ProjectTagArgs,
         /// Print only the named module's section.
         #[arg(long)]
         module: Option<ModuleName>,
@@ -62,10 +80,8 @@ pub enum SnapshotsCmd {
     },
     /// Rebuild a snapshot from source (replace the on-disk copy).
     Rebuild {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
+        #[command(flatten)]
+        pt: ProjectTagArgs,
         /// Plan only; do not write to disk.
         #[arg(long)]
         dry_run: bool,
@@ -84,43 +100,33 @@ pub enum SnapshotsCmd {
     },
     /// Look up one or more MFAs against a single snapshot.
     Lookup {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
-        #[arg(long, action = clap::ArgAction::Append, required = true)]
-        mfa: Vec<Mfa>,
-        #[arg(long)]
-        include_hidden: bool,
+        #[command(flatten)]
+        pt: ProjectTagArgs,
+        #[command(flatten)]
+        query: MfaQueryArgs,
     },
     /// Report the first and last tag at which each MFA appears, with the
     /// snapshot-anchored commit SHA at each endpoint.
     Introduced {
         #[arg(long)]
         project: ProjectName,
-        #[arg(long, action = clap::ArgAction::Append, required = true)]
-        mfa: Vec<Mfa>,
-        #[arg(long)]
-        include_hidden: bool,
+        #[command(flatten)]
+        query: MfaQueryArgs,
         /// Emit a per-tag presence row for every stored tag, not just the endpoints.
         #[arg(long)]
         timeline: bool,
     },
     /// List modules a snapshot covers.
     Modules {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
+        #[command(flatten)]
+        pt: ProjectTagArgs,
         #[arg(long)]
         include_hidden: bool,
     },
     /// List a module's exports in a snapshot.
     Exports {
-        #[arg(long)]
-        project: ProjectName,
-        #[arg(long)]
-        tag: TagName,
+        #[command(flatten)]
+        pt: ProjectTagArgs,
         #[arg(long)]
         module: ModuleName,
     },

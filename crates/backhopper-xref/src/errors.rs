@@ -16,9 +16,6 @@ pub enum XrefError {
     #[error(transparent)]
     Graph(#[from] GraphError),
 
-    #[error("no such application: {0}")]
-    NoSuchApplication(ApplicationName),
-
     #[error("duplicate application registered: {0}")]
     DuplicateApplication(ApplicationName),
 }

@@ -41,8 +41,9 @@ pub mod xref_backport_applicability;
 
 use crate::cli::{Cli, Group};
 use crate::errors::CliResult;
+use crate::outcome::CommandOutcome;
 
-pub fn dispatch(cli: Cli) -> CliResult<i32> {
+pub fn dispatch(cli: Cli) -> CliResult<CommandOutcome> {
     match cli.group {
         Group::Doctor(cmd) => doctor::handle(&cli.global, cmd),
         Group::Init(cmd) => init::handle(&cli.global, cmd),

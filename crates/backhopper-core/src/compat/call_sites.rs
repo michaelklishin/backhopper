@@ -138,36 +138,40 @@ pub(crate) struct BodyRun {
     pub(crate) line_starts: Vec<(usize, u32)>,
 }
 
-/// Joins consecutive `Body` lines into runs, breaking on attribute
-/// context and on file-line gaps so fragments from different hunks
-/// never concatenate into a false construct.
-pub(crate) fn body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
+/// The accumulate-and-flush core for body runs: `strip` removes each
+/// line's comment and `is_body` classifies the stripped line;
+/// consecutive body lines with adjacent file lines join into one run,
+/// so fragments from different hunks never concatenate into a false
+/// construct.
+pub(crate) fn body_runs_with<'a>(
+    src: &'a str,
+    line_map: &[u32],
+    strip: impl Fn(&'a str) -> &'a str,
+    mut is_body: impl FnMut(&str) -> bool,
+) -> Vec<BodyRun> {
     debug_assert_eq!(
         line_map.len(),
         src.lines().count(),
         "line map length must equal the line count"
     );
-    let mut scanner = AttrCtxScanner::new();
     let mut out = Vec::new();
     let mut run = String::new();
     let mut run_lines: Vec<(usize, u32)> = Vec::new();
     let mut prev_body_file_line: Option<u32> = None;
     for (idx, line) in src.lines().enumerate() {
-        let stripped = strip_line_comment(line);
-        let ctx = scanner.classify(stripped);
+        let stripped = strip(line);
+        let body = is_body(stripped);
         let file_line = line_map.get(idx).copied();
-        let adjacent = match (prev_body_file_line, file_line) {
-            (Some(prev), Some(cur)) => cur == prev + 1,
-            _ => false,
-        };
-        if (ctx != RefContext::Body || !adjacent) && !run.is_empty() {
+        let adjacent =
+            matches!((prev_body_file_line, file_line), (Some(prev), Some(cur)) if cur == prev + 1);
+        if (!body || !adjacent) && !run.is_empty() {
             out.push(BodyRun {
                 text: mem::take(&mut run),
                 line_starts: mem::take(&mut run_lines),
             });
         }
-        prev_body_file_line = (ctx == RefContext::Body).then_some(file_line).flatten();
-        if ctx != RefContext::Body {
+        prev_body_file_line = body.then_some(file_line).flatten();
+        if !body {
             continue;
         }
         run_lines.push((run.len(), (idx + 1) as u32));
@@ -183,14 +187,41 @@ pub(crate) fn body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
     out
 }
 
-// Match-start origin: the run line whose start offset is the last one
-// at or before the match offset.
-pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
-    match run_lines.binary_search_by(|(start, _)| start.cmp(&offset)) {
-        Ok(i) => run_lines[i].1,
-        Err(0) => run_lines.first().map_or(1, |(_, l)| *l),
-        Err(i) => run_lines[i - 1].1,
+/// Joins consecutive `Body` lines into runs, breaking on attribute
+/// context and on file-line gaps.
+pub(crate) fn body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
+    let mut scanner = AttrCtxScanner::new();
+    body_runs_with(src, line_map, strip_line_comment, |s| {
+        scanner.classify(s) == RefContext::Body
+    })
+}
+
+/// The value of the last `(start, value)` entry whose start is at or
+/// before `offset`, or `default` when `offset` precedes every entry.
+/// Entries are sorted by start.
+fn value_at_or_before<T: Copy>(entries: &[(usize, T)], offset: usize, default: T) -> T {
+    match entries.partition_point(|(start, _)| *start <= offset) {
+        0 => default,
+        count => entries[count - 1].1,
     }
+}
+
+/// The `SymbolRef` for a scanned `m:f` call: exact arity when the
+/// argument list terminated on the line, else any-arity.
+fn scanned_call(scan: ScanArity, module: ModuleName, function: FunctionName) -> SymbolRef {
+    match scan {
+        ScanArity::Exact(arity) => {
+            SymbolRef::function(Mfa::new(module, function, Arity::new(arity)))
+        }
+        ScanArity::Unterminated => SymbolRef::function_any_arity(module, function),
+    }
+}
+
+// Match-start origin: the run line whose start offset is the last one
+// at or before the match offset. Before the first run, the first run's
+// line clamps in (or 1 when there are no runs).
+pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
+    value_at_or_before(run_lines, offset, run_lines.first().map_or(1, |(_, l)| *l))
 }
 
 /// Cross-line classifier that decides whether a hunk line is body or
@@ -355,11 +386,7 @@ fn push_refs_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(Symbol
         ) else {
             continue;
         };
-        let r = match scan_arity(after) {
-            ScanArity::Exact(arity) => SymbolRef::function(Mfa::new(m, f, Arity::new(arity))),
-            ScanArity::Unterminated => SymbolRef::function_any_arity(m, f),
-        };
-        out.push((r, group.start()));
+        out.push((scanned_call(scan_arity(after), m, f), group.start()));
     }
     push_fun_refs_with_offsets(text, macros, out);
     for caps in record_re().captures_iter(text) {
@@ -439,14 +466,7 @@ fn try_resolve_macro_call(name: &str, tail: &str, macros: &MacroTable, out: &mut
         let (Ok(mn), Ok(fn_)) = (ModuleName::from_str(&m), FunctionName::from_str(&f)) else {
             return;
         };
-        match scan_arity(rest) {
-            ScanArity::Exact(arity) => {
-                out.push(SymbolRef::function(Mfa::new(mn, fn_, Arity::new(arity))));
-            }
-            ScanArity::Unterminated => {
-                out.push(SymbolRef::function_any_arity(mn, fn_));
-            }
-        }
+        out.push(scanned_call(scan_arity(rest), mn, fn_));
         return;
     }
     if let Some(rest) = trimmed.strip_prefix(':') {
@@ -462,14 +482,7 @@ fn try_resolve_macro_call(name: &str, tail: &str, macros: &MacroTable, out: &mut
                     ModuleName::from_str(&m),
                     FunctionName::from_str(function_str),
                 ) {
-                    match scan_arity(after_open) {
-                        ScanArity::Exact(arity) => {
-                            out.push(SymbolRef::function(Mfa::new(mn, fn_, Arity::new(arity))));
-                        }
-                        ScanArity::Unterminated => {
-                            out.push(SymbolRef::function_any_arity(mn, fn_));
-                        }
-                    }
+                    out.push(scanned_call(scan_arity(after_open), mn, fn_));
                 }
             }
         }
@@ -808,11 +821,7 @@ fn tag_by_origin(
 }
 
 /// The origin of the physical line a match offset lands on: the last
-/// line whose start is at or before the offset. `line_origins` is sorted
-/// by start, so this is a binary search.
+/// line whose start is at or before the offset, else `Context`.
 fn origin_at(line_origins: &[(usize, RefOrigin)], offset: usize) -> RefOrigin {
-    match line_origins.partition_point(|(start, _)| *start <= offset) {
-        0 => RefOrigin::Context,
-        count => line_origins[count - 1].1,
-    }
+    value_at_or_before(line_origins, offset, RefOrigin::Context)
 }

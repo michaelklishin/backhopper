@@ -76,7 +76,7 @@ fn project_diff_assembles_project_from_to() {
         .project_diff(project("ra"), tag("v2.13.0"), tag("v2.16.0"))
         .run()
         .expect("diff parses");
-    assert_eq!(diff.project, "ra");
+    assert_eq!(diff.project.as_str(), "ra");
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn series_diff_assembles_from_and_to_series() {
         .series_diff(series("rabbitmq-4.1"), series("rabbitmq-4.2"))
         .run()
         .expect("cross-series diff parses");
-    assert_eq!(diff.from_series, "rabbitmq-4.1");
+    assert_eq!(diff.from_series.as_str(), "rabbitmq-4.1");
     assert!(diff.projects.is_empty());
 }
 

@@ -6,8 +6,9 @@
 //! `check batch` loop so the same `(project, tag)` snapshot is parsed
 //! from disk at most once per process invocation.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use backhopper_core::errors::StoreError;
 use backhopper_core::model::names::{ProjectName, TagName};
@@ -20,14 +21,14 @@ type CacheValue = Arc<Snapshot<state::Canonical>>;
 #[derive(Debug)]
 pub struct SnapshotCache<'a> {
     store: &'a SnapshotStore<ReadOnly>,
-    entries: Mutex<BTreeMap<CacheKey, CacheValue>>,
+    entries: RefCell<BTreeMap<CacheKey, CacheValue>>,
 }
 
 impl<'a> SnapshotCache<'a> {
     pub fn new(store: &'a SnapshotStore<ReadOnly>) -> Self {
         Self {
             store,
-            entries: Mutex::new(BTreeMap::new()),
+            entries: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -37,29 +38,24 @@ impl<'a> SnapshotCache<'a> {
         tag: &TagName,
     ) -> Result<Arc<Snapshot<state::Canonical>>, StoreError> {
         let key = (project.clone(), tag.clone());
-        {
-            let guard = self.entries.lock().expect("snapshot cache mutex poisoned");
-            if let Some(arc) = guard.get(&key) {
-                return Ok(Arc::clone(arc));
-            }
+        if let Some(arc) = self.entries.borrow().get(&key) {
+            return Ok(Arc::clone(arc));
         }
         let snap = self.store.read(project, tag)?;
         let arc = Arc::new(snap);
-        let mut guard = self.entries.lock().expect("snapshot cache mutex poisoned");
-        Ok(guard.entry(key).or_insert_with(|| Arc::clone(&arc)).clone())
+        Ok(self
+            .entries
+            .borrow_mut()
+            .entry(key)
+            .or_insert_with(|| Arc::clone(&arc))
+            .clone())
     }
 
     pub fn len(&self) -> usize {
-        self.entries
-            .lock()
-            .expect("snapshot cache mutex poisoned")
-            .len()
+        self.entries.borrow().len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries
-            .lock()
-            .expect("snapshot cache mutex poisoned")
-            .is_empty()
+        self.entries.borrow().is_empty()
     }
 }

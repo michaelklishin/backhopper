@@ -4,6 +4,8 @@
 
 //! `-record(name, {fields})` parser.
 
+use backhopper_erlang_scan::split_leading_name;
+
 use crate::tokenizer::split_top_level_commas;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,20 +52,11 @@ pub fn parse_record(body: &str) -> Option<ParsedRecord> {
 }
 
 fn parse_record_field(s: &str) -> Option<ParsedRecordField> {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
+    let (name, rest) = split_leading_name(s);
+    if name.is_empty() {
         return None;
     }
-    let name_end = trimmed
-        .char_indices()
-        .find(|(_, c)| !c.is_ascii_alphanumeric() && *c != '_' && *c != '@' && *c != '\'')
-        .map(|(i, _)| i)
-        .unwrap_or(trimmed.len());
-    if name_end == 0 {
-        return None;
-    }
-    let name = trimmed[..name_end].to_string();
-    let rest = trimmed[name_end..].trim_start();
+    let name = name.to_string();
     if rest.is_empty() {
         return Some(ParsedRecordField {
             name,

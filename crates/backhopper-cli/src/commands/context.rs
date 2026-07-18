@@ -5,13 +5,31 @@
 //! Shared command context: load config, open store.
 
 use std::env;
+use std::fs;
+use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
-use backhopper_core::config::Config;
+use backhopper_core::config::{Config, Project};
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
+use backhopper_git::GitRepo;
 
 use crate::cli::GlobalArgs;
 use crate::errors::{CliError, CliResult};
+
+pub fn open_project_repo(project: &Project) -> CliResult<GitRepo> {
+    Ok(GitRepo::open(project.require_git_url()?.to_path_buf())?)
+}
+
+/// Read a path's text, or stdin when the path is `-`.
+pub fn read_text_or_stdin(path: &Path) -> CliResult<String> {
+    if path == Path::new("-") {
+        let mut s = String::new();
+        io::stdin().read_to_string(&mut s)?;
+        Ok(s)
+    } else {
+        Ok(fs::read_to_string(path)?)
+    }
+}
 
 pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
     if let Some(p) = &args.config_file_path {

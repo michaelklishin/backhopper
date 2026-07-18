@@ -84,27 +84,36 @@ pub fn analyse_local_calls(
         let mut shape_seen = BTreeSet::new();
         caches.begin_subject();
         for call in sigs.iter().filter(|s| !s.is_definition) {
-            let key = (call.name.clone(), call.arity);
-            if is_auto_imported_bif(&call.name) || patch_defs.contains(&key) {
+            if is_auto_imported_bif(&call.name) {
+                continue;
+            }
+            let Some(key) = signature_key(call) else {
+                continue;
+            };
+            if patch_defs.contains(&key) {
                 continue;
             }
             if target_defined.contains(&key) {
-                if !shape_seen.insert(key) {
+                if !shape_seen.insert(key.clone()) {
                     continue;
                 }
-                check_local_return_shape(
-                    subject,
-                    &target,
-                    call,
-                    &patch_specs,
-                    ctx.read_source,
-                    &mut spec_tables,
-                    &mut analysis,
-                );
+                // a spec the patch rewrites lands on the target with the
+                // pick, so there is no pre-existing drift to compare
+                if !patch_specs.contains_key(&key) {
+                    check_local_return_shape(
+                        subject,
+                        &target,
+                        call,
+                        &key,
+                        ctx.read_source,
+                        &mut spec_tables,
+                        &mut analysis,
+                    );
+                }
                 continue;
             }
             if target_imported.contains(&key) {
-                if shape_seen.insert(key) {
+                if shape_seen.insert(key.clone()) {
                     analysis.shape_checks.withheld_imported += 1;
                 }
                 continue;
@@ -126,19 +135,13 @@ pub fn analyse_local_calls(
                 );
                 continue;
             }
-            if !flagged.insert(key) {
+            if !flagged.insert(key.clone()) {
                 continue;
             }
-            let (Ok(function), Ok(arity)) = (
-                FunctionName::from_str(&call.name),
-                Arity::try_from(call.arity),
-            ) else {
-                continue;
-            };
             analysis.reasons.push(Reason::LocalCallUndefinedOnTarget {
                 source_path: subject.source_path.clone(),
-                function,
-                arity,
+                function: key.0,
+                arity: key.1,
                 line: file_line(subject.line_map, call.line),
             });
         }
@@ -148,24 +151,19 @@ pub fn analyse_local_calls(
 
 /// The `(name, arity)` view of a module's own `-import`s, keyed the way
 /// the call scanner keys a call site.
-fn imported_keys(src: &str) -> BTreeSet<(String, usize)> {
+fn imported_keys(src: &str) -> BTreeSet<(FunctionName, Arity)> {
     extract_imports(src)
         .into_iter()
-        .map(|i| (i.function.as_str().to_owned(), usize::from(i.arity.get())))
+        .map(|i| (i.function, i.arity))
         .collect()
 }
 
 /// The patch's own added `-import`s, keyed by `(name, arity)` so a call
 /// site resolves to the module it names for cross-module resolution.
-fn patch_import_map(src: &str) -> BTreeMap<(String, usize), ImportedFunction> {
+fn patch_import_map(src: &str) -> BTreeMap<(FunctionName, Arity), ImportedFunction> {
     extract_imports(src)
         .into_iter()
-        .map(|i| {
-            (
-                (i.function.as_str().to_owned(), usize::from(i.arity.get())),
-                i,
-            )
-        })
+        .map(|i| ((i.function.clone(), i.arity), i))
         .collect()
 }
 
@@ -173,22 +171,12 @@ fn check_local_return_shape(
     subject: &AddedLinesSubject<'_>,
     target_text: &str,
     call: &FunctionSignature,
-    patch_specs: &SpecTable,
+    key: &(FunctionName, Arity),
     read_source: Option<TreeReader<'_>>,
     spec_tables: &mut Option<(SpecTable, Option<SpecTable>)>,
     analysis: &mut LocalCallAnalysis,
 ) {
     let tally = &mut analysis.shape_checks;
-    let (Ok(function), Ok(arity)) = (
-        FunctionName::from_str(&call.name),
-        Arity::try_from(call.arity),
-    ) else {
-        return;
-    };
-    let key = (function, arity);
-    if patch_specs.contains_key(&key) {
-        return;
-    }
     let Some(read_source) = read_source else {
         tally.withheld_no_source += 1;
         return;
@@ -203,7 +191,7 @@ fn check_local_return_shape(
         tally.withheld_no_source += 1;
         return;
     };
-    match compare_return_shapes(target_specs, source_specs, &key) {
+    match compare_return_shapes(target_specs, source_specs, key) {
         ShapeComparison::Same => tally.compared += 1,
         ShapeComparison::NoSpec => tally.withheld_no_spec += 1,
         ShapeComparison::UnknownType => tally.withheld_unknown_type += 1,
@@ -214,7 +202,7 @@ fn check_local_return_shape(
             tally.compared += 1;
             analysis.reasons.push(Reason::LocalCallReturnShapeDrift {
                 source_path: subject.source_path.clone(),
-                function: key.0,
+                function: key.0.clone(),
                 arity: key.1,
                 source_signature,
                 target_signature,
@@ -224,11 +212,21 @@ fn check_local_return_shape(
     }
 }
 
-fn defined_set(sigs: &[FunctionSignature]) -> BTreeSet<(String, usize)> {
+fn defined_set(sigs: &[FunctionSignature]) -> BTreeSet<(FunctionName, Arity)> {
     sigs.iter()
         .filter(|s| s.is_definition)
-        .map(|s| (s.name.clone(), s.arity))
+        .filter_map(signature_key)
         .collect()
+}
+
+/// The typed `(name, arity)` key for a signature, `None` when either
+/// part fails to validate: an unvalidatable call can never be flagged,
+/// so it drops out of every set.
+fn signature_key(sig: &FunctionSignature) -> Option<(FunctionName, Arity)> {
+    Some((
+        FunctionName::from_str(&sig.name).ok()?,
+        Arity::try_from(sig.arity).ok()?,
+    ))
 }
 
 /// Functions Erlang auto-imports from `erlang`, callable unqualified.
