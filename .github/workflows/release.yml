@@ -62,6 +62,120 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
+      - name: Publish backhopper-erlang-scan
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-erlang-scan
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
+      - name: Publish backhopper-core
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
+      - name: Publish backhopper-cache
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-cache
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-cuttlefish
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-cuttlefish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-driver
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-driver
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-elixir
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-elixir
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-erlang
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-erlang
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-git
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-git
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Publish backhopper-xref-graph
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-xref-graph
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
+      - name: Publish backhopper-xref-reader
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-xref-reader
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
+      - name: Publish backhopper-xref
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-xref
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io propagation
+        run: sleep 30
+
       - name: Publish backhopper-cli
         uses: michaelklishin/rust-build-package-release-action@v3
         with:

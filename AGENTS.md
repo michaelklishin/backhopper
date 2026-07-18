@@ -643,8 +643,8 @@ section at the top.
     the previous release are listed under `Enhancements`,
     `Dependency Upgrades`, `Bug Fixes`
  2. Refresh `Cargo.lock`: `cargo update --workspace`. Verify
-    `cargo publish --dry-run --locked --allow-dirty -p backhopper-cli`
-    passes
+    `cargo publish --dry-run --locked --allow-dirty -p <crate>` passes
+    for each publishable crate
  3. Commit changelog and lockfile changes with the message `0.N.0`
     (just the version number)
  4. Tag the commit: `git tag v0.N.0`
