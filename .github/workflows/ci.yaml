@@ -100,6 +100,21 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  publish-dry-run:
+    name: Publish dry-run (backhopper-cli)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish dry-run
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          package: backhopper-cli
+          publish-dry-run: 'true'
+          locked: 'true'
+
   dependabot:
     needs: [lint, build-and-test]
     runs-on: ubuntu-latest

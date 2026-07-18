@@ -62,39 +62,6 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
-      - name: Publish backhopper-core
-        uses: michaelklishin/rust-build-package-release-action@v3
-        with:
-          command: publish-crate
-          locked: 'true'
-          package: backhopper-core
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      - name: Wait for crates.io to index backhopper-core
-        run: sleep 30
-
-      - name: Publish backhopper-erlang
-        uses: michaelklishin/rust-build-package-release-action@v3
-        with:
-          command: publish-crate
-          locked: 'true'
-          package: backhopper-erlang
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      - name: Publish backhopper-elixir
-        uses: michaelklishin/rust-build-package-release-action@v3
-        with:
-          command: publish-crate
-          locked: 'true'
-          package: backhopper-elixir
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      - name: Wait for crates.io to index backhopper-erlang and backhopper-elixir
-        run: sleep 30
-
       - name: Publish backhopper-cli
         uses: michaelklishin/rust-build-package-release-action@v3
         with:

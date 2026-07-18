@@ -644,7 +644,7 @@ section at the top.
     `Dependency Upgrades`, `Bug Fixes`
  2. Refresh `Cargo.lock`: `cargo update --workspace`. Verify
     `cargo publish --dry-run --locked --allow-dirty -p backhopper-cli`
-    passes for each publishable crate
+    passes
  3. Commit changelog and lockfile changes with the message `0.N.0`
     (just the version number)
  4. Tag the commit: `git tag v0.N.0`
@@ -667,11 +667,12 @@ Three workflows live under `.github/workflows/`:
    on Ubuntu, macOS, and Windows against stable and beta Rust; `cargo
    audit`; auto-merge for dependabot PRs
  * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
-   `NEXT_RELEASE_VERSION` repo variable, then publishes every crate to
-   crates.io (dependency order, Trusted Publishing), builds and signs
-   binary archives for eight targets plus deb, rpm, and MSI packages,
-   generates SBOMs and the Homebrew, AUR, and Winget manifests, and
-   creates the GitHub Release
+   `NEXT_RELEASE_VERSION` repo variable, publishes `backhopper-cli` to
+   crates.io via Trusted Publishing, builds and signs binary archives
+   for eight targets plus deb, rpm, and MSI packages, generates SBOMs
+   and the Homebrew, AUR, and Winget manifests, and creates the GitHub
+   Release. Only `backhopper-cli` is published: the other crates stay
+   workspace-internal so their APIs can change freely between releases
  * `verify-packages.yaml`: post-release smoke test of the Debian, RPM,
    and Windows artifacts against a matrix of distros
 
