@@ -95,24 +95,3 @@ jobs:
           binary-name: ${{ env.BINARY_NAME }}
           version: ${{ needs.get-version.outputs.version }}
           arch: ${{ matrix.arch }}
-
-  test-windows:
-    name: Windows (${{ matrix.version }})
-    needs: [get-version]
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - version: '2022'
-            runner: windows-2022
-          - version: '2025'
-            runner: windows-latest
-    steps:
-      - name: Test Windows artifacts
-        uses: michaelklishin/rust-build-package-release-action@v3
-        with:
-          command: test-windows
-          download-from-release: true
-          binary-name: ${{ env.BINARY_NAME }}
-          version: ${{ needs.get-version.outputs.version }}

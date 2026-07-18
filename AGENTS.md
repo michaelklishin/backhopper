@@ -667,14 +667,14 @@ Three workflows live under `.github/workflows/`:
    on Ubuntu, macOS, and Windows against stable and beta Rust; `cargo
    audit`; auto-merge for dependabot PRs
  * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
-   `NEXT_RELEASE_VERSION` repo variable, publishes `backhopper-cli` to
-   crates.io via Trusted Publishing, builds and signs binary archives
-   for eight targets plus deb, rpm, and MSI packages, generates SBOMs
-   and the Homebrew, AUR, and Winget manifests, and creates the GitHub
-   Release. Only `backhopper-cli` is published: the other crates stay
-   workspace-internal so their APIs can change freely between releases
- * `verify-packages.yaml`: post-release smoke test of the Debian, RPM,
-   and Windows artifacts against a matrix of distros
+   `NEXT_RELEASE_VERSION` repo variable, publishes every publishable
+   crate to crates.io via Trusted Publishing in dependency order,
+   builds and signs binary archives for macOS and Linux plus deb and
+   rpm packages, generates SBOMs and the Homebrew and AUR manifests,
+   and creates the GitHub Release. No Windows artifacts (MSI, Winget)
+   are produced
+ * `verify-packages.yaml`: post-release smoke test of the Debian and
+   RPM artifacts against a matrix of distros
 
 All three use
 [`michaelklishin/rust-build-package-release-action@v3`](https://github.com/michaelklishin/rust-build-package-release-action).

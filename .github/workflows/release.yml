@@ -197,10 +197,6 @@ jobs:
             os: macos-latest
           - target: x86_64-apple-darwin
             os: macos-15-intel
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          - target: aarch64-pc-windows-msvc
-            os: windows-11-arm
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
@@ -228,6 +224,7 @@ jobs:
         with:
           command: release
           target: ${{ matrix.target }}
+          package: backhopper-cli
           binary-name: backhopper
           locked: 'true'
           archive: 'true'
@@ -283,6 +280,7 @@ jobs:
         with:
           command: ${{ matrix.command }}
           target: ${{ matrix.target }}
+          package: backhopper-cli
           binary-name: backhopper
           locked: 'true'
           pkg-maintainer: 'Michael S. Klishin <michael@rabbitmq.com>'
@@ -299,38 +297,9 @@ jobs:
             ${{ steps.build.outputs.checksum_file }}
           retention-days: 2
 
-  msi:
-    name: MSI Installer
-    needs: [validate]
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build MSI
-        uses: michaelklishin/rust-build-package-release-action@v3
-        id: build
-        with:
-          command: release-windows-msi
-          target: x86_64-pc-windows-msvc
-          binary-name: backhopper
-          locked: 'true'
-
-      - name: Upload MSI
-        uses: actions/upload-artifact@v7
-        with:
-          name: msi-x86_64
-          path: |
-            ${{ steps.build.outputs.artifact_path }}
-            ${{ steps.build.outputs.checksum_file }}
-          retention-days: 2
-
   release:
     name: Publish
-    needs: [validate, publish-crates, build, packages, msi]
+    needs: [validate, publish-crates, build, packages]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -347,7 +316,7 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "backhopper-*" -o -name "*.sha256" -o -name "*.deb" -o -name "*.rpm" -o -name "*.msi" \) ! -name "release_notes.md" -exec cp {} release/ \;
+          find artifacts -type f \( -name "backhopper-*" -o -name "*.sha256" -o -name "*.deb" -o -name "*.rpm" \) ! -name "release_notes.md" -exec cp {} release/ \;
 
       - name: Generate SBOM
         uses: michaelklishin/rust-build-package-release-action@v3
@@ -433,25 +402,6 @@ jobs:
           aur-source-url: https://github.com/michaelklishin/backhopper/archive/refs/tags/v${{ needs.validate.outputs.version }}.tar.gz
           aur-source-sha256: 'SKIP'
 
-      - name: Generate Winget manifest
-        uses: michaelklishin/rust-build-package-release-action@v3
-        id: winget
-        with:
-          command: generate-winget
-          binary-name: backhopper
-          winget-package-id: backhopper
-          version: ${{ needs.validate.outputs.version }}
-          pkg-description: 'Records public API of Erlang and Elixir projects per git tag and answers compatibility questions for backport workflows'
-          pkg-homepage: 'https://github.com/michaelklishin/backhopper'
-          pkg-license: 'Apache-2.0 OR MIT'
-          winget-publisher: 'Michael S. Klishin'
-          winget-license-url: 'https://github.com/michaelklishin/backhopper/blob/main/LICENSE-APACHE'
-          winget-tags: 'erlang,elixir,api,compatibility,backport,cli'
-          winget-x64-url: https://github.com/michaelklishin/backhopper/releases/download/v${{ needs.validate.outputs.version }}/backhopper-${{ needs.validate.outputs.version }}-x86_64-pc-windows-msvc.zip
-          winget-x64-sha256: ${{ steps.collect.outputs.windows_x64_sha256 }}
-          winget-arm64-url: https://github.com/michaelklishin/backhopper/releases/download/v${{ needs.validate.outputs.version }}/backhopper-${{ needs.validate.outputs.version }}-aarch64-pc-windows-msvc.zip
-          winget-arm64-sha256: ${{ steps.collect.outputs.windows_arm64_sha256 }}
-
       - name: Copy Homebrew formula to release
         run: cp ${{ steps.homebrew.outputs.formula_file }} release/
 
@@ -463,7 +413,6 @@ jobs:
             ${{ steps.homebrew.outputs.formula_file }}
             ${{ steps.aur.outputs.pkgbuild_path }}
             ${{ steps.aur.outputs.srcinfo_path }}
-            ${{ steps.winget.outputs.manifest_dir }}
           retention-days: 7
 
       - name: Publish release
