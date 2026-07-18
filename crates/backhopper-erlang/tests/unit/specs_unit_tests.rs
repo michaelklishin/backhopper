@@ -4,8 +4,7 @@
 
 use backhopper_erlang::specs::{parse_callable_signature, parse_type_decl};
 
-// `parse_callable_signature` lives in `backhopper-erlang-scan` and is
-// tested there; this exercises the re-exported path.
+// parse_callable_signature is defined and tested in backhopper-erlang-scan; this exercises the re-export
 #[test]
 fn callable_signature_reexport_stays_stable() {
     let s = parse_callable_signature("register(X) -> ok").unwrap();

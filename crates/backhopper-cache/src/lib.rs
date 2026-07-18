@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! On-disk cache plumbing shared by backhopper's cached analyses.
+//! On-disk cache code shared by backhopper's cached analyses.
 //!
 //! `cache_io` provides content-addressed entries: the key serialises
 //! to canonical JSON, its BLAKE3 hash names the entry file, and a

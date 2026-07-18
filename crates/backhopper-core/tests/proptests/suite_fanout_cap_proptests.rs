@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Invariants of the suite-fanout cap (042): below the floor the cap is a
+//! Invariants of the suite-fanout cap: below the floor the cap is a
 //! no-op, and the output never depends on modified-path input order.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -54,8 +54,7 @@ fn write_suites(root: &Path, prefix: &str, count: usize, refs: &[&str]) {
     }
 }
 
-// Builds the two-application tree and returns the apps. The helper and
-// narrow source files double as the modified paths the tests pass in.
+// Builds the two-application tree; the helper and narrow source files also serve as the modified paths.
 fn build(root: &Path, n_helper: usize, n_narrow: usize, n_filler: usize) -> Vec<AppSrcSpec> {
     touch(root, HELPER_SRC, &format!("-module({HELPER}).\n"));
     touch(root, NARROW_SRC, &format!("-module({NARROW}).\n"));
@@ -83,9 +82,7 @@ fn input(root: &Path, modified: Vec<&str>, apps: Vec<AppSrcSpec>) -> PlanInput {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
 
-    // Below `FANOUT_FLOOR` no module is broad, so the cap drops nothing:
-    // `broad_impact` is empty and every suite a rule selected survives.
-    // This bounds the blast radius to the broad case.
+    // Below FANOUT_FLOOR no module is broad, so the cap drops nothing: every rule-selected suite is kept.
     #[test]
     fn below_the_floor_is_a_no_op(
         n_helper in 0usize..=7,
@@ -100,8 +97,7 @@ proptest! {
         prop_assert_eq!(p.entries.len(), n_helper + n_narrow);
     }
 
-    // The broad classification and the surviving entry set do not depend
-    // on the order of modified paths.
+    // Broad classification and the kept entry set are independent of modified-path order.
     #[test]
     fn output_is_independent_of_modified_path_order(
         n_helper in 0usize..=12,

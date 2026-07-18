@@ -207,7 +207,7 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
 }
 
 pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<CommandOutcome> {
-    // `pins` is a pure repo read: it must work without a config.
+    // pins is a pure repo read: it must work without a config.
     if let SeriesCmd::Pins(pins_args) = &cmd {
         return pins(args, pins_args);
     }
@@ -346,9 +346,7 @@ fn divergence(
     let mut only_on_against = Vec::new();
     for (name, b) in &branch_by_name {
         match against_by_name.get(name) {
-            // A source-kind change counts as divergence even at the
-            // same nominal version: a hex release and a git ref can
-            // hide different trees.
+            // a source-kind change counts as divergence even at the same version: a hex release and a git ref can point at different trees
             Some(a) if a.version != b.version || a.source != b.source => {
                 diverged.push(DivergedPin {
                     name: (*name).to_owned(),

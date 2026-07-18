@@ -45,7 +45,7 @@ impl PathRouting {
     }
 }
 
-/// True when path lives under scan_paths, app_roots, or `deps/{name}/`;
+/// True when path is under scan_paths, app_roots, or `deps/{name}/`;
 /// projects with no scope configured fall back to "owns everything".
 pub fn project_owns_path(project: &Project, path: &Path) -> bool {
     project_owns_candidate(project, &path.to_string_lossy())
@@ -105,8 +105,8 @@ impl RoutedPinVerdict {
 }
 
 /// Path routing, reason-granular. File ownership gates only the
-/// path-scoped reason family; reference-level evidence survives no
-/// matter which file the call site lives in. A pin with no owned
+/// path-scoped reason family; reference-level evidence is kept no
+/// matter which file holds the call site. A pin with no owned
 /// paths and no evidence rewrites to `Inapplicable`.
 #[must_use]
 pub fn route_pin_verdict(mut pv: PinVerdict, routing: &PathRouting) -> RoutedPinVerdict {

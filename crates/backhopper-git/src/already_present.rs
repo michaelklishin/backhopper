@@ -8,7 +8,7 @@
 //! Three mechanisms, cheapest first: trailer-origin ancestry, trailer
 //! intersection over a bounded first-parent walk, and normalized
 //! patch-hash equality over the same walk. All exact; the heuristic
-//! content tier lives in `backhopper-core`.
+//! content tier is in `backhopper-core`.
 
 use std::cell::OnceCell;
 use std::collections::BTreeSet;
@@ -48,8 +48,8 @@ impl CandidateIdentity {
 }
 
 /// One walked target commit with its lazily computed identities. The
-/// `OnceCell`s make the patch-hash pass pay only for commits whose
-/// touched paths intersect the candidate's.
+/// `OnceCell`s limit the patch-hash cost to commits whose touched
+/// paths intersect the candidate's.
 #[derive(Debug)]
 struct IndexRow {
     commit: WalkedCommit,

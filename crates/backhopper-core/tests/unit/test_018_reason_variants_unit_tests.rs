@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Wire-shape and `is_blocking` checks for the three new
-//! `Reason` variants from `018_ci_signal_gaps`:
-//! `TestModuleSymbolMissing` (candidate 1),
-//! `HeaderFileMissing` (candidate 5),
-//! `BehaviourModuleMissing` (candidate 6).
+//! Wire-shape and `is_blocking` checks for three
+//! `Reason` variants: `TestModuleSymbolMissing`,
+//! `HeaderFileMissing`, and `BehaviourModuleMissing`.
 //!
 //! All three are non-blocking: they degrade verdict to
 //! `RequiresAdaptation`, never `Incompatible`. They match the

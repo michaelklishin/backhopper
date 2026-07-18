@@ -115,8 +115,7 @@ where
         exit_code,
         warnings: Vec::new(),
     };
-    // through a Value so the keys serialize sorted, matching the shape
-    // the driver parses and `schema show` documents
+    // through a Value so the keys serialize sorted, the shape the driver parses and schema show documents
     let body = serde_json::to_value(&envelope).map_err(|e| CliError::OutputError(e.to_string()))?;
     serde_json::to_writer_pretty(&mut *stdout, &body)
         .map_err(|e| CliError::OutputError(e.to_string()))?;

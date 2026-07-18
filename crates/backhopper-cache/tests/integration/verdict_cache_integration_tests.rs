@@ -85,13 +85,11 @@ fn a_new_sha_with_the_same_content_hits_l2_and_mints_an_alias() {
         token.lookup_content(&content),
         ContentOutcome::Hit(_)
     ));
-    // the alias minted inside lookup_content serves the fast path now
+    // the alias created inside lookup_content serves the fast path now
     assert!(matches!(cache.lookup(&key('b')), InputOutcome::Hit(_)));
 }
 
-// The batch path reads the fingerprint off the hit, never re-resolving
-// the patch it just skipped: a hit must carry the stored fingerprint,
-// equal to the one the content key computes.
+// a hit must carry the stored fingerprint, equal to the one the content key computes
 #[test]
 fn an_l1_hit_returns_the_stored_fingerprint() {
     let dir = TempDir::new().unwrap();
@@ -107,8 +105,7 @@ fn an_l1_hit_returns_the_stored_fingerprint() {
     assert_eq!(cached.fingerprint, expected);
 }
 
-// A cascade hop hits L2 with a fresh SHA: the fingerprint is the same
-// as the original's, so both rows join one outcome.
+// a cascade hop hits L2 with a fresh SHA: the fingerprint matches the original's, so both rows join one outcome
 #[test]
 fn an_l2_hit_returns_the_same_fingerprint_as_the_original() {
     let dir = TempDir::new().unwrap();
@@ -125,7 +122,7 @@ fn an_l2_hit_returns_the_same_fingerprint_as_the_original() {
         panic!("identical content must hit L2");
     };
     assert_eq!(cached.fingerprint, original);
-    // the minted alias carries it onto the L1 fast path too
+    // the created alias carries it onto the L1 fast path too
     let InputOutcome::Hit(aliased) = cache.lookup(&key('b')) else {
         panic!("the alias must serve L1");
     };

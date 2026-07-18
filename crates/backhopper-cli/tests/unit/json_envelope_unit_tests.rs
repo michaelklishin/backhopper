@@ -172,8 +172,7 @@ fn pin_verdict_with_unsupported_file_type_matches_fixture() {
     assert_matches_fixture(&pv, "verdict_with_unsupported_file_type.json");
 }
 
-// Locks the bump-first wire shape: a populated `first_seen_at_tag`
-// plus `needs_pin_at_least` on a requires_adaptation reason.
+// locks the bump-first wire shape: first_seen_at_tag plus needs_pin_at_least on a requires_adaptation reason
 #[test]
 fn pin_verdict_with_bump_first_reason_matches_fixture() {
     let pv = PinVerdict::new(
@@ -197,8 +196,7 @@ fn pin_verdict_with_bump_first_reason_matches_fixture() {
     assert_matches_fixture(&pv, "verdict_with_bump_first_reason.json");
 }
 
-// pins the wire shape of every `BumpStatus` state plus the cached
-// (`status` absent) and introduced-pin (`from` absent) forms
+// pins the wire shape of every BumpStatus state plus the cached and introduced-pin forms
 #[test]
 fn diagnostics_with_pin_bumps_matches_fixture() {
     let bump = |dep: &str, from: Option<&str>, to: &str, status: Option<BumpStatus>| PinBump {

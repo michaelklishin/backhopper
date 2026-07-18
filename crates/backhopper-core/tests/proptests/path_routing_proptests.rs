@@ -69,8 +69,7 @@ proptest! {
         );
     }
 
-    // A path that does not share any leading segment with any scan_path
-    // is never owned.
+    // A path sharing no leading segment with any scan_path is never owned.
     #[test]
     fn unrelated_path_is_not_owned(
         scan in safe_path_segment(),
@@ -82,9 +81,7 @@ proptest! {
         prop_assert!(!p.owns_path(Path::new(&path_str)));
     }
 
-    // Classification: when every touched path is owned by the pin's
-    // project, the routing reports any_in_scope true with no out-of-scope
-    // owners and zero untracked.
+    // All touched paths owned by the pin's project: any_in_scope, no out-of-scope owners, zero untracked.
     #[test]
     fn all_in_scope_means_no_attribution(
         scan in safe_path_segment(),
@@ -102,8 +99,7 @@ proptest! {
         prop_assert_eq!(routing.untracked_count, 0);
     }
 
-    // Empty scope (no scan_paths, no app_roots) falls back to "owns
-    // everything" for non-self projects.
+    // With no scan_paths and no app_roots, a non-self project owns every path.
     #[test]
     fn empty_scope_owns_every_path(path in safe_path(5)) {
         let p = project("demo", vec![], vec![]);

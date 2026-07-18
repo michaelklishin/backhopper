@@ -4,7 +4,7 @@
 
 //! `Reason::is_path_scoped` decides which reasons path routing may
 //! drop for a pin that owns none of the touched paths. The
-//! compile-time exhaustiveness lives in the crate itself (the enum is
+//! compile-time exhaustiveness is in the crate itself (the enum is
 //! `#[non_exhaustive]`, so external matches need a wildcard); this
 //! table pins the classification of representative instances.
 
@@ -135,10 +135,7 @@ fn classification_matches_the_table() {
     }
 }
 
-// A reason cannot be both droppable-by-routing and a blocker that
-// survives reclassification: path-scoped blocking reasons exist
-// (FileAbsent), but every *non-blocking* path-scoped reason must
-// also be droppable, or routing would resurrect noise.
+// Every non-blocking path-scoped reason must be droppable, or routing would resurrect noise.
 #[test]
 fn path_scoped_family_covers_the_preimage_reasons() {
     let preimage = Reason::PreimageMissing {

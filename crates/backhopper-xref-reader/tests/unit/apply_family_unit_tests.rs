@@ -50,9 +50,8 @@ fn apply_3_with_atom_literals_resolves_to_concrete_mfa() {
 
 #[test]
 fn apply_3_list_with_char_literal_comma_counts_one_argument() {
-    // `[$,]` is a single-element list (the comma character), so the
-    // resolved arity is 1; without $-skipping the interior comma reads
-    // as a separator and the call resolves to arity 2.
+    // [$,] is a one-element list, so arity 1; without $-skipping the interior
+    // comma reads as a separator and the call resolves to arity 2.
     let m = read(
         "-module(ra_machine).\n\
          -export([apply/3]).\n\
@@ -338,9 +337,8 @@ fn apply_family_resolution_recorded_with_outer_caller_signature() {
     assert_eq!(resolved.caller.arity.get(), 1);
 }
 
-// osiris writes a chunk as a single multi-segment binary literal; the
-// commas inside `<<...>>` are bit-syntax field separators, not list
-// element separators, so apply resolves osiris_log:write to arity 1.
+// Commas inside <<...>> are bit-syntax field separators, not list element
+// separators, so apply resolves osiris_log:write to arity 1.
 #[test]
 fn apply_3_binary_argument_counts_as_one_element() {
     let m = read(
@@ -355,8 +353,7 @@ fn apply_3_binary_argument_counts_as_one_element() {
     );
 }
 
-// Quoted atoms for the module and function in an apply still resolve to the
-// concrete m:f/a.
+// Quoted atoms for module and function in an apply still resolve to the concrete m:f/a.
 #[test]
 fn apply_3_with_quoted_atom_module_and_function_resolves() {
     let m = read(
@@ -371,8 +368,8 @@ fn apply_3_with_quoted_atom_module_and_function_resolves() {
     );
 }
 
-// An apply nested in another call's argument list is still recorded; the
-// outer ra_lib:id/1 and the inner spawned target both surface.
+// An apply nested in another call's arguments is recorded: the outer ra_lib:id/1
+// and the inner spawned target both surface.
 #[test]
 fn apply_nested_in_call_argument_is_recorded() {
     let m = read(

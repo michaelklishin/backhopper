@@ -5,7 +5,7 @@
 //! Post-cache assessment of detected pin bumps.
 //!
 //! Detection (`detect_pin_bumps`) is a pure function of the patch and
-//! rides in the cached evaluation with `status: None`. The snapshot
+//! is carried in the cached evaluation with `status: None`. The snapshot
 //! store's contents are not a cache-key input, so the assessment here
 //! runs after every cache lookup, on hits and misses alike: generating
 //! a snapshot between two checks is reflected without invalidation.

@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! gix-backed git access for `backhopper`: the workspace's only git
-//! seam. `backhopper-core` stays gix-free; everything that opens a
-//! repository lives here.
+//! gix-backed git access for `backhopper`. `backhopper-core` stays
+//! gix-free; everything that opens a repository is in this crate.
 
 pub mod already_present;
 pub mod errors;

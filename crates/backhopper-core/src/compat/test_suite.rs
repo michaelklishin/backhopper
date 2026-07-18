@@ -4,7 +4,6 @@
 
 //! `TestSuiteFile<S>` with the type-state pattern.
 //!
-//! Backs candidate 1 of `018_ci_signal_gaps_after_jun_2026_v40_round`.
 //! The three states force the parse, then resolve, then read sequence
 //! at compile time so a caller cannot read missing-module data from a
 //! suite that has not been parsed or resolved against a target tree.
@@ -52,7 +51,7 @@ pub mod state {
 
 use state::{Parsed, Raw, Resolved, SuiteState};
 
-/// One `Module:Function/Arity` reference seen inside the suite source.
+/// One `Module:Function/Arity` reference found in the suite source.
 /// Pure parser output: no judgement about whether `module` exists on
 /// any target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,8 +88,8 @@ pub enum ParseError {
 ///      resolver and the call-site classifier agree on what counts as
 ///      stdlib;
 ///   2. a small set of common-test, property-test, and mocking modules
-///      that live outside OTP itself but are routine in RabbitMQ test
-///      SUITEs (and never sit under `deps/<app>/test`).
+///      outside OTP itself that are routine in RabbitMQ test SUITEs
+///      (and never appear under `deps/<app>/test`).
 pub fn is_stdlib_or_otp(module: &ModuleName) -> bool {
     if is_otp_module(module) {
         return true;
@@ -126,10 +125,10 @@ impl TestSuiteFile<Raw> {
         }
     }
 
-    /// Walk the suite source and extract `Module:Function(...)`
+    /// Scan the suite source and extract `Module:Function(...)`
     /// references where `Module` is a literal lowercase atom. Skips
-    /// `?MODULE:`, `apply/3`, dispatch through a variable: those land
-    /// in `Diagnostics.unanalyzed`, not here.
+    /// `?MODULE:`, `apply/3`, dispatch through a variable: those are
+    /// counted in `Diagnostics.unanalyzed`, not here.
     pub fn parse(self) -> Result<TestSuiteFile<Parsed>, ParseError> {
         if self.source.trim().is_empty() {
             return Err(ParseError::EmptySource(self.suite_path));
@@ -175,8 +174,8 @@ impl TestSuiteFile<Parsed> {
     /// Resolve every referenced module against the target tree using
     /// the per-family `search_path_globs` (e.g. `deps/*/test` for
     /// `ProjectFamily::Rabbitmq`). Modules in `is_stdlib_or_otp` are
-    /// dropped: they live outside the repo and the operator never
-    /// needs to chase them.
+    /// dropped: they are outside the repo, so absence there means
+    /// nothing.
     pub fn resolve(
         self,
         target: &TargetTreeIndex,
@@ -256,7 +255,7 @@ impl TestSuiteFile<Resolved> {
 
 /// Combined verdict and diagnostic output of one resolved suite.
 /// Returned by `TestSuiteFile::<Resolved>::into_findings` so callers
-/// get both surfaces without a clone-then-drop dance.
+/// get both surfaces without cloning data that is then discarded.
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedFindings {
@@ -264,10 +263,10 @@ pub struct ResolvedFindings {
     pub diagnostic_entry: Option<(RelativePath, BTreeMap<ModuleName, usize>)>,
 }
 
-/// Walk the source character by character, balancing `()`, `[]`, `{}`,
+/// Scan the source character by character, balancing `()`, `[]`, `{}`,
 /// `''`, `""`, and `%` line comments. Records `module:function(`
-/// references where `module` is a literal lowercase atom. The walker
-/// is deliberately conservative: anything it cannot disambiguate
+/// references where `module` is a literal lowercase atom. The scanner
+/// is conservative: anything it cannot disambiguate
 /// (dispatch through a variable, `?MODULE:f`, `apply/3`) is dropped
 /// rather than guessed.
 fn scan_helper_calls(source: &str) -> Vec<HelperCall> {
@@ -296,21 +295,14 @@ fn scan_helper_calls(source: &str) -> Vec<HelperCall> {
             i = skip_string(bytes, i, b'\'');
             continue;
         }
-        // Erlang variables and placeholders start with an uppercase
-        // letter or underscore and continue with identifier chars. We
-        // skip the whole span; otherwise the next iteration would
-        // restart in the middle of `Mod` and treat `od:f(...)` as a
-        // helper call.
+        // skip the whole variable span so a restart inside Mod does not read od:f(...) as a call
         if b.is_ascii_uppercase() || b == b'_' {
             while i < bytes.len() && is_atom_continue(bytes[i]) {
                 i += 1;
             }
             continue;
         }
-        // Macros (`?MACRO`) start with `?`. We skip the `?` plus the
-        // following identifier so that `?MODULE:f(...)` does not
-        // surface `module:f(...)` (the next iteration starts after
-        // the macro identifier).
+        // skip a ?MACRO whole so ?MODULE:f(...) does not surface module:f(...)
         if b == b'?' {
             i += 1;
             while i < bytes.len() && is_atom_continue(bytes[i]) {
@@ -505,18 +497,14 @@ impl<'a> HelperResolver<'a> {
         if self.wildcard_roots.is_empty() {
             return false;
         }
-        // Unique-basename fast path: the index resolves the module to its
-        // one `.erl` file, so match that single candidate against the
-        // wildcard roots instead of scanning every present path.
+        // fast path: match the module's one indexed .erl file instead of scanning every path
         if let Some(path) = self.target.module_erl_path(module) {
             return self
                 .wildcard_roots
                 .iter()
                 .any(|w| path_matches_wildcard(path, &w.prefix, &w.suffix));
         }
-        // `None`: the module is absent, or two files share the basename
-        // (Erlang-invalid). Fall back to the linear scan so a clashing
-        // file stays matchable.
+        // on absence or a basename clash, fall back to the linear scan so a clashing file stays matchable
         for path in self.target.present_paths() {
             if path.file_name().and_then(|s| s.to_str()) != Some(filename.as_str()) {
                 continue;

@@ -66,7 +66,7 @@ proptest! {
         sha in arb_sha(),
         tracked in any::<u32>(),
     ) {
-        // hand-built pre-v7 shape: no `series`, no `parent_count`
+        // hand-built pre-v7 shape: no series, no parent_count
         let legacy = format!(
             r#"{{"sha":"{sha}","verdict":"compatible","touched":{{}},"tracked":{tracked},"subject":"s"}}"#
         );

@@ -17,8 +17,7 @@ use backhopper_driver::types::{
 };
 use serde_json::json;
 
-// Naming every apply-axis type through the façade guards the
-// re-exports: drop one and this stops compiling.
+// naming every apply-axis type through the crate root guards the re-exports at compile time
 #[allow(dead_code)]
 struct NamesEveryReexport<'a> {
     a: &'a ApplyForecast,

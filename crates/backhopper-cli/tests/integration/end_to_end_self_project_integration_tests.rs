@@ -157,7 +157,7 @@ fn check_patch_against_self_branch_emits_missing_prereq_when_function_absent() {
 
 #[test]
 fn check_patch_fails_clearly_when_self_pin_cwd_is_not_a_git_repo() {
-    // pointing `--repo-dir-path` at a non-repo must surface a clear `git error: repository open failed`
+    // pointing --repo-dir-path at a non-repo must surface a clear git error: repository open failed
     let (_repo, _work, cfg) = setup_self_repo();
     let non_repo = TempDir::new().unwrap();
     let mut pf = NamedTempFile::new().unwrap();
@@ -188,9 +188,9 @@ fn check_patch_fails_clearly_when_self_pin_cwd_is_not_a_git_repo() {
 
 #[test]
 fn self_pin_docs_only_patch_stays_inapplicable_not_downgraded_to_compatible() {
-    // regression: the prereq promoter once rewrote Inapplicable to Compatible when there were no `MissingSymbol` reasons
+    // regression: the prereq promoter once rewrote Inapplicable to Compatible when there were no MissingSymbol reasons
     let (repo, _work, cfg) = setup_self_repo();
-    // seed README.md so `FileAbsent` does not fire: the docs-only patch is then flipped to `Inapplicable`
+    // seed README.md so FileAbsent does not fire: the docs-only patch is then flipped to Inapplicable
     repo.write_file("README.md", "old\n");
     repo.commit("add readme");
     let docs_only = "\

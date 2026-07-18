@@ -9,8 +9,8 @@
 //! call-site extractor, so without this pass a test ported from a newer
 //! branch can reference a function the target branch never had and the
 //! target-tree axis reports nothing. One level of unwrapping covers a
-//! meck expectation reached through an rpc helper, the shape the
-//! motivating round shipped.
+//! meck expectation reached through an rpc helper, the observed
+//! incident's shape.
 //!
 //! The same forms are read in Elixir sources, where the call is written
 //! `:module.function(args)` and the argument atoms carry a leading `:`.
@@ -19,7 +19,7 @@
 //! call-site matcher, the atom parser, and the comment stripper differ.
 //!
 //! A non-literal module or function is skipped without counting: it is
-//! not a reference this axis claims to see. A literal `m:f` whose arity
+//! not a reference this axis claims to read. A literal `m:f` whose arity
 //! source is unreadable is counted as withheld, never guessed.
 
 use std::str::FromStr;
@@ -51,9 +51,9 @@ impl Syntax {
         }
     }
 
-    /// Erlang reads a `fun` head or capture; Elixir withholds, since no
-    /// observed escape rides an Elixir meck-with-fun and the grammar is
-    /// separate.
+    /// Erlang reads a `fun` head or capture; Elixir withholds: no
+    /// observed case passes a fun through an Elixir meck expectation,
+    /// and the grammar is separate.
     fn fun_arity(self, raw: Option<&&str>) -> Option<Arity> {
         match self {
             Self::Erlang => raw.and_then(|a| fun_arity(a)),
@@ -167,7 +167,7 @@ pub fn extract_indirect_calls(src: &str, line_map: &[u32]) -> IndirectExtraction
 /// `extract_indirect_calls` over a precomputed per-line classification
 /// rather than one derived from `src` alone, for the same reason
 /// `extract_qualified_calls_with_context` exists: a wrapped form whose
-/// opener sits in a hunk's `Context` line, outside `src`, still
+/// opener is in a hunk's `Context` line, outside `src`, still
 /// classifies against its real attribute region.
 pub fn extract_indirect_calls_with_context(
     src: &str,
@@ -245,9 +245,7 @@ fn read_reference(
         AritySource::FunExpression(pos) => syntax.fun_arity(args.get(*pos)),
         AritySource::ArgumentList(pos) => match list_elements(args.get(*pos)) {
             Some(elements) => {
-                // One level of unwrapping: the rpc'd callee is itself
-                // a meck expectation, so the real reference is inside
-                // the argument list.
+                // the rpc'd callee is itself a meck expectation: unwrap one level
                 if module.as_str() == "meck" && function.as_str() == "expect" {
                     if let Some(inner) = form_spec("meck", "expect", elements.len()) {
                         let elements: Vec<&str> = elements.iter().map(String::as_str).collect();
@@ -333,7 +331,6 @@ fn elixir_call_re() -> &'static Regex {
 /// `#` comments, so a form wrapped across lines is scanned whole. No
 /// attribute classification, since every Elixir added line is body.
 fn elixir_body_runs(src: &str, line_map: &[u32]) -> Vec<BodyRun> {
-    // every Elixir added line is body, so the classifier is always true
     body_runs_with(src, line_map, strip_elixir_line_comment, |_| true)
 }
 
@@ -361,8 +358,7 @@ fn strip_elixir_line_comment(line: &str) -> &str {
         match b {
             b'"' => in_str = true,
             b'\'' => in_charlist = true,
-            // `?c` char literal, only at a token boundary so a `foo?`
-            // function suffix is not read as one.
+            // a ?c char literal only at a token boundary, so a foo? suffix is not one
             b'?' if !prev_ident => {
                 i += 1;
                 if bytes.get(i) == Some(&b'\\') {
@@ -392,8 +388,7 @@ fn integer_arity(raw: Option<&&str>) -> Option<Arity> {
 /// capture. `None` for anything else, including a variable.
 fn fun_arity(raw: &str) -> Option<Arity> {
     let rest = raw.trim().strip_prefix("fun")?;
-    // Only `fun(` or `fun ` opens a fun expression: an atom such as
-    // `funny(...)` must not match.
+    // only an open paren or a space follows the fun keyword: funny(...) must not match
     if !rest.starts_with('(') && !rest.starts_with(char::is_whitespace) {
         return None;
     }
@@ -404,8 +399,7 @@ fn fun_arity(raw: &str) -> Option<Arity> {
         };
         return Arity::try_from(args.len()).ok();
     }
-    // A capture's arity is the digits after the final `/`, whatever
-    // the module and function parts are.
+    // a capture's arity is the digits after the final slash
     let (_, digits) = rest.rsplit_once('/')?;
     let value: usize = digits.trim().parse().ok()?;
     Arity::try_from(value).ok()
@@ -417,8 +411,7 @@ fn list_elements(raw: Option<&&str>) -> Option<Vec<String>> {
     let raw = raw?.trim();
     let after_bracket = raw.strip_prefix('[')?;
     match scan_list_elements(after_bracket) {
-        // Trailing text after the close bracket (`[...] ++ More`)
-        // means the argument is not just this list.
+        // trailing text after the close bracket means the argument is not just this list
         ScannedList::Terminated { elements, consumed }
             if after_bracket[consumed..].trim().is_empty() =>
         {

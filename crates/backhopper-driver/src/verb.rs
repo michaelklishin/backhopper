@@ -270,7 +270,7 @@ impl FromStr for Verb {
 /// `Cow` so callers can pass either owned or borrowed segments.
 #[derive(Debug, Clone)]
 pub enum VerbId<'a> {
-    /// A verb the driver knows about.
+    /// A verb the driver defines.
     Known(Verb),
     /// An arbitrary verb path, e.g. `["future", "experiment"]`.
     Custom(Cow<'a, [Cow<'a, str>]>),

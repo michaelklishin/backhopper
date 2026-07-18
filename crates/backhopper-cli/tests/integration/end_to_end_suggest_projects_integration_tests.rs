@@ -124,8 +124,7 @@ fn suggest_projects_in_json_envelope() {
     assert_eq!(arr[0]["name"], "rabbit");
 }
 
-// The summary formatters render one line and return before the
-// suggestion block, so `--suggest-projects` cannot add output to them.
+// the summary formatters return before the suggestion block, so --suggest-projects cannot add output to them
 #[test]
 fn summary_formatter_suppresses_suggestion_output() {
     let (_repo, _work, cfg) = fresh_workspace();

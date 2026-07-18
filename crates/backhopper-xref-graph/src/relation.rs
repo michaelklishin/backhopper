@@ -280,11 +280,8 @@ mod closure {
         adj
     }
 
-    // Iterative Tarjan over integer vertex ids, so a deep call graph over
-    // the RabbitMQ monorepo cannot overflow the thread stack. Ids index a
-    // sorted vertex list, so the per-vertex state is `Vec`-indexed instead
-    // of map-keyed, and the SCC output keeps the same vertex ordering the
-    // recursive version produced.
+    // Iterative Tarjan over ids into a sorted vertex list: no stack overflow on
+    // deep graphs, and the SCC output keeps the recursive version's ordering.
     fn tarjan_sccs<'a>(adj: &BTreeMap<&'a Vertex, Vec<&'a Vertex>>) -> Vec<Vec<&'a Vertex>> {
         let nodes: Vec<&'a Vertex> = adj.keys().copied().collect();
         let id_of: BTreeMap<&Vertex, usize> =

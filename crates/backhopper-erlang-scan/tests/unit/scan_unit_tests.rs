@@ -70,8 +70,7 @@ fn commas_in_strings_and_atoms_do_not_split() {
 
 #[test]
 fn char_literal_comma_and_paren_are_inert() {
-    // `$,` is the comma char, `$)` the close-paren char; neither splits
-    // nor closes the list.
+    // $, is the comma char and $) the close-paren char; neither splits nor closes the list
     assert_eq!(
         terminated(scan_top_level_args("$,, X)")).0,
         vec!["$,", " X"]
@@ -81,8 +80,7 @@ fn char_literal_comma_and_paren_are_inert() {
 
 #[test]
 fn scan_args_consumes_control_char_literal_whole() {
-    // `$\^A` is a 4-byte control-char literal; every entry point consumes
-    // it as one unit, so a following comma still separates.
+    // $\^A is a 4-byte control-char literal consumed as one unit, so a following comma still separates
     assert_eq!(
         terminated(scan_top_level_args("$\\^A, B)")).0,
         vec!["$\\^A", " B"]
@@ -164,8 +162,7 @@ fn split_commas_trims_and_drops_empties() {
 
 #[test]
 fn split_commas_keeps_bitstring_field_whole() {
-    // A record field typed as a multi-segment bitstring carries a comma
-    // that is not a field separator.
+    // a comma inside a multi-segment bitstring field type is not a field separator
     let fields = split_top_level_commas("key, payload :: <<_:8, _:_*8>>, version");
     assert_eq!(fields, vec!["key", "payload :: <<_:8, _:_*8>>", "version"]);
 }
@@ -219,7 +216,7 @@ fn balanced_parens_ignores_parens_in_strings_and_atoms() {
 
 #[test]
 fn balanced_parens_treats_char_literal_paren_as_data() {
-    // `$)` is the close-paren char literal, not a closing paren.
+    // $) is the close-paren char literal, not a closing paren
     assert_eq!(take_balanced_parens("($), x)"), Some(("$), x", "")));
 }
 

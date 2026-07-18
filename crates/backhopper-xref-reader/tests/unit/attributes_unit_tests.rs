@@ -238,7 +238,7 @@ fn empty_export_list_yields_no_exports() {
          overview() -> ok.\n",
     );
     assert!(m.exports.is_empty());
-    // `overview/0` is a local because no export covers it.
+    // overview/0 is a local because no export covers it.
     assert!(m.locals.iter().any(|s| s.name.as_str() == "overview"));
 }
 
@@ -277,7 +277,7 @@ fn multiple_behaviour_attributes_accumulate() {
 
 #[test]
 fn char_literal_paren_inside_define_does_not_swallow_the_next_attribute() {
-    // regression: the inner `)` of the `$)` char literal must not close the `-define` early
+    // the inner ) of the $) char literal must not close the -define early
     let m = read(
         "-module(ra_log).\n\
          -define(CLOSE_PAREN, $)).\n\

@@ -30,8 +30,7 @@ proptest! {
         );
     }
 
-    // Any uppercase-led module identifier followed by `:fun(` is
-    // variable-dispatch, no matter the function name.
+    // An uppercase-led module identifier before :fun( is variable dispatch, no matter the function name.
     #[test]
     fn uppercase_module_is_always_variable_dispatch(
         module in "[A-Z][a-zA-Z0-9_]{0,7}",

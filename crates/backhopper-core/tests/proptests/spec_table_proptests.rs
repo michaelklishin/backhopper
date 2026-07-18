@@ -36,8 +36,7 @@ proptest! {
         }
     }
 
-    // A spec table keyed by the shared parser agrees with the snapshot
-    // grammar on bitstring arity: n bitstring arguments key as arity n.
+    // The spec table agrees with the snapshot grammar on bitstring arity: n bitstring arguments key as arity n.
     #[test]
     fn bitstring_arguments_key_at_the_snapshot_arity(n in 1u8..5) {
         let args: Vec<String> = (0..n).map(|_| "<<_:8, _:_*8>>".to_string()).collect();

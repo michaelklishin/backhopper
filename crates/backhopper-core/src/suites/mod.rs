@@ -8,8 +8,8 @@
 //! applications, returns the set of CT (Common Test) suite modules
 //! that should run, each tagged with the rule(s) that included it.
 //!
-//! The rules are deliberately generic: no rabbitmq-specific knowledge
-//! lives here. Project-specific rules can be expressed as
+//! The rules are deliberately generic, with nothing rabbitmq-specific
+//! in this module. Project-specific rules can be expressed as
 //! `ExtraRule` entries supplied by the caller.
 
 mod hints;

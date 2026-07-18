@@ -28,16 +28,16 @@ pub enum InapplicableReason {
     /// Every changed `.erl` hunk is a Variant A unwrap: dropping
     /// `-ifdef(TEST).` or `-endif.` around an `-export(...)` directive,
     /// or rewriting `-compile(export_all).` to an explicit
-    /// `-export([...])`. No call sites, no specs, no bodies touched —
+    /// `-export([...])`. No call sites, no specs, no bodies touched:
     /// only test-visibility metadata.
     OnlyTestVisibilityChanged,
     /// The patch touches Erlang surface but every referenced symbol
     /// resolves to the self-pin or to a local definition: every
-    /// tracked-dep pin sees zero in-scope references. Without this
-    /// reason the operator would see a wall of vacuous `Compatible`
+    /// tracked-dep pin has zero in-scope references. Without this
+    /// reason the operator would see many vacuous `Compatible`
     /// rows for a patch that backhopper genuinely has no signal on.
     OnlySelfSurfaceTouched,
-    /// Every touched path lives in a sibling project's scope, not this
+    /// Every touched path is in a sibling project's scope, not this
     /// pin's. The pin has nothing to say about the patch. `project`
     /// names the first sibling project (alphabetical) that owns the
     /// out-of-scope paths.
@@ -105,7 +105,7 @@ pub struct TouchedKinds {
     #[serde(default)]
     pub other: u32,
     /// Every changed `.erl` hunk is a Variant A unwrap of test-only
-    /// `-ifdef(TEST)` machinery around an `-export` directive (see
+    /// `-ifdef(TEST)` guards around an `-export` directive (see
     /// `InapplicableReason::OnlyTestVisibilityChanged`). When true,
     /// the patch touches Erlang surface but adds no semantic
     /// content, so an empty reason set should promote to
@@ -113,7 +113,7 @@ pub struct TouchedKinds {
     #[serde(default, skip_serializing_if = "is_false")]
     pub only_test_visibility: bool,
     /// The patch touches Erlang surface but references no tracked-dep
-    /// API (every non-self pin sees zero in-scope references). The CLI
+    /// API (every non-self pin has zero in-scope references). The CLI
     /// sets this after `evaluate_series` when a self-pin is present
     /// and every non-self pin's `tracked_refs` is empty; see
     /// `InapplicableReason::OnlySelfSurfaceTouched`.
@@ -121,7 +121,7 @@ pub struct TouchedKinds {
     pub only_self_surface: bool,
 }
 
-// `&bool` is required by serde's `skip_serializing_if` predicate shape.
+// &bool is required by serde's skip_serializing_if predicate shape.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(b: &bool) -> bool {
     !*b
@@ -164,8 +164,7 @@ impl TouchedKinds {
         let p = path.to_string_lossy();
         let lower = p.to_ascii_lowercase();
         let is_erl_source = lower.ends_with(".erl") || lower.ends_with(".hrl");
-        // a docs/ path component must not reclassify real Erlang source as
-        // docs: that would vacuously skip an API-affecting change
+        // a docs path component must not reclassify real Erlang source as docs
         if lower.ends_with(".md")
             || lower.ends_with(".adoc")
             || lower.ends_with(".rst")
@@ -269,7 +268,7 @@ impl TouchedKinds {
         if self.only_self_surface {
             return Some(InapplicableReason::OnlySelfSurfaceTouched);
         }
-        // `.schema` files carry MFA references in their fun bodies, so a
+        // .schema files carry MFA references in their fun bodies, so a
         // schema-touching diff is analyzable surface, not inapplicable.
         if self.erl > 0 || self.hrl > 0 || self.schema > 0 {
             return None;

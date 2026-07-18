@@ -11,8 +11,7 @@ use backhopper_driver::types::{
     SymbolKind, VerdictFingerprint,
 };
 
-// Naming every type and calling a method through the façade is the guard:
-// it stops compiling the day a re-export is dropped.
+// naming every type and calling a method through the crate root guards the re-exports at compile time
 #[test]
 fn measurement_types_reach_the_consumer_through_the_facade() {
     let coverage = ResolverCoverage::current();

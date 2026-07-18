@@ -4,7 +4,7 @@
 
 //! Hardcoded allowlist of common OTP module names.
 //!
-//! Used to label untracked-call diagnostics so operators can tell at a
+//! Used to label untracked-call diagnostics so users can tell at a
 //! glance which untracked calls are routine OTP usage versus a missing
 //! dependency in `backhopper.toml`. Not exhaustive: limited to modules
 //! we observe regularly in RabbitMQ source. Extend as needed.

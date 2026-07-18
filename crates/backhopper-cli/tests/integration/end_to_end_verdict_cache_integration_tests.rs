@@ -49,8 +49,7 @@ trailing_two() ->
     two.
 "#;
 
-// the fix touches the macro-using line, far from the padding a
-// branch adds up top, so its hunk reaches ?GREETING
+// the fix touches the macro-using line, far from the padding a branch adds up top, so its hunk reaches ?GREETING
 const DEMO_ERL_FIXED: &str = r#"-module(demo_mod).
 -include("demo.hrl").
 -export([greet/1]).
@@ -238,7 +237,7 @@ fn the_second_run_hits_l1_with_a_byte_identical_envelope() {
 fn a_fresh_clone_of_the_same_content_hits() {
     let fx = CacheFixture::new();
     let _ = fx.run(fx.check_commit_args(&fx.fix_sha));
-    // the P4 to triage shape: same SHAs, different working directory
+    // re-check from another checkout: same SHAs, different working directory
     let clone_dir = fx.dir.path().join("clone");
     git(
         fx.dir.path(),
@@ -324,8 +323,7 @@ fn macro_environment_drift_misses_l2() {
     let fx = CacheFixture::new();
     let _ = fx.run(fx.check_commit_args(&fx.fix_sha));
     let repo = fx.repo();
-    // identical patch bytes, but the included header differs on this
-    // branch, so the macro tables the evaluation builds differ
+    // identical patch bytes, but the included header differs on this branch, so the macro tables differ
     git(&repo, &["checkout", "-q", "-b", "v1-macro", "v1.0.0"]);
     write(
         &repo,
@@ -364,8 +362,7 @@ fn header_drift_the_patch_never_references_still_hits() {
     let tail_sha = head(&repo);
     let _ = fx.run(fx.check_commit_args(&tail_sha));
 
-    // the suite-fix reality: the included header drifts between
-    // branches, but the patch never references its macros
+    // the included header drifts between branches, but the patch never references its macros
     git(&repo, &["checkout", "-q", "-b", "v1-tail", "v1.0.0"]);
     write(
         &repo,
@@ -432,8 +429,7 @@ fn the_no_cache_env_var_wins_over_force_cache() {
 #[test]
 fn bypass_flags_neither_read_nor_write() {
     let fx = CacheFixture::new();
-    // seed an entry, then run with a bypass flag: the entry must not
-    // be served and nothing new may be written
+    // seed an entry, then run with a bypass flag: the entry must not be served and nothing new written
     let _ = fx.run(fx.check_commit_args(&fx.fix_sha));
     let count_entries = || walkdir_count(&fx.verdict_cache_dir());
     let seeded = count_entries();
@@ -497,8 +493,7 @@ fn batch_pairs_hit_on_the_second_run() {
 #[test]
 fn a_check_commit_warm_up_serves_the_batch() {
     let fx = CacheFixture::new();
-    // the pre-flight shape: a single-commit triage seeds the entry a
-    // later batch over the same series consumes
+    // a single-commit triage seeds the entry a later batch over the same series consumes
     let mut args = fx.check_commit_args(&fx.fix_sha);
     let project_idx = args.iter().position(|a| a == "--project").unwrap();
     // series-targeted so the key matches the batch's series key
@@ -636,8 +631,7 @@ fn evict_by_commit_takes_alias_entries_with_it() {
     let evict = fx.run(["cache", "evict", "--commit", &pick_sha[..12]]);
     let body: serde_json::Value = serde_json::from_str(&stdout(&evict)).unwrap();
     assert_eq!(body["data"]["removed_entries"], 1);
-    // and the pick now misses L1 (the alias is gone) but re-aliases
-    // from the surviving content entry
+    // the pick now misses L1 (the alias is gone) but re-aliases from the surviving content entry
     let resight = fx.run(fx.check_commit_args(&pick_sha));
     assert!(cache_line(&resight).contains("1 L2 hits"));
 }

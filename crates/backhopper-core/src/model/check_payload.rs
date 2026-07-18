@@ -67,7 +67,7 @@ pub struct CheckPayload {
     pub project_suggestions: Vec<ProjectSuggestion>,
     /// Inner PR-branch commits for 2-parent merge inputs, `None` for
     /// everything else. The `None` vs `Some(vec![])` distinction is
-    /// wire-load-bearing, so no `skip_serializing_if`.
+    /// part of the wire contract, so no `skip_serializing_if`.
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
     /// Projects excluded from the tracked-dependency tally. Always

@@ -26,7 +26,7 @@ pub enum CacheCmd {
         min_age_days: Option<u32>,
     },
     /// Print one entry: the key pre-image, level, age, size, alias
-    /// breadcrumb, and the verdict summary.
+    /// chain, and the verdict summary.
     Show {
         /// Unique cache-key prefix, 8 or more hex characters; find
         /// one with `cache list`.

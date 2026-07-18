@@ -10,9 +10,8 @@
 //! bodies and reports their source location so the Erlang extractor
 //! can be invoked over the embedded fragment.
 //!
-//! The CLI's `check` handler drives this over the `.schema`, `.snippets`,
-//! and `.partial` files a patch touches, folding the extracted references
-//! into the evaluated patch.
+//! Applied to the `.schema`, `.snippets`, and `.partial` files a patch
+//! touches; the extracted references are folded into the evaluated patch.
 
 pub mod extract;
 pub mod fragments;

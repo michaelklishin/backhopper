@@ -4,7 +4,7 @@
 
 //! Structured diff between two schema versions.
 //!
-//! The diff walks two `serde_json::Value` trees in parallel, emitting
+//! The diff compares two `serde_json::Value` trees in parallel, emitting
 //! JSON-Pointer-keyed differences. Suitable for agents migrating
 //! between binary releases.
 

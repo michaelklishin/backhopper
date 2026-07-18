@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! `scan_list_elements`: the list-literal twin of `scan_top_level_args`.
+//! `scan_list_elements`: the list-literal form of `scan_top_level_args`.
 
 use backhopper_erlang_scan::{ScannedList, scan_list_elements};
 

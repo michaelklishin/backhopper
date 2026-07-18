@@ -323,9 +323,8 @@ fn is_elixir_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-// In Elixir ?x is the codepoint of x, but ? is also the suffix of predicate
-// names like valid?: treat it as a char literal only when it does not follow
-// an identifier byte. Returns the byte length to skip, or None otherwise.
+// ?x is a char literal only when ? does not follow an identifier byte, since
+// predicate names like valid? end in ?; returns bytes to skip, else None
 fn elixir_char_literal_len(bytes: &[u8], at: usize) -> Option<usize> {
     if at > 0 && is_elixir_ident_byte(bytes[at - 1]) {
         return None;

@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! The unified argument scanner: arity through nested terms, binaries,
-//! char literals, and comments; honest `FunctionAnyArity` for wrapped
+//! char literals, and comments; `FunctionAnyArity` for wrapped
 //! calls; `fun M:F/A` remote fun references.
 
 use std::str::FromStr;
@@ -38,8 +38,7 @@ fn any_arity_names(out: &[SymbolRef]) -> Vec<String> {
         .collect()
 }
 
-// The verified false positive from the 2026-06-10 round: commas inside
-// the nested tuple counted, reporting match_qs/4 for a /2 call.
+// Verified false positive: commas in the nested tuple counted, reporting match_qs/4 for a /2 call.
 #[test]
 fn arity_counts_through_nested_tuples_and_lists() {
     let mut out = Vec::new();
@@ -73,8 +72,7 @@ fn char_literal_quote_does_not_corrupt_string_state() {
     assert!(names.contains(&"other:call/1".to_owned()));
 }
 
-// A wrapped call has no trustworthy arity on this line: it must land
-// as an any-arity reference, never as a guessed exact one.
+// A wrapped call has no trustworthy arity on this line: report any-arity, never a guessed exact one.
 #[test]
 fn wrapped_call_yields_any_arity_reference() {
     let mut out = Vec::new();
@@ -203,8 +201,7 @@ fn wrapped_definition_head_lands_as_any_arity() {
 
 #[test]
 fn any_arity_symbol_parses_back_from_str() {
-    // The `m:f/?` rendering is display-only; the symbol itself carries
-    // module and function newtypes.
+    // The m:f/? rendering is display-only; the symbol carries module and function newtypes.
     let m = ModuleName::from_str("m").unwrap();
     let f = FunctionName::from_str("f").unwrap();
     let s = SymbolRef::function_any_arity(m, f);

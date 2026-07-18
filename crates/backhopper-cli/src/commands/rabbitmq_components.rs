@@ -13,8 +13,8 @@
 //! tag names. Callers map a `hex` version back to a tag by applying the
 //! project's `tag_prefix` from config.
 //!
-//! This module is RabbitMQ-specific glue and lives in the CLI: the
-//! `backhopper-core` library has no business knowing about a particular
+//! This module is RabbitMQ-specific and stays in the CLI: the
+//! `backhopper-core` library should not depend on a particular
 //! project's makefile conventions.
 
 use std::collections::BTreeMap;

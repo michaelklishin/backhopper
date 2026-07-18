@@ -75,7 +75,7 @@ impl PathTranslations {
         Ok(())
     }
 
-    // Most specific (longest source prefix) first so `translate` can return on the first match.
+    // most specific (longest source prefix) first so translate can return on the first match
     fn sort_by_specificity(&mut self) {
         self.entries.sort_by_key(|e| Reverse(e.source_prefix.len()));
     }

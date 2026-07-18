@@ -75,8 +75,7 @@ fn a_classless_reason_lands_in_the_unclassified_count() {
     assert_eq!(findings.unclassified(), 1);
 }
 
-// every live-axis target reason is non-blocking, so the exit rule
-// gates on non-empty, never on blocking
+// every live-axis target reason is non-blocking: the exit rule gates on non-empty, never on blocking
 #[test]
 fn target_axis_reasons_are_non_blocking() {
     let findings = TargetFindings {

@@ -57,13 +57,12 @@ fn some_cli_commands_are_intentionally_unwrapped() {
     let wrapped: BTreeSet<Vec<String>> = Verb::iter()
         .map(|v| v.cli_path().iter().map(|s| (*s).to_owned()).collect())
         .collect();
-    // clap synthesises a `help` leaf under every group; not a verb
+    // clap synthesises a help leaf under every group; not a verb
     let uncovered = cli_leaf_commands()
         .into_iter()
         .filter(|p| !wrapped.contains(p))
         .filter(|p| p.last().map(String::as_str) != Some("help"))
         .count();
-    // the driver wraps only the verbs a consumer drives, so a gap is
-    // expected; this pins that the two are not accidentally in lockstep
+    // the driver wraps only consumer-driven verbs: this pins that the two are not accidentally in lockstep
     assert!(uncovered > 0);
 }

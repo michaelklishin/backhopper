@@ -58,8 +58,7 @@ fn qualified_flagged(reasons: &[Reason]) -> Vec<(String, String, u8)> {
         .collect()
 }
 
-/// `target` rows are `(path, file text)`; the module a path names is
-/// its `.erl` stem, so an imported module resolves to its own row.
+/// `target` rows are `(path, file text)`; the module a path names is its `.erl` stem.
 fn analyse_ctx(
     path: &RelativePath,
     added: &str,
@@ -182,8 +181,7 @@ fn a_function_the_patch_defines_is_clean() {
     assert!(reasons.is_empty());
 }
 
-// A parse_transform can inject functions the scanner cannot see, so the
-// whole module is suppressed.
+// A parse_transform can inject functions the scanner cannot find: suppress the whole module.
 #[test]
 fn a_parse_transform_suppresses_flagging() {
     let path = rp("deps/rabbit/src/r.erl");
@@ -198,8 +196,7 @@ fn a_parse_transform_suppresses_flagging() {
     assert!(reasons.is_empty());
 }
 
-// Arity is part of the key: a call to f/2 is undefined even when f/1
-// exists on target.
+// Arity is part of the key: f/2 is undefined even when f/1 exists on target.
 #[test]
 fn arity_distinguishes_the_call() {
     let path = rp("deps/rabbit/src/r.erl");
@@ -211,11 +208,8 @@ fn arity_distinguishes_the_call() {
     assert_eq!(flagged(&reasons), [("f", 2)]);
 }
 
-// Regression from rabbitmq/rabbitmq-server #16736 (commit bd457076ac):
-// a clean-applying backport was flagged because the scanner read a
-// variable application (`Fun(...)`), an `-export` form, and `-spec` type
-// names as undefined local calls. None are calls; the only real call,
-// `queue_definition/1`, is defined on target, so the result is clean.
+// Regression from rabbitmq-server #16736: variable applications, -export forms, and
+// -spec type names are not calls; the only real call is defined on target, so clean.
 #[test]
 fn rabbitmq_definitions_backport_flags_no_spurious_calls() {
     let path = rp("deps/rabbit/src/rabbit_definitions.erl");
@@ -240,8 +234,7 @@ all_queues() -> [].
     assert!(reasons.is_empty(), "spurious flags: {reasons:?}");
 }
 
-// A function defined later in the target file still resolves: the whole
-// file is parsed, not just a prefix.
+// A function defined later in the target file still resolves: the whole file is parsed.
 #[test]
 fn a_forward_reference_resolves() {
     let path = rp("deps/rabbit/src/r.erl");
@@ -484,9 +477,7 @@ fn module(s: &str) -> ModuleName {
     ModuleName::from_str(s).unwrap()
 }
 
-// The imported module is absent from the target tree, as an OTP or
-// stdlib module would be: the call is neither flagged as a local
-// undefined nor as a qualified one.
+// An imported module absent from the target tree (like stdlib) is flagged neither locally nor as qualified.
 #[test]
 fn a_patch_imported_call_to_an_absent_module_is_not_flagged() {
     let path = rp(CALLER);
@@ -515,8 +506,7 @@ fn the_same_call_without_the_patch_import_is_flagged_locally() {
     assert_eq!(flagged(&reasons), [("foldl", 3)]);
 }
 
-// The import sets are arity-exact: importing f/1 does not suppress a
-// call to f/2.
+// Import sets are arity-exact: importing f/1 does not suppress a call to f/2.
 #[test]
 fn a_patch_import_of_one_arity_does_not_suppress_another() {
     let path = rp(CALLER);
@@ -528,8 +518,7 @@ fn a_patch_import_of_one_arity_does_not_suppress_another() {
     assert_eq!(flagged(&reasons), [("to_binary", 2)]);
 }
 
-// The HF-36 incident: the added text imports nothing for the helper,
-// so the target module that neither defines nor imports it is flagged.
+// The patch imports nothing for the helper, so a target that neither defines nor imports it is flagged.
 #[test]
 fn a_call_the_patch_neither_defines_nor_imports_is_flagged_locally() {
     let path = rp(CALLER);
@@ -541,8 +530,7 @@ fn a_call_the_patch_neither_defines_nor_imports_is_flagged_locally() {
     assert_eq!(flagged(&reasons), [("user_login_authentication", 2)]);
 }
 
-// The imported module is first-party and lacks the function: the call
-// resolves as a qualified reference and is flagged there, not locally.
+// A first-party imported module lacking the function is flagged as a qualified reference, not locally.
 #[test]
 fn a_patch_import_of_a_first_party_absent_function_is_flagged_qualified() {
     let path = rp(CALLER);
@@ -588,8 +576,7 @@ fn a_patch_import_of_a_first_party_exported_function_is_clean() {
     );
 }
 
-// A patch-imported call whose target -spec return shape drifts yields
-// the qualified shape-drift reason.
+// A patch-imported call with drifted target -spec return shape yields the qualified shape-drift reason.
 #[test]
 fn a_patch_imported_call_with_drifted_target_spec_yields_qualified_drift() {
     let path = rp(CALLER);
@@ -614,8 +601,7 @@ fn a_patch_imported_call_with_drifted_target_spec_yields_qualified_drift() {
     assert_eq!(drift.len(), 1, "reasons: {:?}", analysis.reasons);
 }
 
-// The patch adds both the import and the callee's definition and
-// -export in the module's own file: patch_provided suppresses it.
+// The patch adds the import, the callee's definition, and its -export: patch_provided suppresses it.
 #[test]
 fn a_patch_that_adds_the_import_and_the_definition_is_not_flagged() {
     let path = rp(CALLER);
@@ -648,8 +634,7 @@ fn a_patch_that_adds_the_import_and_the_definition_is_not_flagged() {
     );
 }
 
-// A tracked-dependency import defers to its snapshot: the module is in
-// covered_modules, so the live tree is not consulted and nothing flags.
+// A tracked-dependency import defers to its snapshot: the live tree is not consulted.
 #[test]
 fn a_patch_import_of_a_covered_module_is_withheld() {
     let path = rp(CALLER);

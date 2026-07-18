@@ -27,8 +27,7 @@ fn build_fixture() -> CascadeFixture {
     let workdir = TempDir::new().unwrap();
     let snapshot_dir = workdir.path().join("snap");
     fs::create_dir_all(&snapshot_dir).unwrap();
-    // The pinned dep lives in its own repo with the standalone layout
-    // the pin scope rewrites monorepo paths to.
+    // the pinned dep is a separate repo with the standalone layout the pin scope rewrites monorepo paths to
     let dep = GitRepoFixture::new();
     dep.write_file(
         "src/caller.erl",
@@ -200,8 +199,7 @@ fn a_two_leg_cascade_produces_a_matrix_and_per_leg_blocks() {
     assert!(text.contains("clearance:"));
 }
 
-// Run twice in one workspace with the cache forced on: a leg-2 verdict
-// served from leg 1's cache entry would flip the second run's cells.
+// run twice with the cache forced on: a leg-2 verdict served from leg 1's entry would flip the second run's cells
 #[test]
 fn a_second_cached_run_keeps_the_legs_apart() {
     let f = build_fixture();
@@ -267,8 +265,7 @@ fn a_duplicated_series_errors_by_name() {
     );
 }
 
-// A single-series verb with no --target-repo-dir-path picks the target
-// up from the series config; the explicit flag wins when present.
+// with no --target-repo-dir-path the target comes from the series config; the explicit flag wins
 #[test]
 fn check_commit_defaults_the_target_from_the_series_config() {
     let f = build_fixture();
@@ -296,8 +293,7 @@ fn check_commit_defaults_the_target_from_the_series_config() {
         "config target must activate the gate: {reasons:?}"
     );
 
-    // The explicit flag points at the source repo itself, where the
-    // gate has nothing to flag: the flag wins over the config.
+    // the explicit flag points at the source repo, where the gate flags nothing: the flag wins over the config
     let b = run([
         "--formatter",
         "json",

@@ -28,8 +28,7 @@ fn parses_two_arg_with_typed_args() {
 
 #[test]
 fn bitstring_type_arg_does_not_inflate_arity() {
-    // `<<_:8, _:_*8>>` is one argument; its inner comma belongs to the
-    // bitstring type, not the argument list.
+    // <<_:8, _:_*8>> is one argument; the inner comma belongs to the bitstring type
     let s = parse_callable_signature("encode(<<_:8, _:_*8>>) -> binary()").unwrap();
     assert_eq!(s.name, "encode");
     assert_eq!(s.arity, 1);

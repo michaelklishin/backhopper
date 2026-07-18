@@ -172,7 +172,7 @@ fn count_rabbit_log(text: &str) -> usize {
 fn contains_khepri_macro(text: &str) -> bool {
     let mut i = 0usize;
     let bytes = text.as_bytes();
-    // Reading an 8-byte window is valid whenever `i + 8 <= len`.
+    // Reading an 8-byte window is valid whenever i + 8 <= len.
     while i + 8 <= bytes.len() {
         if &bytes[i..i + 8] == b"?khepri_" {
             return true;
@@ -207,7 +207,7 @@ fn contains_named_branch(text: &str, suffix: &str) -> bool {
 }
 
 /// True when every changed `.erl` hunk in `files` is a Variant A
-/// unwrap of test-only `-ifdef(TEST)` machinery: dropping the
+/// unwrap of test-only `-ifdef(TEST)` guards: dropping the
 /// `-ifdef(TEST).` or `-endif.` lines around an `-export` directive,
 /// or rewriting `-compile(export_all).` to an explicit `-export`.
 /// Variant B unwraps (the function body is also guarded) include real

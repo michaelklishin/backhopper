@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-// The writer and the parser share one label table per enum, so a label
-// that round-trips here cannot drift between the two sides.
+// Writer and parser share one label table per enum: a label that round-trips cannot drift.
 
 use backhopper_core::model::snapshot::{
     IfdefGuardKind, TestExportVariant, VendoredDepSource, Visibility,

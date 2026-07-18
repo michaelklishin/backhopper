@@ -149,8 +149,7 @@ fn trailing_add_add_conflict_is_flagged() {
     assert!(flagged, "the predictor must flag the conflict");
 }
 
-// A change the target shifted but did not touch applies cleanly; the
-// superset property only requires that conflicts are flagged.
+// a change the target shifted but did not touch applies cleanly: only conflicts must be flagged
 #[test]
 fn a_clean_shifted_pick_respects_the_superset_property() {
     assert_superset(

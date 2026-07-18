@@ -95,8 +95,7 @@ fn suites_referencing_finds_only_suite_modules() {
         std::iter::once(ModuleName::new("rabbit_db_queue".to_owned()).unwrap()).collect();
     let suites = suites_referencing(&x, &modified, is_suite_module);
     let names: Vec<&str> = suites.iter().map(|s| s.module.as_str()).collect();
-    // rabbit_amqqueue is dropped because it doesn't end with _SUITE,
-    // stream_SUITE is dropped because it doesn't call rabbit_db_queue.
+    // rabbit_amqqueue lacks the _SUITE suffix; stream_SUITE doesn't call rabbit_db_queue.
     assert_eq!(names, vec!["queue_SUITE"]);
 }
 

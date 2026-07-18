@@ -108,9 +108,7 @@ fn check_args<'a>(
     ]
 }
 
-// The motivating shape: a meck expectation carried through the CT
-// broker rpc helper references a function the target module neither
-// exports nor defines.
+// a meck expectation carried through the rpc helper references a function the target module neither exports nor defines
 #[test]
 fn an_rpc_wrapped_meck_expectation_on_an_absent_function_is_flagged() {
     let workdir = TempDir::new().unwrap();
@@ -183,8 +181,7 @@ fn the_text_output_names_the_form_and_renders_the_tally() {
     );
 }
 
-// A cascade leg sums the indirect tallies across its rows and renders
-// one line beside the other leg tallies.
+// a cascade leg sums indirect tallies across its rows into one line beside the other leg tallies
 #[test]
 fn a_cascade_leg_renders_the_summed_indirect_tally() {
     let workdir = TempDir::new().unwrap();

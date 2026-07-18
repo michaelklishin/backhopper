@@ -7,9 +7,9 @@
 //! across both workspace caches (the verdict cache and the siblings
 //! doctor cache).
 //!
-//! The caches hold a few hundred entries, so scan-and-filter is the
-//! index: every operation parses the self-describing entries instead
-//! of maintaining a side database.
+//! The caches hold a few hundred entries, so every operation scans
+//! and parses the self-describing entries instead of maintaining a
+//! side index.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -129,8 +129,7 @@ fn scan_one(path: &Path, level: CacheLevel) -> Option<ScannedEntry> {
         .and_then(|m| SystemTime::now().duration_since(m).ok())
         .unwrap_or_default();
     let doc: Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-    // verdict entries carry key_inputs/created_at/evaluation; the
-    // generic envelope carries key/written_at/value
+    // verdict entries carry key_inputs, created_at, and evaluation; the generic envelope carries key, written_at, and value
     let key_inputs = doc
         .get("key_inputs")
         .or_else(|| doc.get("key"))
@@ -263,7 +262,7 @@ pub fn prune(caches: &WorkspaceCaches, older_than: Duration) -> Removed {
     removed
 }
 
-/// Delete every entry across every level. Non-entry files survive.
+/// Delete every entry across every level. Non-entry files are kept.
 #[must_use]
 pub fn clear(caches: &WorkspaceCaches) -> Removed {
     let mut removed = Removed::default();

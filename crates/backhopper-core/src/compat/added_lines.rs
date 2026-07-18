@@ -49,7 +49,7 @@ pub fn added_lines_with_offsets(hunks: &[Hunk]) -> (String, Vec<u32>) {
 
 /// Added-line text and line map, like `added_lines_with_offsets`, plus
 /// each blob line's attribute-region classification. The classifier
-/// walks every hunk line, `Context` included, so a continuation line
+/// scans every hunk line, `Context` included, so a continuation line
 /// whose multi-line `-spec`, `-callback`, `-type`, or `-opaque` opener
 /// is unchanged (and so absent from the blob) still classifies against
 /// the region its unseen opener started. Only `Added` lines push into

@@ -266,8 +266,7 @@ fn local_call_with_nested_function_in_arguments_records_outer_arity() {
 
 #[test]
 fn quoted_atom_function_name_does_not_panic() {
-    // Quoted-atom function names are an Erlang oddity. The reader simply
-    // skips them: verify no crash and no spurious call site.
+    // Quoted-atom function names are skipped: no crash, no spurious call site.
     let m = read(
         "-module(m).\n\
          -export([go/0]).\n\
@@ -287,8 +286,7 @@ fn try_catch_colon_pattern_is_not_a_call() {
              catch C:R:S -> {C, R, S}\n\
              end.\n",
     );
-    // `C:R:S` is a pattern in catch clause, must not be read as a remote
-    // function reference.
+    // C:R:S in a catch clause is a pattern, not a remote function reference.
     assert!(m.external_calls.is_empty());
     assert!(m.unresolved.is_empty());
 }
@@ -350,8 +348,7 @@ fn binary_construction_with_calls_inside_is_recorded() {
     assert!(names.contains(&"a:f".to_owned()));
 }
 
-// A binary literal carries its own top-level commas: they must not inflate
-// the arity of the enclosing call.
+// Commas inside a binary literal must not inflate the enclosing call's arity.
 #[test]
 fn binary_literal_argument_does_not_inflate_arity() {
     let m = read(
@@ -403,9 +400,8 @@ fn external_call_carries_kind_direct() {
     assert_eq!(m.external_calls[0].kind, CallKind::Direct);
 }
 
-// A fun reference to another module's function records the exact
-// m:f/arity, with the trailing `/3` parsed as the arity. ra passes such
-// references into fold and map helpers.
+// A cross-module fun reference records the exact m:f/arity, the shape ra
+// passes into fold and map helpers.
 #[test]
 fn external_fun_reference_records_arity() {
     let m = read(
@@ -425,9 +421,8 @@ fn external_fun_reference_records_arity() {
     assert!(found, "external={:?}", m.external_calls);
 }
 
-// A macro that expands to a module name turns a qualified call through it
-// into a concrete module:function. `-define(STORE, khepri)` is the
-// module-abstraction shape RabbitMQ uses to swap a backing store.
+// -define(STORE, khepri): a call qualified through a macro-module resolves to a
+// concrete module:function, the shape RabbitMQ uses to swap a backing store.
 #[test]
 fn macro_expanding_to_module_resolves_qualified_call() {
     let m = read(
@@ -448,8 +443,7 @@ fn macro_expanding_to_module_resolves_qualified_call() {
     assert!(found, "external={:?}", m.external_calls);
 }
 
-// `function_mfa` lifts one of the module's own signatures to a fully
-// qualified m:f/a.
+// function_mfa lifts one of the module's own signatures to a fully qualified m:f/a.
 #[test]
 fn function_mfa_qualifies_a_local_signature() {
     let m = read(
@@ -464,8 +458,7 @@ fn function_mfa_qualifies_a_local_signature() {
     assert_eq!(mfa.arity.get(), 2);
 }
 
-// `?MODULE` used as a value (not before a `:`) is an atom, not a call, so
-// it records no call site. ra modules embed it in overview maps.
+// ?MODULE used as a value (not before a colon) is an atom, not a call: no call site.
 #[test]
 fn module_macro_as_value_records_no_call() {
     let m = read(

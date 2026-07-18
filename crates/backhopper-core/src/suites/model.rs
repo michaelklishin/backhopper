@@ -91,7 +91,7 @@ pub struct SuitePlanEntry {
 
 /// An application with modified source modules that no plan entry
 /// covers. Advisory only: the operator picks suites from `suites`
-/// (or learns the application has none) instead of discovering the
+/// (or finds the application has none) instead of discovering the
 /// gap from a silent empty plan.
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

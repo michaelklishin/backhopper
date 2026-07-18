@@ -49,7 +49,7 @@ pub struct CacheStatsPayload {
     pub by_input: CacheLevelStats,
     pub by_content: CacheLevelStats,
     pub siblings: CacheLevelStats,
-    /// `by-input` entries minted as aliases of a content-level hit.
+    /// `by-input` entries created as aliases of a content-level hit.
     pub aliases: u64,
     pub total_bytes: u64,
     /// RFC3339 write times of the oldest and newest entries across
@@ -77,7 +77,7 @@ pub struct CacheListRow {
     pub series: Option<String>,
     pub age_days: u32,
     pub bytes: u64,
-    /// True for `by-input` entries minted from a content-level hit.
+    /// True for `by-input` entries created from a content-level hit.
     #[serde(default)]
     pub alias: bool,
 }
@@ -98,7 +98,7 @@ pub struct CacheShowPayload {
     pub created_at: String,
     pub age_days: u32,
     pub bytes: u64,
-    /// True for `by-input` entries minted as aliases of a
+    /// True for `by-input` entries created as aliases of a
     /// content-level hit.
     #[serde(default)]
     pub alias: bool,

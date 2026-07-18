@@ -426,7 +426,6 @@ fn resolve_untracked_modules_stays_compatible_when_file_present() {
             patch_file.path().to_str().unwrap(),
         ])
         .assert()
-        // Patch context drift produces RequiresAdaptation (exit 3): the test
-        // asserts the resolver did not escalate to Incompatible.
+        // patch context drift is RequiresAdaptation (exit 3), not escalated to Incompatible
         .code(3);
 }

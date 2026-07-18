@@ -8,10 +8,11 @@
 //! Two levels: `by-input/` keys on the commit SHA plus every
 //! evaluation input (the fast path), `by-content/` keys on the
 //! normalized patch plus the macro environment (what the evaluation
-//! actually consumes), so a `git cherry-pick -x` hop that re-mints
-//! the SHA still hits. A content hit mints an input-level alias for
-//! the new SHA inside `lookup_content` itself, so no caller can
-//! forget it.
+//! actually consumes), so that commits cherry-picked with `git cherry-pick -x`
+//! can still be located even though their parent commit and thus SHA
+//! will change. A content hit produces an input-level alias for
+//! the new SHA inside `lookup_content` itself, so the alias cannot
+//! be skipped.
 //!
 //! The lookup and store protocol is type-state: `lookup` yields an
 //! `InputMissToken`, `lookup_content` consumes it and yields a
@@ -43,7 +44,7 @@ const BY_CONTENT_DIR: &str = "by-content";
 
 /// On-disk verdict-entry layout version. Independent of the envelope
 /// schema; a mismatch reads as miss-and-delete, so the format can
-/// evolve without migration ceremony.
+/// evolve without migration code.
 pub const VERDICT_ENTRY_FORMAT_VERSION: u32 = 1;
 
 /// Which evaluation pipeline produced (and may consume) an entry.
@@ -69,7 +70,7 @@ pub struct PinKeyRow {
     pub snapshot_blake3: String,
 }
 
-/// Target-repo inputs, when `--target-repo-dir-path` is in play.
+/// Target-repo inputs, when `--target-repo-dir-path` is provided.
 /// The already-present knobs join the key because they change the
 /// cached diagnostic: two walk limits must not share an entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,7 +85,7 @@ pub struct TargetKeyInputs {
 
 /// The input-level (L1) key pre-image: the full 40-char SHA plus
 /// every input the evaluation reads. Serialized to canonical JSON for
-/// hashing and stored inside the entry as the debuggable pre-image —
+/// hashing and stored inside the entry as the debuggable pre-image:
 /// one definition serves both.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheKeyInputs {
@@ -92,7 +93,7 @@ pub struct CacheKeyInputs {
     pub commit: CommitSha,
     /// The series the pins came from, when one was named. Joins the
     /// key (two series with identical pins split entries, accepted
-    /// for inspectability) and powers `cache list --series`.
+    /// for inspectability) and supports `cache list --series`.
     pub series: Option<SeriesName>,
     pub pins: Vec<PinKeyRow>,
     pub source_pins: Vec<PinKeyRow>,
@@ -151,7 +152,7 @@ pub struct ContentKeyInputs {
 /// What the fingerprint hashes: the verdict's `(patch, target, pins)`
 /// identity. Drops the cache key's SHA (so cherry-pick hops of one
 /// patch share a fingerprint) and its `crate_version`/`schema_version`
-/// (so the join survives upgrades), and omits the macro env (the build
+/// (so the join is stable across upgrades), and omits the macro env (the build
 /// outcome turns on patch and target, not on macro resolution).
 /// `fingerprint_version` versions the key's meaning on its own cadence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -199,7 +200,7 @@ impl CacheKeyInputs {
 
 /// A cache hit: the stored evaluation plus the verdict fingerprint
 /// the entry recorded (`None` for entries written before fingerprints
-/// existed). The fingerprint rides the hit so a warm-batch row gets it
+/// existed). The fingerprint is carried on the hit so a warm-batch row gets it
 /// without resolving the patch the hit just skipped.
 #[derive(Debug)]
 pub struct CachedVerdict {
@@ -215,7 +216,7 @@ pub enum InputOutcome<'c> {
 }
 
 /// L2 lookup result. On `Hit`, the input-level alias for the new SHA
-/// was minted before returning.
+/// was created before returning.
 #[derive(Debug)]
 pub enum ContentOutcome<'c> {
     Hit(CachedVerdict),
@@ -257,7 +258,7 @@ struct VerdictEntry {
     entry_format_version: u32,
     created_at: String,
     key_inputs: Value,
-    /// `Some` for input-level entries minted from a content-level
+    /// `Some` for input-level entries created from a content-level
     /// hit; records which content key they matched.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     alias_of_content_key: Option<String>,
@@ -297,8 +298,7 @@ impl VerdictCache {
     /// L1: SHA-keyed, consulted before patch extraction.
     pub fn lookup(&self, inputs: &CacheKeyInputs) -> InputOutcome<'_> {
         let Ok(hash) = content_hash(inputs) else {
-            // unserialisable inputs cannot be keyed; treat as a miss
-            // that will also fail to store
+            // unserialisable inputs cannot be keyed: a miss that will also fail to store
             return InputOutcome::MissOnInput(InputMissToken {
                 cache: self,
                 input_hash: String::new(),
@@ -371,8 +371,7 @@ impl VerdictCache {
         }
     }
 
-    // the once-per-day expired-entry sweep, amortized into the first
-    // cache write of a run
+    // once-per-day expired-entry sweep, folded into the first cache write of a run
     fn sweep_once(&self) {
         self.swept.get_or_init(|| {
             maybe_daily_sweep(
@@ -390,11 +389,10 @@ impl VerdictCache {
 
 impl<'c> InputMissToken<'c> {
     /// L2: content-keyed, consulted after patch extraction. On a hit,
-    /// the L1 alias for the looked-up SHA is minted here, inside the
-    /// lookup, so no caller can forget it.
+    /// the L1 alias for the looked-up SHA is created here, inside the
+    /// lookup, so it cannot be skipped.
     pub fn lookup_content(self, content: &ContentKeyInputs) -> ContentOutcome<'c> {
-        // computed from the content key, which carries the patch hash;
-        // stored on every write so an L1 hit can return it patch-free
+        // stored on every write so an L1 hit can return the fingerprint without the patch
         let fingerprint = content.fingerprint();
         let Ok(hash) = content_hash(content) else {
             return ContentOutcome::Miss(MissToken {

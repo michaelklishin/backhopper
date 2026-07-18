@@ -4,7 +4,7 @@
 
 //! Build a per-file `MacroTable` from raw `.erl` and `.hrl` source.
 //!
-//! Walks the file for `-define`, `-include`, and `-include_lib`
+//! Scans the file for `-define`, `-include`, and `-include_lib`
 //! attributes and folds resolved header content back in until the
 //! include chain stabilises. Cycles are broken by a `seen` set.
 
@@ -53,7 +53,7 @@ pub fn build_macro_table(
     macros
 }
 
-/// Walks `source` for `-define`, `-include`, and `-include_lib`. Other
+/// Scans `source` for `-define`, `-include`, and `-include_lib`. Other
 /// attribute kinds are ignored. Bodies are kept verbatim.
 fn fold_attributes(source: &str, macros: &mut MacroTable, pending: &mut Vec<PathBuf>) {
     let bytes = source.as_bytes();

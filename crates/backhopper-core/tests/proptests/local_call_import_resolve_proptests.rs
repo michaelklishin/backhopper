@@ -85,8 +85,7 @@ fn analyse(added: &str, target: &[(&str, &str)]) -> Vec<Reason> {
 }
 
 proptest! {
-    // The import plus a first-party module that exports the callee: no
-    // local undefined for the imported name.
+    // With the import and a first-party module exporting the callee, the imported name is not a local undefined.
     #[test]
     fn a_patch_imported_call_to_an_exporting_module_is_never_local_undefined(
         module in arb_module(),
@@ -105,8 +104,7 @@ proptest! {
         prop_assert!(!locally_flagged(&reasons, &function, arity), "reasons: {reasons:?}");
     }
 
-    // The same call without the import and with no target definition is
-    // always a local undefined.
+    // Without the import and with no target definition, the call is always a local undefined.
     #[test]
     fn the_same_call_without_the_import_is_always_local_undefined(
         function in arb_fun(),

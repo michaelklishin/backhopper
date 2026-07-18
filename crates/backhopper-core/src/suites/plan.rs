@@ -76,9 +76,7 @@ pub fn plan_with_matcher(input: &PlanInput, matcher: &mut dyn SuiteMatcher) -> S
         .filter(|p| scan::application_of_path(&input.apps, &input.repo_root, p).is_none())
         .count();
 
-    // Fanout cap runs after `uncovered_applications` has read the full
-    // accumulator, so a broad module still counts as covering its
-    // application and the cap only reshapes `entries`.
+    // the cap runs after coverage has read the full accumulator, so it only reshapes entries
     let (broad_modules, broad_impact) =
         broad_impact_modules(&classification, &accum, discovered.len());
 
@@ -145,8 +143,8 @@ fn broad_impact_modules(
 }
 
 /// Modules a single inclusion reason attributes to: the one definition
-/// the fanout count and the survivor rule share. Wildcard-free so a new
-/// reason variant must state its attributed modules (040 R12).
+/// the fanout count and the keep rule share. Wildcard-free so a new
+/// reason variant must state its attributed modules.
 fn modules_of(reason: &SuiteInclusionReason) -> Vec<&ModuleName> {
     match reason {
         SuiteInclusionReason::SameAppCaller { module, .. }
@@ -168,8 +166,8 @@ fn is_broad(suite_fanout: usize, total_suites: usize) -> bool {
 /// A reason is broad-driven when it attributes to at least one module and
 /// every module it attributes to is broad. The non-empty guard is the
 /// safety: a path-driven reason (`TestModified`, `ConfiguredRule`)
-/// attributes to no module, so it is never broad-driven and always
-/// survives.
+/// attributes to no module, so it is never broad-driven and is always
+/// kept.
 fn is_broad_driven(reason: &SuiteInclusionReason, broad: &BTreeSet<ModuleName>) -> bool {
     let attributed = modules_of(reason);
     !attributed.is_empty() && attributed.iter().all(|module| broad.contains(*module))

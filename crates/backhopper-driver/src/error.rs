@@ -4,7 +4,7 @@
 
 //! Errors produced by the driver.
 //!
-//! The model splits five distinct failure modes apart:
+//! The model separates the distinct failure modes:
 //! binary-not-found, spawn, timeout, cancellation, tool error
 //! (CLI exited with a non-success-shaped code), schema-version
 //! mismatch, unparseable output, output-too-large, and

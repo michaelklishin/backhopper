@@ -63,7 +63,7 @@ pub fn resolve_config_path(args: &GlobalArgs) -> CliResult<PathBuf> {
     Err(CliError::ConfigNotFound { tried })
 }
 
-// walks up from `start` to the first `.backhopper.toml` or `backhopper.toml`: stops at a `.git` directory; dotfile wins on a tie
+// searches upward from start to the first .backhopper.toml or backhopper.toml: stops at a .git directory; dotfile wins on a tie
 fn walk_up_for_config(start: &Path, tried: &mut Vec<PathBuf>) -> Option<PathBuf> {
     let mut here: Option<&Path> = Some(start);
     while let Some(dir) = here {
@@ -106,7 +106,7 @@ pub fn open_store_mut(args: &GlobalArgs, cfg: &Config) -> CliResult<SnapshotStor
     Ok(SnapshotStore::open_mut(dir)?)
 }
 
-// Trade the store's opaque `path escape` for an actionable absolute-path hint.
+// Trade the store's opaque path escape for an actionable absolute-path hint.
 pub fn check_snapshot_dir_escape(args: &GlobalArgs, cfg: &Config, dir: &Path) -> CliResult<()> {
     if !dir.components().any(|c| matches!(c, Component::ParentDir)) {
         return Ok(());

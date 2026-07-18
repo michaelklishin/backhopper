@@ -109,9 +109,8 @@ fn extract_source_handles_mixed_files() {
     assert_eq!(result.headers.len(), 1);
 }
 
-// Taken from gen_batch_server: the behaviour declares its callback set,
-// three of them optional, and an opaque type. All four attribute forms
-// must land in the module surface.
+// from gen_batch_server: callbacks, optional callbacks, and an opaque
+// type must all land in the module surface
 const SOURCE_GEN_BATCH_SERVER: &str = r#"
 -module(gen_batch_server).
 -behaviour(gen_server).
@@ -134,9 +133,8 @@ fn gen_batch_server_callbacks_optional_and_opaque() {
     assert_eq!(m.opaques.len(), 1);
 }
 
-// A directory scan hands extract_source a file that forgot its -module
-// attribute and a non-source file; both are skipped, only the well-formed
-// module survives.
+// a file with no -module attribute and a non-source file are both
+// skipped; only the well-formed module is extracted
 #[test]
 fn extract_source_skips_non_erl_and_module_less_files() {
     let ex = ErlangExtractor::default();
@@ -155,8 +153,7 @@ fn extract_source_skips_non_erl_and_module_less_files() {
     assert_eq!(result.modules.len(), 1);
 }
 
-// The three -deprecated shapes the extractor recognises: a whole-module
-// deprecation, a function with any arity, and a function at one arity.
+// the three -deprecated shapes: whole module, function at any arity, function at one arity
 #[test]
 fn extracts_the_three_deprecation_shapes() {
     let ex = ErlangExtractor::default();
@@ -188,8 +185,7 @@ fn extracts_the_three_deprecation_shapes() {
     ));
 }
 
-// A version-gated module behind -if(...) / -endif: the conditional markers
-// are consumed and the unconditional surface is still extracted.
+// conditional -if(...) -endif markers are consumed and the unconditional surface is still extracted
 #[test]
 fn extracts_module_with_if_conditional_block() {
     let m = ErlangExtractor::default()
@@ -207,8 +203,7 @@ fn extracts_module_with_if_conditional_block() {
     assert!(m.exports.iter().any(|e| e.name.as_str() == "stable"));
 }
 
-// A header file carrying an -opaque alongside a -record: both land in the
-// header surface, the opaque kept distinct from the records.
+// an -opaque and a -record in one header both land in the header surface, kept distinct
 #[test]
 fn extract_header_file_collects_opaque_and_record() {
     let h = ErlangExtractor::default().extract_header_file(

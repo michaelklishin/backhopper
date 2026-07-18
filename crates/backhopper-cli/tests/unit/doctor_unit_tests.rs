@@ -89,8 +89,7 @@ fn resolved_tag_counts_only_strictly_newer_tags() {
 fn semver_ordering_is_numeric_not_lexicographic() {
     let tags = vec![tag("v2.9.0"), tag("v2.10.0"), tag("v2.11.0"), tag("v3.0.0")];
     let resolved = tag("v2.10.0");
-    // Numerically newer than v2.10.0: v2.11.0 and v3.0.0 (2 tags).
-    // Lex-newer would only include v3.0.0 and v2.9.0 misordered.
+    // numerically newer than v2.10.0: v2.11.0 and v3.0.0; lexicographic order would misplace v2.9.0
     assert_eq!(count_newer_tags(&tags, Some(&resolved)), 2);
 }
 

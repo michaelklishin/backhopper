@@ -7,7 +7,7 @@
 //! A [`Backend`] runs one invocation. Implementations live in
 //! [`crate::subprocess`] (the real subprocess) and [`crate::mock`]
 //! (the test-only mock, gated behind the `mock` feature). Custom
-//! backends are welcome: the trait is small and the [`Invocation`]
+//! backends are supported: the trait is small and the [`Invocation`]
 //! struct is `#[non_exhaustive]`, so additions do not break
 //! implementors.
 

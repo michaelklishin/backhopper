@@ -154,8 +154,7 @@ fn exported_function_with_only_export_is_not_in_clause_heads() {
     assert!(!out.contains_key(&fa("missing", 1)));
 }
 
-// A `$"` char literal in a clause body must not open a string that runs to
-// end of file and swallows every later clause.
+// a $" char literal in a clause body must not open a string that runs to end of file
 #[test]
 fn char_literal_delimiter_in_body_does_not_eat_later_clauses() {
     let src = "\
@@ -171,7 +170,7 @@ second(Z) -> Z.
     assert!(out.contains_key(&fa("second", 1)));
 }
 
-// A `$(` char literal in a clause guard must not unbalance the head parens.
+// a $( char literal in a clause guard must not unbalance the head parens
 #[test]
 fn char_literal_paren_in_guard_keeps_arity() {
     let src =
@@ -180,9 +179,8 @@ fn char_literal_paren_in_guard_keeps_arity() {
     assert!(out.contains_key(&fa("classify", 1)));
 }
 
-// Taken from ra_server: the argument list and the guard each span several
-// lines, with map and record patterns. The head parser must find each
-// clause arrow across the newlines to recover the two clauses.
+// from ra_server: multi-line argument list and guard with map and record
+// patterns; the head parser must find each clause arrow across newlines
 #[test]
 fn multi_line_head_and_guard_from_ra_server() {
     let src = "\
@@ -202,9 +200,8 @@ handle_leader({PeerId, #append_entries_reply{success = false}},
     assert_eq!(heads.len(), 2);
 }
 
-// A comment inside a clause body carries a semicolon that is not a clause
-// separator; the body scanner must skip to end of line or it would split
-// `append/2` into the wrong number of clauses.
+// a semicolon inside a body comment is not a clause separator: the body
+// scanner must skip to end of line
 #[test]
 fn semicolon_in_body_comment_does_not_split_clause() {
     let src = "\
@@ -220,8 +217,7 @@ append([], State) ->
     assert_eq!(heads.len(), 2);
 }
 
-// A `$(` char literal in the argument list is data, not an opening paren:
-// it must not unbalance the head, so the arity is 2.
+// a $( char literal in the argument list is data, not an opening paren: arity stays 2
 #[test]
 fn char_literal_open_paren_in_args_keeps_arity() {
     let src = "-module(rabbit_binary_parser).\nclassify($(, Rest) -> {paren, Rest}.\n";
@@ -229,9 +225,8 @@ fn char_literal_open_paren_in_args_keeps_arity() {
     assert!(out.contains_key(&fa("classify", 2)));
 }
 
-// A `$;` char literal in a body is data, not a clause separator, and a
-// trailing `$.` is the dot character, not a form terminator: both clauses
-// of `format/1` survive intact.
+// a $; char literal is not a clause separator and a trailing $. is not a
+// form terminator: both clauses of format/1 are kept
 #[test]
 fn char_literal_semicolon_and_dot_in_body_are_data() {
     let src = "\
@@ -246,9 +241,8 @@ format([]) ->
     assert_eq!(out.get(&fa("format", 1)).map(|v| v.len()), Some(2));
 }
 
-// A multi-line guard containing a tuple and a list literal: the arrow
-// search must track `{}` and `[]` depth so the `->` after the guard is the
-// one that ends the head, recovering both clauses of apply/3.
+// the arrow search must track {} and [] depth in a multi-line guard so
+// the -> after the guard is the one that ends the head
 #[test]
 fn multi_line_guard_with_tuple_and_list_brackets() {
     let src = "\

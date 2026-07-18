@@ -29,8 +29,8 @@ use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
 use crate::tables::styled_table;
 
-/// The shortest accepted cache-key prefix, matching the commit-SHA
-/// prefix affordance.
+/// The shortest accepted cache-key prefix, matching the accepted
+/// commit-SHA prefix length.
 const MIN_KEY_PREFIX_LEN: usize = 8;
 
 fn commit_prefix_matches(entry: &ScannedEntry, prefix: &CommitShaPrefix) -> bool {

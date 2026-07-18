@@ -90,9 +90,7 @@ fn suites_plan_reads_modified_paths_from_stdin() {
     assert!(out.contains("rabbit/vhost_SUITE"));
 }
 
-// The management shape: a modified module no suite references. The
-// plan must name the application and its candidate suites instead
-// of printing a bare "no suites selected".
+// a modified module no suite references: the plan must name the application and candidate suites, not print a bare no-suites line
 #[test]
 fn suites_plan_reports_uncovered_application_with_candidates() {
     let dir = TempDir::new().unwrap();
@@ -103,8 +101,7 @@ fn suites_plan_reports_uncovered_application_with_candidates() {
         "-module(rabbit_mgmt_like).",
     )
     .unwrap();
-    // The erlang.mk marker makes the run hint fire so this test can
-    // pin that uncovered candidates trigger it too.
+    // the erlang.mk marker makes the run hint fire, pinning that uncovered candidates trigger it too
     fs::write(root.join("erlang.mk"), "").unwrap();
     let root = root.to_string_lossy().to_string();
     let a = run_succeeds([
@@ -125,9 +122,7 @@ fn suites_plan_reports_uncovered_application_with_candidates() {
     assert!(out.contains("run each suite"));
 }
 
-// A single helper referenced by every suite in the tree is escalated to
-// a broad-impact row rather than enumerating a near-full set. The run
-// hint must fire on the broad row even though no entry is selected.
+// a helper referenced by every suite escalates to a broad-impact row; the run hint must fire on it even with no entry selected
 fn build_broad_fixture(dir: &TempDir) {
     let root = dir.path();
     let rabbit = root.join("deps/rabbit");
@@ -294,7 +289,7 @@ fn suites_plan_rejects_malformed_extra_rules_file() {
     build_fixture(&dir);
     let root = dir.path().to_string_lossy().to_string();
     let rules = dir.path().join("bad.toml");
-    // missing the required `when_modified_path_matches`
+    // missing the required when_modified_path_matches
     fs::write(&rules, "[[suite_rule]]\nname = \"x\"\n").unwrap();
     let rules_path = rules.to_string_lossy().into_owned();
     run_fails([

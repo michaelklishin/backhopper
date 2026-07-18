@@ -31,8 +31,7 @@ fn missing_v_prefix_is_handled() {
 
 #[test]
 fn shorter_version_compares_less_than_longer_with_same_prefix() {
-    // [3, 12] vs [3, 12, 0]: shorter has fewer numeric components.
-    // Vec ordering: [3,12] < [3,12,0], reversed: Greater.
+    // [3, 12] vs [3, 12, 0]: Vec ordering gives Less, reversed: Greater.
     assert_eq!(version_cmp("v3.12", "v3.12.0"), Ordering::Greater);
 }
 
@@ -59,6 +58,6 @@ fn max_by_version_cmp_returns_oldest() {
 
 #[test]
 fn non_numeric_separators_are_skipped() {
-    // dashes, underscores, and `+` separate numeric components.
+    // dashes, underscores, and + separate numeric components.
     assert_eq!(version_cmp("v1-2-3", "v1.2.3"), Ordering::Equal);
 }

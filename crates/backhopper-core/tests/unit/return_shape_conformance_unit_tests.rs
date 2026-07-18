@@ -123,8 +123,7 @@ fn matching_shapes_do_not_fire() {
 
 #[test]
 fn unknown_return_silences_the_check() {
-    // when the source-side spec is too vague to parse structurally, the
-    // detector stays quiet
+    // a source spec too vague to parse structurally does not fire the detector
     let pin = canonical(
         "pin",
         vec![module_with_spec(
@@ -148,9 +147,7 @@ fn unknown_return_silences_the_check() {
         .iter()
         .filter(|r| matches!(r, Reason::ReturnShapeMismatch { .. }))
         .count();
-    // term() resolves to Builtin{name="term"}, which doesn't match TaggedTuple,
-    // but the detector's `matches` is conservative: depending on the parse,
-    // it may or may not fire. We just check the test doesn't panic.
+    // term() does not match TaggedTuple, but matches is conservative: only assert no panic.
     let _ = mismatches;
 }
 

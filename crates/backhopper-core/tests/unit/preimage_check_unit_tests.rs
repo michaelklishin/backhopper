@@ -99,8 +99,7 @@ fn missing_preimage_emits_preimage_missing_with_excerpt() {
 
 #[test]
 fn no_preimage_reason_when_preimage_block_is_empty() {
-    // A pure-insertion hunk (no Context, no Removed) has nothing to
-    // verify against the pin's file.
+    // A pure-insertion hunk has nothing to verify against the pin's file.
     let patch = "\
 diff --git a/src/demo.erl b/src/demo.erl
 --- a/src/demo.erl

@@ -105,7 +105,7 @@ pub enum Reason {
     },
     /// The hunk's preimage matches, but its added lines land at a file
     /// edge where the target already has divergent content the base
-    /// lacked: an add/add a contiguous preimage match cannot see. The
+    /// lacked: an add/add a contiguous preimage match cannot detect. The
     /// 3-way cherry-pick conflicts where the preimage-only check reads
     /// clean. Non-blocking: the operator resolves the overlap.
     PostimageCollision {
@@ -142,8 +142,8 @@ pub enum Reason {
     },
     /// Call-site argument shapes don't satisfy any clause head at the
     /// pin. Emitted when both the call and the pin's clause patterns
-    /// are concrete enough to compare; `Unknown` on either side is the
-    /// escape hatch that suppresses the reason.
+    /// are concrete enough to compare; `Unknown` on either side
+    /// suppresses the reason.
     ClauseMismatch {
         module: ModuleName,
         function: FunctionName,
@@ -258,7 +258,7 @@ pub enum Reason {
     /// configured `FamilyDefaults.test_helper_search_paths` on the
     /// target tree. The cherry-pick compiles and the SUITE may even
     /// load, but every call to the missing helper crashes at runtime:
-    /// the failure pattern that bit the Jun 2026 v4.1.x → v4.0.x round
+    /// the failure pattern seen in the Jun 2026 v4.1.x → v4.0.x round
     /// (the `amqp_utils:connection_config/1` undef in
     /// `amqp10_connection_max_SUITE`). Non-blocking by default: the
     /// diagnostic equivalent (`Diagnostics.missing_test_modules`)
@@ -273,10 +273,9 @@ pub enum Reason {
     /// A touched `.erl` declares `-behaviour(behaviour)` (or
     /// `-behavior(...)`) where `behaviour` resolves to no source
     /// module on the target tree. `erlc` compiles with a warning,
-    /// then hook dispatch crashes at runtime. Sister verdict to the
-    /// existing `BehaviourCallback*` variants which model implementer
-    /// drift; this one catches the missing-behaviour-module case the
-    /// existing variants do not.
+    /// then hook dispatch crashes at runtime. The `BehaviourCallback*`
+    /// variants model implementer drift; this one catches the
+    /// missing-behaviour-module case they do not.
     BehaviourModuleMissing {
         source_path: RelativePath,
         behaviour: ModuleName,
@@ -304,8 +303,8 @@ pub enum Reason {
     },
     /// A touched `.erl` or `.hrl` file uses `#record{}` on an added
     /// line, but `record` is defined nowhere the target tree reaches and
-    /// is not added by the patch. Sister of `MacroUndefinedOnTarget` for
-    /// the record namespace; non-blocking.
+    /// is not added by the patch. Same check as `MacroUndefinedOnTarget`
+    /// for the record namespace; non-blocking.
     RecordUndefinedOnTarget {
         source_path: RelativePath,
         record_name: RecordName,
@@ -314,7 +313,7 @@ pub enum Reason {
     /// A touched `.erl` file calls an unqualified `f/a` on an added line
     /// that the target version of the same module neither defines,
     /// exports, imports, nor inherits as an auto-imported BIF. The
-    /// function-namespace counterpart; non-blocking.
+    /// same check for the function namespace; non-blocking.
     LocalCallUndefinedOnTarget {
         source_path: RelativePath,
         function: FunctionName,
@@ -324,7 +323,7 @@ pub enum Reason {
     /// A touched `.erl` file calls a qualified `m:f/a` on an added line
     /// whose module is a first-party module present on the target tree,
     /// but the target version of that module does not export `f/a` (and
-    /// the patch does not add it). The qualified counterpart of
+    /// the patch does not add it). The qualified form of
     /// `LocalCallUndefinedOnTarget`, resolved against the called
     /// module's exports. Withheld when any pin snapshot already covers
     /// the module, when it is absent from the tree, or when its export
@@ -338,8 +337,8 @@ pub enum Reason {
     },
     /// A qualified `m:f/a` call that resolves against the target tree
     /// has a target-tree `-spec` return shape that disagrees with its
-    /// source-tree `-spec`. Sister of `ReturnShapeMismatch` for the
-    /// live, snapshot-free first-party axis: same comparator,
+    /// source-tree `-spec`. Same comparison as `ReturnShapeMismatch` on
+    /// the live, snapshot-free first-party axis: same comparator,
     /// non-blocking like the rest of that axis. Only evaluated once the
     /// call is confirmed to resolve; withheld when either side lacks a
     /// `-spec`.
@@ -354,9 +353,9 @@ pub enum Reason {
     },
     /// An unqualified call that resolves against the target module's
     /// own definitions has a target-tree `-spec` return shape that
-    /// disagrees with its source-tree `-spec`. The local twin of
+    /// disagrees with its source-tree `-spec`. The local-call form of
     /// `QualifiedCallReturnShapeDrift`; imported resolutions are
-    /// withheld, since the callee's spec lives in another module.
+    /// withheld, since the callee's spec is in another module.
     LocalCallReturnShapeDrift {
         source_path: RelativePath,
         function: FunctionName,
@@ -725,8 +724,7 @@ impl Reason {
     // wildcard-free so a new variant fails to compile until classified
     pub fn is_blocking(&self) -> bool {
         match self {
-            // A symbol that exists at a later tag is adaptable: land
-            // the dep pin bump first.
+            // exists at a later tag: adaptable once the dep pin bump lands
             Self::MissingSymbol {
                 first_seen_at_tag: Some(_),
                 ..

@@ -16,8 +16,7 @@ use std::ffi::OsStr;
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
 
-// Default to `text` so text-asserting tests work; tests that need JSON pass
-// `--formatter json` explicitly, which wins over the env var.
+// default to text so text-asserting tests work; --formatter json wins over the env var
 fn base_command() -> Command {
     let mut cmd = Command::cargo_bin("backhopper").unwrap();
     cmd.env("BACKHOPPER_FORMATTER", "text");

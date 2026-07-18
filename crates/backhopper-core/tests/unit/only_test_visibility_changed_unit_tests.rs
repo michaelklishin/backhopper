@@ -175,9 +175,7 @@ fn empty_patch_is_not_only_test_visibility() {
 
 #[test]
 fn erl_visibility_with_non_erl_change_alongside_still_visibility() {
-    // A docs touch coexists with a Variant A unwrap. Non-Erlang
-    // hunks don't disqualify the classification: the contract is
-    // that every Erlang hunk is visibility-only.
+    // Non-Erlang hunks do not disqualify: the contract is that every Erlang hunk is visibility-only.
     let mixed = "\
 diff --git a/README.md b/README.md
 --- a/README.md
@@ -267,8 +265,7 @@ fn variant_b_falls_through_to_normal_analyzer_not_inapplicable() {
         .collect();
     let promoted = SeriesVerdict::from_results(stamped).promote_inapplicable();
     let r0 = &promoted.results[0];
-    // With ra not in scope, the type ref to ra:server_id/0 is filtered;
-    // verdict ends up Compatible, not Inapplicable.
+    // With ra out of scope the ra:server_id/0 type ref is filtered: Compatible, not Inapplicable.
     assert!(
         !matches!(r0.verdict, Verdict::Inapplicable { .. }),
         "Variant B must not promote to Inapplicable, got {:?}",

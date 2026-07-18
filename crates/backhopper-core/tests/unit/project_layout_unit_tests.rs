@@ -8,8 +8,7 @@ use backhopper_core::config::ProjectLayout;
 
 #[test]
 fn single_app_defaults_are_empty() {
-    // SingleApp doesn't carry policy defaults: scan_paths comes from the
-    // workspace `[defaults]` section, applied by the loader.
+    // SingleApp carries no policy defaults: scan_paths comes from the workspace [defaults] section.
     let defaults = ProjectLayout::SingleApp.defaults();
     assert!(defaults.app_roots.is_empty());
     assert!(defaults.exclude_apps.is_empty());

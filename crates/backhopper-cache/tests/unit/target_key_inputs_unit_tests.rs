@@ -14,8 +14,7 @@ fn inputs(walk_limit: usize, already_present_enabled: bool) -> TargetKeyInputs {
     }
 }
 
-// A flag that changes the cached diagnostic must split the key:
-// two walk limits sharing one entry would serve a stale tally.
+// a flag that changes the cached diagnostic must split the key: shared entries would serve a stale tally
 #[test]
 fn different_walk_limits_hash_to_different_keys() {
     let a = content_hash(&inputs(5000, true)).unwrap();

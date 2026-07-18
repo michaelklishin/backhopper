@@ -4,7 +4,7 @@
 
 //! Built-once-per-invocation index of every blob path in a target
 //! tree. Backs the `--target-repo-dir-path` cross-branch backport
-//! analyser. Pure data: construction from a live repository lives in
+//! analyser. Pure data: construction from a live repository is in
 //! `backhopper-git`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,8 +30,7 @@ impl TargetTreeIndex {
         resolved_commit: CommitSha,
         present_paths: BTreeSet<PathBuf>,
     ) -> Self {
-        // Erlang fixes module name to file basename. A basename seen
-        // twice is a clash Erlang itself rejects, so record neither.
+        // Erlang fixes module name to file basename: a duplicate basename is a clash Erlang itself rejects, so record neither.
         let mut by_module: BTreeMap<ModuleName, Option<PathBuf>> = BTreeMap::new();
         for path in &present_paths {
             if path.extension().and_then(|e| e.to_str()) == Some("erl")

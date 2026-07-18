@@ -183,9 +183,7 @@ fn locate_fun_body(span: &str) -> Option<(String, usize)> {
     let body_start = arrow + 2;
     let end_of_end = balanced_end_offset(span, body_start)?;
     let raw = &span[body_start..end_of_end];
-    // trim() drops leading whitespace, so the returned offset must skip it as
-    // well: otherwise a body beginning on the line after -> reports the arrow's
-    // line rather than the first content line.
+    // the offset must skip the whitespace trim() dropped, or a body starting on the next line reports the arrow's line
     let leading_ws = raw.len() - raw.trim_start().len();
     let body = raw.trim().to_owned();
     Some((body, body_start + leading_ws))
@@ -235,8 +233,7 @@ fn balanced_end_offset(span: &str, start: usize) -> Option<usize> {
     let mut i = start;
     'outer: while i < bytes.len() {
         let c = bytes[i];
-        // Skip strings and quoted atoms so block-keywords inside them
-        // do not confuse the depth counter.
+        // skip strings and quoted atoms so block keywords inside them do not affect the depth
         if c == b'"' {
             i = skip_string(bytes, i + 1);
             continue;

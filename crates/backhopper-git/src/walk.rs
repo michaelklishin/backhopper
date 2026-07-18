@@ -45,7 +45,7 @@ pub struct WalkedCommit {
 /// When `since` sits on the chain (the same-branch case, e.g. a
 /// release tag of the walked branch), the window is pure ancestry.
 /// When it does not (the cross-branch case: bounding a `main` walk by
-/// a release tag that lives on a stable branch), the window keeps
+/// a release tag that is on a stable branch), the window keeps
 /// commits whose committer time is strictly newer than `since`'s,
 /// and the walk stops once times fall a day older than that bound.
 pub fn first_parent_walk_since(
@@ -55,10 +55,8 @@ pub fn first_parent_walk_since(
 ) -> Result<Vec<WalkedCommit>, GitError> {
     let since_time = repo.commit_timestamp(since)?;
     let cutoff = since_time - WALK_TIME_SLACK;
-    // On the same branch the window is pure ancestry, so the committer-time
-    // cutoff must not apply: an intermediate commit dated before since (a
-    // backport or rebase) is still in the window. The cutoff only bounds the
-    // cross-branch walk, where since is unreachable.
+    // Same-branch windows are pure ancestry: a commit dated before since (a backport
+    // or rebase) stays in; the time cutoff only bounds the cross-branch walk.
     let same_branch = repo.is_ancestor(since, tip)?;
     let mut out: Vec<WalkedCommit> = Vec::new();
     let mut found_since = false;
@@ -75,9 +73,8 @@ pub fn first_parent_walk_since(
         current = info.parents.first().cloned();
         out.push(info);
     }
-    // Reaching here without since means it is not on the first-parent chain
-    // (cross-branch, or an ancestor only via a merge's second parent): fall
-    // back to the committer-time window.
+    // since is not on the first-parent chain (cross-branch, or reachable only
+    // via a merge's second parent): fall back to the committer-time window.
     if !found_since {
         out.retain(|c| c.committed_at > since_time);
     }
@@ -165,8 +162,7 @@ pub fn patch_id(
 /// cache's content key.
 #[must_use]
 pub fn normalized_patch_hash(diff: &[u8]) -> Option<String> {
-    // hash raw bytes: a lossy UTF-8 decode would map distinct invalid
-    // byte runs to the same replacement char and collide two patches
+    // hash raw bytes: a lossy UTF-8 decode would collide distinct invalid byte runs
     if diff.is_empty() {
         return None;
     }

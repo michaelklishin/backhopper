@@ -56,8 +56,7 @@ fn no_export_attribute_is_complete_and_empty() {
     assert!(set.exports.is_empty());
 }
 
-// `-export_type` is a different attribute: its entries are types, not
-// functions, and must not enter the function export set.
+// -export_type entries are types, not functions: they must not enter the function export set.
 #[test]
 fn export_type_is_not_a_function_export() {
     let set = extract_exports("-export_type([t/0]).\n-export([f/1]).\n");

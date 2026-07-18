@@ -130,8 +130,7 @@ fn series_verdict_summarizes_results() {
     assert_eq!(s.worst_exit_code(), exit::NEEDS_ATTENTION);
 }
 
-// The is_empty conjunction is hand-maintained; these pin the trap
-// where a new Diagnostics field forgets to join it.
+// The is_empty conjunction is hand-maintained: catch a new Diagnostics field left out of the join.
 #[test]
 fn diagnostics_with_only_already_present_is_not_empty() {
     let mut d = Diagnostics::default();
@@ -166,9 +165,7 @@ fn diagnostics_with_only_a_pin_bump_is_not_empty() {
     assert!(!d.is_empty());
 }
 
-// The verdict cache persists detection with no status; every status
-// state must survive serde for the post-cache fill to be the only
-// writer.
+// Every status state must round-trip so the post-cache fill stays the only writer.
 #[test]
 fn pin_bump_statuses_round_trip_through_serde() {
     for status in [
@@ -191,8 +188,7 @@ fn pin_bump_statuses_round_trip_through_serde() {
     }
 }
 
-// The verdict cache persists these via serde; a round-trip failure
-// would corrupt cached envelopes silently.
+// A serde round-trip failure would silently corrupt cached verdict envelopes.
 #[test]
 fn new_diagnostics_fields_round_trip_through_serde() {
     let d = Diagnostics {
@@ -234,8 +230,7 @@ fn new_diagnostics_fields_round_trip_through_serde() {
     assert_eq!(back, d);
 }
 
-// Envelopes written before v10 lack the new fields entirely; they
-// must deserialize to the empty defaults.
+// Envelopes written before v10 lack the new fields: they must deserialize to the empty defaults.
 #[test]
 fn pre_v10_diagnostics_json_deserializes_with_empty_defaults() {
     let back: Diagnostics = serde_json::from_str("{}").unwrap();

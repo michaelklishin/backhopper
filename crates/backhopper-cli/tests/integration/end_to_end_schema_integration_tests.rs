@@ -79,7 +79,7 @@ fn diff_same_version_reports_no_differences() {
     );
 }
 
-/// Golden pin for the 023 slice: v8 adds exactly the siblings doctor
+/// Golden pin: v8 adds exactly the siblings doctor
 /// payload on top of v7, nothing else moves.
 #[test]
 fn diff_v7_to_v8_adds_exactly_the_siblings_doctor_payload() {
@@ -96,7 +96,7 @@ fn diff_v7_to_v8_adds_exactly_the_siblings_doctor_payload() {
     assert!(data["removed_paths"].as_array().unwrap().is_empty());
 }
 
-/// Golden pin for the 024 slice: v9 adds exactly the cache verb
+/// Golden pin: v9 adds exactly the cache verb
 /// payloads on top of v8.
 #[test]
 fn diff_v8_to_v9_adds_exactly_the_cache_payloads() {

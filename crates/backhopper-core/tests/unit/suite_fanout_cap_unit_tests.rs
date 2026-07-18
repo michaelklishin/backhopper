@@ -4,8 +4,8 @@
 
 //! The per-module suite-fanout cap: a module that
 //! reaches an outsized share of suites is escalated to a
-//! `BroadImpactModule` row and the suites it alone pulled in are dropped,
-//! while suites kept by an independent reason survive.
+//! `BroadImpactModule` row and the suites it alone selected are dropped,
+//! while suites with an independent reason are kept.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -44,9 +44,8 @@ fn app(name: &str, root: &Path, modules: Vec<&str>) -> AppSrcSpec {
     }
 }
 
-// Writes `count` suites in `APP`'s test dir, each named `{prefix}{i}_SUITE`
-// and calling every module in `refs`. Names avoid the unit/prop pattern so
-// only the caller rules fire.
+// Writes count suites in APP's test dir, each named {prefix}{i}_SUITE and calling
+// every module in refs; names avoid the unit and prop patterns so only caller rules fire.
 fn write_suites(root: &Path, prefix: &str, count: usize, refs: &[&str]) {
     for i in 0..count {
         let name = format!("{prefix}{i}_SUITE");
@@ -75,10 +74,8 @@ fn input(root: &Path, modified: Vec<&str>, apps: Vec<AppSrcSpec>, library: Vec<&
     }
 }
 
-// The standard two-application tree: a library `HELPER_APP` holding the
-// helper modules, and `APP` holding the narrow module and every suite.
-// `helper_src` and `narrow_src` decide which source files are written and
-// returned as modified paths.
+// Two applications: HELPER_APP holds the helper modules, APP holds the narrow
+// module and every suite; helper_src and narrow_src pick the modified paths.
 fn standard_apps(root: &Path) -> Vec<AppSrcSpec> {
     touch(
         root,
@@ -109,8 +106,7 @@ fn modules(p: &SuitePlan) -> Vec<&str> {
     p.entries.iter().map(|e| e.suite.module.as_str()).collect()
 }
 
-// A helper referenced by ten of twelve suites is escalated; the two
-// suites driven by the narrow module survive.
+// A helper referenced by ten of twelve suites is escalated; the two narrow-module suites are kept.
 #[test]
 fn broad_module_escalates_and_narrow_suites_survive() {
     let tmp = TempDir::new().unwrap();
@@ -135,8 +131,7 @@ fn broad_module_escalates_and_narrow_suites_survive() {
     assert_eq!(b.total_suites, 12);
 }
 
-// A suite reached by both the broad helper and the narrow module stays,
-// attributed to the narrow module only after the broad reason is dropped.
+// A suite reached by both stays, attributed to the narrow module once the broad reason is dropped.
 #[test]
 fn dual_reason_suite_survives_attributed_to_narrow() {
     let tmp = TempDir::new().unwrap();
@@ -161,8 +156,7 @@ fn dual_reason_suite_survives_attributed_to_narrow() {
     assert_eq!(p.broad_impact[0].suite_fanout, 11);
 }
 
-// Only the helper changed: every suite is helper-only, so the plan is an
-// explicit broad verdict with no entries.
+// Only the helper changed: every suite is helper-only, so the plan is a broad verdict with no entries.
 #[test]
 fn all_broad_yields_empty_entries() {
     let tmp = TempDir::new().unwrap();
@@ -177,9 +171,8 @@ fn all_broad_yields_empty_entries() {
     assert_eq!(p.broad_impact[0].total_suites, 10);
 }
 
-// The cap runs after `uncovered_applications` reads the full accumulator,
-// so a broad module still counts as covering its application and is never
-// double-reported as uncovered.
+// The cap runs after uncovered_applications reads the accumulator, so a broad
+// module still covers its application and is not double-reported.
 #[test]
 fn broad_module_is_not_double_reported_as_uncovered() {
     let tmp = TempDir::new().unwrap();
@@ -193,8 +186,7 @@ fn broad_module_is_not_double_reported_as_uncovered() {
     assert!(p.uncovered.is_empty());
 }
 
-// A seven-suite reach is under `FANOUT_FLOOR`, so the helper is not broad
-// and every referencing suite is kept.
+// Seven suites is under FANOUT_FLOOR: the helper is not broad and every referencing suite is kept.
 #[test]
 fn fanout_below_the_floor_is_not_broad() {
     let tmp = TempDir::new().unwrap();
@@ -207,8 +199,7 @@ fn fanout_below_the_floor_is_not_broad() {
     assert!(p.broad_impact.is_empty());
 }
 
-// At exactly `FANOUT_FLOOR` reaches, with a relative share over a third,
-// the helper is broad.
+// At exactly FANOUT_FLOOR reaches with a share over a third, the helper is broad.
 #[test]
 fn fanout_at_the_floor_is_broad() {
     let tmp = TempDir::new().unwrap();
@@ -222,9 +213,7 @@ fn fanout_at_the_floor_is_broad() {
     assert_eq!(p.broad_impact[0].suite_fanout, 8);
 }
 
-// A `TestModified` suite is path-driven (it attributes to no module), so
-// the non-empty guard keeps it even when its only module reference is the
-// broad helper.
+// A path-driven TestModified suite attributes to no module, so the non-empty guard keeps it.
 #[test]
 fn test_modified_suite_survives_broad_helper() {
     let tmp = TempDir::new().unwrap();
@@ -254,7 +243,7 @@ fn test_modified_suite_survives_broad_helper() {
     assert_eq!(p.broad_impact.len(), 1);
 }
 
-// A `ConfiguredRule` suite is likewise path-driven and survives the cap.
+// A ConfiguredRule suite is likewise path-driven and kept through the cap.
 #[test]
 fn configured_rule_suite_survives_broad_helper() {
     let tmp = TempDir::new().unwrap();
@@ -287,9 +276,7 @@ fn configured_rule_suite_survives_broad_helper() {
     assert_eq!(p.broad_impact.len(), 1);
 }
 
-// The fraction test is strict: `suite_fanout * FANOUT_DEN > total_suites`.
-// At equality the helper is not broad; one suite fewer in the tree tips it
-// over.
+// Strict inequality: at equality the helper is not broad; one suite fewer makes it broad.
 #[test]
 fn threshold_is_strict_greater_than() {
     // Equality: fanout 8, total 24, 8 * 3 == 24, not broad.
@@ -314,8 +301,7 @@ fn threshold_is_strict_greater_than() {
     assert_eq!(p.broad_impact[0].total_suites, 23);
 }
 
-// Two helpers both over the cap yield two rows in module-sorted order, so
-// the report is stable.
+// Two helpers over the cap yield two rows in module-sorted order: stable report.
 #[test]
 fn multiple_broad_modules_are_sorted() {
     let tmp = TempDir::new().unwrap();
@@ -335,10 +321,8 @@ fn multiple_broad_modules_are_sorted() {
     assert!(p.broad_impact.iter().all(|b| b.suite_fanout == 10));
 }
 
-// A broad helper whose every referencing suite also has an independent
-// narrow reason removes no suite from the plan: the broad reason is
-// stripped, each suite survives on its narrow reason, and the broad row is
-// still reported as the fanout signal.
+// When every referencing suite also has an independent narrow reason, no suite is
+// removed: the broad reason is stripped and the broad row is still reported.
 #[test]
 fn broad_helper_strips_its_reason_but_keeps_dual_suites() {
     let narrow_mods = [

@@ -14,7 +14,7 @@
 //! actually reach (the names in its hunk lines, plus names reachable
 //! through their expansions) and hashes the restriction. A define the
 //! patch never references cannot influence the analysis, so
-//! unrelated header drift between branches does not bust the cascade
+//! unrelated header drift between branches does not invalidate the cascade
 //! reuse the content level exists for.
 //!
 //! Soundness rules: the name seed is a superset of what the analyzer
@@ -22,7 +22,7 @@
 //! all arities per name); and whenever the mirror cannot be exact (a
 //! candidate blob that is not UTF-8, an unreadable object, a
 //! quoted-atom macro reference) the environment is reported
-//! unresolvable and the caller degrades to a per-commit content key —
+//! unresolvable and the caller degrades to a per-commit content key:
 //! a guaranteed miss, never a false hit.
 
 use std::cell::RefCell;
@@ -63,23 +63,19 @@ pub fn macro_environment_hash(
             seeded.push((path, seed));
         }
     }
-    // restricted tables keyed by path string; BTreeMap keeps the
-    // hash input ordered
+    // restricted tables keyed by path string; BTreeMap keeps the hash input ordered
     let mut tables: BTreeMap<String, Vec<(String, Option<u8>, String)>> = BTreeMap::new();
     if !seeded.is_empty() {
         // macro-free patches never pay for the tree listing
         let listing = repo.list_paths_at_commit(diff_base).ok()?;
         let resolver = MirrorResolver::new(repo, diff_base, &listing);
         for (path, seed) in seeded {
-            // a path absent from the parent tree (added by the patch)
-            // has no macro table, same as FileMap.get returning None
+            // a path added by the patch has no macro table, same as FileMap.get returning None
             if !resolver.exact.contains(path) {
                 continue;
             }
             let Some(body) = resolver.read_utf8(path) else {
-                // FileMap would have skipped a non-UTF-8 file at
-                // insert time; mirroring that exactly is not worth
-                // the risk
+                // FileMap skips non-UTF-8 files at insert time; mirroring that exactly is not worth the risk
                 if resolver.poisoned() {
                     return None;
                 }
@@ -163,8 +159,7 @@ impl<'a> MirrorResolver<'a> {
         let mut exact: BTreeSet<&Path> = BTreeSet::new();
         let mut by_include_lib: BTreeMap<String, &Path> = BTreeMap::new();
         let mut by_basename: BTreeMap<String, &Path> = BTreeMap::new();
-        // the listing is sorted; FileMap keeps the first insert per
-        // basename and the last per include_lib key
+        // the listing is sorted; FileMap keeps the first insert per basename and the last per include_lib key
         for path in listing {
             let s = path.to_string_lossy();
             if !(s.ends_with(".erl") || s.ends_with(".hrl")) {

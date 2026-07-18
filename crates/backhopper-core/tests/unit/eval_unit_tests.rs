@@ -145,8 +145,7 @@ fn breaks_by_class_ranks_compile_failures_only() {
     assert_eq!(report.breaks_by_class.len(), 1);
 }
 
-// The cross-version guard: the same break class routes bug-vs-gap by the
-// row's recorded coverage, not the running binary's.
+// The same break class routes bug-vs-gap by the row's recorded coverage, not the running binary's.
 #[test]
 fn bug_vs_gap_routes_by_the_rows_recorded_coverage() {
     let rows = [
@@ -183,8 +182,7 @@ fn bug_vs_gap_routes_by_the_rows_recorded_coverage() {
     assert_eq!(bug_of("unknown"), None);
 }
 
-// An apply or test miss is a predictor miss on a different axis, never a
-// compile coverage gap: its class and bug flag are absent.
+// An apply or test miss is a predictor miss on a different axis: no class, no bug flag.
 #[test]
 fn an_apply_miss_is_not_a_compile_coverage_gap() {
     let rows = [entry(

@@ -191,9 +191,7 @@ fn no_pin_bumps_means_no_bump_line_and_no_leading_blank() {
     assert!(s.starts_with("| Pin |"));
 }
 
-// Target-axis and wire reasons render their own label, never the Debug
-// fallback. A new variant that misses `reason_md_label`'s match would
-// print its field-braced Debug form here instead of a clean label.
+// a reason variant missing from the label match would print its Debug form here
 #[test]
 fn target_axis_and_wire_reasons_render_labels_not_debug_fallback() {
     let reasons = vec![

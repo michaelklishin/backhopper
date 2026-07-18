@@ -6,7 +6,7 @@
 //! `backhopper-core`.
 //!
 //! The driver does not redefine verdict or reason types: anything
-//! that lives in `backhopper_core::model` flows through unchanged so
+//! defined in `backhopper_core::model` flows through unchanged so
 //! callers can match on the same enums the CLI itself produces.
 
 pub use backhopper_core::model::apply::{

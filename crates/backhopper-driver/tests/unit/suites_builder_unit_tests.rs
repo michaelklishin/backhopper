@@ -142,8 +142,7 @@ fn suites_plan_run_with_diagnostics_carries_argv() {
     assert!(executed.argv.iter().any(|a| a == "plan"));
 }
 
-// Suites plan is repo-operating, so a driver with no repo dir is
-// refused before any spawn.
+// suites plan is repo-operating: a driver with no repo dir is refused before spawn
 #[test]
 fn suites_plan_without_repo_dir_is_refused_before_spawn() {
     let backend = MockBackend::builder()

@@ -143,8 +143,7 @@ fn coverage_report_flags_stale_extractor() {
 
 #[test]
 fn coverage_report_treats_empty_extractor_version_as_present() {
-    // older snapshots may not record the extractor version: a missing
-    // value should not be flagged as stale
+    // older snapshots may lack an extractor version: missing is not stale
     let tmp = TempDir::new().unwrap();
     write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "");
     let store = SnapshotStore::open(tmp.path()).unwrap();
@@ -155,7 +154,7 @@ fn coverage_report_treats_empty_extractor_version_as_present() {
 
 #[test]
 fn missing_snapshots_error_picks_version_oldest_not_lex_min() {
-    // lex min of `["v2.10.0", "v2.9.0"]` is `"v2.10.0"`: version-oldest is `"v2.9.0"`
+    // lex min of ["v2.10.0", "v2.9.0"] is "v2.10.0": version-oldest is "v2.9.0"
     let pins = vec![pin("ra", "v2.10.0"), pin("ra", "v2.9.0")];
     let err = missing_snapshots_error(&pins);
     let hint = err.hint().unwrap();

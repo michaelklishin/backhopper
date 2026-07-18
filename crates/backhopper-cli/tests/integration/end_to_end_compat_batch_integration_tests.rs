@@ -132,8 +132,7 @@ fn batch_skips_blank_lines_and_comments() {
     writeln!(commits, "   ").unwrap();
     writeln!(commits, "{head_sha}").unwrap();
     writeln!(commits, "# trailing comment").unwrap();
-    // one JSONL row per pair, so the line count proves the blanks and
-    // comments were skipped
+    // one JSONL row per pair: the line count proves blanks and comments were skipped
     let out = stdout(&run([
         "--config-file-path",
         cfg.to_str().unwrap(),

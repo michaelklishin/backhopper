@@ -61,9 +61,8 @@ fn partial_files_are_tagged_as_cuttlefish() {
     assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
 }
 
-// Core no longer parses `.schema` fragments: that needs the whole file
-// and the cuttlefish parser, which lives above this crate. The caller
-// extracts references and folds them in with `with_extra_references`.
+// Core no longer parses .schema fragments: that needs the whole file and the
+// cuttlefish parser from a higher crate; references arrive via with_extra_references.
 #[test]
 fn analyze_leaves_schema_files_without_extracting_references() {
     let p = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap().analyze();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The keystone safety property: for a hunk whose constructs each fit on
+//! The core safety property: for a hunk whose constructs each fit on
 //! one line, `scan_hunk` produces the same references as scanning each
 //! line on its own. This bounds the join's effect to multi-line
 //! constructs.
@@ -12,10 +12,8 @@ use backhopper_core::erlang_macros::MacroTable;
 use backhopper_core::model::symbol::{RefOrigin, SymbolRef};
 use proptest::prelude::*;
 
-// One indented, single-line construct of each kind the body extractor
-// reads: a call, a record use, a macro use, and a remote fun ref.
-// Indented so it is never read as a clause head; lowercase modules so a
-// call is never dynamic dispatch.
+// One single-line construct per extracted kind: call, record use, macro use, remote fun ref.
+// Indented to avoid clause-head parsing; lowercase modules to avoid dynamic dispatch.
 fn arb_construct_line() -> impl Strategy<Value = String> {
     let ident = "[a-z][a-z0-9_]{0,5}";
     prop_oneof![

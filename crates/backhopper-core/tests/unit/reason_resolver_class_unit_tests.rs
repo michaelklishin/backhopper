@@ -115,8 +115,7 @@ fn the_target_tree_reasons_map_one_to_one() {
     }
 }
 
-// The snapshot reasons carry a symbol, so their class follows its kind: a
-// function is a qualified call, a macro stays a macro.
+// Snapshot reasons carry a symbol: the class follows its kind.
 #[test]
 fn snapshot_reasons_follow_the_symbol_kind() {
     let function = Reason::MissingSymbol {
@@ -148,8 +147,7 @@ fn a_non_symbol_reason_has_no_class() {
     assert_eq!(drift.resolver_class(), None);
 }
 
-// The drift guard: every class is reachable, so the taxonomy and the
-// reasons cannot fall out of sync.
+// Every class is reachable, so the taxonomy and the reasons cannot fall out of sync.
 #[test]
 fn every_resolver_class_is_reachable_from_some_reason() {
     let reasons = [

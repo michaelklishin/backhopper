@@ -111,9 +111,7 @@ fn batch_json_envelope_carries_self_projects_and_reconstructs_a_clearance() {
     ]));
 
     let envelope: Value = serde_json::from_str(&out).unwrap();
-    // No self project is configured, so the field is present and empty,
-    // not absent: that is the "always emit" guarantee a consumer relies
-    // on to tell an empty set from an old binary.
+    // no self project configured: the field is present and empty, so a consumer can tell an empty set from an old binary
     let self_projects = envelope["data"]["self_projects"]
         .as_array()
         .unwrap_or_else(|| panic!("self_projects must be present in the batch envelope: {out}"));
@@ -122,8 +120,7 @@ fn batch_json_envelope_carries_self_projects_and_reconstructs_a_clearance() {
     let payload: BatchPayload = serde_json::from_value(envelope["data"].clone()).unwrap();
     assert!(payload.clearance_self_inferred().is_some());
 
-    // The measurement context rides the same envelope, always emitted so a
-    // corpus row records what its producer checked and stamped.
+    // the measurement context is always emitted so a corpus row records what its producer checked
     assert_eq!(payload.fingerprint_version, Some(FINGERPRINT_VERSION));
     let coverage = payload
         .resolver_coverage
@@ -131,9 +128,7 @@ fn batch_json_envelope_carries_self_projects_and_reconstructs_a_clearance() {
     assert!(coverage.is_checked(ResolverClass::Macro));
 }
 
-// A vacuous pick still carries a join key when caching is on: the
-// fingerprint needs no resolved tracked symbol, only a cache key. Debug
-// builds default caching off, so force it on for this invariant.
+// a vacuous pick still carries a join key when caching is on; debug builds default caching off, so force it on
 #[test]
 fn a_cached_vacuous_batch_row_carries_a_fingerprint() {
     let (repo, work, head_sha) = build_repo();
@@ -176,8 +171,7 @@ fn a_cached_vacuous_batch_row_carries_a_fingerprint() {
     );
 }
 
-// The inherent exception: with caching off there is no key, so no
-// fingerprint, and the consumer reads the row as un-joinable.
+// with caching off there is no key, so no fingerprint: the row is un-joinable
 #[test]
 fn a_no_cache_batch_row_has_no_fingerprint() {
     let (repo, work, head_sha) = build_repo();

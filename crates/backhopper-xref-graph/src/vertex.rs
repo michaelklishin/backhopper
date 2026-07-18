@@ -7,7 +7,7 @@
 //! Vertices are entities the cross-reference engine tracks. We keep them as
 //! a single enum over the existing `backhopper-core` newtypes so that a
 //! `BTreeSet<Vertex>` can mix levels (function, module, application,
-//! behaviour) when an analysis wants that.
+//! behaviour) when an analysis needs that.
 
 use std::fmt;
 

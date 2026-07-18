@@ -177,9 +177,8 @@ impl GitRepo {
         let Ok(hex_prefix) = gix::hash::Prefix::from_hex(prefix.as_str()) else {
             return PrefixLookup::None;
         };
-        // indexed prefix lookup over the pack and loose object indices,
-        // not a full object-store scan: the candidate set is every oid
-        // sharing the prefix, capped to a sample for the error message
+        // indexed prefix lookup, not a full object-store scan; matches are
+        // capped to a sample for the error message
         let mut candidates: HashSet<gix::ObjectId> = HashSet::new();
         if self
             .repo
@@ -377,8 +376,7 @@ impl GitRepo {
     /// count.
     pub fn has_commit(&self, commit: &CommitSha) -> Result<bool, GitError> {
         let oid = oid_of(commit)?;
-        // header lookup reports the object kind without inflating the
-        // full commit, so existence-plus-kind costs no object decode
+        // header lookup reports the kind without inflating the full commit
         Ok(self
             .repo
             .find_header(oid)
@@ -523,8 +521,8 @@ impl GitRepo {
     ) -> Result<String, GitError> {
         let from_tree = self.tree_of(from)?;
         let to_tree = self.tree_of(to)?;
-        // present on the `to` side (added or modified), then removed:
-        // the same emission order as a full-tree map comparison
+        // present on the to side first, then removed: the same emission order
+        // as a full-tree map comparison
         let mut present: BTreeMap<PathBuf, (Vec<u8>, Vec<u8>)> = BTreeMap::new();
         let mut removed: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
         let read_blob = |id: gix::Id<'_>| -> Result<Vec<u8>, GitError> {
@@ -649,8 +647,7 @@ fn append_unified_diff(out: &mut String, path: &Path, old: &[u8], new: &[u8]) {
         return;
     }
     let _ = writeln!(out, "diff --git a/{display} b/{display}");
-    // an empty side is an added or deleted file: git names it /dev/null,
-    // and the core diff parser keys added-file detection on that token
+    // git names an empty side /dev/null; the core diff parser keys added-file detection on that token
     if old.is_empty() {
         let _ = writeln!(out, "--- /dev/null");
     } else {
@@ -684,8 +681,7 @@ pub fn unified_diff_body(before: &str, after: &str) -> String {
         return String::new();
     }
     let before_len = input.before.len() as u32;
-    // Group changes whose three-line contexts touch or overlap into one
-    // printed hunk, the way git does.
+    // Group changes whose three-line contexts touch or overlap into one hunk, as git does.
     let mut groups: Vec<Vec<Hunk>> = Vec::new();
     for hunk in changes {
         match groups.last_mut() {
@@ -704,8 +700,7 @@ pub fn unified_diff_body(before: &str, after: &str) -> String {
     for group in groups {
         let first = group.first().expect("group is non-empty");
         let last = group.last().expect("group is non-empty");
-        // The unchanged region around a change is identical on both
-        // sides, so one leading and one trailing count serve both.
+        // The unchanged region is identical on both sides, so one leading and one trailing count serve both.
         let leading = DIFF_CONTEXT.min(first.before.start);
         let trailing = DIFF_CONTEXT.min(before_len - last.before.end);
         let old_start = first.before.start - leading;

@@ -238,7 +238,7 @@ fn recount_summary(results: &[PinVerdict]) -> SeriesSummary {
 
 /// Synthesise the post-patch content of `file` from its `Added`
 /// hunk lines. Returns `None` when the file is not a fully-added
-/// `.erl` or `.hrl` (the only shape the v1 018 resolvers handle).
+/// `.erl` or `.hrl` (the only shape the added-file resolvers handle).
 pub fn synthesise_added_file_content(file: &PatchedFile) -> Option<(RelativePath, String)> {
     if file.binary || file.old_path.is_some() {
         return None;
@@ -282,8 +282,8 @@ fn is_elixir(path: &Path) -> bool {
 }
 
 /// Union of every configured project family's
-/// `test_helper_search_paths`. The 018 resolvers cast a wide net by
-/// design: the user can pass the same patch through different
+/// `test_helper_search_paths`. The added-file resolvers search broadly
+/// by design: the user can pass the same patch through different
 /// projects without re-declaring globs per call.
 pub fn collect_search_path_globs(cfg: &Config) -> Vec<String> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
@@ -295,7 +295,7 @@ pub fn collect_search_path_globs(cfg: &Config) -> Vec<String> {
     seen.into_iter().collect()
 }
 
-/// Walk every added `.erl` and `.hrl` in `files`, run the 018
+/// Walk every added `.erl` and `.hrl` in `files`, run the added-file
 /// resolvers (test-helper missing, behaviour missing, header
 /// missing), and return the merged findings.
 pub fn collect_added_file_findings(
@@ -366,7 +366,7 @@ fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedL
 /// Added-line text of every touched `.erl` file, with the blob-line to
 /// file-line map and each blob line's attribute-region classification,
 /// walked against the full hunk so an orphaned attribute continuation
-/// still classifies correctly (055). Only the qualified-call and
+/// still classifies correctly. Only the qualified-call and
 /// Erlang indirect-call axes need the classification.
 fn erl_subject_context(
     files: &[PatchedFile],
@@ -626,8 +626,8 @@ impl<'a> TargetResolveSession<'a> {
     }
 
     /// Compare same-file `-define` values for macros the patch uses
-    /// between the two trees. `.erl` and `.hrl` alike: a define lives in
-    /// either.
+    /// between the two trees. `.erl` and `.hrl` alike: a define can
+    /// appear in either.
     pub(crate) fn macro_value_findings(&self, files: &[PatchedFile]) -> MacroValueAnalysis {
         let subjects_text = collect_define_subject_text(files);
         if subjects_text.is_empty() {
@@ -704,7 +704,7 @@ fn read_source_text(repo_dir: &Path, path: &RelativePath) -> Option<String> {
 }
 
 /// The target-tree apply pass: unchanged per-pin reasons plus the
-/// per-path forecast that survives inapplicable verdicts.
+/// per-path forecast, kept even for inapplicable verdicts.
 #[derive(Debug)]
 pub struct TargetApplyAnalysis {
     pub reasons: Vec<Reason>,
@@ -782,7 +782,8 @@ fn read_target_text(
 /// diagnostics. Non-blocking reasons promote `Compatible` to
 /// `RequiresAdaptation` and append to existing reason vectors;
 /// `Inapplicable` rows are left alone (the user's reason for
-/// "this pin has nothing to say" already trumps a new advisory).
+/// "this pin has nothing to say" already takes precedence over a new
+/// advisory).
 pub fn merge_added_file_findings_into_evaluation(
     findings: AddedFileFindings,
     evaluation: &mut SeriesEvaluation,

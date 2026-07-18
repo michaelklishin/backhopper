@@ -15,8 +15,7 @@ use backhopper_test_support::{GitRepoFixture, write_config};
 
 const DEMO_V1: &str = "-module(demo_mod).\n-export([greet/1]).\ngreet(Name) -> Name.\n";
 
-// The mapping default outside any fun body names a module that must be
-// ignored. Only the fun body's call is a real reference.
+// the mapping default outside any fun body must be ignored: only the fun body's call is a real reference
 const SCHEMA_V1: &str = "\
 {mapping, \"demo.thing\", \"demo_app.thing\", [{default, \"other_mod:ignored/1\"}]}.
 

@@ -237,7 +237,7 @@ pub struct PinBump {
     pub status: Option<BumpStatus>,
 }
 
-/// What the snapshot store knows about a bumped-to pin version.
+/// Snapshot-store status of a bumped-to pin version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -357,7 +357,7 @@ pub struct SeriesEvaluation {
     /// non-2-parent merges and non-merge SHAs.
     ///
     /// Do NOT add `skip_serializing_if = "Option::is_none"`. The
-    /// `None` vs `Some(vec![])` distinction is wire-load-bearing.
+    /// `None` vs `Some(vec![])` distinction is part of the wire contract.
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
 
@@ -522,7 +522,7 @@ pub struct KhepriSignals {
 }
 
 impl KhepriSignals {
-    // `&self` is required by serde `skip_serializing_if`.
+    // &self is required by serde skip_serializing_if.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_empty(&self) -> bool {
         !self.touches_khepri_module

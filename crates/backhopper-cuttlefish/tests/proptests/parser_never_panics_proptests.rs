@@ -27,8 +27,7 @@ proptest! {
         runs in 1usize..10,
         body in "[a-z_]{3,10}"
     ) {
-        // Build a schema body with `runs` mapping tuples. Parser must
-        // return exactly `runs` fragments.
+        // a schema with runs mapping tuples must parse to exactly runs fragments
         let mut s = String::new();
         for i in 0..runs {
             s.push_str(&format!("{{mapping, \"k{i}\", \"v{i}\", [{body}]}}.\n"));

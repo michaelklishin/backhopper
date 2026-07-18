@@ -8,7 +8,7 @@
 //! and exposes helpers the reader uses to find function clauses and call
 //! sites. Not a full Erlang tokenizer: just what the v1 xref reader needs.
 //!
-//! A sibling block-oriented tokenizer lives in `backhopper_erlang::tokenizer`.
+//! A separate block-oriented tokenizer exists in `backhopper_erlang::tokenizer`.
 //! Consolidation is deferred until a third consumer needs it.
 
 use backhopper_xref_graph::Position;
@@ -253,7 +253,7 @@ pub struct ParenWalk {
     pub closed: bool,
 }
 
-/// Walks the balanced `(...)` group at the current `(`, which must be the
+/// Scans the balanced `(...)` group at the current `(`, which must be the
 /// next byte. Tracks nested `()`, `[]`, `{}`, and `<<>>`; skips strings,
 /// quoted atoms, char literals, and `%` comments. At each byte that can
 /// begin an identifier or `?macro` use, `on_ident` runs with the cursor on
@@ -295,8 +295,7 @@ pub fn walk_paren_group(
                 depth -= 1;
                 sc.advance();
             }
-            // << and >> are binary delimiters: nest like brackets so the commas
-            // inside a binary literal are not counted as arguments.
+            // << and >> nest like brackets so commas inside a binary literal are not counted as arguments.
             b'<' if sc.peek_at(1) == Some(b'<') => {
                 depth += 1;
                 had_content = true;

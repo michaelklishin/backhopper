@@ -10,8 +10,7 @@ use proptest::prelude::*;
 
 use backhopper_core::compat::call_sites::{ScannedArgs, scan_top_level_args};
 
-// One argument term that may contain commas only inside nested
-// delimiters, strings, or char literals.
+// One argument term with commas only inside nested delimiters, strings, or char literals.
 fn arg_term() -> impl Strategy<Value = String> {
     prop_oneof![
         Just("X".to_owned()),
@@ -53,8 +52,7 @@ proptest! {
 
     #[test]
     fn truncation_never_fabricates_an_exact_arity(args in call_args()) {
-        // Drop the closing paren: a line-based scanner cannot know the
-        // arity any more, and must say so.
+        // Drop the closing paren: the scanner cannot determine the arity and must say so.
         let line = args.join(", ");
         let unterminated = matches!(
             scan_top_level_args(&line),

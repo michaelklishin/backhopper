@@ -144,8 +144,7 @@ fn batch_builder_multi_series_emits_one_flag_per_series() {
         .expect("multi-series batch parses");
 }
 
-// `.commits` collapses duplicates and keeps first-occurrence order, so
-// the row-per-commit contract holds for the stdin path.
+// duplicates collapse in first-occurrence order so the stdin path stays row-per-commit
 #[test]
 fn batch_builder_dedups_commits_preserving_order() {
     let a = "a".repeat(40);
@@ -204,8 +203,7 @@ fn batch_builder_commits_file_path_sends_no_stdin() {
         .expect("file-path batch parses");
 }
 
-// `--target-ref` requires a target dir, so a ref set without one is
-// dropped rather than sent alone.
+// --target-ref requires a target dir: a ref set without one is dropped
 #[test]
 fn batch_builder_drops_target_ref_without_target_dir() {
     let backend = MockBackend::builder()
@@ -273,8 +271,7 @@ fn batch_run_with_diagnostics_carries_argv() {
     assert!(executed.argv.iter().any(|a| a == "batch"));
 }
 
-// The argv is an exact rerun and pins --formatter json onto the dispatch_typed
-// path: program, verb, global flags, formatter, then builder args.
+// exact-rerun argv order: program, verb, global flags, formatter, builder args
 #[test]
 fn batch_argv_orders_program_verb_globals_formatter_then_args() {
     let backend = MockBackend::builder()
@@ -315,8 +312,7 @@ fn batch_argv_orders_program_verb_globals_formatter_then_args() {
     );
 }
 
-// The schema ceiling is checked before the typed parse, so a too-new envelope
-// reads as a clear mismatch rather than an unparseable-output error.
+// the schema ceiling is checked before the typed parse: a too-new envelope reads as a mismatch
 #[test]
 fn batch_too_new_schema_is_a_mismatch_not_unparseable() {
     let envelope = json!({
@@ -343,8 +339,7 @@ fn batch_too_new_schema_is_a_mismatch_not_unparseable() {
     assert_eq!(err.kind(), ErrorKind::SchemaVersionMismatch);
 }
 
-// A batch row exposes the same accessors as a single check through the
-// inherent evaluation() method.
+// a batch row exposes the same accessors as a single check via evaluation()
 #[test]
 fn batch_row_evaluation_exposes_verdict_and_findings() {
     let backend = MockBackend::builder()
@@ -369,8 +364,7 @@ fn batch_row_evaluation_exposes_verdict_and_findings() {
     assert_eq!(eval.missing_test_modules().len(), 1);
 }
 
-// A repo-operating verb with no repo dir is refused before any spawn:
-// the mock would panic on invoke.
+// a repo-operating verb with no repo dir is refused before any spawn
 #[test]
 fn batch_without_repo_dir_is_refused_before_spawn() {
     let backend = MockBackend::builder()

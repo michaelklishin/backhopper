@@ -44,8 +44,7 @@ fn rp(s: &str) -> RelativePath {
     RelativePath::new(s).unwrap()
 }
 
-/// Added lines start at file line 21, so a mapped line proves the map
-/// was applied rather than the blob offset reported raw.
+/// Added lines start at file line 21: a mapped line proves the map was applied.
 fn analyse(added: &str, files: &[(&str, &str)]) -> Vec<Reason> {
     let path = rp(ERL);
     let line_map: Vec<u32> = (1..=added.lines().count() as u32).map(|l| l + 20).collect();

@@ -161,7 +161,7 @@ fn walk_attributes(
     }
 }
 
-/// Pass 1: walks the source for attributes only. Function bodies and
+/// Pass 1: scans the source for attributes only. Function bodies and
 /// non-attribute syntax are skipped. The whole-module attributes that
 /// influence later passes (`-module`, `-export`, `-define`,
 /// `-include`/`-include_lib`, ...) land in the `ModuleBuilder` here.
@@ -187,7 +187,7 @@ pub(crate) fn fold_header_into(source: &str, b: &mut ModuleBuilder) {
     });
 }
 
-/// Pass 2: walks the source for function clauses and call sites only.
+/// Pass 2: scans the source for function clauses and call sites only.
 /// Attribute lines are skipped because they've already been processed
 /// by `scan_attributes`.
 pub(crate) fn scan_bodies(source: &str, b: &mut ModuleBuilder) {

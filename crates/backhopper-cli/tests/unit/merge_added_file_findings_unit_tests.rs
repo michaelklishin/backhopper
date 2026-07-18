@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Verdict-merge semantics for the 018 findings: `Compatible` pins
+//! Verdict-merge semantics for the added-file findings: `Compatible` pins
 //! promote to `RequiresAdaptation` when non-blocking reasons arrive,
 //! existing reason vectors get appended to, `Inapplicable` rows stay
 //! untouched, and per-suite diagnostic counters land on

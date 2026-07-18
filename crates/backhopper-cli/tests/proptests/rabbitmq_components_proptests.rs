@@ -5,7 +5,7 @@
 //! Property tests for the RabbitMQ components.mk parser. Targets:
 //!
 //!  * arbitrary text never panics
-//!  * a synthesized `dep_NAME = hex VERSION` line always survives a parse
+//!  * a synthesized `dep_NAME = hex VERSION` line always parses to a pin
 //!  * `series_name_for_branch` and `version_to_tag` are total functions
 //!  * `version_to_tag` is idempotent on already-prefixed input
 
@@ -28,8 +28,7 @@ proptest! {
     ) {
         let line = format!("dep_{name} = hex {version}\n");
         let pins = parse_components_mk(&line);
-        // `_commit`, `_branch`, `_repo` suffixes are intentionally
-        // ignored, so synthesizing one of those would not produce a pin.
+        // _commit, _branch, and _repo suffixes are ignored, so they would not produce a pin
         if !(name.ends_with("_commit") || name.ends_with("_branch") || name.ends_with("_repo")) {
             prop_assert_eq!(pins.len(), 1);
             prop_assert_eq!(&pins[0].name, &name);

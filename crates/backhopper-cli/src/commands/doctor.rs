@@ -142,8 +142,7 @@ pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<CommandOutcome> {
     render_with_exit(&ctx, &payload, exit, |w| render_text(w, &payload, style))
 }
 
-// Success when every pin is present and current; PartialSuccess when
-// any pin is missing or carries a stale extractor version
+// Success when every pin is present and current; PartialSuccess when any is missing or stale
 pub fn doctor_exit_code(totals: &Totals) -> CommandOutcome {
     CommandOutcome::from_success(!(totals.missing > 0 || totals.stale_extractor > 0))
 }
@@ -296,8 +295,7 @@ pub fn staleness_note(
         PinSpec::Literal { .. } => Some(format!(
             "store has a newer snapshot ({newest}): if the series branch landed a pin bump, run `backhopper series sync diff`"
         )),
-        // Latest-pattern pins resolve to the newest *matching* tag, so
-        // a newer overall tag means the glob is what excludes it
+        // latest-pattern pins resolve to the newest matching tag, so a newer overall tag means the glob excludes it
         PinSpec::Pattern { .. } => Some(format!("pin pattern excludes newer tag {newest}")),
         PinSpec::SelfRef { .. } => None,
     }

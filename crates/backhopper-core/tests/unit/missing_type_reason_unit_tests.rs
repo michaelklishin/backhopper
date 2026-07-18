@@ -68,7 +68,7 @@ fn exported_type_is_compatible() {
 
 #[test]
 fn unexported_type_emits_missing_type_reason() {
-    // ra exports `start/0` (a function) but no types.
+    // ra exports start/0 (a function) but no types.
     let m = with_exported_function(module("ra"), "start", 0);
     let eval = Patch::parse(VARIANT_B_DIFF.as_bytes())
         .unwrap()
@@ -120,8 +120,7 @@ diff --git a/rabbit_quorum_queue.erl b/rabbit_quorum_queue.erl
         .evaluate_series(&[context("ra", vec![m])]);
     let r0 = &eval.verdict.results[0];
     let reasons = r0.verdict.reasons();
-    // In body context the same `ra:index()` is a function call; it
-    // routes to MissingSymbol, not MissingType.
+    // In body context ra:index() is a function call: MissingSymbol, not MissingType.
     assert!(
         reasons
             .iter()

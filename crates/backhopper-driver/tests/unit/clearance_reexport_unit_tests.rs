@@ -13,8 +13,7 @@ use backhopper_driver::types::{
 };
 use serde_json::json;
 
-// Naming every type through the façade guards the re-exports: drop one
-// and this stops compiling.
+// naming every type through the crate root guards the re-exports at compile time
 #[allow(dead_code)]
 struct NamesEveryReexport<'a> {
     a: &'a RoundClearance,
@@ -67,7 +66,7 @@ fn batch_payload(self_projects: serde_json::Value) -> BatchPayload {
 fn round_clearance_matches_through_the_facade() {
     let payload = batch_payload(json!(["rabbit"]));
     let clearance = payload.clearance_self_inferred().expect("self set present");
-    // The Findings arm carries the tracked `ra` reference.
+    // the Findings arm carries the tracked ra reference
     match clearance {
         RoundClearance::Findings(facts) => assert_eq!(facts.tracked, 4),
         RoundClearance::Clean(_) | RoundClearance::ZeroDomain(_) => {

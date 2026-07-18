@@ -25,7 +25,7 @@ pub struct Diagnostics {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub context_refs_missing: BTreeMap<ModuleName, usize>,
     /// Touched paths no configured project owns, tallied by their
-    /// first two path components. The breadcrumb behind an
+    /// first two path components. The evidence behind an
     /// `Inapplicable { Untracked }` verdict.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unattributed_paths: BTreeMap<String, usize>,
@@ -37,11 +37,11 @@ pub struct Diagnostics {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suggested_suites: Vec<String>,
     /// Per-`_SUITE.erl` map of `helper_module -> call_site_count`. The
-    /// always-on diagnostic counterpart of
+    /// always-on diagnostic form of
     /// `Reason::TestModuleSymbolMissing`: emitted by the parse pass
     /// even without a target tree (which is why the inner key is the
     /// `ModuleName` rather than a resolved-or-not bit). When
-    /// `--target-repo-dir-path` is supplied the resolver re-walks this
+    /// `--target-repo-dir-path` is supplied the resolver re-checks this
     /// map and promotes the absent ones to typed reasons. The nested
     /// `BTreeMap` shape keeps the JSON envelope serialisable without
     /// a custom composite-key encoder.
@@ -66,7 +66,7 @@ pub struct Diagnostics {
     /// each first-party resolved call: compared, or withheld and why.
     #[serde(default, skip_serializing_if = "ShapeCheckTally::is_empty")]
     pub qualified_call_shape_checks: ShapeCheckTally,
-    /// The local-call twin: resolved unqualified calls, compared or
+    /// The same tally for local calls: resolved unqualified calls, compared or
     /// withheld. Kept apart from the qualified tally so one axis's
     /// coverage never reads as the other's.
     #[serde(default, skip_serializing_if = "ShapeCheckTally::is_empty")]
@@ -145,7 +145,7 @@ pub enum TargetMatchKind {
 }
 
 /// A target commit found to carry the candidate's patch. The subject
-/// rides along so consumers can auto-fill exclusion reasons without
+/// is included so consumers can auto-fill exclusion reasons without
 /// a second git query.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -181,7 +181,7 @@ pub struct ShapeCheckTally {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub withheld_no_source: usize,
     /// The call resolved through an `-import`: the callee's `-spec`
-    /// lives in another module, so the calling module's tables cannot
+    /// is in another module, so the calling module's tables cannot
     /// compare it. Local-call axis only.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub withheld_imported: usize,
@@ -218,7 +218,7 @@ pub struct MacroValueTally {
     /// Drift is visible in the reasons, not double-counted here.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub compared: usize,
-    /// Not defined same-file on both sides: the definition lives in an
+    /// Not defined same-file on both sides: the definition is in an
     /// include, or moved between files across the trees.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub withheld_definition_elsewhere: usize,

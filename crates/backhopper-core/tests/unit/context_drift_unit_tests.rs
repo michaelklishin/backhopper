@@ -52,8 +52,7 @@ fn evaluate(snap: Snapshot<state::Canonical>, files: EvaluationFiles) -> SeriesV
 
 #[test]
 fn file_absent_when_path_missing_at_pin() {
-    // a snapshot WITHOUT the `demo` module: a missing demo.erl is a
-    // genuine FileAbsent, not a relocation
+    // a snapshot without the demo module: a missing demo.erl is a genuine FileAbsent, not a relocation
     let empty_snap = canonical_snapshot(snapshot_header("demo", "v1.0.0"), vec![]);
     let files = EvaluationFiles::new().with(PathBuf::from("src/demo.erl"), None);
     let series = evaluate(empty_snap, files);

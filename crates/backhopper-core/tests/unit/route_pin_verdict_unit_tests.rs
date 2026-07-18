@@ -125,9 +125,7 @@ fn touched_kinds_signal_wins_over_routing_attribution() {
     ));
 }
 
-// The 2b645ce215 shape: the pin owns no touched file, yet the patch
-// calls into its snapshot and the call does not resolve. The missing
-// symbol must survive routing.
+// 2b645ce215: the pin owns no touched file, yet the unresolved snapshot call is kept through routing.
 #[test]
 fn reference_evidence_survives_for_unowned_pin() {
     let pv = PinVerdict::new(

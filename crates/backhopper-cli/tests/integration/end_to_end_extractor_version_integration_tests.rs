@@ -92,8 +92,7 @@ fn verify_all_flags_stale_extractor_versions() {
 
 #[test]
 fn verify_all_passes_when_extractor_version_is_empty() {
-    // Pre-versioning snapshots have an empty `extractor_version` field and
-    // must not produce stale warnings; the field is missing-tolerant.
+    // pre-versioning snapshots have an empty extractor_version and must not produce stale warnings
     let work = tempdir().unwrap();
     let snap_dir = work.path().join("snapshots");
     fs::create_dir_all(&snap_dir).unwrap();

@@ -33,8 +33,7 @@ fn key() -> CacheKeyInputs {
     }
 }
 
-// The guard the whole measurement loop rests on: an upgrade must not
-// change the fingerprint, or a months-old outcome joins nothing.
+// an upgrade must not change the fingerprint, or a months-old outcome joins nothing
 #[test]
 fn fingerprint_is_stable_across_crate_and_schema_versions() {
     let a = key().fingerprint("patch").unwrap();
@@ -45,8 +44,7 @@ fn fingerprint_is_stable_across_crate_and_schema_versions() {
     assert_eq!(a, b);
 }
 
-// A cherry-pick hop re-mints the SHA but not the patch; both must
-// share a fingerprint so their outcomes join.
+// a cherry-pick hop changes the SHA but not the patch: both must share a fingerprint
 #[test]
 fn fingerprint_ignores_the_commit_sha() {
     let a = key().fingerprint("patch").unwrap();
@@ -72,8 +70,7 @@ fn a_moved_target_tip_changes_the_fingerprint() {
     assert_ne!(a, b);
 }
 
-// A regenerated snapshot changes the verdict, so it must change the
-// fingerprint too.
+// a regenerated snapshot changes the verdict, so it must change the fingerprint too
 #[test]
 fn a_regenerated_snapshot_changes_the_fingerprint() {
     let a = key().fingerprint("patch").unwrap();

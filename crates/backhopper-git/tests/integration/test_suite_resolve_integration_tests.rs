@@ -175,10 +175,8 @@ fn invalid_multi_wildcard_glob_is_silently_dropped() {
     let parsed = TestSuiteFile::new(rp("deps/rabbit/test/x_SUITE.erl"), src.to_owned())
         .parse()
         .unwrap();
-    // Globs with more than one `*` are not supported and silently
-    // skipped. The resolver should still answer correctly using the
-    // remaining roots; here that means "every non-stdlib module is
-    // missing" because no root matches.
+    // Globs with more than one star are silently skipped; with no matching root
+    // left, every non-stdlib module is missing.
     let resolved = parsed.resolve(
         &target,
         &[

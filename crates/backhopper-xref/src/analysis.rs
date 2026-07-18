@@ -41,8 +41,7 @@ impl Xref<Functions> {
             if defined.contains(tgt) || builtins.contains(tgt) {
                 continue;
             }
-            // The callee is undefined, so it has no definition site. Point at
-            // the caller's definition instead: that is the function to inspect.
+            // An undefined callee has no definition site: point at the caller's instead.
             grouped
                 .entry((caller.clone(), callee.clone()))
                 .or_default()

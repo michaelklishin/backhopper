@@ -16,8 +16,7 @@ pub struct CondStack {
 #[derive(Debug, Clone)]
 struct Frame {
     is_test_only: bool,
-    // Only `-ifdef(TEST)` and `-ifndef(TEST)` make `-else` toggle the test-only tag.
-    // For other idents, the else branch is neither more nor less test-only than the if branch.
+    // -else toggles the test-only tag only for -ifdef(TEST) and -ifndef(TEST); other idents leave it unchanged
     else_flips_test_only: bool,
 }
 

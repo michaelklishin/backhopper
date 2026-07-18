@@ -87,8 +87,7 @@ impl<'a> AvailabilityProbe<'a> {
     fn ensure_tags(&mut self, project: &ProjectName) -> Option<()> {
         if !self.tags.contains_key(project) {
             let mut tags = self.store.list_tags(project).ok()?;
-            // `version_cmp` is descending; reverse for oldest-first so
-            // the first hit is the earliest tag.
+            // version_cmp is descending; reverse so the first hit is the earliest tag
             tags.sort_by(|a, b| version_cmp(a.as_str(), b.as_str()).reverse());
             self.tags.insert(project.clone(), tags);
         }

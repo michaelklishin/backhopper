@@ -38,9 +38,8 @@ fn same_branch_window_is_pure_ancestry_newest_first() {
     assert_eq!(shas, vec![second.as_str(), first.as_str()]);
 }
 
-// On the same branch the window is pure ancestry: an intermediate commit
-// dated before `since` (and even before the committer-time cutoff) must still
-// appear, since the cutoff only bounds the cross-branch case.
+// Same-branch windows are pure ancestry: a commit dated before since must still
+// appear; the cutoff only bounds the cross-branch case.
 #[test]
 fn same_branch_walk_keeps_intermediate_commit_dated_before_the_since_point() {
     let fake = GitRepoFixture::new();
@@ -76,7 +75,7 @@ fn cross_branch_window_is_bounded_by_committer_time() {
     let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "a1\n");
     fake.commit_dated("shared base", "2025-01-01T10:00:00Z");
-    // the since-point lives on a stable branch, not on main
+    // the since-point is on a stable branch, not on main
     fake.checkout_new_branch("v1.x");
     fake.write_file("src/r.erl", "r\n");
     fake.commit_dated("release prep", "2025-03-01T10:00:00Z");

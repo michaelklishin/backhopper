@@ -251,8 +251,7 @@ fn unswept_fix_surfaces_and_x_picked_fix_is_suppressed() {
 fn merge_commits_surface_once_under_the_pr_title() {
     let fx = DoctorFixture::new("rabbitmq");
     let repo = fx.repo();
-    // a PR branch merged with GitHub's boilerplate subject; the PR
-    // title rides the body
+    // a PR branch merged with GitHub's boilerplate subject: the PR title is on the first body line
     git(&repo, &["checkout", "-q", "-b", "pr"]);
     write(
         &repo,
@@ -386,8 +385,7 @@ pins = [
 fn no_reachable_release_tag_points_at_since() {
     let fx = DoctorFixture::new("rabbitmq");
     let repo = fx.repo();
-    // strip the only reachable tag and put a newer one on main, which
-    // the target branch cannot reach
+    // strip the only reachable tag and put a newer one on main, unreachable from the target branch
     git(&repo, &["tag", "-d", "v1.0.0"]);
     git(&repo, &["tag", "v9.9.9", "main"]);
     let assert = run(fx.doctor_args()).code(64);
@@ -407,8 +405,7 @@ fn explicit_since_forms_round_trip_the_derivation() {
     assert_eq!(body["data"]["since"]["kind"], "explicit_tag");
     assert_eq!(body["data"]["since"]["tag"], "v1.0.0");
 
-    // a 12-hex prefix expands to the full SHA; the window past it
-    // holds only suppressed or non-matching commits, hence exit 0
+    // a 12-hex prefix expands to the full SHA; the window past it has only suppressed or non-matching commits, hence exit 0
     let mut sha_args = fx.doctor_args();
     sha_args.push("--since".into());
     sha_args.push(fx.unswept_sha[..12].to_owned());

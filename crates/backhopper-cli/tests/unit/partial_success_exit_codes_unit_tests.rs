@@ -79,9 +79,7 @@ fn verify_all_returns_partial_success_for_stale_extractor_only() {
 
 #[test]
 fn verify_all_returns_partial_success_for_stale_with_zero_verified() {
-    // The store may legitimately have only stale snapshots if every read
-    // succeeded but every extractor version mismatched. This stays in
-    // PartialSuccess (not Failure) because the loads succeeded.
+    // only stale snapshots is still PartialSuccess, not Failure: every load succeeded
     assert_eq!(
         verify_all_exit_code(0, 0, 5).unwrap(),
         CommandOutcome::PartialSuccess

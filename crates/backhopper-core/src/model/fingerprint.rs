@@ -31,7 +31,7 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 pub struct VerdictFingerprint(String);
 
 impl VerdictFingerprint {
-    /// Wrap a precomputed hex digest; the derivation lives in
+    /// Wrap a precomputed hex digest; the derivation is in
     /// `backhopper-cache`.
     #[must_use]
     pub fn new(hex: impl Into<String>) -> Self {

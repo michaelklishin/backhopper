@@ -108,9 +108,7 @@ impl GitRepoFixture {
         );
     }
 
-    // Ground truth for the recall-superset check: attempt the real
-    // cherry-pick, report whether it conflicted, then restore the
-    // branch either way so the caller reads a clean target tree.
+    // attempt the real cherry-pick, record whether it conflicted, then restore the branch either way
     pub fn cherry_pick_conflicts(&self, sha: &str) -> bool {
         let status = Command::new("git")
             .args([

@@ -5,7 +5,7 @@
 //! Resolves `?MACRO` and `#record` references a patch adds against the
 //! target tree: the case where a hunk applies cleanly but the symbol it
 //! references is defined nowhere the target reaches. Both are
-//! directive-defined (`-define`, `-record`) and live in the file or its
+//! directive-defined (`-define`, `-record`) and defined in the file or its
 //! includes, so one tree walk gathers both. It gathers type
 //! declarations too: the exported-type axis needs the same closure.
 //! `read_target` is injected: core stays I/O-free.
@@ -44,8 +44,7 @@ pub fn analyse_define_symbols(
             continue;
         }
         let defs = collect_target_defines(subject.source_path, target, read_target);
-        // Incomplete define set: the symbol could live in a header we
-        // could not read, so suppress rather than risk a false positive.
+        // Incomplete define set: the symbol could be in an unreadable header, so suppress rather than risk a false positive.
         if !defs.defines_complete() {
             continue;
         }
@@ -142,8 +141,7 @@ pub fn collect_target_defines(
             continue;
         }
         let Some(content) = read_target(&path) else {
-            // An absent top file is the new-file case (complete); an
-            // unreadable header leaves the set incomplete.
+            // An absent top file is the new-file case (complete); an unreadable header leaves the set incomplete.
             if depth > 0 {
                 out.complete = false;
             }
@@ -176,7 +174,7 @@ pub struct MacroValueAnalysis {
 }
 
 /// Compare the `-define` value of each macro the patch uses between
-/// the two trees, when the definition lives in the touched file itself
+/// the two trees, when the definition is in the touched file itself
 /// on both sides, exactly once each. Everything else withholds and is
 /// counted: a definition reached through an include (or present
 /// same-file on one side only), an `-ifdef`-duplicated name, an
@@ -194,8 +192,7 @@ pub fn analyse_macro_values(
         if uses.is_empty() {
             continue;
         }
-        // An absent top file is the new-file case: nothing pre-existing
-        // to compare, and the existence axis owns the rest.
+        // An absent top file is the new-file case: nothing pre-existing to compare; the existence axis owns the rest.
         let Some(target_text) = read_target(subject.source_path) else {
             continue;
         };

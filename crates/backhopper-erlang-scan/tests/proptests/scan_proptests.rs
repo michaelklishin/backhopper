@@ -9,10 +9,8 @@ use backhopper_erlang_scan::{
     split_top_level_args, split_top_level_commas, take_balanced_parens,
 };
 
-// Each term is one top-level item that carries an internal comma the
-// scanner must not treat as a separator: a tuple, list, string, quoted
-// atom, and bitstring, one per bracket and quote family, plus a plain
-// atom.
+// each term is one top-level item with an internal comma the scanner must
+// not treat as a separator: one per bracket and quote family, plus a plain atom
 const TERMS: &[&str] = &[
     "ra_log",
     "{ok, State}",
@@ -27,9 +25,8 @@ fn term_list() -> impl Strategy<Value = Vec<&'static str>> {
 }
 
 proptest! {
-    // Gold standard: when the expected items are known by construction,
-    // the splitter returns exactly them and the counter agrees. Internal
-    // commas in any family never leak to the top level.
+    // the splitter returns exactly the constructed items and the counter
+    // agrees; internal commas never leak to the top level
     #[test]
     fn split_recovers_generated_terms(terms in term_list()) {
         let s = terms.join(", ");
@@ -37,8 +34,7 @@ proptest! {
         prop_assert_eq!(count_top_level_commas(&s), terms.len() - 1);
     }
 
-    // Splitter and counter share one decision: every piece a split
-    // produces has no top-level comma of its own.
+    // splitter and counter agree: no split piece has a top-level comma of its own
     #[test]
     fn each_split_piece_has_no_top_level_comma(s in "[\\PC]{0,256}") {
         for piece in split_top_level_commas(&s) {
@@ -53,8 +49,8 @@ proptest! {
         prop_assert!(count_top_level_commas(&s) <= raw);
     }
 
-    // A `(args)` built from known terms scans as Terminated, recovers the
-    // arity, and reports `consumed` just past the closing paren.
+    // a constructed (args) scans as Terminated, recovers the arity, and
+    // reports consumed just past the closing paren
     #[test]
     fn scan_top_level_args_recovers_arity_and_consumed(terms in term_list()) {
         let s = format!("{})", terms.join(", "));
@@ -68,7 +64,7 @@ proptest! {
         }
     }
 
-    // `(inner)rest` with a balanced, quote-balanced inner round-trips.
+    // (inner)rest with a balanced, quote-balanced inner round-trips
     #[test]
     fn take_balanced_parens_round_trips(terms in term_list(), rest in " -> [a-z]{1,6}") {
         let inner = terms.join(", ");
@@ -79,8 +75,7 @@ proptest! {
         );
     }
 
-    // No entry point panics on arbitrary input, including multibyte text
-    // that could land a byte index inside a UTF-8 char.
+    // no entry point panics on arbitrary input, even with byte indexes inside UTF-8 chars
     #[test]
     fn entry_points_never_panic(s in "\\PC{0,256}") {
         let _ = split_top_level_commas(&s);

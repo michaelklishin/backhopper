@@ -54,8 +54,7 @@ fn empty_apps_scanned_emits_no_header_line() {
 
 #[test]
 fn parser_accepts_pre_apps_scanned_snapshots_as_empty() {
-    // Snapshots written before `apps-scanned` was added simply lack the
-    // line. The parser must treat that as an empty list, not as an error.
+    // Snapshots written before apps-scanned lack the line: parse as an empty list, not an error.
     let legacy = "\
 # backhopper snapshot
 # format-version: 1

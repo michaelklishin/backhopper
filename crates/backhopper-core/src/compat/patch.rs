@@ -4,8 +4,8 @@
 
 //! `Patch<S>` typestate pipeline plus its public data types.
 //!
-//! The unified-diff parser lives in `compat::diff`; the per-pin evaluator
-//! lives in `compat::evaluate`. This module is the entry point and the
+//! The unified-diff parser is in `compat::diff`; the per-pin evaluator
+//! is in `compat::evaluate`. This module is the entry point and the
 //! type-state glue.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -206,11 +206,8 @@ impl Patch<Raw> {
                         call_args.extend(scan.call_args);
                     }
                 }
-                // A `.schema` file is Erlang fragments embedded in a
-                // config-key DSL. Locating the `fun(...) -> ... end` bodies
-                // needs the whole file and the cuttlefish parser, which
-                // lives above this crate: the caller extracts references
-                // there and injects them with `with_extra_references`.
+                // Schema files embed Erlang fun bodies in a config-key DSL; the
+                // cuttlefish parser sits outside this crate and injects their references.
                 SourceKind::CuttlefishSchema => {}
                 SourceKind::Elixir => {
                     if let Some(path) = file.primary_path() {
@@ -221,8 +218,7 @@ impl Patch<Raw> {
             }
         }
         referenced.sort();
-        // `Added` sorts before `Context` within a kind, so a kind-level
-        // dedup keeps the strongest origin.
+        // Added sorts before Context within a kind, so kind-level dedup keeps the strongest origin.
         referenced.dedup_by(|a, b| a.kind == b.kind);
         defined.sort();
         defined.dedup();
@@ -243,7 +239,7 @@ impl Patch<Raw> {
 /// One pin's filesystem state at evaluation time. Holds the content of
 /// every path the patch touches, or `None` for paths absent at that pin.
 /// Built by the caller (the CLI uses `gix`); the analyzer itself never
-/// knows about git.
+/// touches git.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EvaluationFiles {
     files: BTreeMap<PathBuf, Option<Vec<u8>>>,
@@ -302,7 +298,7 @@ pub use evaluation_state::{Pinned, Scoped, Sourced};
 /// `Pinned` (identity) → `Scoped` (added module/record scope) → `Sourced`
 /// (added file bytes for context-drift checks). Only `Scoped` and
 /// `Sourced` contexts can be evaluated; the `EvaluationInput` trait lets
-/// the evaluator accept either. Per-state data lives inside the marker
+/// the evaluator accept either. Per-state data is stored in the marker
 /// (`extras`), so there are no `Option` fields and no runtime `expect`s.
 ///
 /// `source_snapshot` is optional regardless of state: it carries the
@@ -312,8 +308,7 @@ pub use evaluation_state::{Pinned, Scoped, Sourced};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvaluationContext<S = Scoped> {
     pin: Pin,
-    // Arc: batch evaluation reuses one parsed snapshot across
-    // hundreds of (commit, series) pairs without deep clones
+    // Arc: batch evaluation reuses one parsed snapshot across many (commit, series) pairs without deep clones
     snapshot: Arc<Snapshot<state::Canonical>>,
     source_snapshot: Option<Arc<Snapshot<state::Canonical>>>,
     family_defaults: Option<FamilyDefaults>,
@@ -463,7 +458,7 @@ impl Patch<Analyzed> {
     }
 
     /// True when every changed `.erl` hunk is a Variant A unwrap of
-    /// test-only `-ifdef(TEST)` machinery (see
+    /// test-only `-ifdef(TEST)` guards (see
     /// `InapplicableReason::OnlyTestVisibilityChanged`). Callers stamp
     /// the result onto each `PinVerdict.touched.only_test_visibility`
     /// so the inapplicable promoter can flip the verdict.
@@ -517,9 +512,8 @@ impl Patch<Analyzed> {
         }
         let mut results = Vec::with_capacity(contexts.len());
         let mut context_refs_missing: BTreeMap<ModuleName, usize> = BTreeMap::new();
-        // One pin's tally becomes the series-level content-presence
-        // diagnostic: the one that considered the most hunks, which
-        // in cross-branch mode is the self pin carrying target bytes.
+        // The pin that considered the most hunks supplies the series-level
+        // content-presence diagnostic: in cross-branch mode that is the self pin.
         let mut best_presence: Option<ContentPresence> = None;
         for ctx in contexts {
             let r = evaluate_pin(
@@ -543,8 +537,7 @@ impl Patch<Analyzed> {
                     ));
                 }
             }
-            // Pin scopes are disjoint per project, so summing per-pin
-            // tallies does not double count a module.
+            // Pin scopes are disjoint per project, so summing per-pin tallies does not double count a module.
             for (module, count) in r.context_missing {
                 *context_refs_missing.entry(module).or_insert(0) += count;
             }

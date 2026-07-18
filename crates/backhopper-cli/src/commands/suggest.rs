@@ -53,7 +53,7 @@ pub fn build_suggestions(
     out
 }
 
-// substring before the first underscore: a bare `cowboy` (no underscore) is dropped
+// substring before the first underscore: a bare cowboy (no underscore) is dropped
 fn infer_prefix(module: &ModuleName) -> Option<&str> {
     module.as_str().split_once('_').map(|(p, _)| p)
 }

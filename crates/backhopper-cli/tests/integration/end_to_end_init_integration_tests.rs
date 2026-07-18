@@ -19,7 +19,7 @@ fn init_writes_a_starter_config_with_absolute_snapshot_dir() {
     let body = std::fs::read_to_string(&cfg).unwrap();
     assert!(body.contains("config_version = 1"));
     assert!(body.contains("snapshot_dir"));
-    // Path should be absolute so the P7 trap never bites later.
+    // the path is absolute so a relative snapshot_dir cannot resolve above the config directory
     let snapshot_dir_line = body.lines().find(|l| l.contains("snapshot_dir")).unwrap();
     assert!(
         snapshot_dir_line.contains(tmp.path().to_str().unwrap()),

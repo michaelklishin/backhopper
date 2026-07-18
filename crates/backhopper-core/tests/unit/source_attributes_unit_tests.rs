@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! Byte-level scanner tests for `compat::source_attributes`. Resolver
-//! tests that need a real `TargetTreeIndex` live in
+//! tests that need a real `TargetTreeIndex` are in
 //! `integration/source_attributes_resolve_integration_tests.rs`.
 
 use std::str::FromStr;
@@ -56,9 +56,8 @@ fn function_signatures_classify_definitions_and_calls() {
 
 #[test]
 fn a_binary_literal_argument_counts_as_one_argument() {
-    // commas inside `<<...>>` separate binary segments, not call arguments:
-    // `id(<<1, 2, 3>>)` is arity 1, and reading it as arity 2 would fire a
-    // spurious local-call-undefined-on-target against `id/1`.
+    // commas inside <<...>> separate binary segments, not call arguments:
+    // id(<<1, 2, 3>>) is arity 1; arity 2 would fire a spurious flag against id/1
     let sigs = extract_function_signatures("dump(Entry) -> id(<<1, 2, 3>>).\nid(V) -> V.\n");
     let call = sigs
         .iter()
@@ -69,8 +68,7 @@ fn a_binary_literal_argument_counts_as_one_argument() {
 
 #[test]
 fn a_variable_application_is_not_a_call() {
-    // `Fun(A, B)` calls a variable, not a local function: its lowercase
-    // tail must not be re-lexed as `un/2`.
+    // Fun(A, B) calls a variable, not a local function: its lowercase tail must not re-lex as un/2.
     let sigs = extract_function_signatures("apply(Fun) -> Fun(leader, follower).\n");
     assert!(sigs.iter().all(|s| s.name != "un"));
     assert!(sigs.iter().any(|s| s.name == "apply" && s.is_definition));
@@ -78,8 +76,7 @@ fn a_variable_application_is_not_a_call() {
 
 #[test]
 fn a_variable_application_still_exposes_inner_calls() {
-    // The variable is skipped whole, but a genuine call among its
-    // arguments is still seen.
+    // The variable is skipped whole, but a genuine call among its arguments is still found.
     let sigs = extract_function_signatures("apply(Fun, Q) -> Fun(queue_definition(Q)).\n");
     let call = sigs
         .iter()
@@ -97,8 +94,7 @@ fn an_attribute_form_is_not_a_call() {
 
 #[test]
 fn a_spec_type_is_not_a_call() {
-    // `map()` and `term()` in a spec look like zero-arity calls but are
-    // type references; the following clause is still a definition.
+    // map() and term() in a spec are type references, not zero-arity calls; the next clause still defines.
     let sigs = extract_function_signatures("-spec lookup(map()) -> term().\nlookup(M) -> M.\n");
     assert!(sigs.iter().all(|s| s.name != "map" && s.name != "term"));
     assert!(sigs.iter().any(|s| s.name == "lookup" && s.is_definition));
@@ -106,8 +102,7 @@ fn a_spec_type_is_not_a_call() {
 
 #[test]
 fn subtraction_does_not_start_an_attribute() {
-    // A mid-expression `-` is an operator, not an attribute marker, so
-    // it must not hide the calls around it.
+    // A mid-expression minus is an operator, not an attribute marker: the calls around it stay visible.
     let sigs = extract_function_signatures("total(X) -> high(X) - low(X).\n");
     assert!(sigs.iter().any(|s| s.name == "high" && !s.is_definition));
     assert!(sigs.iter().any(|s| s.name == "low" && !s.is_definition));
@@ -115,8 +110,7 @@ fn subtraction_does_not_start_an_attribute() {
 
 #[test]
 fn a_define_body_call_is_not_a_call() {
-    // Neither the `define` attribute name nor the call in its body is a
-    // local call at this site.
+    // Neither the define attribute name nor the call in its body is a local call here.
     let sigs = extract_function_signatures("-define(MAX, compute(1)).\n");
     assert!(
         sigs.iter()
@@ -126,8 +120,7 @@ fn a_define_body_call_is_not_a_call() {
 
 #[test]
 fn a_call_after_an_attribute_is_still_found() {
-    // The closing `.` ends the attribute, so the following clause and
-    // its call are scanned normally.
+    // The closing period ends the attribute: the following clause and its call scan normally.
     let sigs = extract_function_signatures("-spec start() -> ok.\nstart() -> real_call().\n");
     assert!(sigs.iter().any(|s| s.name == "start" && s.is_definition));
     assert!(
@@ -397,17 +390,15 @@ fn extract_specs_does_not_match_longer_attribute_names() {
 
 #[test]
 fn extract_specs_bitstring_argument_keeps_the_snapshot_arity() {
-    // The shared parser counts `<<_:8, _:_*8>>` as one argument; a
-    // divergent counter here would miskey the table and withhold.
+    // The shared parser counts <<_:8, _:_*8>> as one argument; a divergent count would miskey and withhold.
     let specs = extract_specs("-spec encode(<<_:8, _:_*8>>) -> binary().\n");
     assert!(specs.contains_key(&spec_key("encode", 1)));
 }
 
 #[test]
 fn extract_specs_is_not_derailed_by_a_char_literal_quote() {
-    // `$"` is a char literal, not a string opener: without the `$`
-    // skip, the scanner would swallow everything up to the next `"`,
-    // including the spec.
+    // $" is a char literal, not a string opener: the $ skip keeps the scanner
+    // from consuming everything up to the next double quote, including the spec.
     let src = "quote() -> [$\", $-].\n-spec info(state()) -> list().\n";
     let specs = extract_specs(src);
     assert!(specs.contains_key(&spec_key("info", 1)));
@@ -450,8 +441,7 @@ fn macro_values_keep_commas_inside_the_body() {
     assert_eq!(values["PAIR"][0].body, "{a, b}");
 }
 
-// A multi-line attribute body must not undercount the line of every
-// attribute that follows it.
+// A multi-line attribute body must not undercount the lines of following attributes.
 #[test]
 fn exported_type_line_survives_a_multiline_earlier_attribute() {
     let src = "-module(m).\n-export_type([\n    a/0,\n    b/0]).\n-export_type([c/0]).\n";

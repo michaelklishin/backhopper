@@ -96,9 +96,7 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<Comma
     }
     let build_system = BuildSystem::detect(&args.repo_dir_path);
     let library_apps = resolve_library_apps(&args, &discovery.specs);
-    // A broken config must not silently degrade to "no extra rules":
-    // workflows rely on configured rules firing. Having no config at
-    // all stays silent; there are no rules to lose.
+    // a broken config must not degrade to no extra rules; no config at all stays silent
     let cfg = match load_config(global) {
         Ok(c) => Some(c),
         Err(e) if global.config_file_path.is_some() => return Err(e),
@@ -115,8 +113,7 @@ fn run_suites_plan(global: &GlobalArgs, args: SuitesPlanArgs) -> CliResult<Comma
         .as_ref()
         .map(|c| c.suite_rules.clone())
         .unwrap_or_default();
-    // Rules from the file are unioned with the config's, validated the
-    // same way, so a rule can be passed per-invocation.
+    // file rules are unioned with the config's and validated the same way
     if let Some(path) = &args.extra_rules_file_path {
         let text = fs::read_to_string(path)?;
         extra_rules.extend(parse_suite_rules_toml(&text).map_err(CoreError::from)?);
@@ -289,8 +286,7 @@ fn render_plan(
 }
 
 fn build_system_hint(bs: BuildSystem, result: &SuitePlan) -> Option<&'static str> {
-    // Uncovered candidates and broad-impact rows want the run hint just
-    // as much as selected entries do.
+    // uncovered candidates and broad-impact rows need the run hint as much as selected entries
     if result.is_empty() && result.uncovered.is_empty() && result.broad_impact.is_empty() {
         return None;
     }

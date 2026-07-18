@@ -15,8 +15,7 @@ use backhopper_driver::types::{
 };
 use serde_json::json;
 
-// Naming the symbol-axis types through the façade guards the
-// re-exports: drop one and this stops compiling.
+// naming the symbol-axis types through the crate root guards the re-exports at compile time
 #[allow(dead_code)]
 struct NamesEveryReexport<'a> {
     a: &'a TargetFindings,

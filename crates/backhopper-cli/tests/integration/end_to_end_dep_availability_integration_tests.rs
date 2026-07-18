@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The 2026-06-10 round in miniature: a commit in an untracked repo
+//! A real backport round in miniature: a commit in an untracked repo
 //! area calls a tracked dep both directly and through `fun M:F/A`.
 //! Against the pre-bump pin the verdict is `requires_adaptation`
 //! naming the tag that satisfies it; against the post-bump pin it is
@@ -41,8 +41,7 @@ const USER_V1: &str = r#"
 head() -> ok.
 "#;
 
-// `multi/2` exercises arity counting through a nested tuple; the fun
-// ref is the round's exact miss shape.
+// multi/2 counts arity through a nested tuple; the fun ref reproduces a previously missed reference shape
 const USER_V2: &str = r#"
 -module(user_mod).
 -export([head/0, go/1]).
@@ -210,9 +209,7 @@ fn docs_only_commit_stays_inapplicable() {
     assert_eq!(pin["verdict"]["verdict"], "inapplicable");
 }
 
-// The post-cache placement test: an entry stored while the later tag
-// had no snapshot must reclassify on retrieval once the snapshot
-// exists. The tag set is deliberately not a cache-key input.
+// an entry stored while the later tag had no snapshot must reclassify on retrieval: the tag set is not a cache-key input
 #[test]
 fn cached_verdict_reclassifies_once_a_later_snapshot_appears() {
     let f = build_fixture();
@@ -270,8 +267,7 @@ fn unattributed_paths_surface_in_diagnostics() {
     );
 }
 
-// The batch loop applies the probe per row, after its own cache
-// join point.
+// the batch loop applies the probe per row, after its own cache join point
 #[test]
 fn batch_rows_reclassify_with_the_satisfying_tag() {
     let f = build_fixture();

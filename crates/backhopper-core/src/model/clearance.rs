@@ -253,8 +253,7 @@ impl RoundClearance {
         target.by_class = target_by_class.into_iter().collect();
 
         let blocking = verdicts.is_blocking();
-        // findings gate on non-empty: the same reasons on an
-        // applicable pin read at least requires-adaptation
+        // non-empty findings need attention even when non-blocking
         let exit_code = if blocking || apply.has_conflict() || target.has_findings() {
             exit::NEEDS_ATTENTION
         } else {

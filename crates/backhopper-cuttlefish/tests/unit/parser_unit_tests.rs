@@ -112,7 +112,7 @@ fn unrelated_top_level_tuples_are_skipped() {
 
 #[test]
 fn fun_body_with_nested_case_end_is_kept_intact() {
-    // `after_inner_end:f` follows a nested `case ... end`: stopping at the first `end` would miss it
+    // after_inner_end:f follows a nested case ... end: stopping at the first end would miss it
     let body = r#"
 {translation, "k",
  fun(Conf) ->
@@ -134,7 +134,7 @@ fn fun_body_with_nested_case_end_is_kept_intact() {
 
 #[test]
 fn erlang_char_literal_inside_body_does_not_confuse_brace_counter() {
-    // `${` and `$}` are char literals: the parser must skip past `$` so the `{`/`}` do not affect the brace stack
+    // ${ and $} are char literals: the parser must skip past $ so the braces do not affect the brace stack
     let body = r#"
 {translation, "k",
  fun(Conf) ->
@@ -153,8 +153,7 @@ fn erlang_char_literal_inside_body_does_not_confuse_brace_counter() {
 
 #[test]
 fn dollar_quote_char_literal_inside_body_is_not_a_string_opener() {
-    // `$"` is the Erlang character literal for `"`. A naive parser that
-    // hands `"` to the string-skipper here would eat the rest of the body.
+    // $" is a char literal: treating its quote as a string opener would consume the rest of the body
     let body = r#"
 {translation, "k",
  fun(Conf) ->
@@ -172,8 +171,7 @@ fn dollar_quote_char_literal_inside_body_is_not_a_string_opener() {
 
 #[test]
 fn fun_keyword_inside_description_string_does_not_anchor_outer_fun() {
-    // The description string mentions the word "fun" before the real
-    // `fun(...) -> ... end`. The outer-fun locator must skip strings.
+    // the description string contains the word "fun" before the real one: the outer-fun locator must skip strings
     let body = r#"
 {validator, "k", "must call rabbit_cuttlefish:body_marker via the fun",
  fun(V) ->

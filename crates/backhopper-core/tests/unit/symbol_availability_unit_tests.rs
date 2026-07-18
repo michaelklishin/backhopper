@@ -131,8 +131,7 @@ fn arity_changed_gets_the_symmetric_treatment() {
     }
 }
 
-// A pin with one bump-satisfiable miss and one genuine miss must stay
-// incompatible: the bump alone does not make the pick land.
+// One bump-satisfiable miss and one genuine miss: the pin stays incompatible.
 #[test]
 fn mixed_reasons_keep_the_blocking_classification() {
     let mut eval = evaluation(vec![PinVerdict::new(

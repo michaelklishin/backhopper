@@ -94,8 +94,7 @@ fn content(evaluation: &SeriesEvaluation) -> Option<&ContentPresence> {
 proptest! {
     #[test]
     fn applied_tree_reports_applied_and_base_tree_does_not(
-        // distinct enough lines that the injected marker cannot
-        // collide with base content
+        // lines distinct enough that the injected marker cannot collide with base content
         base in vec("[a-z][a-z0-9_]{2,18}\\(\\) -> ok\\.", 1..12),
         pos_seed in 0usize..64,
     ) {
@@ -120,9 +119,8 @@ proptest! {
         let on_patched = evaluate(&diff, &patched_content(&base, pos));
         let p = content(&on_patched).expect("insertion hunks are considered");
         prop_assert_eq!(p.hunks_considered, 1);
-        // the marker splits the context block (or extends it at the
-        // edges), so the hunk reports applied or, at the file edges
-        // where the context survives contiguously, ambiguous
+        // the marker splits or edge-extends the context block: the hunk reports
+        // applied, or ambiguous at file edges where the context stays contiguous
         prop_assert_eq!(p.hunks_already_applied + p.hunks_ambiguous, 1);
     }
 }

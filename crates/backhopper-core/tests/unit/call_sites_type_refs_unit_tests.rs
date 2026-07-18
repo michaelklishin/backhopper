@@ -131,7 +131,7 @@ fn scanner_treats_export_attribute_as_body() {
 #[test]
 fn scanner_treats_minus_prefixed_function_names_as_body() {
     let mut s = AttrCtxScanner::new();
-    // A function named `spectacular` should not look like `-spec`.
+    // A function named spectacular should not look like -spec.
     assert_eq!(s.classify("spectacular(X) -> X."), RefContext::Body);
 }
 

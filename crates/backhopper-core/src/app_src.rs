@@ -39,7 +39,7 @@ pub struct DiscoveryOutput {
     pub warnings: Vec<DiscoveryWarning>,
 }
 
-/// Directories the walker skips entirely. Common build-output and
+/// Directories skipped entirely during discovery. Common build-output and
 /// vendored-dependency layouts: rebar3's `_build`, Erlang.mk's
 /// `_rel` and `logs`, npm-style `node_modules`, Nix's `.direnv`,
 /// plus `.git`. `target` is included so cross-language repos that
@@ -55,7 +55,7 @@ pub const SKIP_DIRS: &[&str] = &[
 ];
 
 /// Resolves a file path under `repo_root` to the application it
-/// belongs to: the app whose `.app.src` lives in the deepest shared
+/// belongs to: the app whose `.app.src` sits in the deepest shared
 /// prefix of `path`.
 pub fn application_of_path<'a>(
     apps: &'a [AppSrcSpec],

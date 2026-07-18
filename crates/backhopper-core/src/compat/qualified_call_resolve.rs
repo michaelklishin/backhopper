@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! Resolves qualified `m:f/a` calls a patch adds against the called
-//! module's exports on the target tree: the snapshot-free counterpart
+//! module's exports on the target tree: the snapshot-free equivalent
 //! of `local_call_resolve` for the qualified case. A call is flagged
 //! only when its module is first-party (present on the target tree and
 //! covered by no pin snapshot), the export set is fully readable, and
@@ -136,8 +136,7 @@ pub fn resolve_qualified_reference(
     };
     let is_exported = surface.exports.exports.contains(key);
     let path = surface.path.clone();
-    // A callee the patch itself introduces has no meaningful
-    // pre-existing shape on either tree.
+    // a callee the patch introduces has no pre-existing shape on either tree
     if ctx
         .patch_added
         .functions
@@ -147,8 +146,7 @@ pub fn resolve_qualified_reference(
         return;
     }
     if is_exported {
-        // A spec the patch rewrites lands on the target with the pick:
-        // no pre-existing drift to compare.
+        // a spec the patch rewrites has no pre-existing drift to compare
         if ctx
             .patch_added
             .specs
@@ -192,7 +190,7 @@ pub fn resolve_qualified_reference(
     });
 }
 
-/// Where a called module sits relative to this axis. Only `FirstParty`
+/// How a called module is classified for this axis. Only `FirstParty`
 /// is resolved; the other two are withheld, so a dependency call or an
 /// OTP call cannot be flagged by construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,7 +282,7 @@ struct TargetModuleSurface {
 /// commit; `read_source` reads it from the source checkout (`None`
 /// when no checkout is available, which withholds every shape check).
 /// `covered_modules` is the union of every pin snapshot's modules: a
-/// call into one of them is the snapshot axis's, not this one's. One
+/// call into one of them is resolved by the snapshot axis, not this one. One
 /// reason per `(file, module, function, arity)`.
 pub fn analyse_qualified_calls(
     subjects: &[ContextAwareSubject<'_>],
@@ -398,7 +396,7 @@ pub fn analyse_indirect_elixir_calls(
 }
 
 /// The reasons and tally the indirect-reference axis produces on its
-/// own, so the Elixir path can be wired beside the qualified stream.
+/// own, so the Elixir path can run beside the qualified-call axis.
 #[derive(Debug, Default)]
 pub struct IndirectCallAnalysis {
     pub reasons: Vec<Reason>,

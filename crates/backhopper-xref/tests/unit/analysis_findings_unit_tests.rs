@@ -40,8 +40,7 @@ fn mname(s: &str) -> ModuleName {
     ModuleName::new(s.to_owned()).unwrap()
 }
 
-// The ra_machine behaviour: init/1 and apply/3 are required, state_enter/2
-// is optional. Taken from ra's real -callback set.
+// From ra's real -callback set: init/1 and apply/3 required, state_enter/2 optional.
 const RA_MACHINE: &str = "-module(ra_machine).\n\
     -callback init(Conf :: map()) -> term().\n\
     -callback apply(Meta :: map(), Command :: term(), State) -> {State, term()}.\n\
@@ -73,9 +72,7 @@ fn undefined_function_calls_render_and_is_clean() {
     assert!(clean.undefined_function_calls().is_clean());
 }
 
-// ra_counters:init/0 really calls application:ensure_all_started/1, an OTP
-// function absent from the graph. Injecting it as a builtin clears the
-// otherwise-undefined call.
+// Injecting graph-absent application:ensure_all_started/1 as a builtin clears the undefined call.
 #[test]
 fn with_builtins_suppresses_known_otp_call() {
     let src = &[(
@@ -112,8 +109,7 @@ fn locals_not_used_render_and_is_clean() {
     assert!(format!("{l}").contains("unused local: ra_server:stale_helper/0"));
 }
 
-// A function named in -on_load is reachable from the runtime even when no
-// in-module call references it, so it must not be flagged dead.
+// A function named in -on_load is reachable from the runtime, so never flagged dead.
 #[test]
 fn on_load_function_is_not_flagged_unused_local() {
     let x = build(&[(
@@ -134,9 +130,8 @@ fn on_load_function_is_not_flagged_unused_local() {
     );
 }
 
-// An export that satisfies a behaviour callback is kept out of the
-// dead-export verdict by the satisfies_callback flag, even when nothing in
-// the graph calls it.
+// satisfies_callback keeps a behaviour-callback export out of the dead-export
+// verdict even when nothing in the graph calls it.
 #[test]
 fn behaviour_callback_export_is_marked_satisfying() {
     let x = build(&[
@@ -219,8 +214,8 @@ fn calls_from_render_and_is_clean() {
     assert!(text.contains("ra_log:append/1"));
 }
 
-// Dynamic dispatch through a variable module is unresolved by definition,
-// the exact shape ra_server uses to invoke the configured state machine.
+// Dispatch through a variable module is unresolved by definition: the shape
+// ra_server uses to call the configured state machine.
 #[test]
 fn unresolved_calls_render_and_is_clean() {
     let x = build(&[(
@@ -233,12 +228,10 @@ fn unresolved_calls_render_and_is_clean() {
     assert!(format!("{r}").contains("ra_server:apply_cmd/3"));
 }
 
-// ra_counters really depends on seshat (ra_counters:init/0 ->
-// seshat:new_group/1), an honest cross-module edge.
+// ra_counters:init/0 -> seshat:new_group/1 is a real cross-module edge.
 #[test]
 fn module_dependencies_is_clean() {
-    // The deps/<app>/src layout is what assigns each module to its
-    // application; bare file names would leave the application unset.
+    // The deps/<app>/src layout assigns the application; bare file names would leave it unset.
     let mut b = XrefBuilder::new().with_layout(ProjectLayout::rabbitmq_main());
     add(
         &mut b,

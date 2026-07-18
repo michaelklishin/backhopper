@@ -195,7 +195,7 @@ pub struct ProjectRaw {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectKind {
-    /// Snapshots come from cloning `git_url` and walking its tags. The default.
+    /// Snapshots come from cloning `git_url` and reading its tags. The default.
     External,
     /// Snapshots are produced from the working repo at `--repo-dir-path`, at
     /// a `git_ref` resolved per pin. There can be at most one self-project.
@@ -444,7 +444,7 @@ pub struct SeriesRaw {
     /// series-pin coverage warning for the named pairs.
     #[serde(default)]
     pub untracked_projects: Vec<String>,
-    /// The target checkout this series' branch lives in, for
+    /// The target checkout that holds this series' branch, for
     /// `check cascade` and for single-series verbs run without
     /// `--target-repo-dir-path`. Authoritative for backhopper; q-port
     /// holds its own copy and cross-checks it.
@@ -457,8 +457,7 @@ pub struct SeriesRaw {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-// deny_unknown_fields has no effect on an untagged enum: serde buffers
-// into a Content map first, so a typo'd pin key is not rejected here
+// deny_unknown_fields is inert on untagged enums, so a typo'd pin key is not rejected here
 #[serde(untagged)]
 pub enum PinRaw {
     Literal {
@@ -680,7 +679,7 @@ pub struct Series {
     /// Tracked projects this series deliberately does not pin.
     #[serde(default)]
     pub untracked_projects: Vec<ProjectName>,
-    /// The target checkout this series' branch lives in.
+    /// The target checkout that holds this series' branch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_repo_dir_path: Option<PathBuf>,
     /// Ref within that checkout; `HEAD` when omitted.
@@ -871,7 +870,7 @@ impl Config {
 
 /// Parse a standalone TOML file of extra suite rules: the same
 /// `[[suite_rule]]` shape the config accepts, validated identically so
-/// the trailing-slash and unknown-placeholder footguns fail fast.
+/// the trailing-slash and unknown-placeholder mistakes fail fast.
 pub fn parse_suite_rules_toml(text: &str) -> Result<Vec<ExtraRule>, ConfigError> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]

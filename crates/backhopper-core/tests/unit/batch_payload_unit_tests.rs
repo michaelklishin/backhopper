@@ -221,8 +221,7 @@ fn resolver_coverage_and_fingerprint_version_round_trip() {
     assert_eq!(back.fingerprint_version, Some(FINGERPRINT_VERSION));
 }
 
-// An old producer omits both fields; they deserialize to None, not an
-// empty coverage that would read as "checks nothing".
+// An old producer omits both fields; they deserialize to None, not an empty coverage.
 #[test]
 fn a_pre_field_producer_parses_both_as_none() {
     let json = r#"{"queried_against":[],"results":[],"self_projects":[]}"#;
@@ -242,8 +241,7 @@ fn pin_payload_projects_from_a_resolved_pin() {
     assert_eq!(payload.tag, pin.tag);
 }
 
-// The owned projection moves every shared field and drops the batch-only
-// ones, so a consumer needs no field-by-field repack.
+// The owned projection moves every shared field and drops the batch-only ones.
 #[test]
 fn batch_result_converts_into_series_evaluation() {
     use backhopper_core::model::verdict::SeriesEvaluation;

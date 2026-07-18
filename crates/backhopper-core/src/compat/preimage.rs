@@ -96,16 +96,14 @@ pub(crate) fn tally_postimage(
     if find_subsequence(&postimage, target_lines).is_none() {
         return;
     }
-    // An empty preimage classifies `Exact`, so added files must be
-    // decided by the postimage alone.
+    // An empty preimage classifies Exact, so added files are decided by the postimage alone.
     let pre_matches = !preimage_empty && !matches!(pre, PreimageMatch::Missing { .. });
     if pre_matches {
         tally.ambiguous += 1;
         entry.ambiguous += 1;
         return;
     }
-    // Context lines make the postimage block a distinctive needle; a
-    // context-less near-empty block is too weak to call applied.
+    // A context-less near-empty postimage block is too weak to call applied.
     if context == 0 && postimage.len() < 2 {
         tally.low_confidence += 1;
         entry.low_confidence += 1;
@@ -123,7 +121,7 @@ pub(crate) enum PreimageMatch {
 }
 
 /// Classify how the hunk's preimage block (Context and Removed lines)
-/// matches against `target_lines`. `Exact` is the happy path (preimage
+/// matches against `target_lines`. `Exact` is the common case (preimage
 /// at `hunk.old_start - 1`); `Drifted` recovers an offset; `Missing`
 /// returns up to the first three preimage lines as an excerpt.
 pub(crate) fn classify_preimage(hunk: &Hunk, target_lines: &[&str]) -> PreimageMatch {

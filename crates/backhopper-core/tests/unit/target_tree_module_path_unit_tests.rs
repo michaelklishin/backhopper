@@ -44,8 +44,7 @@ fn a_module_with_no_erl_file_is_none() {
     assert_eq!(idx.module_erl_path(&module("absent")), None);
 }
 
-// A basename seen twice is a clash Erlang itself rejects, so the index
-// records neither: a qualified call to it classifies Unknown.
+// A duplicate basename is a clash Erlang rejects: the index records neither, calls classify Unknown.
 #[test]
 fn a_basename_collision_resolves_to_none() {
     let idx = index(&["deps/a/src/dup.erl", "deps/b/src/dup.erl"]);

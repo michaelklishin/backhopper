@@ -11,7 +11,7 @@ use serde_json::json;
 
 #[test]
 fn check_payload_round_trips_and_keeps_the_skip_rules() {
-    // a captured `check` envelope's `data` section
+    // a captured check envelope's data section
     let wire = json!({
         "queried_against": { "kind": "pin", "project": "ra", "tag": "v3.1.6" },
         "results": {

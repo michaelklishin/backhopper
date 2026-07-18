@@ -39,7 +39,7 @@ pub enum Fallthrough {
     Panic,
 }
 
-/// Predicate describing the invocations a handler claims.
+/// Predicate describing the invocations a handler matches.
 pub enum MockMatcher {
     /// Any invocation of `verb`.
     Verb(Verb),

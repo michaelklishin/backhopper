@@ -374,7 +374,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
 
 /// A single-series run without `--target-repo-dir-path` picks the
 /// target up from the series config; explicit flags win, and the
-/// config's `target_ref` rides along only when the config's dir was
+/// config's `target_ref` is applied only when the config's dir was
 /// used. Multi-series `check batch` deliberately does not default.
 fn effective_target_args(
     cfg: &Config,
@@ -706,7 +706,7 @@ fn range_patch_bytes(repo: &Path, range: Option<&str>) -> CliResult<Vec<u8>> {
     Ok(text.into_bytes())
 }
 
-/// The content-key patch component. Empty diffs share one sentinel:
+/// The content-key patch component. Empty diffs share one marker value:
 /// they are cached uniformly, keyed by everything else.
 fn patch_hash_for_key(bytes: &[u8]) -> String {
     normalized_patch_hash(bytes).unwrap_or_else(|| "empty".to_owned())
@@ -758,8 +758,7 @@ fn apply_target_context(
     let findings =
         target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
     target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
-    // the row-level copy of each symbol-axis stream: the pin merge
-    // drops reasons on inapplicable pins, this field survives them
+    // the row-level copy of each symbol-axis stream: the pin merge drops reasons on inapplicable pins, this field keeps them
     let mut target_findings = TargetFindings::default();
     let mut apply_forecast = ApplyForecast::default();
     // one target-repo handle drives every symbol axis and the apply pass
@@ -907,8 +906,7 @@ impl AlreadyPresentProbe {
     }
 
     fn detect(&self, candidate: &CandidateIdentity) -> Result<AlreadyOnTarget, GitError> {
-        // Trailer-origin ancestry first: it needs no walk and works
-        // even when the candidate object is absent from the target.
+        // trailer-origin ancestry first: it needs no walk and works when the candidate object is absent from the target
         if let Some(m) =
             trailer_origin_on_target(&self.target, &candidate.trailer_origins, &self.tip)?
         {
@@ -981,7 +979,8 @@ impl DepPinProbe {
 
     /// Attach divergent pins reachable from the patch's touched apps.
     /// When no touched path resolves to an application the full
-    /// divergent set is attached instead: coarse beats silent.
+    /// divergent set is attached instead: a coarse answer is better
+    /// than none.
     fn apply(&self, sha: &CommitSha, evaluation: &mut SeriesEvaluation) {
         if let Some(memoized) = self.by_commit.borrow().get(sha) {
             evaluation
@@ -1027,8 +1026,7 @@ impl DepPinProbe {
             return Vec::new();
         }
         let apps = self.apps_at_commit(sha);
-        // Blob paths from git are repo-relative; an empty root keeps
-        // them comparable with the equally relative touched paths.
+        // blob paths from git are repo-relative; an empty root keeps them comparable with the touched paths
         let repo_root = Path::new("");
         let touched_apps: BTreeSet<&ApplicationName> = evaluation
             .touched_paths
@@ -1144,8 +1142,7 @@ fn run_check_patch(
     )?;
     let target = effective_target_args(cfg, selector, target);
     let target_ctx = target_repo::build_context(&target, &cfg.path_translations, repo_dir_path)?;
-    // patch, pr, and range inputs have no stable content address; the
-    // two flags rescan state that lives outside the cache key
+    // patch, pr, and range inputs have no stable content address: the two flags rescan state outside the cache key
     let cache_bypass = provenance.is_none()
         || diagnostics.resolve_untracked_modules
         || diagnostics.suggest_prereqs;
@@ -1162,8 +1159,7 @@ fn run_check_patch(
             target_ctx.as_ref(),
         )
     });
-    // computed before the key is consumed by lookup; cheap, so it
-    // rides every path including the cache hit
+    // computed before the key is consumed by lookup; cheap enough to run on every path including the cache hit
     let verdict_fingerprint = key
         .as_ref()
         .and_then(|k| k.fingerprint(&patch_hash_for_key(bytes)));
@@ -1235,17 +1231,14 @@ fn run_check_patch(
         }
     };
     session.report();
-    // Availability runs post-cache: the project's tag set is not a
-    // cache-key input, so cached values stay unclassified on disk.
+    // availability runs post-cache: the tag set is not a cache-key input, so cached values stay unclassified on disk
     AvailabilityProbe::new(cfg, &store, &cache).apply(&mut evaluation);
     // same contract for bump assessment: store state is not in the key
     if diagnostics.auto_generate {
         BumpSnapshotGenerator::new(args, cfg).apply(&store, &evaluation);
     }
     PinBumpAssessor::new(cfg, &store).apply(&mut evaluation);
-    // prereq promotion stays out of the cached value so batch rows
-    // and check rows share entries; it commutes with the target merge
-    // (it only rewrites MissingSymbol reasons)
+    // prereq promotion stays out of the cached value so batch and check rows share entries; it only rewrites MissingSymbol reasons
     promote_self_missing_to_prereq(
         &mut evaluation,
         cfg,
@@ -1464,8 +1457,7 @@ fn render_terse(evaluation: &SeriesEvaluation, exit: CommandOutcome) -> CliResul
 }
 
 fn dominant_scope(results: &[PinVerdict]) -> &'static str {
-    // Every pin shares the same `TouchedKinds` (stamped from the patch once
-    // in `evaluate_one`), so reading the first is enough.
+    // every pin shares the same TouchedKinds stamped once from the patch, so reading the first is enough
     let Some(t) = results.first().map(|r| &r.touched) else {
         return "empty";
     };
@@ -1498,7 +1490,7 @@ fn apply_suggestions_to_config(
     let updated =
         append_suggestions_to_config(&existing, suggestions).map_err(CliError::InvalidInput)?;
     fs::write(config_path, updated).map_err(CliError::Io)?;
-    // tracing::info! honors --quiet and --verbose levels via the global subscriber
+    // tracing::info! obeys --quiet and --verbose levels via the global subscriber
     tracing::info!(
         appended = suggestions.len(),
         config_path = %config_path.display(),
@@ -1579,7 +1571,7 @@ fn render_text(
     Ok(())
 }
 
-/// Always on: this is the breadcrumb behind an
+/// Always on: this is the supporting detail behind an
 /// `inapplicable { untracked }` verdict, wanted exactly when the
 /// user wonders why nothing was analyzed.
 fn render_unattributed_paths(w: &mut dyn Write, diagnostics: &Diagnostics) -> CliResult<()> {
@@ -2042,7 +2034,7 @@ fn evaluate_one(
 }
 
 /// Touched paths no configured project owns, keyed by their first two
-/// path components. The breadcrumb behind `Inapplicable { Untracked }`.
+/// path components. The supporting detail behind `Inapplicable { Untracked }`.
 fn tally_unattributed_paths(touched: &[PathBuf], projects: &[&Project]) -> BTreeMap<String, usize> {
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
     for path in touched {
@@ -2133,7 +2125,7 @@ fn promote_self_missing_to_prereq(
     evaluation.verdict = SeriesVerdict::from_results(new_results);
 }
 
-// shells out to `git log -S`: `gix` lacks a pickaxe walker today
+// shells out to git log -S: gix lacks a pickaxe walker today
 #[allow(clippy::disallowed_methods)]
 fn suggest_prereq_sha(
     symbol: &SymbolRef,
@@ -2351,8 +2343,7 @@ fn evaluate_batch(
         });
     }
     for planned in plan.commits() {
-        // resolved lazily: only a miss pays for the diff, the macro
-        // environment, or the file map
+        // resolved lazily: only a miss pays for the diff, the macro environment, or the file map
         let mut input: Option<ResolvedPatchInput> = None;
         let mut source_files: Option<FileMap> = None;
         let mut macro_env: Option<MacroEnv> = None;
@@ -2422,8 +2413,7 @@ fn evaluate_batch(
                 }
                 Ok(evaluation)
             };
-            // captured per outcome: a hit reads it from the entry (no
-            // patch needed), a miss computes it before storing
+            // captured per outcome: a hit reads it from the entry, a miss computes it before storing
             let (mut evaluation, verdict_fingerprint) = match lookup {
                 SessionLookup::Hit(cached) => (*cached.evaluation, cached.fingerprint),
                 SessionLookup::Bypassed => (evaluate(&mut source_files)?, None),
@@ -2622,8 +2612,7 @@ fn render_cascade_text(
             any_conflict |= conflicted;
             let has_findings = row.target_findings.as_ref().is_some_and(|t| !t.is_empty());
             any_finding |= has_findings;
-            // the trailing markers keep both target axes visible
-            // beside the verdict without widening the matrix
+            // trailing markers keep both target axes visible beside the verdict without widening the matrix
             let marker = match (conflicted, has_findings) {
                 (true, true) => "*!",
                 (true, false) => "*",
@@ -2841,8 +2830,7 @@ pub fn render_batch_text(
         for reason in findings_the_pins_do_not_show(&r.verdict, r.target_findings.as_ref()) {
             writeln!(w, "  target finding: {}", reason_detail(reason))?;
         }
-        // Shown only when non-zero so a clean round's rows stay terse;
-        // it points the reviewer at the rows the header total came from.
+        // shown only when non-zero so a clean round's rows stay terse; it points at the rows behind the header total
         let tracked = non_self_tracked(&r.verdict.results, self_projects);
         if tracked > 0 {
             writeln!(w, "  tracked refs: {tracked} (see --explain)")?;
@@ -2861,8 +2849,8 @@ pub fn render_batch_text(
     Ok(())
 }
 
-/// Renders the round-level roll-up. The match is the type-state lever:
-/// a clean round can only be reported through the `Clean` arm, which
+/// Renders the round-level roll-up. The match enforces that a clean
+/// round can only be reported through the `Clean` arm, which
 /// states its negatives so a vacuous round proves it was checked.
 pub fn render_clearance(w: &mut dyn Write, clearance: &RoundClearance) -> CliResult<()> {
     let f = clearance.facts();
@@ -3060,8 +3048,8 @@ fn render_bump_summary_line(w: &mut dyn Write, bumps: &BumpSummary) -> CliResult
 }
 
 /// Distinct inapplicability reason labels for one row, sorted. The
-/// round histogram lives in the clearance header; this is the per-row
-/// breadcrumb.
+/// round histogram is in the clearance header; this is the per-row
+/// detail.
 fn row_inapplicable_reasons(results: &[PinVerdict]) -> Vec<&'static str> {
     let mut seen = BTreeSet::new();
     for pin in results {

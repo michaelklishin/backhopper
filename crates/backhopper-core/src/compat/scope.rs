@@ -4,8 +4,8 @@
 
 //! Per-pin and series-wide tracked-scope filters.
 //!
-//! A call site `mod:fun(...)` only deserves a verdict when `mod` belongs
-//! to a project the operator is actually tracking. Otherwise its
+//! A call site `mod:fun(...)` only gets a verdict when `mod` belongs
+//! to a project the user is actually tracking. Otherwise its
 //! "absence" from the pin's snapshot is meaningless.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,7 +74,7 @@ impl PinScope {
 
 /// Parses `extra_modules` from raw config strings. Invalid entries are
 /// dropped with a `tracing::warn`: the caller treats `parse_module_names`
-/// as best-effort but operators get a diagnostic for the bad string.
+/// as best-effort but users get a diagnostic for the bad string.
 pub fn parse_module_names<'a>(raw: impl IntoIterator<Item = &'a String>) -> Vec<ModuleName> {
     raw.into_iter()
         .filter_map(|s| match ModuleName::from_str(s) {

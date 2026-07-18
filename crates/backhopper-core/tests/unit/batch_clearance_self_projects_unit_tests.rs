@@ -99,7 +99,7 @@ fn self_inferred_uses_the_wire_set() {
     let payload = payload(results, Some(set.clone()));
     let inferred = payload.clearance_self_inferred().expect("self set present");
     assert_eq!(inferred, payload.clearance(&set));
-    // The self pin's nine refs do not count; only `ra`'s four do.
+    // The self pin's nine refs do not count; only ra's four do.
     assert_eq!(inferred.facts().tracked, 4);
 }
 
@@ -153,7 +153,7 @@ fn present_empty_self_set_round_trips_distinct_from_absent() {
     assert_eq!(back.self_projects, Some(BTreeSet::new()));
     assert!(back.clearance_self_inferred().is_some());
 
-    // An old producer omits the key; serde default leaves it `None`.
+    // An old producer omits the key; serde default leaves it None.
     let absent: BatchPayload =
         serde_json::from_value(serde_json::json!({ "queried_against": [], "results": [] }))
             .unwrap();
@@ -183,8 +183,7 @@ fn snapshot_missing_bump_is_findings_even_with_zero_tracked() {
 
 #[test]
 fn self_set_is_round_global_across_series() {
-    // The self project appears in every series; the round-global total
-    // equals the sum of non-self refs across both series.
+    // The round-global total sums non-self refs across both series.
     let results = vec![
         row(
             'a',

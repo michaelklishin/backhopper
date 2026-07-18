@@ -26,8 +26,7 @@ fn content_drift_changes_the_hash() {
 
 #[test]
 fn distinct_invalid_byte_runs_do_not_collide() {
-    // a lossy UTF-8 decode would map both 0xFF and 0xFE to U+FFFD and
-    // collide these two diffs; hashing raw bytes keeps them distinct
+    // a lossy UTF-8 decode would map both 0xFF and 0xFE to U+FFFD and collide these diffs
     let a = [b'+', 0xFF, b'\n'];
     let b = [b'+', 0xFE, b'\n'];
     assert_ne!(normalized_patch_hash(&a), normalized_patch_hash(&b));

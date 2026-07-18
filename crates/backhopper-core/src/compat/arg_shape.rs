@@ -9,7 +9,7 @@
 //! one entry per actual. Matching is per-position: each call argument
 //! must `satisfies` the clause's pattern at the same position.
 //!
-//! `Unknown` is the safe escape hatch: when the extractor cannot
+//! `Unknown` is the safe fallback: when the extractor cannot
 //! classify an actual or pattern with confidence, it emits `Unknown`,
 //! and matching always accepts `Unknown` on either side so no false
 //! positives result.

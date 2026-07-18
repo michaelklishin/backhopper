@@ -4,7 +4,7 @@
 
 //! Property tests for the `bel7-cli` integration surfaces in the CLI:
 //! every `TableStyle` parses round-trip; every `CompletionShell` value
-//! survives parsing through the top-level argv. The index is taken
+//! round-trips through the top-level argv. The index is taken
 //! modulo the live variant count so a new variant in `bel7-cli`
 //! does not silently drop out of coverage.
 

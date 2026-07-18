@@ -4,7 +4,7 @@
 
 //! Detection duality: render a pin map and a set of edits to a
 //! unified diff, detect, and recover exactly the edit set. Unchanged
-//! pins ride as context lines, so this also pins "context never
+//! pins appear as context lines, so this also pins "context never
 //! produces a bump" structurally.
 
 use std::collections::BTreeMap;

@@ -148,9 +148,8 @@ fn run_invocation(
 
     let stdout_overflow = Arc::new(AtomicBool::new(false));
     let stderr_overflow = Arc::new(AtomicBool::new(false));
-    // drain stdout and stderr before writing stdin: a child that fills its
-    // output pipe while we are still feeding a large stdin would otherwise
-    // deadlock, with both sides blocked on a full pipe
+    // drain stdout and stderr before writing stdin, or a child that fills its
+    // output pipe while we feed a large stdin deadlocks
     let stdout_thread =
         stdout_handle.map(|h| spawn_reader(h, stdout_cap, Arc::clone(&stdout_overflow)));
     let stderr_thread =
@@ -267,9 +266,8 @@ fn spawn_reader(
     })
 }
 
-// Read-only wait-loop inputs, bundled to keep the signature small.
-// `verb` and `argv` are owned so the error paths need not borrow the
-// argv the success path moves into `RawOutcome`.
+// Read-only wait-loop inputs; verb and argv are owned so the error paths
+// need not borrow the argv the success path moves into RawOutcome.
 struct WaitPolicy<'a> {
     binary_path: &'a Path,
     timeout: Option<Duration>,

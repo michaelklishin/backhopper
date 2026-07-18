@@ -53,7 +53,6 @@ fn excluded_subdir_drops_test_and_examples() {
     let p = otp_project();
     assert!(multi_app_match("lib/stdlib/test/lists_SUITE.erl", &p).is_none());
     assert!(multi_app_match("lib/stdlib/examples/dict.erl", &p).is_none());
-    // src is kept
     assert!(multi_app_match("lib/stdlib/src/lists.erl", &p).is_some());
 }
 
@@ -105,15 +104,13 @@ fn excluded_subdir_filter_treats_directory_boundary_correctly() {
 #[test]
 fn invalid_app_name_dir_is_skipped() {
     let p = otp_project();
-    // dirs with uppercase or unexpected chars don't parse as ApplicationName,
-    // so they're skipped entirely
+    // dirs with uppercase or unexpected chars do not parse as ApplicationName and are skipped
     assert!(multi_app_match("lib/UPPER/src/x.erl", &p).is_none());
 }
 
 #[test]
 fn literal_root_does_not_swallow_sibling_paths() {
-    // `erts/preloaded` is a literal root; `erts/emulator/...` shares the
-    // `erts/` prefix but is NOT under preloaded and must be rejected.
+    // erts/preloaded is a literal root: erts/emulator paths share the prefix but must be rejected
     let p = otp_project();
     assert!(multi_app_match("erts/emulator/beam/erl_message.erl", &p).is_none());
     assert!(multi_app_match("erts/preloaded/src/erlang.erl", &p).is_some());
@@ -121,7 +118,7 @@ fn literal_root_does_not_swallow_sibling_paths() {
 
 #[test]
 fn file_named_like_an_excluded_subdir_is_not_treated_as_one() {
-    // a source file whose stem collides with an excluded subdir name (e.g. `src/test.erl`) must not be filtered out
+    // a source file whose stem collides with an excluded subdir name (e.g. src/test.erl) must not be filtered out
     let p = otp_project();
     assert!(multi_app_match("lib/stdlib/src/test.erl", &p).is_some());
     assert!(multi_app_match("lib/stdlib/src/examples.erl", &p).is_some());

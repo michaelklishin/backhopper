@@ -63,8 +63,7 @@ proptest! {
         prop_assert!(shape.satisfies(&shape));
     }
 
-    /// `satisfies_any` over an empty clause list is always true; we
-    /// don't penalize callers when no pattern data is recorded.
+    /// `satisfies_any` over an empty clause list is always true: no recorded pattern data means no mismatch.
     #[test]
     fn satisfies_any_empty_clauses_is_always_true(
         args in prop::collection::vec(arb_shape(), 0..6),

@@ -35,11 +35,10 @@ pub const ENTRY_FORMAT_VERSION: u32 = 1;
 const KEY_HASH_LEN: usize = 32;
 
 /// Canonical JSON bytes for `value`: object keys sorted, no
-/// insignificant whitespace. Stable across runs, so hashes of equal
-/// keys always collide and nothing else does.
+/// insignificant whitespace. Stable across runs, so equal keys
+/// always hash equal and unequal keys do not.
 pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, CacheError> {
-    // Round-tripping through Value sorts object keys: serde_json's
-    // Value::Object is a BTreeMap.
+    // round-tripping through Value sorts object keys: Value::Object is a BTreeMap
     let normalised: Value = serde_json::to_value(value)?;
     Ok(serde_json::to_vec(&normalised)?)
 }
@@ -160,7 +159,7 @@ impl CacheDir {
         &self.root
     }
 
-    /// Path the entry for `key` lives at (whether or not it exists).
+    /// Path of the entry for `key` (whether or not it exists).
     pub fn entry_path<K: Serialize>(&self, key: &K) -> Result<PathBuf, CacheError> {
         let hash = content_hash(key)?;
         Ok(self.root.join(entry_file_name(&hash)))

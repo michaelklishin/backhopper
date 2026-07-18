@@ -80,8 +80,7 @@ proptest! {
         prop_assert_ne!(content_hash(&key).unwrap(), content_hash(&other).unwrap());
     }
 
-    // The fingerprint must survive an upgrade and a cherry-pick hop:
-    // the version fields and the SHA never move it.
+    // the version fields and the SHA never change the fingerprint: upgrades and cherry-pick hops keep the join
     #[test]
     fn fingerprint_is_invariant_to_version_and_sha(key in arb_key(), patch in "[a-f0-9]{16}") {
         let mut other = key.clone();
@@ -104,8 +103,7 @@ proptest! {
         prop_assert_eq!(&content.pins, &key.pins);
         prop_assert_eq!(&content.config_blake3, &key.config_blake3);
         prop_assert_eq!(&content.patch_blake3, &patch);
-        // two commits with the same content components share one
-        // content key: the cascade-reuse invariant
+        // the cascade-reuse invariant: same content components means one shared content key
         let mut other = key.clone();
         other.commit = if other.commit == hex_sha(0) { hex_sha(1) } else { hex_sha(0) };
         let other_content = other.content_key(patch, Some("env".to_owned()));

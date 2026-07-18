@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Envelope schema version constants. Lives outside the `schemars`-gated
-//! `schema` module so consumers that do not pull in the JSON Schema
-//! machinery can still read the version numbers.
+//! Envelope schema version constants. Kept outside the `schemars`-gated
+//! `schema` module so consumers without the JSON Schema feature can
+//! still read the version numbers.
 
-/// The most recent envelope schema version this build knows about.
+/// The most recent envelope schema version this build supports.
 /// Bumps on every wire-format change; a fresh `vN.json` is regenerated
 /// in lockstep via `cargo xtask gen-schema --bless`.
 pub const CURRENT_SCHEMA_VERSION: u32 = 15;

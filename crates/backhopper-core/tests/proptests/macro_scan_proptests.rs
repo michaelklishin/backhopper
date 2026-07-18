@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The symbol scanners run on attacker-shaped source: arbitrary bytes,
+//! The symbol scanners run on arbitrary malformed source: arbitrary bytes,
 //! truncated directives, nested sigils. They must never panic.
 
 use proptest::prelude::*;
@@ -24,8 +24,7 @@ proptest! {
         let _ = declares_parse_transform(&s);
     }
 
-    // A bare `?NAME` followed by a non-name byte is always found, and
-    // its captured name is exactly the identifier run.
+    // A bare ?NAME before a non-name byte is always found, with the exact identifier as its name.
     #[test]
     fn a_macro_use_is_recovered(name in "[A-Z][A-Z0-9_]{0,20}") {
         let src = format!("f() -> ?{name}.\n");

@@ -77,8 +77,8 @@ fn build_source_repo() -> GitRepoFixture {
 }
 
 /// Target at the source baseline plus the helper module without
-/// `drain/1`; the suite hunk applies cleanly, so the apply axis stays
-/// out of the way.
+/// `drain/1`; the suite hunk applies cleanly, so the apply axis
+/// reports nothing.
 fn build_target() -> GitRepoFixture {
     let repo = GitRepoFixture::new();
     repo.write_file("src/rabbit_fifo.erl", SRC_MODULE);
@@ -200,8 +200,7 @@ fn single_check_text_output_names_the_finding() {
     assert_eq!(code, 3);
 }
 
-// on a row with applicable pins the pin table already shows the
-// reasons, so the row-level line stays silent
+// with applicable pins the pin table already shows the reasons, so the row-level line stays silent
 #[test]
 fn an_applicable_row_does_not_print_the_findings_twice() {
     let workdir = TempDir::new().unwrap();
@@ -420,8 +419,7 @@ fn text_summary_counts_the_findings() {
     assert_eq!(fields[6], "1");
 }
 
-// OTP modules are never on the target tree; they must not read as
-// missing untracked modules
+// OTP modules are never on the target tree and must not read as missing untracked modules
 #[test]
 fn resolve_untracked_modules_skips_otp_modules() {
     let workdir = TempDir::new().unwrap();
@@ -477,8 +475,7 @@ fn resolve_untracked_modules_skips_otp_modules() {
     );
 }
 
-// the verdict cache must store and restore the findings unchanged;
-// the cache lives under the round's own snapshot dir
+// the verdict cache must store and restore the findings unchanged; the cache is under the round's own snapshot dir
 #[test]
 fn a_cache_hit_restores_the_findings() {
     let round = set_up_round();

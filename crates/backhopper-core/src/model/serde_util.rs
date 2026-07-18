@@ -4,7 +4,7 @@
 
 //! Shared `skip_serializing_if` predicates for the model types.
 
-// serde's `skip_serializing_if` predicate shape requires `&bool`.
+// serde's skip_serializing_if predicate shape requires &bool
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn is_false(b: &bool) -> bool {
     !*b

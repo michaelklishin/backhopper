@@ -77,8 +77,7 @@ fn modification_not_yet_applied_counts_zero_applied() {
     assert!(!p.fully_present());
 }
 
-// A pure addition with context on both sides: the inserted line
-// splits the context block, so pre- and post-image cannot both match.
+// The inserted line splits the context block, so pre- and post-image cannot both match.
 const ADDITION_BETWEEN_CONTEXT: &str = "\
 diff --git a/src/demo.erl b/src/demo.erl
 --- a/src/demo.erl
@@ -103,9 +102,7 @@ fn addition_absent_from_target_is_not_applied() {
     assert_eq!(p.hunks_already_applied, 0);
 }
 
-// Trailing addition after a single context line: when the addition
-// is present, the lone context line still matches contiguously on
-// its own, so the hunk is genuinely undecidable.
+// A trailing addition after a single context line matches either way: genuinely undecidable.
 const TRAILING_ADDITION: &str = "\
 diff --git a/src/demo.erl b/src/demo.erl
 --- a/src/demo.erl
@@ -138,8 +135,7 @@ fn deletion_only_patch_gets_no_content_signal() {
     assert!(presence(DELETION_ONLY, target).is_none());
 }
 
-// An added file whose content already exists at the pin: the empty
-// preimage classifies `Exact`, so the postimage alone must decide.
+// Added file whose content exists at the pin: the empty preimage is Exact, so the postimage alone decides.
 const ADDED_FILE: &str = "\
 diff --git a/src/demo.erl b/src/demo.erl
 new file mode 100644
@@ -157,8 +153,7 @@ fn added_file_already_at_pin_counts_as_applied() {
     assert_eq!(p.hunks_already_applied, 1);
 }
 
-// A context-less single-line addition is too weak a needle to call
-// applied; it lands in the low-confidence bucket instead.
+// A context-less single-line addition is too weak to call applied: low-confidence bucket.
 const ONE_LINE_NEW_FILE: &str = "\
 diff --git a/src/demo.erl b/src/demo.erl
 new file mode 100644
@@ -184,9 +179,8 @@ fn non_utf8_pin_file_is_skipped_without_a_tally() {
 
 #[test]
 fn tally_is_a_diagnostic_and_preimage_reasons_still_fire() {
-    // Already-applied content drifts the preimage: the existing
-    // PreimageMissing reason and the new tally coexist, and the
-    // verdict keeps coming from reasons alone.
+    // Already-applied content drifts the preimage: the PreimageMissing reason and
+    // the tally coexist, and the verdict still comes from reasons alone.
     let applied = b"-module(demo).\ngreet(Name) -> {ok, Name}.\nfarewell() -> ok.\n";
     let evaluation = evaluate(MODIFICATION, applied);
     let reasons = evaluation.verdict.results[0].verdict.reasons();
@@ -199,8 +193,7 @@ fn tally_is_a_diagnostic_and_preimage_reasons_still_fire() {
     assert!(evaluation.diagnostics.already_present.is_some());
 }
 
-// Two hunks, one already applied and one not: the tally reports the
-// fraction instead of rounding to a boolean.
+// Two hunks, one already applied: the tally reports the fraction, not a boolean.
 const TWO_HUNK_PATCH: &str = "\
 diff --git a/src/demo.erl b/src/demo.erl
 --- a/src/demo.erl

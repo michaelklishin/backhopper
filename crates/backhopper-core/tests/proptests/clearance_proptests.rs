@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! `RoundClearance::from_results` cross-checked against an independent
-//! recomputation over the same generated rows. The load-bearing
+//! recomputation over the same generated rows. The key
 //! invariant is the discriminator: a round is clean exactly when it
 //! carries no tracked-dep reference, no blocking verdict, and no
 //! snapshot-missing bump.

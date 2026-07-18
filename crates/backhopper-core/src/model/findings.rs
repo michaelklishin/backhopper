@@ -4,7 +4,7 @@
 
 //! Row-level symbol-axis findings resolved against the target tree.
 //! The same reasons also merge into applicable pin verdicts; this
-//! record is the copy that survives inapplicable ones, so a suite-only
+//! record is the copy kept for inapplicable ones, so a suite-only
 //! pick cannot silently drop what the target checks found.
 
 use std::collections::BTreeMap;

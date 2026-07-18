@@ -4,12 +4,12 @@
 
 //! The opportunistic once-per-day cache sweep.
 //!
-//! Read-time expiry cleans entries that get looked up; cold garbage
-//! cannot count on that. On the first cache write of a run, if the
+//! Read-time expiry cleans entries that get looked up; entries that
+//! are never looked up again need a separate cleanup. On the first cache write of a run, if the
 //! marker file is older than a day, expired entries and orphaned temp
 //! files are swept across every workspace cache directory, then the
 //! marker is touched. At most one sweep per day per workspace,
-//! amortized into a run that is already paying for evaluation.
+//! folded into a run that is already doing an evaluation.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -170,8 +170,7 @@ fn snapshots_exports_exit_code_tracks_module_presence() {
         .success();
     let stdout = String::from_utf8(present.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("greet/1"), "got {stdout}");
-    // a module absent from the snapshot is PartialSuccess (3), not an
-    // internal error: run() rejects any other non-zero code
+    // a module absent from the snapshot is PartialSuccess (3), not an internal error
     Command::cargo_bin("backhopper")
         .unwrap()
         .args([

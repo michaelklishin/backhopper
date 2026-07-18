@@ -29,8 +29,7 @@ use crate::erlang_macros::{MacroTable, expand_value_macro_to_atom, expand_value_
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
 use crate::model::symbol::{RefContext, RefOrigin, SymbolRef};
 
-// The lexical scanners live in the leaf crate; re-exported so the
-// `compat::call_sites` import path stays stable for callers.
+// re-exported from the scan crate so the import path stays stable
 pub use backhopper_erlang_scan::{
     ScanArity, ScannedArgs, scan_top_level_args, split_top_level_args,
 };
@@ -63,8 +62,7 @@ fn macro_re() -> &'static Regex {
     R.get_or_init(|| Regex::new(r"\?([A-Z_][A-Za-z0-9_]*)\b").expect("regex"))
 }
 
-// Multi-line `^`: a joined run holds several clause heads, each at the
-// start of its physical line.
+// multi-line mode: a joined run holds several clause heads, each at line start
 fn fun_def_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| Regex::new(r"(?m)^([a-z][a-zA-Z0-9_@]*)\s*\(").expect("regex"))
@@ -144,7 +142,7 @@ pub fn extract_qualified_calls_with_context(
 /// One joined run of file-adjacent body lines, comment-stripped, with
 /// each line's byte offset into `text` paired with its 1-based text
 /// line. Shared by the qualified-call and indirect-reference
-/// extractors so both see wrapped constructs whole.
+/// extractors so both scan wrapped constructs whole.
 #[derive(Debug)]
 pub(crate) struct BodyRun {
     pub(crate) text: String,
@@ -201,7 +199,7 @@ pub(crate) fn body_runs_with<'a>(
 }
 
 /// Per-line attribute-region classification of `src`'s own lines, with
-/// no outside context: the classifier starts fresh and walks `src` top
+/// no outside context: the classifier starts fresh and scans `src` top
 /// to bottom. Correct when `src` already holds every line whose
 /// classification matters; a caller whose relevant lines extend beyond
 /// `src` (a hunk's `Context` lines, dropped from the added-only blob)
@@ -252,9 +250,7 @@ fn scanned_call(scan: ScanArity, module: ModuleName, function: FunctionName) -> 
     }
 }
 
-// Match-start origin: the run line whose start offset is the last one
-// at or before the match offset. Before the first run, the first run's
-// line clamps in (or 1 when there are no runs).
+// before the first entry, fall back to the first run's line, or 1 with no runs
 pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
     value_at_or_before(run_lines, offset, run_lines.first().map_or(1, |(_, l)| *l))
 }
@@ -350,7 +346,7 @@ pub fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-/// Type-attribute counterpart to `extract_into_with_macros`.
+/// Type-attribute variant of `extract_into_with_macros`.
 ///
 /// Inside `-spec`, `-callback`, `-type`, and `-opaque` declarations the
 /// `mod:ident(...)` shape is a type reference (`ra:index()` is the
@@ -398,7 +394,7 @@ fn empty_macros() -> &'static MacroTable {
 /// references resolve into concrete `mod:fn(...)` symbols when the
 /// macro's body is a bare atom (module) or `mod:fn` pair. Apply-family
 /// BIFs whose `M`, `F`, and arg-list slots are literals also resolve
-/// into the matching `Mfa` and land in `out` as normal function refs.
+/// into the matching `Mfa` and are added to `out` as normal function refs.
 pub fn extract_into_with_macros(line: &str, macros: &MacroTable, out: &mut Vec<SymbolRef>) {
     let line = strip_line_comment(line);
     let mut with_offsets = Vec::new();
@@ -452,8 +448,8 @@ fn fun_ref_re() -> &'static Regex {
 }
 
 /// `fun M:F/A` remote fun references. The arity is written in the
-/// source, so these land at full precision. Variable-shaped slots are
-/// `extract_dynamic_into`'s business.
+/// source, so it is exact. Variable-shaped slots are classified as
+/// dynamic calls instead.
 fn push_fun_refs_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(SymbolRef, usize)>) {
     for caps in fun_ref_re().captures_iter(text) {
         let module_raw = &caps[1];
@@ -543,8 +539,7 @@ fn push_apply_family_with_offsets(
         let group = caps.get(0).expect("capture");
         let name = &caps[1];
         let after_open = &text[group.end()..];
-        // A wrapped apply-family call has an incomplete arg list here;
-        // resolving from a partial slot set would fabricate an Mfa.
+        // resolving from a wrapped call's partial slot set would fabricate an Mfa
         let ScannedArgs::Terminated { args, .. } = scan_top_level_args(after_open) else {
             continue;
         };
@@ -580,7 +575,7 @@ fn resolve_apply_family(name: &str, args: &[&str], macros: &MacroTable) -> Optio
     Some(Mfa::new(module, function, Arity::new(arity)))
 }
 
-// Both `ModuleName` and `FunctionName` are atoms: one resolver, two targets.
+// ModuleName and FunctionName are both atoms: one resolver covers both
 fn atom_or_macro_to<T: FromStr>(raw: &str, macros: &MacroTable) -> Option<T> {
     let s = raw.trim();
     if let Some(name) = s.strip_prefix('?') {
@@ -632,8 +627,7 @@ fn push_call_args_with_offsets(text: &str, out: &mut Vec<((Mfa, Vec<ArgShape>), 
         let group = caps.get(0).expect("capture");
         let module = &caps[1];
         let function = &caps[2];
-        // A call whose arg list never closes in the run has no complete
-        // shape list, and a partial one would feed `ClauseMismatch` garbage.
+        // an unterminated arg list has no complete shape list to compare
         let Some((args, _consumed)) = extract_arg_shapes(&text[group.end()..]) else {
             continue;
         };
@@ -829,8 +823,7 @@ fn flush_run(
             extract_dynamic_into(text, &mut out.dynamic_calls);
             let mut args = Vec::new();
             push_call_args_with_offsets(text, &mut args);
-            // Only an added-head call feeds the clause-mismatch comparison:
-            // a context-line call is a pre-existing target fact.
+            // context-line calls are pre-existing target facts, not clause-mismatch input
             for (call, offset) in args {
                 if origin_at(line_origins, offset) == RefOrigin::Added {
                     out.call_args.push(call);

@@ -29,8 +29,7 @@ fn class_round_trips_through_serde() {
     assert_eq!(back, ResolverClass::Macro);
 }
 
-// One class per kind, including the `Type` namespace, so a type is never
-// labeled a qualified call.
+// One class per kind, including the Type namespace: a type is never labeled a qualified call.
 #[test]
 fn of_symbol_kind_maps_each_kind() {
     let cases = [
@@ -94,7 +93,7 @@ fn current_coverage_checks_every_class_and_leaves_none_unchecked() {
     assert_eq!(cov.unchecked().count(), 0);
 }
 
-// `unchecked` is exactly `ALL \ checked`, so a class can never be in both.
+// unchecked is exactly ALL \ checked, so a class can never be in both.
 #[test]
 fn unchecked_is_the_complement_of_checked() {
     let cov: ResolverCoverage = serde_json::from_str(r#"{"checked":["macro","record"]}"#).unwrap();

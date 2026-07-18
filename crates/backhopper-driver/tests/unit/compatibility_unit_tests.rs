@@ -28,8 +28,7 @@ fn driver_returning(stdout: Vec<u8>) -> Backhopper<MockBackend> {
     Backhopper::with_backend(backend)
 }
 
-// `invoke_raw` does not inject `--formatter json`, so compatibility
-// must request it itself or the version payload would not be JSON.
+// invoke_raw does not inject --formatter json, so compatibility must request it itself
 #[test]
 fn compatibility_requests_json_formatter() {
     let backend = MockBackend::builder()
@@ -52,8 +51,7 @@ fn compatibility_requests_json_formatter() {
     assert!(report.is_compatible());
 }
 
-// The schema-first read means a too-new binary fails as a clear
-// mismatch, not as an unparseable-output error from a new field.
+// the schema-first read makes a too-new binary fail as a mismatch, not a parse error
 #[test]
 fn out_of_range_schema_is_a_mismatch_not_unparseable() {
     let driver = driver_returning(version_envelope(9999, "9.9.9", &[]));
@@ -95,8 +93,7 @@ fn compatibility_lists_missing_required_verbs() {
     assert!(!report.is_compatible());
 }
 
-// A binary whose version envelope predates `schema_version` sits below
-// the structural floor the lenient probe can detect.
+// a version envelope that predates schema_version sits below the floor the lenient probe can detect
 #[test]
 fn compatibility_without_schema_field_is_below_floor() {
     let env = json!({ "command": "version", "data": { "version": "0.0.1", "verbs": [] } });

@@ -115,7 +115,7 @@ fn is_eof_true_after_all_bytes_consumed() {
 
 #[test]
 fn skip_balanced_parens_handles_close_paren_inside_string() {
-    // The `)` inside the string must not close the outer paren.
+    // The ) inside the string must not close the outer paren.
     let mut sc = Scanner::new(r#"("a)b", x)trail"#);
     let commas = sc.skip_balanced_parens();
     assert_eq!(commas, 1);
@@ -132,7 +132,7 @@ fn skip_balanced_parens_handles_close_paren_inside_quoted_atom() {
 
 #[test]
 fn skip_balanced_parens_handles_close_paren_inside_char_literal() {
-    // `$)` is the char literal for `)`; it must not close the outer paren.
+    // $) is the char literal for the close paren; it must not close the outer paren.
     let mut sc = Scanner::new("($), x)trail");
     let commas = sc.skip_balanced_parens();
     assert_eq!(commas, 1);
@@ -141,7 +141,7 @@ fn skip_balanced_parens_handles_close_paren_inside_char_literal() {
 
 #[test]
 fn skip_balanced_parens_handles_double_quote_char_literal() {
-    // `$"` is the char literal for `"`. Without `$` handling, the next `"` opens a string.
+    // $" is the double-quote char literal; without $ handling the next quote opens a string.
     let mut sc = Scanner::new(r#"($", x)trail"#);
     let commas = sc.skip_balanced_parens();
     assert_eq!(commas, 1);
@@ -158,7 +158,7 @@ fn skip_balanced_parens_handles_close_paren_inside_string_in_nested_brackets() {
 
 #[test]
 fn skip_balanced_parens_handles_char_literal_paren_in_nested_brackets() {
-    // `$)` inside the list is the close-paren char, not a closing paren.
+    // $) inside the list is the close-paren char, not a closing paren.
     let mut sc = Scanner::new("([$)], x)trail");
     let commas = sc.skip_balanced_parens();
     assert_eq!(commas, 1);
@@ -176,7 +176,7 @@ fn skip_balanced_parens_handles_quoted_atom_in_nested_braces() {
 
 #[test]
 fn skip_balanced_parens_handles_comment_in_nested_brackets() {
-    // A `%` comment inside the list runs to end of line; its `)` is inert.
+    // A % comment inside the list runs to end of line; its ) is inert.
     let mut sc = Scanner::new("([a % )c\n], x)trail");
     let commas = sc.skip_balanced_parens();
     assert_eq!(commas, 1);

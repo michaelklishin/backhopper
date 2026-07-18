@@ -22,6 +22,6 @@ fn validate_rejects_unknown_placeholders() {
 #[test]
 fn validate_ignores_unbalanced_brace_at_end() {
     let allowed = vec!["plugin".to_owned()];
-    // The current grammar treats a trailing `{` with no closing `}` as literal.
+    // The current grammar treats a trailing { with no closing } as literal.
     assert!(validate_template_placeholders("{plugin}_trailing{", &allowed).is_ok());
 }

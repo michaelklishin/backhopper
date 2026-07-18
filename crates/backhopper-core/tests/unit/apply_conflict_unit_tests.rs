@@ -64,8 +64,7 @@ fn a_non_apply_reason_is_not_a_conflict() {
     assert!(absent.apply_conflict().is_none());
 }
 
-// Declaration order is severity: a missing file outranks a missing
-// preimage, which outranks an edge collision. Dedup keeps the max.
+// Declaration order is severity: dedup keeps the max.
 #[test]
 fn severity_order_is_file_absent_then_missing_then_collision() {
     assert!(ApplyConflictKind::FileAbsent > ApplyConflictKind::PreimageMissing);

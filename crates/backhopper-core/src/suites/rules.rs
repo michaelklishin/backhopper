@@ -17,8 +17,8 @@ use crate::suites::model::{ExtraRule, ExtraRuleTrigger, SuiteInclusionReason, Su
 use crate::suites::scan;
 
 /// A modified module: the file path that was changed, plus the
-/// module name (basename minus `.erl`) and the application it lives
-/// in (when resolvable).
+/// module name (basename minus `.erl`) and the application it belongs
+/// to (when resolvable).
 #[derive(Debug, Clone)]
 pub(crate) struct ModifiedModule {
     pub module: ModuleName,
@@ -96,8 +96,7 @@ pub(crate) fn apply_same_app_caller(
     matcher: &mut dyn SuiteMatcher,
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
-    // Group the modified modules by application so each suite's text is
-    // scanned once against every same-app module, not once per module.
+    // group by application so each suite's text is scanned once per app, not once per module
     let mut by_app: BTreeMap<&ApplicationName, Vec<ModuleName>> = BTreeMap::new();
     for m in &classification.modified_modules {
         if let Some(app) = &m.application {
@@ -136,8 +135,7 @@ pub(crate) fn apply_cross_app_caller(
     out: &mut BTreeMap<SuiteRef, Vec<SuiteInclusionReason>>,
 ) {
     let library_set: BTreeSet<&ApplicationName> = library_apps.iter().collect();
-    // Group library-app modules so each suite's text is scanned once per
-    // owning application, not once per modified module.
+    // group by owning application so each suite's text is scanned once per app, not once per module
     let mut by_app: BTreeMap<&ApplicationName, Vec<ModuleName>> = BTreeMap::new();
     for m in &classification.modified_modules {
         if let Some(app) = &m.application

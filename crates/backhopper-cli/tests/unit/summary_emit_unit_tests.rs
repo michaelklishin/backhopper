@@ -180,8 +180,7 @@ fn batch_row_projection_carries_series_and_parent_count() {
     assert_eq!(row.subject, "merge subject");
 }
 
-// A self pin's scope spans the whole self project; summing it in
-// would make every self-heavy commit read as harness-verified.
+// a self pin spans the whole self project: summing it would make self-heavy commits read as harness-verified
 #[test]
 fn tracked_sums_non_self_pins_only() {
     let mut self_pin = PinVerdict::new(fixture_pin("rabbit"), Verdict::Compatible);
@@ -202,8 +201,7 @@ fn tracked_sums_non_self_pins_only() {
     assert_eq!(row.tracked, 2);
 }
 
-// The trust-signal pair: a vacuous compatible row and a verified one
-// must be distinguishable from the count alone.
+// a vacuous compatible row and a verified one must be distinguishable from the count alone
 #[test]
 fn vacuous_and_verified_compatible_rows_differ_in_tracked() {
     let mut verified = PinVerdict::new(fixture_pin("cowlib"), Verdict::Compatible);

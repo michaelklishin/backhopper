@@ -73,7 +73,7 @@ fn inner_pr_sha_named_by_target_trailer_matches() {
 
     let repo = open(&fake);
     let index = TargetWalkIndex::build(&repo, &sha(&tip), &sha(&base), 5000).unwrap();
-    // the candidate is some merge whose pr_commits include `inner`
+    // the candidate is some merge whose pr_commits include inner
     let mut cand = candidate(&base);
     cand.inner_pr_shas = vec![sha(&inner)];
     let m = index.find_match(&repo, &cand).unwrap();
@@ -113,7 +113,7 @@ fn hand_landed_identical_patch_matches_via_patch_id() {
 }
 
 /// A different change to the same file matches neither trailers nor
-/// patch hash: tier 1 stays silent and tier 2 owns the case.
+/// patch hash: tier 1 reports nothing and tier 2 handles the case.
 #[test]
 fn different_refactor_matches_nothing() {
     let fake = GitRepoFixture::new();

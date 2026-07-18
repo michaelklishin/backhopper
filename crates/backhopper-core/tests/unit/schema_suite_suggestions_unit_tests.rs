@@ -87,8 +87,7 @@ fn non_schema_diff_yields_no_suite_suggestions() {
 
 #[test]
 fn schema_diff_suggestions_survive_inapplicable_promotion() {
-    // schema-only diff promotes to Inapplicable::OnlySchemaTouched.
-    // The suggested suites must still be populated.
+    // A schema-only diff promotes to OnlySchemaTouched; the suggested suites must still be populated.
     let patch = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap().analyze();
     let s = snap();
     let scope = PinScope::from_snapshot(ProjectName::new("rabbit").unwrap(), &s, Vec::new());

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Text rendering of `check batch`. The load-bearing test is the
+//! Text rendering of `check batch`. The key test is the
 //! vacuous-round one: a clean round must state its negatives so it
 //! reads as "checked, clean" rather than "never ran".
 

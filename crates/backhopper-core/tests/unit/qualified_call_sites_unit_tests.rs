@@ -55,8 +55,7 @@ fn a_multi_line_spec_is_skipped() {
     assert!(got.is_empty(), "unexpected: {got:?}");
 }
 
-// A variable-module call (`Mod:f(...)`) is dynamic dispatch, not a
-// statically-named call.
+// A variable-module call is dynamic dispatch, not a statically-named call.
 #[test]
 fn a_variable_module_call_is_skipped() {
     let got = calls("f(Mod) -> Mod:go(x).\n");
@@ -93,9 +92,7 @@ fn a_wrapped_call_reports_the_line_its_match_starts_on() {
 
 #[test]
 fn non_adjacent_lines_do_not_join() {
-    // Text lines 1 and 2 sit at file lines 10 and 50: two hunks. Joined
-    // they would read as a complete two-argument call; apart, the first
-    // fragment never terminates and the second holds no call.
+    // Two hunks at file lines 10 and 50: joined they would form one call; apart, neither holds a call.
     let src = "f(V) -> rabbit_misc:queue_resource(V,\n    Q).\n";
     let got = extract_qualified_calls(src, &[10, 50]);
     assert!(got.is_empty(), "unexpected: {got:?}");
@@ -103,8 +100,7 @@ fn non_adjacent_lines_do_not_join() {
 
 #[test]
 fn a_spec_boundary_splits_the_run() {
-    // The wrapped -spec is type context; the call after it is body and
-    // still found, attributed to its own line.
+    // The wrapped -spec is type context; the call after it is body, attributed to its own line.
     let src = "-spec info(state()) ->\n    list().\nf(S) -> rabbit_misc:format(S, []).\n";
     let got = calls(src);
     assert_eq!(got, [("rabbit_misc".to_owned(), "format".to_owned(), 2, 3)]);
@@ -112,9 +108,7 @@ fn a_spec_boundary_splits_the_run() {
 
 #[test]
 fn a_qualified_type_after_the_spec_opens_is_still_skipped() {
-    // Classification state persists across a gap: the -spec opened on
-    // file line 3 has not closed by file line 90, so the fragment stays
-    // type context even though the lines are not adjacent.
+    // Classification persists across a gap: the -spec opened at line 3 is still open at line 90.
     let src = "-spec f(othermod:t(),\nothermod:u()) -> ok.\n";
     let got = extract_qualified_calls(src, &[3, 90]);
     assert!(got.is_empty(), "unexpected: {got:?}");

@@ -106,8 +106,7 @@ fn series_diff_assembles_from_and_to_series() {
     assert!(diff.projects.is_empty());
 }
 
-// The argv is an exact rerun with no repo dir set: program, verb, the default
-// global flags, --formatter json, then the builder args.
+// exact-rerun argv with no repo dir: program, verb, global flags, formatter, builder args
 #[test]
 fn series_diff_argv_orders_program_verb_formatter_then_args() {
     let backend = MockBackend::builder()

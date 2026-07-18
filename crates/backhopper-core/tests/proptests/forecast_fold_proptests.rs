@@ -86,8 +86,7 @@ proptest! {
         prop_assert!(report.path_overlap.hits <= report.path_overlap.total);
     }
 
-    // every non-out-of-band entry lands in the rate cells its variant
-    // and prediction dictate
+    // every non-out-of-band entry lands in the rate cells for its variant and prediction
     #[test]
     fn entry_partition_matches_the_variants(rows in entries()) {
         let report = evaluate_forecasts(&rows);
@@ -107,8 +106,7 @@ proptest! {
         prop_assert_eq!(report.entries, rows.len());
     }
 
-    // every observed path of a conflicted entry is either matched by a
-    // prediction or sits in exactly one miss row
+    // every observed path of a conflicted entry is matched by a prediction or sits in exactly one miss row
     #[test]
     fn path_partition_covers_every_observed_conflicting_path(rows in entries()) {
         let report = evaluate_forecasts(&rows);

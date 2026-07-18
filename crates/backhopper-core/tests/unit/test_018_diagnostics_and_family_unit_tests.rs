@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! `Diagnostics.missing_test_modules` (candidate 1 always-on
+//! `Diagnostics.missing_test_modules` (the always-on
 //! diagnostic) and `FamilyDefaults.test_helper_search_paths` (per-family
 //! override that drives the test-module resolver) shape and behaviour.
 

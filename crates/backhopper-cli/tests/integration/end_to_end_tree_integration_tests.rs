@@ -18,8 +18,7 @@ const RA_SERVER_V1: &str = "-module(ra_server).\n\
      init(C) -> C.\n\
      handle_aux(A, S) -> {A, S}.\n";
 
-// The recover/1 spec is wide enough that the canonical printer wraps
-// it, giving the class filter a continuation line to keep.
+// the recover/1 spec is wide enough that the canonical printer wraps it, giving the class filter a continuation line
 const RA_SERVER_V2: &str = "-module(ra_server).\n\
      -export([init/1, recover/1]).\n\
      -spec init(config()) -> ra_server_state().\n\
@@ -68,8 +67,7 @@ fn tree_show_reads_an_older_ref() {
         "ra_server",
     ]);
     let text = stdout(&t);
-    // The v1 surface: the export v2 dropped is present, v2's addition
-    // is not.
+    // the v1 surface: the export v2 dropped is present, v2's addition is not
     assert!(text.contains("  export handle_aux/2\n"), "got: {text}");
     assert!(!text.contains("recover"));
 }
@@ -105,7 +103,7 @@ fn tree_show_class_filter_keeps_wrapped_continuation_lines() {
     ]);
     let text = stdout(&t);
     assert!(text.contains("  spec recover/1"), "got: {text}");
-    // The union wrapped: its continuation lines survive the filter.
+    // The union wrapped: its continuation lines pass the filter.
     assert!(
         text.contains("| {error, term()}"),
         "wrapped continuation lost: {text}"

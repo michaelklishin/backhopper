@@ -28,13 +28,13 @@ pub use crate::envelope_version::{
 
 /// Frozen v1 schema bytes. Generated before `touched_paths` and
 /// `pr_commits` were added to `SeriesEvaluation`; preserved so
-/// `schema show 1` stays a stable archaeological record across binary
+/// `schema show 1` stays a stable historical record across binary
 /// versions.
 const SCHEMA_V1_FROZEN: &str = include_str!("schema_v1_snapshot.json");
 
 /// Frozen v3 and v5 schema bytes. Generated before v7 added `series`
 /// and `parent_count` to `SummaryRow`; frozen so older versions stay
-/// stable archaeological records instead of silently absorbing later
+/// stable historical records instead of silently absorbing later
 /// type changes. v4 and v6 derive from these (they only retitle).
 const SCHEMA_V3_FROZEN: &str = include_str!("schema_v3_snapshot.json");
 const SCHEMA_V5_FROZEN: &str = include_str!("schema_v5_snapshot.json");
@@ -200,9 +200,7 @@ fn combined_live(version: u32, description: &str) -> Value {
     Value::Object(obj)
 }
 
-// The envelope frame is derived from `WireEnvelope<T>` itself, the same
-// type the CLI serializes and the driver parses, so the documented shape
-// cannot drift from the wire. The payload `T` inlines as `data`.
+// frame derived from WireEnvelope<T> itself, so the documented shape cannot drift from the wire
 fn envelope_with_payload<T: JsonSchema>(
     version: u32,
     command_family: &str,

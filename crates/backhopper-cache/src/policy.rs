@@ -7,7 +7,7 @@
 //! Precedence, strongest first: an explicit `--no-cache`-style flag,
 //! `BACKHOPPER_NO_CACHE`, `BACKHOPPER_FORCE_CACHE`, then the build
 //! profile default (debug builds bypass the cache so iterating on
-//! scoring or walk code never serves yesterday's answers).
+//! scoring or walk code never serves stale results).
 
 use std::env;
 

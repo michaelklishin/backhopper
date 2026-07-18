@@ -20,7 +20,7 @@ use crate::commands::summary::SummaryFormatter;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, emit_jsonl, render_with_exit};
 
-// envelope renders first; the typed `CliError` below sets the non-zero exit.
+// envelope renders first; the typed CliError below sets the non-zero exit.
 const ENVELOPE_ONLY_EXIT: CommandOutcome = CommandOutcome::Success;
 
 #[derive(Debug, Serialize)]
@@ -136,7 +136,7 @@ fn render_resolved(
 }
 
 /// Emit the failure envelope (exit 0), then carry the non-zero exit and
-/// the operator message through the typed `CliError`.
+/// the user-facing message through the typed `CliError`.
 fn render_failure<P: Serialize>(
     args: &GlobalArgs,
     payload: &P,

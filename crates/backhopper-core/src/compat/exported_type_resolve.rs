@@ -61,8 +61,7 @@ pub fn analyse_exported_types(
             continue;
         }
         let defines = collect_target_defines(subject.source_path, target, read_target);
-        // An unread first-party header, or a macro-expanded attribute
-        // form, may hold the declaration.
+        // An unread first-party header or a macro-expanded attribute form may hold the declaration.
         if !defines.complete || defines.macro_attributes {
             continue;
         }

@@ -185,9 +185,7 @@ fn relation_iteration_order_is_sorted() {
     assert_eq!(edges, sorted);
 }
 
-// A deep chain would overflow the thread stack under a per-edge recursive
-// SCC pass; the iterative pass handles it. Kept modest so the O(n^2)
-// closure stays cheap while the SCC recursion depth is still 800.
+// Deep enough to overflow a recursive SCC pass, modest enough to keep the O(n^2) closure cheap.
 #[test]
 fn transitive_closure_handles_a_deep_chain_without_overflow() {
     let mut r = Relation::new();

@@ -21,8 +21,7 @@ use backhopper_test_support::{GitRepoFixture, toml_path};
 
 const BASE_CALLER: &str = "-module(caller).\n-export([go/0]).\ngo() -> ok.\n";
 
-// present on the target tree, exporting list/1 only: list/0 came from a
-// server-side commit never backported to this branch
+// on the target tree with list/1 only: list/0 was never backported to this branch
 const TARGET_PLUGINS: &str = "-module(rabbit_plugins).\n-export([list/1]).\nlist(_) -> [].\n";
 
 fn write_config(workdir: &TempDir, repo: &GitRepoFixture, snapshot_dir: &Path) -> PathBuf {
@@ -145,9 +144,7 @@ fn an_elixir_rpc_call_on_an_absent_function_names_the_symbol_and_exits_three() {
     assert_eq!(env["exit_code"], 3);
 }
 
-// The target exports the function, so the axis runs and clears it: no
-// symbol finding, even though the `.ex` file still carries the generic
-// unsupported-file note.
+// the target exports the function, so the axis clears it despite the generic unsupported-file note on the .ex file
 #[test]
 fn an_elixir_rpc_call_the_target_exports_produces_no_finding() {
     let workdir = TempDir::new().unwrap();
@@ -168,8 +165,7 @@ fn an_elixir_rpc_call_the_target_exports_produces_no_finding() {
     assert_eq!(tally["checked"], 1);
 }
 
-// A commit touching one .erl and one .ex file sums the tally across both
-// languages and reports both findings.
+// a commit touching one .erl and one .ex file sums the tally across both languages
 #[test]
 fn a_mixed_erlang_and_elixir_commit_reports_both_findings() {
     let workdir = TempDir::new().unwrap();
@@ -202,9 +198,7 @@ fn a_mixed_erlang_and_elixir_commit_reports_both_findings() {
     assert_eq!(tally["checked"], 2, "the tally sums both languages");
 }
 
-// A combined backport adds the Erlang function and the Elixir caller in
-// one commit, so the reference resolves against the patch and is not
-// flagged, even though the target branch does not yet define it.
+// the backport adds the Erlang function and its Elixir caller in one commit: the reference resolves against the patch, not the target branch
 #[test]
 fn a_function_the_same_commit_adds_in_an_erl_file_is_not_flagged() {
     let workdir = TempDir::new().unwrap();

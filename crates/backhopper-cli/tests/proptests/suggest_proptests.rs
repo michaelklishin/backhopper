@@ -15,8 +15,7 @@ use backhopper_core::model::verdict::Diagnostics;
 use backhopper_cli::commands::suggest::build_suggestions;
 
 fn module_strategy() -> impl Strategy<Value = String> {
-    // Restrict to a tiny set of valid-module-name characters so the
-    // strategy almost always produces a parseable `ModuleName`.
+    // restrict to valid module-name characters so the strategy almost always parses as ModuleName
     "[a-z][a-z0-9_]{0,15}".prop_filter("non-empty", |s| !s.is_empty())
 }
 

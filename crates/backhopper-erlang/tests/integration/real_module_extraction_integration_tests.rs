@@ -15,8 +15,7 @@ const RA_COUNTERS: &str = include_str!("../fixtures/ra_counters.erl");
 const RA_MACHINE: &str = include_str!("../fixtures/ra_machine.erl");
 const SESHAT_COUNTERS_SERVER: &str = include_str!("../fixtures/seshat_counters_server.erl");
 
-// aten is a tiny façade: three exports and two specs over guarded clauses
-// that delegate to aten_detector.
+// aten: three exports and two specs over guarded clauses that delegate to aten_detector
 #[test]
 fn extracts_aten_surface() {
     let m = ErlangExtractor::default().extract_module(ATEN).unwrap();
@@ -25,10 +24,8 @@ fn extracts_aten_surface() {
     assert_eq!(m.specs.len(), 2);
 }
 
-// ra_machine is the ra state-machine behaviour: a large callback set, a
-// long -optional_callbacks list, exported helpers, export types, and many
-// -type declarations with nested map and union right-hand sides that
-// stress the attribute-body scanner.
+// ra_machine: large callback set, long -optional_callbacks list, exported
+// helpers, and -type declarations with nested map and union right-hand sides
 #[test]
 fn extracts_ra_machine_behaviour_surface() {
     let m = ErlangExtractor::default()
@@ -41,9 +38,8 @@ fn extracts_ra_machine_behaviour_surface() {
     assert!(m.types.len() >= 5);
 }
 
-// aten_detector is a complete gen_server with two -define macros (one a
-// float threshold), a -record, and a -ifdef(TEST) block of local-only
-// functions that stay out of the public export set.
+// aten_detector: a gen_server with two -define macros, a -record, and a
+// -ifdef(TEST) block whose functions stay out of the public export set
 #[test]
 fn extracts_aten_detector_surface() {
     let m = ErlangExtractor::default()
@@ -54,8 +50,7 @@ fn extracts_aten_detector_surface() {
     assert_eq!(m.exports.len(), 9);
 }
 
-// ra_counters carries a real multi-line -spec set, one return type a
-// nested map, alongside an -include and a -type.
+// ra_counters: multi-line -spec set with a nested-map return type, an -include, and a -type
 #[test]
 fn extracts_ra_counters_surface() {
     let m = ErlangExtractor::default()
@@ -66,8 +61,7 @@ fn extracts_ra_counters_surface() {
     assert!(m.specs.len() >= 7, "specs={}", m.specs.len());
 }
 
-// seshat_counters_server is a complete gen_server: a behaviour, an
-// -include, a -record, a -define, and the full callback surface.
+// seshat_counters_server: a behaviour, an -include, a -record, a -define, and the full gen_server callback surface
 #[test]
 fn extracts_seshat_counters_server_surface() {
     let m = ErlangExtractor::default()

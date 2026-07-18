@@ -80,8 +80,7 @@ fn cli_since_stacks_on_top_of_project_filters() {
     let since = TagName::new("OTP-26.2.5").unwrap();
     let out = filter_tags_for_project(input, &p, Some(&since));
     let names: Vec<&str> = out.iter().map(|t| t.as_str()).collect();
-    // --since means "at or after this one (version-sorted)", so we keep 26.2.5
-    // and 27.0 but drop 26.0.
+    // --since means at or after, version-sorted: keep 26.2.5 and 27.0, drop 26.0
     assert_eq!(names, vec!["OTP-26.2.5", "OTP-27.0"]);
 }
 

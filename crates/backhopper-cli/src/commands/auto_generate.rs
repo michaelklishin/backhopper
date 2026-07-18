@@ -82,7 +82,7 @@ pub fn snapshot_generate_command(project: &ProjectName, since: &TagName) -> Stri
     format!("backhopper snapshots generate --project {project} --since {since}")
 }
 
-// pick the version-oldest tag: `version_cmp` is reversed, so `max_by` returns the smallest version
+// pick the version-oldest tag: version_cmp is reversed, so max_by returns the smallest version
 fn oldest_version<'a>(tags: &[&'a TagName]) -> Option<&'a TagName> {
     tags.iter()
         .copied()
@@ -137,8 +137,7 @@ pub(crate) fn classify_snapshot_freshness(
                 SnapshotFreshness::Present
             }
         }
-        // a read failure of an on-disk file is treated as missing for
-        // pre-flight purposes: the user must regenerate
+        // a read failure of an on-disk file counts as missing for pre-flight: the user must regenerate
         Err(_) => SnapshotFreshness::Missing,
     }
 }

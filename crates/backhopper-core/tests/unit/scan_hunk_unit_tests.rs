@@ -22,7 +22,7 @@ fn scan(lines: &[(RefOrigin, &str)]) -> backhopper_core::compat::call_sites::Hun
     scan_hunk(lines, &MacroTable::new())
 }
 
-// `m:f/a` and the origin, for each function or any-arity reference.
+// m:f/a and the origin, for each function or any-arity reference.
 fn functions(refs: &[SymbolRef]) -> Vec<(String, RefOrigin)> {
     refs.iter()
         .filter_map(|r| match &r.kind {
@@ -47,8 +47,7 @@ fn defined(refs: &[SymbolRef]) -> Vec<String> {
         .collect()
 }
 
-// The verified win: a call whose argument list closes on a later line
-// resolves at exact arity, not `FunctionAnyArity`.
+// A call whose argument list closes on a later line resolves at exact arity, not FunctionAnyArity.
 #[test]
 fn a_wrapped_call_resolves_to_exact_arity() {
     let scan = scan(&[
@@ -70,9 +69,7 @@ fn a_single_line_call_is_unchanged() {
     );
 }
 
-// A call whose head is on a `Context` line stays a `Context` reference
-// even when a later argument line is `Added`: an edited argument does
-// not turn a pre-existing call into a verdict-driving reference.
+// A call whose head is on a Context line stays Context even when a later argument line is Added.
 #[test]
 fn the_calls_origin_is_its_head_line() {
     let scan = scan(&[
@@ -94,8 +91,7 @@ fn an_added_head_drives_the_reference() {
     );
 }
 
-// A construct that starts on a later line of a run takes its own start
-// line's origin, not the run's first.
+// A construct starting on a later line of a run takes its own start line's origin, not the run's first.
 #[test]
 fn each_construct_takes_its_own_line_origin() {
     let scan = scan(&[context("    aten:register(X),"), added("    khepri:get(Y)")]);
@@ -119,8 +115,7 @@ fn a_wrapped_clause_head_recovers_its_arity() {
     assert_eq!(defined(&scan.defined), ["_local:handle_call/3".to_owned()]);
 }
 
-// A `fun M:F/A` whose module and function sit on different lines: the
-// per-line scanner matched neither line, the join reads it whole.
+// A fun M:F/A split across lines: the per-line scanner matched neither line; the join scans it whole.
 #[test]
 fn a_wrapped_fun_ref_resolves() {
     let scan = scan(&[
@@ -133,8 +128,7 @@ fn a_wrapped_fun_ref_resolves() {
     );
 }
 
-// A `-spec` run and the body that follows are scanned as separate
-// regions: the spec yields a type reference, the body a call.
+// A -spec run and the following body scan as separate regions: a type reference, then a call.
 #[test]
 fn the_spec_region_does_not_merge_into_the_body() {
     let scan = scan(&[
@@ -157,8 +151,7 @@ fn the_spec_region_does_not_merge_into_the_body() {
     );
 }
 
-// A type reference whose argument list wraps inside the spec region now
-// closes across the join and resolves at exact arity.
+// A type reference wrapping inside the spec region closes across the join at exact arity.
 #[test]
 fn a_wrapped_type_reference_resolves() {
     let scan = scan(&[
@@ -176,7 +169,7 @@ fn a_wrapped_type_reference_resolves() {
     assert_eq!(arity, Some(2));
 }
 
-// Only `Added`-head calls feed the clause-mismatch comparison.
+// Only Added-head calls feed the clause-mismatch comparison.
 #[test]
 fn call_args_keep_only_added_head_calls() {
     let scan = scan(&[added("    aten:register(X),"), context("    khepri:get(Y)")]);
@@ -188,8 +181,7 @@ fn call_args_keep_only_added_head_calls() {
     assert_eq!(names, ["aten:register/1".to_owned()]);
 }
 
-// Several clause heads in one body run are each defined: the multi-line
-// `^` anchor finds a head at the start of every physical line.
+// Several clause heads in one body run: the multi-line anchor finds a head at every physical line start.
 #[test]
 fn multiple_clause_heads_in_one_run_are_all_defined() {
     let scan = scan(&[

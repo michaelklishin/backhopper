@@ -21,7 +21,7 @@ fn default_formatter_is_json_not_text() {
             "-module(a).\n-export([go/0]).\ngo() -> missing:f(1).\n",
         )],
     );
-    // `backhopper` defaults to a machine-readable format
+    // backhopper defaults to a machine-readable format
     let assert = Command::cargo_bin("backhopper")
         .unwrap()
         .env_remove("BACKHOPPER_FORMATTER")

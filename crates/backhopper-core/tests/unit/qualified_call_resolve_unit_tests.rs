@@ -65,8 +65,7 @@ fn drifted(reasons: &[Reason]) -> Vec<(String, String, String, u32)> {
 }
 
 /// `target` rows are `(module, path, file text)`; `source` rows are
-/// `(path, file text)` for the source-checkout side, `None` meaning no
-/// checkout is available.
+/// `(path, file text)`, `None` meaning no checkout is available.
 fn analyse_full(
     added: &str,
     line_map: &[u32],
@@ -76,8 +75,7 @@ fn analyse_full(
     source: Option<&[(&str, &str)]>,
 ) -> QualifiedCallAnalysis {
     let path = rp("deps/some-app/src/caller.erl");
-    // A bare `&[]` means "contiguous": synthesize the 1..=n identity
-    // map the extractor's length assert requires.
+    // A bare &[] means contiguous: synthesize the 1..=n identity map the length assert requires.
     let seq: Vec<u32>;
     let line_map = if line_map.is_empty() && !added.is_empty() {
         seq = (1..=added.lines().count() as u32).collect();
@@ -138,9 +136,7 @@ fn analyse(added: &str, target: &[(&str, &str, &str)]) -> Vec<Reason> {
     analyse_with(added, &[], &[], &PatchProvided::default(), target)
 }
 
-// A first-party module present on target that lacks the called export
-// is flagged. The #16771 witness: rabbit_misc exports r/3, not
-// queue_resource/2.
+// #16771: rabbit_misc exports r/3, not queue_resource/2; the missing export is flagged.
 #[test]
 fn a_qualified_call_absent_on_target_is_flagged() {
     let reasons = analyse(
@@ -170,9 +166,7 @@ fn a_qualified_call_exported_on_target_is_clean() {
     assert!(reasons.is_empty(), "unexpected: {reasons:?}");
 }
 
-// Resolution is against the exports, not the defined set: a function
-// the target module defines but does not export is a runtime undef on a
-// qualified call, so it is flagged.
+// Resolution is against exports, not defined functions: unexported means runtime undef, so flagged.
 #[test]
 fn a_defined_but_unexported_function_is_flagged() {
     let reasons = analyse(
@@ -189,8 +183,7 @@ fn a_defined_but_unexported_function_is_flagged() {
     );
 }
 
-// A module a pin snapshot covers defers to the snapshot axis, even when
-// the in-tree copy lacks the export: the deps/ra-vs-deps/rabbit hazard.
+// A snapshot-covered module defers to the snapshot axis even when the in-tree copy lacks the export.
 #[test]
 fn a_snapshot_covered_module_is_not_flagged() {
     let reasons = analyse_with(
@@ -213,8 +206,7 @@ fn a_module_absent_from_the_tree_is_not_flagged() {
     assert!(reasons.is_empty(), "unexpected: {reasons:?}");
 }
 
-// export_all means every defined function is exported; the listed
-// exports under-report, so the resolver withholds.
+// export_all exports every defined function: the listed exports under-report, so the resolver withholds.
 #[test]
 fn an_export_all_module_is_withheld() {
     let reasons = analyse(
@@ -254,8 +246,7 @@ fn a_parse_transform_module_is_withheld() {
     assert!(reasons.is_empty(), "unexpected: {reasons:?}");
 }
 
-// A pick that adds both the call and the callee (in the callee's own
-// file) must not false-positive: the patch-wide added map covers it.
+// A pick adding both the call and the callee must not false-positive: the patch-wide added map covers it.
 #[test]
 fn a_function_the_patch_adds_cross_file_is_not_flagged() {
     let mut patch_added = PatchProvided::default();
@@ -277,9 +268,7 @@ fn a_function_the_patch_adds_cross_file_is_not_flagged() {
     assert!(reasons.is_empty(), "unexpected: {reasons:?}");
 }
 
-// The load-bearing test: a readable module with one exported and one
-// unexported call flags only the unexported one. Distinguishes
-// "narrowed correctly" from "silently disabled".
+// Only the unexported call flags: narrowed correctly, not silently disabled.
 #[test]
 fn preservation_flags_only_the_unexported_call() {
     let reasons = analyse(
@@ -512,8 +501,7 @@ fn a_missing_source_spec_withholds_and_is_counted() {
 
 #[test]
 fn an_unmodelled_return_type_withholds_and_is_counted() {
-    // A literal bitstring type is a construct the return parser does
-    // not model, so it parses to SpecType::Unknown.
+    // A literal bitstring type is not modeled by the return parser: SpecType::Unknown.
     let analysis = analyse_shapes(
         "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
         "-spec info(state()) -> <<_:8, _:_*8>>.\n",
@@ -564,8 +552,7 @@ fn the_same_drifted_call_twice_in_one_file_yields_one_reason() {
 
 #[test]
 fn an_undefined_call_gets_no_shape_check() {
-    // Export resolution already failed: the shape check never runs, so
-    // the tally stays empty and only the undefined reason fires.
+    // Export resolution already failed: the shape check never runs and the tally stays empty.
     let analysis = analyse_full(
         "f(V, Q) -> rabbit_misc:queue_resource(V, Q).\n",
         &[],
@@ -659,8 +646,7 @@ fn the_drift_line_is_translated_through_the_map() {
 
 #[test]
 fn a_patch_rewritten_spec_gets_no_shape_check() {
-    // The pick carries the new spec to the target, so the pre-existing
-    // difference between the trees is not drift the pick will hit.
+    // The pick carries the new spec to the target, so the pre-existing difference is not drift.
     let mut patch_added = PatchProvided::default();
     patch_added.specs.insert(
         module("rabbit_classic_queue_index_v2"),
@@ -689,9 +675,7 @@ fn a_patch_rewritten_spec_gets_no_shape_check() {
 
 #[test]
 fn an_unreadable_source_module_counts_as_no_source_not_no_spec() {
-    // A checkout without the callee's file (e.g. a defaulted
-    // `--repo-dir-path` pointing somewhere else) is a missing source,
-    // not a readable module that happens to lack a spec.
+    // A checkout missing the callee's file is a missing source, not a module lacking a spec.
     let target_rows = idx_target("-spec info(state()) -> binary().\n");
     let target: Vec<(&str, &str, &str)> = target_rows
         .iter()
@@ -761,12 +745,8 @@ fn repro_e2e_line_attribution_through_the_gate() {
     assert_eq!(drifted(&analysis.reasons)[0].3, 6);
 }
 
-// HF-45: a hunk changes one continuation line of a multi-line `-spec`;
-// the opener naming `rabbit_net:socket()` is unchanged context and
-// never enters the added-only blob. Both type references on the
-// continuation must classify as type context, not calls, so neither
-// produces `QualifiedCallUndefinedOnTarget` against `rabbit_net`'s
-// function exports.
+// Only a continuation line of a multi-line -spec is added; the opener is unchanged
+// context. Both type refs on the continuation must classify as type context, not calls.
 fn analyse_from_hunks(hunks: &[Hunk], target: &[(&str, &str, &str)]) -> Vec<Reason> {
     let path = rp("deps/rabbitmq_mqtt/src/rabbit_mqtt_processor.erl");
     let (added, line_map, ctx) = added_lines_with_context(hunks);
@@ -825,10 +805,8 @@ fn a_type_reference_on_an_orphaned_spec_continuation_is_not_flagged() {
     assert!(flagged(&reasons).is_empty(), "unexpected: {reasons:?}");
 }
 
-// Negative control: a genuine wrapped call, added in full after a Body
-// context line, must still be flagged. Without this, the fix could
-// trivially "pass" by withholding every hunk with a context line rather
-// than classifying attribute regions correctly.
+// Negative control: a genuine wrapped call added after a Body context line must
+// still flag; otherwise withholding every such hunk would trivially pass.
 #[test]
 fn a_genuine_wrapped_call_after_context_is_still_flagged() {
     let hunks = [Hunk {

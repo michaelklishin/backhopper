@@ -3,8 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! Byte-level scanners for the two Erlang attributes that drive
-//! candidate 5 (`HeaderFileMissing`) and candidate 6
-//! (`BehaviourModuleMissing`) of `018_ci_signal_gaps`.
+//! `HeaderFileMissing` and `BehaviourModuleMissing`.
 //!
 //! Both attributes have stable, line-oriented shapes:
 //!
@@ -13,11 +12,11 @@
 //!   * `-include("rel/path.hrl").` and
 //!     `-include_lib("app/include/file.hrl").`
 //!
-//! We scan for these by walking the source byte by byte, balancing
-//! strings, char literals, and `%` line comments. Anything more
-//! complex (macro-substituted attributes, `parse_transform`-injected
-//! values) is invisible to the scanner: those cases land in a
-//! follow-up `--deep-helper-resolution` pass.
+//! We scan the source byte by byte, balancing strings, char literals,
+//! and `%` line comments. Anything more complex (macro-substituted
+//! attributes, `parse_transform`-injected values) is not visible to the
+//! scanner: those cases are left to a follow-up
+//! `--deep-helper-resolution` pass.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -34,16 +33,16 @@ use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath, TypeNam
 use crate::model::verdict::IncludeDirective;
 use crate::snapshot::spec_normalize::normalize_signature;
 
-/// One `-behaviour(M)` declaration the scanner saw, with the line
-/// number for the user-facing report.
+/// One scanned `-behaviour(M)` declaration, with the line number for
+/// the user-facing report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BehaviourRef {
     pub behaviour: ModuleName,
     pub line: u32,
 }
 
-/// One `-include(...)` or `-include_lib(...)` declaration the scanner
-/// saw, with the line number for the user-facing report.
+/// One scanned `-include(...)` or `-include_lib(...)` declaration,
+/// with the line number for the user-facing report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncludeRef {
     pub directive: IncludeDirective,
@@ -289,7 +288,7 @@ pub struct FunctionSignature {
     pub is_definition: bool,
 }
 
-/// Every `name(Args)` the scanner saw, classified into definitions and
+/// Every scanned `name(Args)` occurrence, classified into definitions and
 /// calls. Qualified (`mod:f(`), macro (`?f(`), and `fun name(` forms
 /// are skipped, as are reserved words. Variables (`Var(...)`) and
 /// attribute or spec forms (`-export(...)`, `-spec ... term()`) hold no
@@ -299,8 +298,7 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
     let mut out = Vec::new();
     let mut i = 0;
     let mut line = 1u32;
-    // True between an attribute or spec's leading `-` and its closing
-    // `.`: type names there look like zero-arity calls but are not.
+    // inside an attribute or spec form type names look like zero-arity calls
     let mut in_attribute = false;
     while i < bytes.len() {
         match bytes[i] {
@@ -325,8 +323,7 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
                 i += 1;
             }
             b if b.is_ascii_uppercase() || b == b'_' => {
-                // A variable or `_`-name: consume whole so its tail is
-                // not re-lexed, and never count it as a local call.
+                // consume the whole variable name so its tail is not re-lexed
                 while i < bytes.len() && is_name_char(bytes[i]) {
                     i += 1;
                 }
@@ -471,7 +468,7 @@ pub fn extract_exports(src: &str) -> ExportSet {
             if entry.is_empty() {
                 continue;
             }
-            // A macro in the export list hides which `f/a` it names.
+            // A macro in the export list hides which f/a it names.
             if entry.contains('?') {
                 complete = false;
                 continue;
@@ -805,7 +802,7 @@ fn is_reserved_word(name: &[u8]) -> bool {
 }
 
 /// True when, after skipping whitespace, the bytes at `pos` begin a
-/// clause arrow (`->`) or a `when` guard: the marks of a definition.
+/// clause arrow (`->`) or a `when` guard, which marks a definition.
 fn followed_by_clause_arrow(bytes: &[u8], pos: usize) -> bool {
     let mut i = pos;
     while i < bytes.len() && (bytes[i] as char).is_whitespace() {
@@ -825,8 +822,7 @@ fn top_level_arity(args: &[u8]) -> usize {
         match args[i] {
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth -= 1,
-            // << and >> are binary delimiters: nest like brackets so
-            // interior commas are not counted as argument separators
+            // binary delimiters << >> nest like brackets, so their commas do not separate arguments
             b'<' if args.get(i + 1) == Some(&b'<') => {
                 depth += 1;
                 i += 2;
@@ -937,8 +933,7 @@ pub fn extract_includes(src: &str) -> Vec<IncludeRef> {
 }
 
 /// Resolve `behaviour` against the target tree using the same
-/// `test_helper_search_paths` globs as the SUITE helper resolver
-/// plus, in practice, the stdlib allowlist (callers filter ahead).
+/// `test_helper_search_paths` globs as the SUITE helper resolver.
 pub fn behaviour_resolves(
     target: &TargetTreeIndex,
     search_path_globs: &[String],

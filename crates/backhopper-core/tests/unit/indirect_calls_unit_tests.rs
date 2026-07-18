@@ -201,8 +201,7 @@ fn ct_broker_helper_rpc_overloads_extract_at_their_positions() {
     );
 }
 
-// The motivating incident's exact shape: a meck expectation carried
-// through the CT broker rpc helper unwraps to the mecked MFA.
+// A meck expectation carried through the CT broker rpc helper unwraps to the mecked MFA.
 #[test]
 fn a_meck_expectation_through_the_rpc_helper_unwraps() {
     let src = "t(Config, Node) ->\n\
@@ -274,8 +273,7 @@ fn a_wrapped_multi_line_form_recovers_exact_arity() {
     );
 }
 
-// Non-adjacent file lines never concatenate: the same construct split
-// across two hunks is not scanned as one.
+// Non-adjacent file lines never concatenate: a construct split across two hunks is not scanned as one.
 #[test]
 fn fragments_from_different_hunks_do_not_concatenate() {
     let src = "t(Config, Node) ->\n\
@@ -315,7 +313,7 @@ fn a_cons_tail_counts_as_withheld() {
     assert_eq!(out.withheld_dynamic, 1);
 }
 
-// An atom starting with `fun` is not a fun expression.
+// An atom starting with fun is not a fun expression.
 #[test]
 fn a_fun_prefixed_atom_is_not_read_as_a_fun() {
     let src = "s() -> meck:expect(rabbit_queue_type, drain, funny(1)).\n";
@@ -371,8 +369,7 @@ fn a_form_behind_a_line_comment_extracts_nothing() {
     assert_eq!(out.withheld_dynamic, 0);
 }
 
-// Conditional compilation is not evaluated on added lines: a form
-// between `-ifdef` and `-endif` is still a reference worth checking.
+// Conditional compilation is not evaluated: a form between -ifdef and -endif is still checked.
 #[test]
 fn a_form_inside_an_ifdef_region_still_extracts() {
     let src = "-ifdef(TEST).\n\
@@ -416,8 +413,7 @@ fn an_oversized_literal_list_counts_as_withheld() {
     assert_eq!(out.withheld_dynamic, 1);
 }
 
-// The reason never blocks: a meck expectation can install a function
-// the module never had, so absence proves drift, not failure.
+// The reason never blocks: meck can install a function the module never had, so absence proves drift.
 #[test]
 fn the_reason_is_non_blocking() {
     let reason = Reason::IndirectCallUndefinedOnTarget {
@@ -433,7 +429,7 @@ fn the_reason_is_non_blocking() {
     assert!(reason.apply_conflict().is_none());
 }
 
-// Resolution through `analyse_qualified_calls`.
+// Resolution through analyse_qualified_calls.
 
 /// `target` rows are `(module, path, file text)`.
 fn analyse(
@@ -533,8 +529,7 @@ fn an_exported_function_is_not_flagged() {
     assert_eq!(analysis.indirect_checks.checked, 1);
 }
 
-// meck mocks unexported functions, so a defined-but-unexported callee
-// is legitimate and stays unflagged.
+// meck mocks unexported functions: a defined-but-unexported callee stays unflagged.
 #[test]
 fn a_defined_but_unexported_function_is_not_flagged() {
     let target = "-module(rabbit_queue_type).\n\

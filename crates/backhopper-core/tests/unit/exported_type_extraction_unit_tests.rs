@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! `-export_type` and type-declaration extraction. The load-bearing
+//! `-export_type` and type-declaration extraction. The key
 //! case is `export_all`: it exports functions, not types, so it must
 //! not make the exported-type set incomplete.
 

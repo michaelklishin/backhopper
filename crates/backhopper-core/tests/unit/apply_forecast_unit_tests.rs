@@ -207,9 +207,8 @@ fn inapplicable_row(apply: Option<ApplyForecast>) -> BatchResult {
     }
 }
 
-// The operator case: an all-inapplicable row keeps its conflicts
-// visible through predicted_conflicts even though pin reasons are
-// structurally empty for inapplicable verdicts.
+// An all-inapplicable row keeps its conflicts visible through predicted_conflicts
+// even though pin reasons are empty for inapplicable verdicts.
 #[test]
 fn predicted_conflicts_reads_the_forecast_on_an_inapplicable_row() {
     let mut forecast = ApplyForecast::default();

@@ -123,8 +123,7 @@ impl<B: Backend> Backhopper<B> {
     /// check exists to report cleanly. `required` names the verbs the
     /// caller depends on.
     pub fn compatibility(&self, required: &[&str]) -> Result<Compatibility, DriverError> {
-        // `invoke_raw` skips the envelope path, so it does not inject
-        // `--formatter json`; pass it so the version payload is JSON.
+        // invoke_raw does not inject --formatter json, so request it here
         let outcome = self.invoke_raw(
             VerbId::Known(Verb::Version),
             [OsStr::new("--formatter"), OsStr::new("json")],
@@ -149,22 +148,22 @@ impl<B: Backend> Backhopper<B> {
         })
     }
 
-    /// Reach into the `check` verb group.
+    /// Access the `check` verb group.
     pub fn check(&self) -> Check<'_, B> {
         Check { driver: self }
     }
 
-    /// Reach into the `siblings` verb group.
+    /// Access the `siblings` verb group.
     pub fn siblings(&self) -> Siblings<'_, B> {
         Siblings { driver: self }
     }
 
-    /// Reach into the `suites` verb group.
+    /// Access the `suites` verb group.
     pub fn suites(&self) -> Suites<'_, B> {
         Suites { driver: self }
     }
 
-    /// Reach into the `snapshots` verb group.
+    /// Access the `snapshots` verb group.
     pub fn snapshots(&self) -> Snapshots<'_, B> {
         Snapshots { driver: self }
     }
@@ -220,8 +219,7 @@ impl<B: Backend> Backhopper<B> {
         args: Vec<OsString>,
         stdin: StdinPayload<'a>,
     ) -> Result<(T, ExecutedInvocation), DriverError> {
-        // Refuse a repo-operating verb with no repo dir before spawn,
-        // rather than let the CLI default to the current directory.
+        // refuse a missing repo dir before spawn: the CLI would default to the current directory
         if verb.requires_global_repo_dir() && self.options.repo_dir_path.is_none() {
             return Err(DriverError::MissingRepoDir {
                 verb: VerbId::Known(verb),
@@ -271,8 +269,7 @@ impl<B: Backend> Backhopper<B> {
         let mut outcome = self.backend.invoke(invocation)?;
 
         let exit_class = ExitClass::from_code(outcome.exit_code);
-        // Snapshot before the success check: a failed run reports the
-        // same argv a success does.
+        // snapshot before the success check so a failed run reports the same argv
         let executed = ExecutedInvocation {
             verb: owned_verb_for_record.clone(),
             argv: mem::take(&mut outcome.argv),
@@ -298,9 +295,8 @@ impl<B: Backend> Backhopper<B> {
     }
 }
 
-// `--repo-dir-path` and `--dry-run` are per-verb args in the CLI: a verb
-// that does not define them rejects the flag with a usage error, so push
-// them only where the verb accepts them.
+// --repo-dir-path and --dry-run are per-verb args in the CLI: verbs that
+// do not define them reject the flag, so push them only where accepted.
 fn push_global_flags<'a>(
     options: &'a GlobalOptions,
     verb: &VerbId<'_>,
@@ -432,9 +428,8 @@ struct SchemaProbe {
     schema_version: u32,
 }
 
-// Read just `schema_version`, ignoring the typed payload, so a too-new
-// envelope reads as a mismatch instead of a payload parse error. `None`
-// when the bytes lack the field.
+// Read just schema_version so a too-new envelope reads as a mismatch, not
+// a payload parse error; None when the bytes lack the field.
 fn read_schema_version(stdout: &[u8]) -> Option<u32> {
     serde_json::from_slice::<SchemaProbe>(stdout)
         .ok()
@@ -446,8 +441,7 @@ fn parse_envelope<T: DeserializeOwned>(
     outcome: &RawOutcome,
     executed: ExecutedInvocation,
 ) -> Result<Envelope<T>, DriverError> {
-    // Check the ceiling before the strict parse: a too-new envelope
-    // must read as a mismatch, not a `deny_unknown_fields` parse error.
+    // check the ceiling first: a too-new envelope must read as a mismatch, not a deny_unknown_fields error
     if let Some(sv) = read_schema_version(&outcome.stdout) {
         let schema = SchemaVersion::new(sv);
         if !crate::SUPPORTED_SCHEMA.contains(schema) {
@@ -469,8 +463,7 @@ fn parse_envelope<T: DeserializeOwned>(
     })?;
     let schema = SchemaVersion::new(wire.schema_version);
     let command_raw = wire.command.clone().unwrap_or_default();
-    // the parsed verb is honest: `None` when the string names a verb this
-    // driver does not know, rather than lying with a fallback
+    // an unrecognized verb parses as None rather than a fallback
     let command = wire
         .command
         .as_deref()

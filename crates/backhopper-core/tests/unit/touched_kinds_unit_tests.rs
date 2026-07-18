@@ -156,8 +156,7 @@ fn inapplicable_reason_distinguishes_docs_tests_schema() {
         Some(InapplicableReason::OnlyTestFixturesTouched)
     );
 
-    // A cuttlefish schema file is analyzable surface: its fun bodies carry
-    // MFA references, so a schema-only diff is not inapplicable.
+    // A cuttlefish schema file is analyzable surface: fun bodies carry MFA references.
     let tk = TouchedKinds {
         schema: 1,
         ..TouchedKinds::default()

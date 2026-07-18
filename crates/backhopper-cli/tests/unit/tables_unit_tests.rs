@@ -350,9 +350,7 @@ diff --git a/x.erl b/x.erl
     }
 }
 
-// The bump-first remedy rides both reason families: a populated
-// `first_seen_at_tag` or `expected_available_at` names the tag and
-// the action.
+// the bump-first remedy applies to both reason families: the populated tag field names the action
 #[test]
 fn table_renders_the_bump_first_remedy_for_both_reason_families() {
     let mut pv = PinVerdict::new(

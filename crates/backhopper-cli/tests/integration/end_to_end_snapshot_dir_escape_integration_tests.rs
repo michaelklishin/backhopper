@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! End-to-end tests for the P7 fix: a relative `snapshot_dir` whose
+//! End-to-end tests: a relative `snapshot_dir` whose
 //! resolution walks above the config file's parent must produce a clear,
 //! actionable error pointing the user at absolute-path mode.
 

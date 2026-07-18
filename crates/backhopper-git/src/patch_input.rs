@@ -24,16 +24,16 @@ use crate::repo::GitRepo;
 /// How to treat the commit's parent count at resolution time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MergePolicy {
-    /// Single-commit verbs: a merge SHA is operator error.
+    /// Single-commit verbs: a merge SHA is a user error.
     Refuse,
-    /// `check merge`: anything that is not a merge is operator error.
+    /// `check merge`: anything that is not a merge is a user error.
     RequireMerge,
     /// Batch-shaped verbs: merges evaluate as the first-parent diff,
     /// the same diff `check merge` produces.
     FirstParentDiff,
 }
 
-/// Whether the resolver pays for the inner PR-branch walk.
+/// Whether the resolver performs the inner PR-branch walk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrCommitPolicy {
     Collect,
@@ -173,11 +173,11 @@ impl ResolvedPatchInput {
 }
 
 /// The root dep-pin manifest, the only pin file backhopper reads:
-/// the monorepo carries copies under `deps/*/`, which are vendored
-/// noise.
+/// the copies the monorepo carries under `deps/*/` are vendored
+/// duplicates and are ignored.
 pub const COMPONENTS_MK_PATH: &str = "rabbitmq-components.mk";
 
-/// Paths worth carrying in analysis diffs: Erlang and Elixir sources,
+/// Paths kept in analysis diffs: Erlang and Elixir sources,
 /// cuttlefish `.schema`, `.snippets`, and `.partial` files, plus the root
 /// dep-pin manifest, so commit-shaped inputs classify and detect pin
 /// bumps the same way patch-file inputs do.

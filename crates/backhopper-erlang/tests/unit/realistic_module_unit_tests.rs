@@ -98,8 +98,7 @@ fn snapshot_round_trip_for_realistic_module() {
         extractor_version: String::new(),
         dep_pins: Vec::new(),
     };
-    // The text format does not (yet) round-trip clause_heads; clear them
-    // on both sides so the comparison stays focused on persisted state.
+    // the text format does not round-trip clause_heads; clear both sides before comparing
     let mut m = m;
     m.clause_heads.clear();
     let snap = Snapshot::from_extracted(header, vec![m], vec![]).into_canonical();

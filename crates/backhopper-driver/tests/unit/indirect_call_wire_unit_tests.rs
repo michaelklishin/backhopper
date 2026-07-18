@@ -11,8 +11,7 @@
 use backhopper_driver::types::{Diagnostics, IndirectCallForm, IndirectCallTally, Reason};
 use serde_json::json;
 
-// Naming the new types through the façade guards the re-exports:
-// drop one and this stops compiling.
+// naming the new types through the crate root guards the re-exports at compile time
 #[allow(dead_code)]
 struct NamesEveryReexport<'a> {
     a: &'a IndirectCallForm,

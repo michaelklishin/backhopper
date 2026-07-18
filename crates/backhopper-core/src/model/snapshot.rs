@@ -105,8 +105,7 @@ pub struct Module {
     pub opaques: Vec<TypeArity>,
     pub deprecations: Vec<Deprecation>,
     /// Per-export clause-head patterns: the disjunction of clauses that
-    /// define this function. Populated by the source extractor (when it
-    /// gains this capability). Used by the analyzer to flag calls whose
+    /// define this function. Used by the analyzer to flag calls whose
     /// argument shape doesn't satisfy any clause head at the pin.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub clause_heads: BTreeMap<FunArity, Vec<Vec<ArgShape>>>,
@@ -125,10 +124,10 @@ pub struct Module {
     /// Exports declared inside an `-ifdef(TEST)` block. Test-only
     /// exports drive cascade planning for the unconditional-exports
     /// refactor: they are not part of the public API at the tag but the
-    /// planner needs to know they exist on this branch.
+    /// planner needs them recorded for this branch.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub test_only_exports: Vec<TestOnlyExport>,
-    /// `-define(...)` macros that live inside `-ifdef(TEST)` *body*
+    /// `-define(...)` macros inside `-ifdef(TEST)` *body*
     /// blocks (the macro itself is only visible under the guard).
     /// Needed by the Variant B unwrap planner: when the body block
     /// becomes unconditional, every macro it depends on must move
@@ -159,7 +158,7 @@ pub struct Module {
 pub struct TestOnlyExport {
     pub function: FunctionName,
     pub arity: Arity,
-    /// 1-based line where the `-export` directive lives.
+    /// 1-based line of the `-export` directive.
     pub export_line: usize,
     /// 1-based line where the function body starts. `None` for
     /// Variant A (body unconditional), `Some` for Variant B (body
@@ -202,7 +201,7 @@ impl TestExportVariant {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IfdefMacro {
     pub name: String,
-    /// 1-based line where the `-define` directive lives.
+    /// 1-based line of the `-define` directive.
     pub line: usize,
     pub guard_kind: IfdefGuardKind,
 }
@@ -241,11 +240,11 @@ impl IfdefGuardKind {
 pub struct VariantCBlock {
     /// The `-ifndef(...)` identifier (typically `TEST`).
     pub guard: String,
-    /// 1-based line where the `-ifndef` directive lives.
+    /// 1-based line of the `-ifndef` directive.
     pub start_line: usize,
-    /// 1-based line where the matching `-endif.` lives.
+    /// 1-based line of the matching `-endif.`.
     pub end_line: usize,
-    /// 1-based line where the `-else.` lives, when present.
+    /// 1-based line of the `-else.`, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub else_line: Option<usize>,
 }
@@ -534,7 +533,7 @@ impl<S> Snapshot<S> {
         &self.headers
     }
 
-    /// Records live in headers (.hrl) and inline in modules (.erl): both.
+    /// Records are declared in headers (.hrl) and inline in modules (.erl): both.
     pub fn records(&self) -> impl Iterator<Item = &RecordDecl> {
         self.headers
             .iter()

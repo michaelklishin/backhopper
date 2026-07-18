@@ -6,8 +6,7 @@
 
 use backhopper_erlang_scan::{arity_of_args, split_name_and_args};
 
-// Promoted to the leaf crate so `backhopper-core` can parse specs with
-// the same grammar; re-exported here to keep existing paths stable.
+// moved to the leaf crate so backhopper-core shares the grammar; re-exported to keep paths stable
 pub use backhopper_erlang_scan::{ParsedSignature, parse_callable_signature};
 
 pub fn parse_type_decl(body: &str) -> Option<(String, u8, String)> {

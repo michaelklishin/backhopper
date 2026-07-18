@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Text rendering of `siblings doctor`. The load-bearing pair is the
+//! Text rendering of `siblings doctor`. The key pair is the
 //! two zero-candidate runs: an empty vocabulary analysed nothing, a
 //! populated one analysed everything and found nothing, and the text
 //! must not read the same for both.

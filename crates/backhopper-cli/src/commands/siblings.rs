@@ -110,7 +110,7 @@ fn run_doctor(global: &GlobalArgs, args: &SiblingsDoctorArgs) -> CliResult<Comma
     emit_report(global, args, &repo, &report, exit)
 }
 
-/// The target branch and the repo directory it lives in.
+/// The target branch and its repo directory.
 struct ResolvedTarget {
     branch: GitRef,
     repo_dir: PathBuf,
@@ -183,8 +183,7 @@ fn resolve_since(
     }
     let candidates: BTreeSet<CommitSha> = by_sha.iter().map(|(_, sha)| sha.clone()).collect();
     let reachable = repo.ancestors_among(target_tip, &candidates)?;
-    // list_tag_refs sorts newest-first by version_cmp, so the first
-    // reachable hit is the last release
+    // list_tag_refs sorts newest-first, so the first reachable hit is the last release
     let newest_reachable = by_sha.into_iter().find(|(_, sha)| reachable.contains(sha));
     match newest_reachable {
         Some((tag, sha)) => Ok(SinceDerivation::LastReleaseTag { tag, sha }),
@@ -349,8 +348,7 @@ fn compute_candidates(
     let mut candidates: Vec<SiblingCandidate<Scored>> = Vec::new();
 
     if vocabulary.is_empty() {
-        // count the window so the report stays meaningful, but skip
-        // the target index, the suppression walk, and every diff
+        // count the window so the report stays meaningful, but skip the target index, suppression walk, and diffs
         for (_, tip) in source_tips {
             let window = first_parent_walk_since(repo, tip, since.sha())?;
             walked_count = walked_count.saturating_add(window.len() as u32);
@@ -404,8 +402,7 @@ fn compute_candidates(
                 suppressed_count += 1;
                 continue;
             }
-            // the same fix cherry-picked onto a second source branch
-            // is one candidate, not two
+            // the same fix cherry-picked onto a second source branch is one candidate, not two
             if let Some(id) = candidate_patch_id
                 && !seen_patch_ids.insert(id)
             {
@@ -501,8 +498,8 @@ fn patch_facts(bytes: &[u8]) -> CliResult<(Vec<RelativePath>, u32, u32)> {
 
 /// The line worth matching and showing. A GitHub PR merge's subject
 /// is boilerplate (`Merge pull request #N from org/branch`); the PR
-/// title sits on the first body line, and that is where the signal
-/// lives on a PR-merge-dominated branch like RabbitMQ's `main`.
+/// title sits on the first body line, so that line carries the useful
+/// text on a PR-merge-dominated branch like RabbitMQ's `main`.
 fn effective_subject(commit: &WalkedCommit) -> String {
     if commit.parents.len() >= 2
         && commit.subject.starts_with("Merge pull request ")
@@ -557,8 +554,7 @@ fn emit_report(
         }
         return Ok(exit);
     }
-    // the column only renders in the table forms; skip the per-branch
-    // ancestry walks under the JSON formatter
+    // the column renders only in the table forms; skip the per-branch ancestry walks under the JSON formatter
     let wants_table = matches!(global.formatter, Formatter::Text | Formatter::Markdown);
     let branch_columns = if args.with_branches && wants_table {
         Some(branch_containment(repo, &report.candidates)?)

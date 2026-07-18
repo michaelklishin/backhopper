@@ -583,8 +583,8 @@ impl<'a, B: Backend, T: TargetState> CheckBatchBuilder<'a, B, T, NoInput> {
         self.with_commits(ListInput::File(path.into()))
     }
 
-    /// Escape hatch: send pre-framed stdin bytes verbatim. The
-    /// row-per-commit contract is the caller's to keep here.
+    /// Escape hatch: send pre-framed stdin bytes verbatim. The caller
+    /// is responsible for the row-per-commit contract here.
     pub fn commits_bytes(
         self,
         bytes: impl Into<Vec<u8>>,
@@ -620,8 +620,7 @@ impl<B: Backend> CheckBatchBuilder<'_, B, WithTarget, WithInput> {
             args.push(OsString::from(s.to_string()));
         }
         push_options(&mut args, &self.options);
-        // The CLI's `--target-ref` requires `--target-repo-dir-path`, so
-        // a ref without a target dir is dropped rather than sent alone.
+        // --target-ref requires --target-repo-dir-path: a ref without a target dir is dropped
         if let Some(dir) = &self.target_repo_dir_path {
             args.push(OsString::from("--target-repo-dir-path"));
             args.push(dir.as_os_str().to_owned());
@@ -637,8 +636,7 @@ impl<B: Backend> CheckBatchBuilder<'_, B, WithTarget, WithInput> {
     }
 }
 
-// The commit, range, and merge builders share one dispatch contract:
-// target flags, then options, then a single positional, no stdin.
+// Shared dispatch contract: target flags, then options, one positional, no stdin.
 fn run_target_positional<B: Backend>(
     api: &Check<'_, B>,
     target: &PinSelector,

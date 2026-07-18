@@ -5,7 +5,7 @@
 //! Visibility heuristics.
 //!
 //! Scans Erlang source for the `%% @hidden` and `-doc(hidden)` markers. The
-//! classification itself lives in `backhopper_core::extract::classify_visibility`.
+//! classification itself is in `backhopper_core::extract::classify_visibility`.
 
 pub fn detect_visibility_hints(source: &str) -> VisibilityHints {
     for line in source.lines() {

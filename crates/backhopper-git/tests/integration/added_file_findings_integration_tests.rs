@@ -216,9 +216,8 @@ fn stdlib_include_lib_not_flagged_even_when_absent() {
 
 #[test]
 fn relative_include_still_flagged_even_when_app_name_matches_stdlib() {
-    // `-include("kernel.hrl")` is project-local, not a stdlib library
-    // include. The stdlib-include-lib filter must not leak into the
-    // relative-include path.
+    // -include("kernel.hrl") is project-local: the stdlib-include-lib filter
+    // must not apply to relative includes.
     let repo = GitRepoFixture::new();
     repo.write_file("docs/x.md", "x\n");
     repo.commit("docs");

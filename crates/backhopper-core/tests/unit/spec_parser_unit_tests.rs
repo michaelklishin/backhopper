@@ -330,9 +330,7 @@ fn parse_nested_union_in_tuple() {
 
 #[test]
 fn parse_real_world_callback_return_dedups_same_shape() {
-    // {error, ...} and {error, timeout} share tag and arity. The
-    // canonicaliser collapses them: we discriminate by tag plus arity,
-    // not by inner types.
+    // {error, ...} and {error, timeout} share tag and arity: the canonicaliser collapses them.
     let return_text = "{ok, pid()} | {error, {already_started, pid()}} | {error, timeout}";
     let t = parse(return_text);
     match t {

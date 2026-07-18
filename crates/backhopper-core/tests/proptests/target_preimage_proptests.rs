@@ -32,8 +32,7 @@ proptest! {
         let _ = reasons(&patch, &target);
     }
 
-    // A clean append at EOF and a divergent one share a base; only the
-    // divergent target is a collision, and it is always caught.
+    // A clean EOF append and a divergent one share a base; only the divergent target is a collision.
     #[test]
     fn a_trailing_add_over_divergent_content_is_flagged(
         ctx in "[a-z]{1,8}",
@@ -54,8 +53,7 @@ proptest! {
         );
     }
 
-    // A hunk never carries both a drift note and a collision: the
-    // collision replaces the clean-shift signal.
+    // A hunk never carries both a drift note and a collision: the collision replaces the clean-shift signal.
     #[test]
     fn drift_and_collision_are_mutually_exclusive_per_hunk(patch in ".{0,300}", target in ".{0,300}") {
         let out = reasons(&patch, &target);

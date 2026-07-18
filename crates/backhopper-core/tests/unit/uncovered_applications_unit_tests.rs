@@ -43,8 +43,7 @@ fn input(root: &std::path::Path, modified: Vec<&str>, apps: Vec<AppSrcSpec>) -> 
     }
 }
 
-// The management shape: the suite exercises handlers over HTTP and
-// references no modified module, so no built-in rule can select it.
+// The suite exercises handlers over HTTP and references no modified module: no built-in rule selects it.
 #[test]
 fn protocol_boundary_app_is_reported_uncovered_with_candidates() {
     let tmp = TempDir::new().unwrap();
@@ -86,9 +85,7 @@ fn app_covered_by_same_app_caller_is_not_uncovered() {
     assert!(p.uncovered.is_empty());
 }
 
-// A library application exercised only by another application's
-// suite must not be reported uncovered: coverage is reason-based,
-// not entry-ownership-based.
+// A library exercised only by another application's suite is not uncovered: coverage is reason-based.
 #[test]
 fn library_app_covered_via_cross_app_caller_is_not_uncovered() {
     let tmp = TempDir::new().unwrap();
@@ -127,8 +124,7 @@ fn app_with_no_suites_is_uncovered_with_empty_candidates() {
     assert!(p.uncovered[0].suites.is_empty());
 }
 
-// priv-only changes carry no modified modules, so the advisory
-// stays quiet by design.
+// priv-only changes carry no modified modules: the advisory reports nothing.
 #[test]
 fn priv_only_change_does_not_fire_the_advisory() {
     let tmp = TempDir::new().unwrap();
@@ -155,9 +151,7 @@ fn paths_outside_any_application_are_counted_unattributed() {
     assert!(p.uncovered.is_empty());
 }
 
-// A configured rule firing on a path inside the app marks the app
-// covered even when no suite references any modified module: this
-// is exactly the management `[[suite_rule]]` fix.
+// A configured rule firing inside the app marks it covered even when no suite references a modified module.
 #[test]
 fn configured_rule_coverage_suppresses_the_advisory() {
     let tmp = TempDir::new().unwrap();
@@ -188,8 +182,7 @@ fn configured_rule_coverage_suppresses_the_advisory() {
     assert!(p.uncovered.is_empty());
 }
 
-// Only the suite file changed: no modified source modules, so there
-// is nothing for the advisory to report.
+// Only the suite file changed: no modified source modules, nothing to report.
 #[test]
 fn suite_only_change_does_not_fire_the_advisory() {
     let tmp = TempDir::new().unwrap();

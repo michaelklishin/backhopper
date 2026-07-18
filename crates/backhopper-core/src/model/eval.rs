@@ -107,7 +107,7 @@ pub struct EvalReport {
     pub precision: Ratio,
     /// Break count per symbol class, for ranking what to build next.
     pub breaks_by_class: Vec<(ResolverClass, usize)>,
-    /// Breaks a "nothing here" verdict missed, the harvest worklist.
+    /// Breaks a "nothing here" verdict missed, the worklist.
     pub missed_breaks: Vec<MissedBreak>,
 }
 
@@ -225,7 +225,7 @@ pub struct ForecastMiss {
     /// Observed conflicting paths with no matched prediction.
     pub missed_paths: BTreeSet<RelativePath>,
     /// The entry's full prediction, for routing the miss. Empty means
-    /// the forecast saw nothing at all on this pick.
+    /// the forecast predicted nothing at all on this pick.
     pub predicted: Vec<ForecastedConflict>,
 }
 
@@ -277,8 +277,7 @@ pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
             ObservedApply::Conflicted { paths } => Some(paths),
         };
         let predicted = !e.predicted.is_empty();
-        // the variant decides, never the path count: an all-unconvertible
-        // conflict still counts
+        // the variant decides, not the path count: an all-unconvertible conflict still counts
         let observed = observed_paths.is_some();
         if predicted {
             precision.total += 1;

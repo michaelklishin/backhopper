@@ -10,7 +10,7 @@
 //! comments and string literals but never silently misses a real
 //! reference: false positives are cheaper than false negatives.
 //!
-//! A more precise implementation lives in `backhopper-xref-reader`
+//! A more precise implementation exists in `backhopper-xref-reader`
 //! (`AstSuiteMatcher`): it parses each suite into a `ModuleData` and
 //! consults `external_calls`, `unresolved`, and `imports` for actual
 //! references. Suites that fail to load fall back to the substring

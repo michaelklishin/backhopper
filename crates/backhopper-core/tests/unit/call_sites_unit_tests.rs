@@ -295,7 +295,7 @@ fn split_top_level_args_ignores_comma_inside_quoted_atom() {
 
 #[test]
 fn split_top_level_args_stops_at_matching_close_paren() {
-    // Anything past the matching `)` is ignored.
+    // Anything past the matching ) is ignored.
     let out = split_top_level_args("A, B)C, D");
     assert_eq!(out, vec!["A", " B"]);
 }

@@ -53,7 +53,7 @@ impl PinSelect {
         I: IntoIterator<Item = &'a TagName>,
     {
         let iter = tags.into_iter();
-        // `version_cmp` orders descending: newer is `Less`, older is `Greater`.
+        // version_cmp orders descending: newer is Less, older is Greater
         match self {
             Self::Latest => iter.min_by(|a, b| version_cmp(a.as_str(), b.as_str())),
             Self::Oldest => iter.max_by(|a, b| version_cmp(a.as_str(), b.as_str())),
@@ -78,7 +78,7 @@ pub enum PinSpec {
     /// Self-project pin. `git_ref` is a branch, tag, or SHA resolved in the
     /// working repo at evaluation time. `repo_dir_path`, when set, overrides
     /// the CLI `--repo-dir-path` fallback: needed when one logical project
-    /// lives in several physical git directories (one per maintained
+    /// is split across several physical git directories (one per maintained
     /// branch).
     SelfRef {
         project: ProjectName,
@@ -113,7 +113,7 @@ impl PinSpec {
         matches!(self, Self::SelfRef { .. })
     }
 
-    /// `SelfRef` pins cannot be resolved here: the working repo lives outside
+    /// `SelfRef` pins cannot be resolved here: the working repo is outside
     /// the snapshot store. The CLI resolves them via the `--repo-dir-path`
     /// before calling into the evaluation pipeline.
     pub fn resolve<M>(&self, store: &SnapshotStore<M>) -> Result<Pin, ConfigError> {

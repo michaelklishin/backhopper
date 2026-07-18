@@ -56,8 +56,7 @@ proptest! {
         let _ = extract_indirect_calls(&src, &line_map);
     }
 
-    // Wrapping a form's argument list across lines never changes the
-    // extraction, as long as the lines stay file-adjacent.
+    // Wrapping a form's argument list across adjacent lines never changes the extraction.
     #[test]
     fn a_line_break_after_a_top_level_comma_changes_nothing(
         occ in occurrence(),
@@ -66,8 +65,7 @@ proptest! {
         let flat = format!("t() -> {occ}.\n");
         let out_flat = extract_indirect_calls(&flat, &identity_line_map(&flat));
 
-        // Break after the `break_at`-th top-level comma of the form,
-        // when it has one.
+        // break after the break_at-th top-level comma of the form, when it has one
         let mut commas = 0usize;
         let mut depth = 0i32;
         let mut split = None;
@@ -98,9 +96,7 @@ proptest! {
         prop_assert_eq!(out_flat.withheld_dynamic, out_wrapped.withheld_dynamic);
     }
 
-    // Extraction-level accounting: every generated occurrence has a
-    // literal module and function, so each one lands in `sites` or in
-    // `withheld_dynamic`, never nowhere.
+    // Every generated occurrence has a literal module and function, so each lands in sites or withheld_dynamic.
     #[test]
     fn every_literal_occurrence_is_accounted_for(occs in prop::collection::vec(occurrence(), 1..6)) {
         let body: Vec<String> = occs.iter().map(|o| format!("    {o},")).collect();
@@ -121,8 +117,7 @@ proptest! {
         let _ = extract_indirect_calls_elixir(&src, &line_map);
     }
 
-    // The same MFA in Erlang and Elixir syntax resolves to the same
-    // reference: the target is language-independent.
+    // The same MFA in Erlang and Elixir syntax resolves to the same reference.
     #[test]
     fn erlang_and_elixir_extract_equal_mfas(
         (form, m, f, arity) in elixir_occurrence()

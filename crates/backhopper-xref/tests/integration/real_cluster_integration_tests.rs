@@ -41,8 +41,7 @@ fn aten_cluster_resolves_internal_edge_and_reports_otp_calls() {
     let deps = x.module_call(&mname("aten"));
     assert!(deps.entries.contains(&mname("aten_detector")));
 
-    // That internal call resolves, while calls leaving the two-module set
-    // (OTP's application, gen_server) are reported as undefined.
+    // The internal call resolves; calls leaving the two-module set are reported undefined.
     let undefined = x.undefined_function_calls();
     assert!(!undefined.is_clean());
     let callees: Vec<String> = undefined

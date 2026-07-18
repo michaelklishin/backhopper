@@ -116,8 +116,8 @@ pub struct SourcePinArgs {
 
 /// The target pin selector shared by every non-batch check verb: either
 /// a single `--project` + `--tag` or a `--series`. The arg ids `project`
-/// and `series` are load-bearing for the `conflicts_with` and `requires`
-/// relations, so the field names must not change.
+/// and `series` are what the `conflicts_with` and `requires` relations
+/// reference, so the field names must not change.
 #[derive(Debug, Args, Clone, Default)]
 pub struct PinSelectorArgs {
     #[arg(long, conflicts_with = "series")]

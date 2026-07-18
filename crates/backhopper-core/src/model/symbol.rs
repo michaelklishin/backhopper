@@ -76,7 +76,7 @@ pub enum RefOrigin {
 }
 
 impl RefOrigin {
-    // `&self` is required by serde's `skip_serializing_if` predicate shape.
+    // &self is required by serde's skip_serializing_if predicate shape
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn is_added(&self) -> bool {

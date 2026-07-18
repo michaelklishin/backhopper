@@ -13,7 +13,7 @@ fn only_incompatible_and_requires_adaptation_are_flagged() {
     assert!(AggregateVerdict::RequiresAdaptation.flagged());
     assert!(!AggregateVerdict::Compatible.flagged());
     assert!(!AggregateVerdict::Inapplicable.flagged());
-    // an empty series predicted nothing, so it reads as "nothing here"
+    // an empty series predicted nothing, so it counts as flagging nothing
     assert!(!AggregateVerdict::Empty.flagged());
 }
 

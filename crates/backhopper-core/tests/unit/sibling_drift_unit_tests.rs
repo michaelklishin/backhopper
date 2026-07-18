@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-// exact float equality is the contract under test: the clamp emits
-// exactly 0.0 and 1.0, and factors are products of exact inputs
+// exact float equality is the contract under test: the clamp emits exactly 0.0 and 1.0
 #![allow(clippy::float_cmp)]
 
 use std::num::NonZeroU32;

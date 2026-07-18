@@ -85,7 +85,7 @@ pub fn extract(source: &str) -> BTreeMap<FunArity, Vec<Vec<ArgShape>>> {
         };
         let shapes: Vec<ArgShape> = pieces.iter().map(|p| classify_arg(p)).collect();
         out.entry(key).or_default().push(shapes);
-        // Skip the body so its inner `;` doesn't split this clause prematurely.
+        // skip the body so its inner ; does not split this clause prematurely
         cursor = skip_body(bytes, arrow_end);
         at_line_start = bytes.get(cursor).copied() == Some(b'\n');
     }
@@ -152,9 +152,8 @@ fn take_balanced(bytes: &[u8], open_at: usize) -> Option<((usize, usize), usize)
                 cursor = skip_to_eol(bytes, cursor);
                 continue;
             }
-            // A $ char literal such as $( or $" carries its delimiter as data:
-            // consume the whole span so it cannot unbalance brackets or toggle
-            // string state.
+            // a $ char literal like $( or $" is data: consume the whole span
+            // so it cannot unbalance brackets or toggle string state
             '$' if !in_string && !in_atom_quote => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;
@@ -237,9 +236,8 @@ fn skip_to_arrow(bytes: &[u8], start: usize) -> Option<usize> {
             '}' if !in_string && !in_atom_quote => depth_brace -= 1,
             '[' if !in_string && !in_atom_quote => depth_brack += 1,
             ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            // A $ char literal such as $" or $- carries its delimiter as data:
-            // consume the whole span so it cannot toggle string state or be
-            // mistaken for the -> arrow.
+            // a $ char literal like $" or $- is data: consume the whole span
+            // so it cannot toggle string state or read as the -> arrow
             '$' if !in_string && !in_atom_quote => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;
@@ -292,9 +290,8 @@ fn skip_body(bytes: &[u8], from: usize) -> usize {
             '}' if !in_string && !in_atom_quote => depth_brace -= 1,
             '[' if !in_string && !in_atom_quote => depth_brack += 1,
             ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            // A $ char literal such as $" or $; carries its delimiter as data:
-            // consume the whole span so it cannot toggle string state or be
-            // mistaken for a clause terminator.
+            // a $ char literal like $" or $; is data: consume the whole span
+            // so it cannot toggle string state or read as a clause terminator
             '$' if !in_string && !in_atom_quote => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;

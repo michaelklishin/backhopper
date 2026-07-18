@@ -83,8 +83,7 @@ fn no_self() -> BTreeSet<ProjectName> {
     BTreeSet::new()
 }
 
-// An unresolved intra-repo macro forces Findings even with no tracked
-// reference: it rides the RequiresAdaptation tier the roll-up counts.
+// An unresolved intra-repo macro forces Findings even with zero tracked references.
 #[test]
 fn a_macro_undefined_finding_forces_findings_with_zero_tracked() {
     let verdict = Verdict::RequiresAdaptation {
@@ -604,8 +603,7 @@ fn row_with_apply(
     r
 }
 
-// The July 2026 operator case: every verdict inapplicable, yet the
-// forecast predicts conflicts. The round must not read as ZeroDomain.
+// Every verdict inapplicable yet the forecast predicts conflicts: not ZeroDomain.
 #[test]
 fn all_inapplicable_with_a_forecast_conflict_is_findings_and_exits_nonzero() {
     let forecast = forecast_with(&[
@@ -765,8 +763,7 @@ fn row_with_findings(
     r
 }
 
-// The HF-33 shape: every verdict inapplicable, yet the target checks
-// found symbols missing. The round must not read as ZeroDomain.
+// Every verdict inapplicable yet the target checks found missing symbols: not ZeroDomain.
 #[test]
 fn all_inapplicable_with_a_target_finding_is_findings_and_exits_nonzero() {
     let rows = vec![

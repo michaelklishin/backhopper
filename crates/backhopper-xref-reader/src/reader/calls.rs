@@ -464,8 +464,7 @@ fn parse_literal_args(
                 depth -= 1;
                 sc.advance();
             }
-            // << and >> are binary delimiters: nest like brackets so a binary
-            // literal is not split into separate arguments.
+            // << and >> nest like brackets so a binary literal is not split into separate arguments.
             b'<' if sc.peek_at(1) == Some(b'<') => {
                 depth += 1;
                 sc.advance();

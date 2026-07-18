@@ -88,8 +88,7 @@ diff --git a/rabbit_fifo.erl b/rabbit_fifo.erl
     );
 }
 
-// Records declared inline in a module (`.erl`), not only in headers (`.hrl`),
-// must be resolved so field changes are still detected.
+// Records declared inline in a module must resolve, not only those in headers.
 #[test]
 fn record_fields_changed_fires_for_inline_module_record() {
     let target = snapshot_with_inline_record_fields("demo", "user", vec!["id", "name"]);

@@ -146,8 +146,7 @@ fn a_changed_argument_type_is_drift_with_both_signatures() {
     );
 }
 
-// A same-named callback at a different arity keys separately, so it
-// reads as added-on-target, not drift.
+// A same-named callback at a different arity keys separately: added-on-target, not drift.
 #[test]
 fn an_arity_change_is_added_on_target_not_drift() {
     let target_text = bq("-callback publish(msg(), props(), state()) -> state().\n");
@@ -164,8 +163,7 @@ fn an_arity_change_is_added_on_target_not_drift() {
 
 #[test]
 fn an_edit_without_the_behaviour_line_in_added_text_is_silent() {
-    // The trigger is the declaration entering the patch, stated rather
-    // than accidental.
+    // The behaviour declaration entering the patch is the trigger.
     let target_text = bq("-callback purge(state()) -> {count(), state()}.\n");
     let reasons = analyse(
         "handle(S) -> S.\n",

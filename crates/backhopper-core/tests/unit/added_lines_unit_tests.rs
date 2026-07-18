@@ -5,8 +5,8 @@
 //! `added_lines_with_offsets` and `file_line`: the blob plus the
 //! blob-line to file-line map the target-axis resolvers report through.
 //! `added_lines_with_context`: the same projection plus each added
-//! line's attribute-region classification, walked against the full
-//! hunk (HF-45, 055).
+//! line's attribute-region classification, computed against the full
+//! hunk.
 
 use backhopper_core::compat::added_lines::{
     added_lines_with_context, added_lines_with_offsets, file_line,
@@ -39,8 +39,7 @@ fn added_lines_carry_their_file_line() {
     assert_eq!(map, vec![121, 122]);
 }
 
-// A removed line does not advance the new-file counter; a context line
-// does but is not added to the blob.
+// Removed lines do not advance the new-file counter; context lines do but stay out of the blob.
 #[test]
 fn removed_lines_do_not_advance_the_file_line() {
     let h = hunk(
@@ -70,17 +69,15 @@ fn file_line_translates_through_the_map() {
     assert_eq!(file_line(&map, 3), 123);
 }
 
-// An empty or too-short map yields the blob line unchanged, so a caller
-// that does not thread offsets keeps the old blob-relative behavior.
+// An empty or too-short map yields the blob line unchanged: the old blob-relative behavior.
 #[test]
 fn file_line_falls_back_to_the_blob_line() {
     assert_eq!(file_line(&[], 7), 7);
     assert_eq!(file_line(&[121], 5), 5);
 }
 
-// HF-45: a hunk's `-spec` opener is unchanged context, only its
-// continuation is added. The opener must still seed the classifier so
-// the continuation reads as a type-attribute region, not a call.
+// The -spec opener is unchanged context; it must still seed the classifier
+// so the added continuation classifies as a type attribute, not a call.
 #[test]
 fn a_continuation_line_classifies_against_its_context_opener() {
     let h = hunk(
@@ -103,8 +100,7 @@ fn a_continuation_line_classifies_against_its_context_opener() {
     assert_eq!(ctx, vec![RefContext::TypeAttribute]);
 }
 
-// Negative control: a wrapped function call, not an attribute, whose
-// opener is also unchanged context. The continuation must stay `Body`.
+// Negative control: a wrapped call opener in unchanged context; the continuation must stay Body.
 #[test]
 fn a_body_continuation_after_a_context_call_opener_stays_body() {
     let h = hunk(
@@ -118,8 +114,7 @@ fn a_body_continuation_after_a_context_call_opener_stays_body() {
     assert_eq!(ctx, vec![RefContext::Body]);
 }
 
-// No `Added` lines still advances the scanner through the hunk's
-// context, but there is nothing to emit.
+// No Added lines: the scanner still advances through context but emits nothing.
 #[test]
 fn a_context_only_hunk_produces_an_empty_blob() {
     let h = hunk(1, vec![HunkLine::Context("-spec f() -> ok.".into())]);
@@ -129,9 +124,8 @@ fn a_context_only_hunk_produces_an_empty_blob() {
     assert!(ctx.is_empty());
 }
 
-// The scanner carries `in_attr` across hunks in file order: an unclosed
-// `-spec` in the first hunk keeps its closing continuation in the
-// second hunk classified as a type attribute.
+// in_attr carries across hunks in file order: an unclosed -spec in the first
+// hunk keeps the second hunk's continuation classified as a type attribute.
 #[test]
 fn classification_persists_across_hunks_in_the_same_file() {
     let a = hunk(1, vec![HunkLine::Added("-spec f(X) -> ok when".into())]);

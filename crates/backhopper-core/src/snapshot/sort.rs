@@ -34,8 +34,7 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
         sort_dedup_by(&mut m.ifdef_macros, |x| (x.name.clone(), x.line));
         sort_dedup_by(&mut m.variant_c_blocks, |x| (x.start_line, x.guard.clone()));
         sort_dedup_by(&mut m.wire_constants, |x| x.macro_name.clone());
-        // deprecations sort and dedup by a custom arity-match order, not
-        // a simple key, so they stay hand-written
+        // deprecations use a custom arity-match order, not a simple key, so they stay hand-written
         m.deprecations
             .sort_by(|a, b| a.function.cmp(&b.function).then(arity_match_cmp(a, b)));
         m.deprecations

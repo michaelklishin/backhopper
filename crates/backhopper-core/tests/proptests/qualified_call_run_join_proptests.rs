@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The 039 keystone restated for `extract_qualified_calls`: joining
-//! file-adjacent runs must change nothing for single-line calls.
-//! `a_context_classified_attribute_never_yields_a_call_reference` is
-//! the HF-45 property (055): whatever `added_lines_with_context`
+//! The core safety property restated for `extract_qualified_calls`:
+//! joining file-adjacent runs must change nothing for single-line calls.
+//! `a_context_classified_attribute_never_yields_a_call_reference` pins
+//! the classification property: whatever `added_lines_with_context`
 //! classifies as a type attribute must never surface as a qualified
 //! call, whether its opener sits in `Context` or `Added`.
 

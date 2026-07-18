@@ -22,7 +22,7 @@ use crate::model::names::{CommitSha, GitRef, RelativePath, SeriesName, TagName};
 
 /// A clamped `[0.0, 1.0]` ranking score. Total-ordered via
 /// `f32::total_cmp` so candidates always sort; the constructor maps
-/// NaN to zero, so no surprising order exists to begin with.
+/// NaN to zero.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[cfg_attr(
     feature = "schemars",
@@ -101,7 +101,7 @@ impl SiblingDriftAction {
     }
 }
 
-/// How the since-point was derived. Travels on the wire so consumers
+/// How the since-point was derived. Serialized on the wire so consumers
 /// can tell a defaulted window from an operator-chosen one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]

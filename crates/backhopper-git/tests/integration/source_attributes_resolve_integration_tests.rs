@@ -131,8 +131,7 @@ fn include_with_no_directory_lives_next_to_source() {
     let directive = IncludeDirective::Include {
         path: "api.hrl".to_owned(),
     };
-    // Source lives in include/, so the relative resolution lands at
-    // deps/rabbit/include/api.hrl.
+    // The source is in include/, so relative resolution lands at deps/rabbit/include/api.hrl.
     let found = resolve_include(&target, &rp("deps/rabbit/include/other.hrl"), &directive).unwrap();
     assert_eq!(found.as_str(), "deps/rabbit/include/api.hrl");
 }

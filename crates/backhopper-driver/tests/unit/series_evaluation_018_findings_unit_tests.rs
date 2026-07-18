@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Driver-side accessors for the three new 018 reasons and the
+//! Driver-side accessors for the `TestModuleSymbolMissing`,
+//! `HeaderFileMissing`, and `BehaviourModuleMissing` reasons and the
 //! `Diagnostics.missing_test_modules` field. The driver is the
 //! consumer surface every downstream tool (q-port, scripts) builds
 //! on, so the typed-iterator shape gets a dedicated test file.
@@ -127,9 +128,8 @@ fn iterators_yield_nothing_when_no_018_reasons_present() {
 
 #[test]
 fn iterators_yield_nothing_on_compatible_pin_even_when_diagnostic_populated() {
-    // A Compatible pin carries no reasons by construction, so the
-    // three iterators stay empty even when the diagnostic field is
-    // populated for a different pin or globally.
+    // a Compatible pin carries no reasons, so the three iterators stay
+    // empty even when diagnostics exist for another pin or globally
     let value = json!({
         "queried_against": {
             "kind": "series",

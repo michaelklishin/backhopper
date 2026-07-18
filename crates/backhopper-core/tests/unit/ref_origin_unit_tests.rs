@@ -55,8 +55,7 @@ fn added_line_reference_drives_the_verdict() {
     ));
 }
 
-// The same unresolved call on a context line is a pre-existing target
-// fact: diagnostics, never a reason.
+// The same unresolved call on a context line is a pre-existing target fact: diagnostics, never a reason.
 #[test]
 fn context_line_reference_lands_in_diagnostics_not_the_verdict() {
     let bytes = patch_with("go(X) -> X.", "old(X) -> dep_mod:gone(X).");
@@ -79,8 +78,7 @@ fn resolved_context_reference_is_silent() {
     assert!(eval.diagnostics.context_refs_missing.is_empty());
 }
 
-// The same MFA on an added and a context line dedups to Added, so the
-// verdict still fires.
+// The same MFA on an added and a context line dedups to Added, so the verdict still fires.
 #[test]
 fn added_origin_wins_the_dedup() {
     let bytes = patch_with("go(X) -> dep_mod:gone(X).", "old(X) -> dep_mod:gone(X).");
@@ -120,10 +118,8 @@ fn context_only_dep_patch_reads_as_vacuous_not_verified() {
     assert_eq!(eval.verdict.results[0].tracked_refs, 0);
 }
 
-// A call whose argument list wraps across two added lines. The old
-// per-line scanner saw `dep_mod:gone(X,` unterminated and emitted a
-// `FunctionAnyArity`, which resolved against `gone/1` and passed. The
-// joined scan resolves it at arity 2.
+// A call whose arguments wrap across two added lines: the per-line scanner emitted
+// FunctionAnyArity and passed against gone/1; the joined scan resolves arity 2.
 fn wrapped_call_patch() -> Vec<u8> {
     "diff --git a/src/user.erl b/src/user.erl\n\
      --- a/src/user.erl\n\
@@ -136,8 +132,7 @@ fn wrapped_call_patch() -> Vec<u8> {
         .to_vec()
 }
 
-// The verified false negative: a wrapped call to `gone/2` against a
-// snapshot exporting only `gone/1` is no longer accepted.
+// A wrapped call to gone/2 against a snapshot exporting only gone/1 is no longer accepted.
 #[test]
 fn a_wrapped_added_call_resolves_at_exact_arity() {
     let eval = evaluate(&wrapped_call_patch(), dep_snapshot(&[("gone", 1)]));
@@ -148,8 +143,7 @@ fn a_wrapped_added_call_resolves_at_exact_arity() {
     );
 }
 
-// The same wrapped call resolves clean when the exact arity exists, so
-// the recovery does not introduce a false positive.
+// The same wrapped call resolves clean when the exact arity exists: no new false positive.
 #[test]
 fn a_wrapped_added_call_at_a_present_arity_is_clean() {
     let eval = evaluate(&wrapped_call_patch(), dep_snapshot(&[("gone", 2)]));
@@ -161,8 +155,7 @@ fn a_wrapped_added_call_at_a_present_arity_is_clean() {
 
 #[test]
 fn symbol_kind_match_is_exhaustive_for_any_arity() {
-    // FunctionAnyArity participates in scope and tally paths; this
-    // pins the variant's wire tag.
+    // Pins the wire tag of FunctionAnyArity.
     let m = ModuleName::new("m").unwrap();
     let f = FunctionName::new("f").unwrap();
     let s = SymbolRef::function_any_arity(m, f);

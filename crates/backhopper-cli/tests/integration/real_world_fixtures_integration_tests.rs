@@ -118,8 +118,7 @@ fn cowboy_2_14_x_exports_well_known_functions() {
     }
 }
 
-// 2.12.0 is the cowboy pin for the 3.13.x backports branch; 2.13.0 is
-// the pin for 4.0.x and 4.1.x. 2.14.x is the next-minor successor.
+// 2.12.0 is the cowboy pin for 3.13.x; 2.13.0 for 4.0.x and 4.1.x; 2.14.x is the next-minor successor
 #[test]
 fn cowboy_fixtures_cover_pinned_versions() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -152,8 +151,7 @@ fn cowboy_start_quic_appears_at_2_13_0() {
     }
 }
 
-// WebTransport support landed at 2.14.0: a whole new `cowboy_webtransport`
-// module appeared with `upgrade/{4,5}`, `info/3`, and `terminate/3`.
+// WebTransport landed at 2.14.0: cowboy_webtransport with upgrade/4,5, info/3, and terminate/3
 #[test]
 fn cowboy_webtransport_module_appears_at_2_14_0() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -321,8 +319,7 @@ fn seshat_v1_0_0_exports_core_counter_api() {
     }
 }
 
-// `seshat:prom_format/2,3` were added at v1.0.0 alongside the
-// Prometheus support refactor (PR #15). v0.6.x must not expose them.
+// seshat:prom_format/2,3 were added at v1.0.0: v0.6.x must not expose them
 #[test]
 fn seshat_prom_format_appears_at_v1_0_0() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -344,8 +341,7 @@ fn seshat_prom_format_appears_at_v1_0_0() {
     }
 }
 
-// `overview/1,2` existed up to v0.6.1 and was removed in favour of
-// `counters/1,2,3` for v1.0.0 (commit c55f204).
+// overview/1,2 existed up to v0.6.1 and was replaced by counters/1,2,3 at v1.0.0
 #[test]
 fn seshat_overview_function_removed_at_v1_0_0() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -376,8 +372,7 @@ fn seshat_overview_function_removed_at_v1_0_0() {
     }
 }
 
-// `counters/1` was added at v1.0.0 alongside the `overview` removal
-// (commit a858276). v0.6.x exposes only counters/2,3.
+// counters/1 was added at v1.0.0 alongside the overview removal: v0.6.x exposes only counters/2,3
 #[test]
 fn seshat_counters_1_added_at_v1_0_0() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -395,8 +390,7 @@ fn seshat_counters_1_added_at_v1_0_0() {
     assert!(v1_0_0.lookup_export(&counters_3.module, &counters_3.function, counters_3.arity));
 }
 
-// Fixture window: v0.6.1 is the pin for every active RabbitMQ
-// backports branch (3.13.x, 4.0.x, 4.1.x); v1.0.x is its successor.
+// v0.6.1 is the pin for every active RabbitMQ backports branch; v1.0.x is its successor
 #[test]
 fn seshat_fixtures_cover_pinned_and_next_versions() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();
@@ -440,8 +434,7 @@ fn seshat_specs_round_trip_cleanly() {
     );
 }
 
-// Ranch 2.1.0 is pinned by the 3.13.x and 4.0.x backports branches;
-// 2.2.0 is pinned by 4.1.x. 2.0.0 is included as the major-version base.
+// Ranch 2.1.0 is pinned by 3.13.x and 4.0.x; 2.2.0 by 4.1.x; 2.0.0 is the major-version base
 #[test]
 fn ranch_fixtures_cover_pinned_versions() {
     let store = SnapshotStore::open(fixtures_root()).unwrap();

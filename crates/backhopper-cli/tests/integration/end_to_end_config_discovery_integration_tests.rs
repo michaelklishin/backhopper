@@ -21,8 +21,7 @@ fn prepare_repo_with_config(dir: &std::path::Path, body: &str) {
     fs::create_dir_all(dir.join("snapshots")).unwrap();
 }
 
-// Discovery walks up from `cwd` and falls back to `XDG_CONFIG_HOME` or `HOME`:
-// clear both so the developer's own `~/.config/backhopper/backhopper.toml` cannot leak in.
+// discovery searches upward from cwd then XDG_CONFIG_HOME or HOME: clear both so the developer's own config cannot leak in
 fn cargo_bin() -> Command {
     let mut cmd = Command::cargo_bin("backhopper").unwrap();
     cmd.env_remove("BACKHOPPER_CONFIG_FILE_PATH")
@@ -75,7 +74,7 @@ fn config_auto_discovery_prefers_dotfile_over_plain() {
 
 #[test]
 fn config_auto_discovery_stops_at_git_boundary() {
-    // outer/backhopper.toml lives above an inner/.git boundary; subdir must not see it.
+    // outer/backhopper.toml sits above an inner/.git boundary; discovery from subdir must not find it.
     let outer = TempDir::new().unwrap();
     fs::write(outer.path().join("backhopper.toml"), minimal_config_body()).unwrap();
     let inner = outer.path().join("inner");

@@ -101,8 +101,7 @@ fn macro_defined_in_the_target_file_is_clean() {
     assert!(reasons.is_empty());
 }
 
-// The define lives in an included header: the resolver follows the
-// `-include` to find it.
+// The define is in an included header: the resolver follows the -include.
 #[test]
 fn macro_defined_via_an_included_header_is_clean() {
     let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
@@ -124,8 +123,7 @@ fn macro_defined_via_an_included_header_is_clean() {
     assert!(reasons.is_empty());
 }
 
-// An include the target tree does not ship leaves the define set
-// incomplete, so the symbol is suppressed rather than false-flagged.
+// An include the target tree lacks leaves the define set incomplete: suppress rather than false-flag.
 #[test]
 fn an_unresolved_include_suppresses_flagging() {
     let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
@@ -156,7 +154,7 @@ fn a_stdlib_include_lib_suppresses_macro_flagging() {
     assert!(reasons.is_empty());
 }
 
-// The eunit assert family lives in the skipped eunit.hrl.
+// The eunit assert family is defined in the skipped eunit.hrl.
 #[test]
 fn an_eunit_assert_macro_is_not_flagged() {
     let path = rp("deps/rabbit/test/rabbit_amqqueue_SUITE.erl");
@@ -248,7 +246,7 @@ fn a_record_defined_on_target_is_clean() {
     assert!(reasons.is_empty());
 }
 
-// `#{...}` is a map, not a record use: never flagged.
+// #{...} is a map, not a record use: never flagged.
 #[test]
 fn a_map_literal_is_not_a_record_use() {
     let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");

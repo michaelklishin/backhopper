@@ -82,8 +82,7 @@ fn inapplicable_row(apply: Option<ApplyForecast>) -> BatchResult {
 }
 
 proptest! {
-    // The fold is a commutative, associative max: any ordering of the
-    // same observations produces the same forecast.
+    // The fold is a commutative, associative max: observation order never changes the forecast.
     #[test]
     fn recording_order_never_changes_the_forecast(
         observations in proptest::collection::vec((arb_path(), arb_outcome()), 0..12),
@@ -113,8 +112,7 @@ proptest! {
         prop_assert!(forecast.paths.get(&path).unwrap().severity() >= before);
     }
 
-    // The operator invariant: a predicted conflict can never hide
-    // behind a clean or zero-domain clearance, whatever the verdicts.
+    // A predicted conflict is never reported as a clean or zero-domain clearance, whatever the verdicts.
     #[test]
     fn a_forecast_conflict_always_forces_findings(
         observations in proptest::collection::vec((arb_path(), arb_outcome()), 0..12),

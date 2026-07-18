@@ -23,6 +23,8 @@ use crate::exit::ExitClass;
 use crate::stdin::StdinPayload;
 use crate::verb::{Verb, VerbId};
 
+pub use backhopper_core::model::wire_envelope::EnvelopeWarning;
+
 /// Versioned schema identifier on every CLI envelope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -48,8 +50,6 @@ impl Display for SchemaVersion {
         Display::fmt(&self.0, f)
     }
 }
-
-pub use backhopper_core::model::wire_envelope::EnvelopeWarning;
 
 /// A parsed JSON envelope from a `backhopper` invocation.
 ///
@@ -163,7 +163,7 @@ impl<T> Envelope<T> {
         }
     }
 
-    /// Tear the envelope apart into its constituent pieces. The verb is
+    /// Split the envelope into its parts. The verb is
     /// `None` when the `command` string named an unknown verb; the raw
     /// string stays reachable through [`Self::command_raw`] before this.
     #[must_use]

@@ -62,9 +62,7 @@ fn a_shifted_preimage_yields_preimage_drifted() {
     }
 }
 
-// The add/add case: the hunk appends after the last context line where
-// the target appended its own divergent line. The preimage matches, yet
-// the 3-way merge conflicts.
+// Add/add: the preimage matches yet the 3-way merge conflicts on the divergent appended line.
 #[test]
 fn a_trailing_add_add_yields_a_collision() {
     let reasons = reasons_against(PURE_ADD, "-module(x).\nDIFFERENT_ADDITION.\n");
@@ -120,8 +118,7 @@ new file mode 100644
 +f() -> ok.
 ";
 
-// A new file the target already created with different content is an
-// add/add at the whole-file level.
+// A new file the target already created with different content is a whole-file add/add.
 #[test]
 fn a_whole_file_add_over_divergent_target_content_collides() {
     let reasons = reasons_against(WHOLE_FILE_ADD, "-module(new).\nf() -> other.\n");
@@ -153,8 +150,7 @@ diff --git a/src/x.erl b/src/x.erl
  ctx_c.
 ";
 
-// Per-hunk aggregation: one clean hunk and one diverged hunk in the same
-// file still predicts a conflict for the pick.
+// One clean hunk and one diverged hunk in the same file still predicts a conflict.
 #[test]
 fn one_clean_and_one_diverged_hunk_predicts_a_conflict() {
     let target = "-module(x).\nold_a.\nmid.\n\
@@ -180,8 +176,7 @@ diff --git a/priv/www/x.ejs b/priv/www/x.ejs
  </html>
 ";
 
-// Preimage matching is language-agnostic: a non-Erlang file whose hunk
-// region diverged on target is flagged like any other.
+// Preimage matching is language-agnostic: a diverged non-Erlang hunk is flagged like any other.
 #[test]
 fn a_non_erlang_file_is_classified_by_preimage_too() {
     let reasons = reasons_against(EJS_PATCH, "<html>\n<body>DIVERGED</body>\n</html>\n");

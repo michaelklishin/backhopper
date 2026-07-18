@@ -66,8 +66,7 @@ fn pins_lists_branch_pins_sorted_by_name() {
 #[test]
 fn pins_works_without_any_config() {
     let repo = build_repo();
-    // No --config-file-path and no config discoverable from a tempdir
-    // cwd: the verb is a pure repo read.
+    // no config flag and none discoverable from a tempdir cwd: the verb is a pure repo read
     let out = Command::cargo_bin("backhopper")
         .unwrap()
         .current_dir(repo.dir.path())

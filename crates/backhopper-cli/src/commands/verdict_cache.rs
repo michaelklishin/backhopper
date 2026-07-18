@@ -190,8 +190,7 @@ impl CacheSession {
         }
         let mut source_rows = Vec::new();
         for pin in source_pins.iter().flatten() {
-            // source pins feed snapshot-level spec diffing only; no
-            // repo is read at their tag
+            // source pins feed snapshot-level spec diffing only; no repo is read at their tag
             source_rows.push(PinKeyRow {
                 project: pin.project.clone(),
                 tag: pin.tag.clone(),
@@ -271,7 +270,7 @@ impl CacheSession {
     }
 
     /// Consult L2 with the patch and macro-environment components.
-    /// On a hit the L1 alias for this SHA was already minted.
+    /// On a hit the L1 alias for this SHA was already created.
     pub fn consult_content<'c>(
         &self,
         miss: SessionMiss<'c>,
@@ -280,8 +279,7 @@ impl CacheSession {
     ) -> CacheLookupOutcome<'c> {
         let macro_env_blake3 = match macro_env {
             MacroEnv::Resolved(hash) => Some(hash.clone()),
-            // unique per commit, so an inexact mirror can never be
-            // shared across SHAs
+            // unique per commit, so an inexact mirror is never shared across SHAs
             MacroEnv::Unresolvable => Some(format!("opaque:{}", miss.key.commit)),
             MacroEnv::Unused => None,
         };

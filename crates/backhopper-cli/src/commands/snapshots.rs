@@ -138,8 +138,7 @@ struct ModuleSummary {
     callbacks: usize,
 }
 
-// `snapshots diff` payloads moved to `backhopper_core::model::snapshot_diff`
-// so the CLI emits and the driver parses one definition.
+// snapshots diff payloads are defined in backhopper_core::model::snapshot_diff so the CLI and the driver share one definition
 
 pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
@@ -1200,7 +1199,7 @@ fn walk_project_snapshots<M>(
             "no snapshots on disk for project {project}"
         )));
     }
-    // `version_cmp` ranks newer versions first: swap arguments so iteration is oldest-first.
+    // version_cmp ranks newer versions first: swap arguments so iteration is oldest-first.
     tags.sort_by(|a, b| version_cmp(b.as_str(), a.as_str()));
     let mut out = Vec::with_capacity(tags.len());
     for tag in tags {

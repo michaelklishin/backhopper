@@ -4,9 +4,9 @@
 
 //! The cowlib 2.17.1 cascade in miniature: a commit whose whole
 //! content is a `rabbitmq-components.mk` pin bump. The verdict stays
-//! `inapplicable`, and the evidence answers the GO questions: which
+//! `inapplicable`, and the evidence answers the go/no-go questions: which
 //! pin moved, and does the store have the bumped-to snapshot.
-//! Detection rides the verdict cache; assessment must not.
+//! Detection is stored in the verdict cache; assessment must not be.
 
 use std::fs;
 use std::path::PathBuf;
@@ -186,8 +186,7 @@ fn introduced_pin_of_an_untracked_dep_reports_untracked() {
     assert_eq!(unknown["status"]["state"], "untracked");
 }
 
-// The contract: detection survives the cache, assessment does
-// not. The same cached entry must report fresh store state.
+// detection is cached, assessment is not: the same cached entry must report fresh store state
 #[test]
 fn cached_bump_reassesses_against_the_current_store() {
     let f = build_fixture();
@@ -217,8 +216,7 @@ fn auto_generate_writes_the_bumped_to_snapshot() {
 #[test]
 fn auto_generate_cannot_invent_a_missing_dep_tag() {
     let f = build_fixture();
-    // v3.0.0 does not exist in the dep repo; best-effort generation
-    // must leave the honest snapshot_missing answer
+    // v3.0.0 does not exist in the dep repo: best-effort generation must keep the snapshot_missing answer
     let (body, _) = check_json(&f, &f.unsnapshotted_sha, &["--auto-generate"], &[]);
     assert_eq!(pin_bumps(&body)[0]["status"]["state"], "snapshot_missing");
 }
@@ -279,8 +277,7 @@ fn the_flag_beats_the_env_var() {
     assert_eq!(pin_bumps(&body)[0]["to"], "hex 2.0.0");
 }
 
-// Doctor's half of the staleness story: the pin trails what the
-// store already knows about.
+// doctor's side of staleness reporting: the pin trails what the store already has
 #[test]
 fn doctor_reports_the_store_newest_tag_and_the_sync_nag() {
     let f = build_fixture();
@@ -299,8 +296,7 @@ fn doctor_reports_the_store_newest_tag_and_the_sync_nag() {
     assert!(note.contains("v2.0.0"), "{note}");
 }
 
-// `check batch` is where cascade rounds triage; the compact rows
-// must still carry the bump evidence in text mode.
+// compact check batch rows must still carry the bump evidence in text mode
 #[test]
 fn batch_text_rows_carry_the_bump_line() {
     let f = build_fixture();
@@ -326,8 +322,7 @@ fn batch_text_rows_carry_the_bump_line() {
     );
 }
 
-// `check patch` has no repo at all; detection must work from the
-// patch bytes alone, the case that forced hunk-based detection.
+// check patch has no repo: detection must work from the patch bytes alone
 #[test]
 fn patch_file_input_detects_the_bump_without_a_repo() {
     let f = build_fixture();
@@ -359,8 +354,7 @@ fn patch_file_input_detects_the_bump_without_a_repo() {
     assert_eq!(bumps[0]["status"]["state"], "snapshot_present");
 }
 
-// `check range` builds its diff through a second code path; the
-// shared `analyzable_diff_path` predicate keeps it bump-aware.
+// check range builds its diff through a second code path: the shared analyzable_diff_path predicate keeps it bump-aware
 #[test]
 fn range_input_detects_the_cumulative_bump() {
     let f = build_fixture();
@@ -394,8 +388,7 @@ fn range_input_detects_the_cumulative_bump() {
     assert!(unknown["from"].is_null());
 }
 
-// A version the `TagName` newtype rejects must surface as an
-// unassessed bump (no `status`), not as a wrong claim either way.
+// a version the TagName newtype rejects must surface as an unassessed bump (no status), not a wrong claim
 #[test]
 fn unresolvable_bump_version_stays_unassessed() {
     let f = build_fixture();

@@ -82,8 +82,7 @@ fn run_commit(
     let analyzed = patch.analyze();
     let session = CacheSession::open(args, cfg, no_cache, false);
     let patch_blake3 = normalized_patch_hash(&input.bytes).unwrap_or_else(|| "empty".to_owned());
-    // one evaluation per tag, so a re-bisect after the store grows
-    // reuses every overlapping (commit, tag) pair from the cache
+    // one evaluation per tag: a re-bisect reuses every overlapping (commit, tag) pair from the cache
     let mut verdicts: Vec<Verdict> = Vec::with_capacity(tags.len());
     for tag in &tags {
         let evaluate = || -> CliResult<SeriesEvaluation> {

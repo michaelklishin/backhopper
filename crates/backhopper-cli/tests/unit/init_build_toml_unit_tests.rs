@@ -35,8 +35,7 @@ fn empty_workspace_produces_defaults_block_only() {
     assert!(body.starts_with("config_version = 1"));
     assert!(body.contains("[defaults]"));
     assert!(body.contains("/tmp/snap"));
-    // Look for the literal table header on its own line; the empty-state
-    // comment `# [[project]]` would otherwise trip a substring check.
+    // match the table header on its own line: the empty-state comment # [[project]] would trip a substring check
     assert!(
         !body.lines().any(|l| l.trim() == "[[project]]"),
         "no real [[project]] block expected"

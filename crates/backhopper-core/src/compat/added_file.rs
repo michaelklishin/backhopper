@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Per-`.erl` and per-`.hrl` 018 findings: runs the three resolvers
+//! Per-`.erl` and per-`.hrl` findings: runs the three resolvers
 //! (test-module helpers, missing behaviours, missing headers) on a
 //! single added file and returns the typed reasons plus the
 //! diagnostic counters the caller merges into `Diagnostics`.
@@ -31,7 +31,7 @@ use crate::model::verdict::{IncludeDirective, Reason};
 pub struct AddedFileFindings {
     pub reasons: Vec<Reason>,
     /// Per-suite `helper -> call_site_count` map, in the same shape
-    /// as `Diagnostics.missing_test_modules`. Always-on counterpart of
+    /// as `Diagnostics.missing_test_modules`. Always-on companion to
     /// `Reason::TestModuleSymbolMissing`: emitted even when the
     /// target tree resolves the helper (in that case the inner map
     /// stays empty for that suite).
@@ -64,7 +64,7 @@ impl AddedFileFindings {
     }
 }
 
-/// Run the three 018 resolver passes on one added file and return
+/// Run the three resolver passes on one added file and return
 /// the merged findings. `path` identifies the file relative to the
 /// repo root; `content` is the post-patch source.
 pub fn analyse_added_file(

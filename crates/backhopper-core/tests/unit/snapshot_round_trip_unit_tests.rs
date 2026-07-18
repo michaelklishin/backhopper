@@ -146,8 +146,7 @@ module ra
     assert!(r.is_err());
 }
 
-// A deprecation reason with quotes, a backslash, and a run of whitespace must
-// survive a write then parse unchanged.
+// A deprecation reason with quotes, a backslash, and whitespace runs must round-trip unchanged.
 #[test]
 fn deprecation_reason_with_special_chars_round_trips() {
     let mut m = Module::new(ModuleName::new("ra_server").unwrap());
@@ -191,10 +190,7 @@ fn module_visibility_round_trips() {
 }
 
 // A ra_machine-shaped module exercising every advanced entry kind must
-// survive a write then parse unchanged, pinning the parser and writer as
-// inverses across callbacks, opaques, export types, test-only exports,
-// conditional-compile markers, the versioned-machine record, wire
-// constants, and the header's vendored dep pins and scanned apps.
+// round-trip unchanged, pinning the parser and writer as inverses.
 #[test]
 fn round_trip_preserves_all_advanced_entry_kinds() {
     let mut h = header();
@@ -324,10 +320,8 @@ fn round_trip_preserves_all_advanced_entry_kinds() {
     assert_eq!(snap, back);
 }
 
-// The enum variants the comprehensive test did not exercise: a literal
-// version provenance, an opaque wire value, a module-wide deprecation, and
-// a function-level deprecation carrying since, a use-replacement, and a
-// reason.
+// Variants the comprehensive test skipped: literal version provenance, opaque wire
+// value, module-wide deprecation, and a function deprecation with since, use, and reason.
 #[test]
 fn round_trip_preserves_literal_provenance_opaque_wire_and_deprecations() {
     let mut m = Module::new(ModuleName::new("ra_log").unwrap());
@@ -335,8 +329,7 @@ fn round_trip_preserves_literal_provenance_opaque_wire_and_deprecations() {
         name: FunctionName::new("append").unwrap(),
         arity: Arity::new(2),
     });
-    // Module-wide deprecations are produced with no since or reason, so the
-    // round-trip leaves those None.
+    // Module-wide deprecations carry no since or reason: the round-trip leaves those None.
     m.deprecations.push(Deprecation {
         function: None,
         arity_match: ArityMatch::Any,

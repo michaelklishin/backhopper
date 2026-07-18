@@ -55,8 +55,7 @@ fn breaking_removal_count_sums_only_removed_axes() {
     assert_eq!(d.breaking_removal_count(), 2);
 }
 
-// The name-bearing newtypes are serde-transparent, so the payload's wire
-// form is the same bare-string JSON a stringly payload would emit.
+// The name newtypes are serde-transparent: the wire form is the same bare-string JSON.
 #[test]
 fn name_newtypes_serialize_as_bare_strings() {
     let mut d = empty_diff();

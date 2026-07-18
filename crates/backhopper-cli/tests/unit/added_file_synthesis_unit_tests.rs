@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Unit-level checks for the CLI-side helpers that feed the 018
+//! Unit-level checks for the CLI-side helpers that feed the added-file
 //! resolvers: `synthesise_added_file_content` and
 //! `collect_search_path_globs`. The end-to-end flow is exercised in
 //! the workspace-level integration tests through the `check` command.

@@ -16,7 +16,7 @@
 //! declares a `parse_transform` (which injects unseeable functions),
 //! and never flags an auto-imported BIF or a call resolved through the
 //! target's own `-import`. A target-import resolution is withheld from
-//! the shape check too: the callee's `-spec` lives in another module.
+//! the shape check too: the callee's `-spec` is in another module.
 //!
 //! An `-import` the patch adds beside its first use is a cross-module
 //! reference to `m:f/arity` once applied, so it is resolved against the
@@ -71,14 +71,12 @@ pub fn analyse_local_calls(
             continue;
         }
         let patch_defs = defined_set(&sigs);
-        // A spec the patch rewrites lands on the target with the pick:
-        // no pre-existing drift to compare.
+        // A spec the patch rewrites lands on the target with the pick: no pre-existing drift to compare.
         let patch_specs = extract_specs(subject.added_text);
         let target_defined = defined_set(&extract_function_signatures(&target));
         let target_imported = imported_keys(&target);
         let patch_imports = patch_import_map(subject.added_text);
-        // The callee module is the subject file itself: one table pair
-        // per subject, filled on the first resolved call.
+        // The callee module is the subject file itself: one table pair per subject, filled on the first resolved call.
         let mut spec_tables: Option<(SpecTable, Option<SpecTable>)> = None;
         let mut flagged = BTreeSet::new();
         let mut shape_seen = BTreeSet::new();
@@ -97,8 +95,7 @@ pub fn analyse_local_calls(
                 if !shape_seen.insert(key.clone()) {
                     continue;
                 }
-                // a spec the patch rewrites lands on the target with the
-                // pick, so there is no pre-existing drift to compare
+                // a spec the patch rewrites lands on the target with the pick: no pre-existing drift to compare
                 if !patch_specs.contains_key(&key) {
                     check_local_return_shape(
                         subject,
@@ -118,9 +115,8 @@ pub fn analyse_local_calls(
                 }
                 continue;
             }
-            // A call the patch imports beside its first use is a
-            // cross-module reference: resolve it against the imported
-            // module on the target tree, not the subject file.
+            // A patch-imported call is a cross-module reference: resolve it
+            // against the imported module on the target tree, not the subject file.
             if let Some(import) = patch_imports.get(&key) {
                 let qkey = (import.function.clone(), import.arity);
                 resolve_qualified_reference(

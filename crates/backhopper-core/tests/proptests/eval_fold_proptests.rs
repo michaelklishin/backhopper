@@ -82,8 +82,7 @@ proptest! {
         prop_assert_eq!(evaluate_corpus(&rows).recall.total, broken);
     }
 
-    // Missed breaks are exactly the unflagged breaks, and a bug-vs-gap
-    // verdict is known only when a class and the row's coverage both exist.
+    // Missed breaks are exactly the unflagged breaks; a bug-vs-gap verdict needs both a class and row coverage.
     #[test]
     fn missed_breaks_are_the_unflagged_breaks(rows in proptest::collection::vec(entry(), 0..24)) {
         let expected = rows

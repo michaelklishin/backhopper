@@ -31,7 +31,7 @@ use crate::model::verdict::{
 };
 
 /// The analyzed-patch slices `evaluate_pin` reads, grouped so the fixed
-/// inputs travel as one borrow instead of five positional arguments.
+/// inputs are passed as one borrow instead of five positional arguments.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AnalyzedInputs<'a> {
     pub files: &'a [PatchedFile],
@@ -89,8 +89,7 @@ pub(crate) fn evaluate_pin(
         if defined_index.contains(&r.kind) {
             continue;
         }
-        // Context-line references are pre-existing target facts: an
-        // unresolved one is surfaced as a diagnostic, never a reason.
+        // Context-line references are pre-existing target facts: unresolved ones become diagnostics, not reasons.
         if r.origin == RefOrigin::Context {
             tally_context_miss(r, snapshot, scope, &mut context_missing);
             continue;
@@ -154,8 +153,7 @@ pub(crate) fn evaluate_pin(
                     });
                 }
             }
-            // Behaviours and callbacks are resolved by conformance
-            // checks, macro uses by the define-symbol resolver.
+            // Resolved elsewhere: behaviours by conformance checks, macro uses by the define-symbol resolver.
             SymbolKind::Behaviour { .. }
             | SymbolKind::Callback { .. }
             | SymbolKind::Macro { .. } => {}
@@ -590,10 +588,7 @@ fn check_files_against_pin(
 ) -> PostimageTally {
     let mut tally = PostimageTally::default();
     for file in files {
-        // Cuttlefish schema files are analyzed by extracting the MFA
-        // references from their fun bodies, not by comparing content
-        // against the pin, so the preimage and file-presence checks do
-        // not apply to them.
+        // Cuttlefish schema files are analyzed via extracted MFA references, so preimage and file-presence checks do not apply.
         if file.language == SourceKind::CuttlefishSchema {
             continue;
         }
@@ -648,11 +643,11 @@ fn check_files_against_pin(
 }
 
 /// Classify each hunk's preimage against the target-tree content of one
-/// file and return the drift reasons. The cross-branch counterpart of
-/// the self-pin check above: `target_content` is the file at the apply
-/// target, so `Missing` predicts a textual conflict and `Drifted` a
-/// clean shifted apply. `added_lines_collide` closes the add/add case
-/// the contiguous preimage match alone cannot see.
+/// file and return the drift reasons. Like the self-pin check above but
+/// cross-branch: `target_content` is the file at the apply target, so
+/// `Missing` predicts a textual conflict and `Drifted` a clean shifted
+/// apply. `added_lines_collide` covers the add/add case the contiguous
+/// preimage match alone cannot detect.
 pub fn classify_hunks_against_target(
     path: &Path,
     hunks: &[Hunk],
@@ -671,8 +666,7 @@ pub fn classify_hunks_against_target(
                 hunk_index: idx,
                 preimage_excerpt: excerpt,
             }),
-            // A collision dominates the clean signals: it predicts the
-            // conflict the bare match would call clean.
+            // A collision dominates the clean signals: it predicts a conflict the bare match would call clean.
             PreimageMatch::Exact => {
                 if added_lines_collide(hunk, &target_lines) {
                     reasons.push(collision());
@@ -703,8 +697,7 @@ fn added_lines_collide(hunk: &Hunk, target: &[&str]) -> bool {
     let preimage: Vec<&str> = preimage_lines(hunk);
     let postimage: Vec<&str> = postimage_lines(hunk);
     if preimage.is_empty() {
-        // Whole-file add: a conflict when the target already ships the
-        // file with content that is neither empty nor the same add.
+        // Whole-file add: a conflict when the target file has different non-empty content.
         return !target.is_empty() && target != postimage.as_slice();
     }
     let Some(found) = preimage_offset(&preimage, hunk.old_start, target) else {
@@ -712,8 +705,7 @@ fn added_lines_collide(hunk: &Hunk, target: &[&str]) -> bool {
     };
     let trailing = trailing_added_run(hunk);
     if !trailing.is_empty() {
-        // No trailing context means the hunk reached base EOF; divergent
-        // target content past the matched block is an add/add there.
+        // A trailing added run means the hunk reached base EOF: divergent target content past the match is an add/add.
         let tail = &target[(found + preimage.len()).min(target.len())..];
         if !tail.is_empty() && tail != trailing.as_slice() {
             return true;
@@ -752,8 +744,7 @@ fn analyze_function_reference(
         return;
     }
     if let Some(dep) = deprecation_of(module, &mfa.function, mfa.arity) {
-        // the replacement carries no module of its own: it names a
-        // function in the same module as the deprecated call
+        // the replacement carries no module: it names a function in the same module as the deprecated call
         let replacement = dep.replacement.as_ref().map(|rep| {
             SymbolRef::function(Mfa::new(
                 mfa.module.clone(),

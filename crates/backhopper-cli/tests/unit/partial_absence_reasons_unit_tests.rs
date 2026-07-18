@@ -68,8 +68,7 @@ fn partial_absence_names_each_absent_path() {
     );
 }
 
-// All paths absent is the whole-patch `PathsMissingOnTarget`
-// inapplicable case, handled in `merge_into_series_verdict`.
+// all paths absent is the whole-patch PathsMissingOnTarget inapplicable case
 #[test]
 fn all_absent_yields_no_partial_reasons() {
     let reasons = partial_absence_reasons(&summary(&["a/x.erl", "b/y.erl"], 0));

@@ -153,8 +153,8 @@ impl<'a> SeriesEvaluationView<'a> {
             .find(|p| &p.pin.project == project)
     }
 
-    /// Always-on diagnostic counterpart of `Reason::TestModuleSymbolMissing`
-    /// from `018_ci_signal_gaps`: a per-`_SUITE.erl` map of
+    /// Always-on diagnostic form of
+    /// `Reason::TestModuleSymbolMissing`: a per-`_SUITE.erl` map of
     /// `helper_module -> call_site_count`. Empty when the patch did not touch
     /// a SUITE that references an unresolved helper.
     #[must_use]

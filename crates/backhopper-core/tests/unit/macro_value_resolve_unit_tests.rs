@@ -121,8 +121,7 @@ fn an_ifdef_double_definition_withholds_and_counts() {
 
 #[test]
 fn coexisting_object_and_function_forms_withhold() {
-    // Legal Erlang: `?FOO` and `?FOO(X)` are distinct macros. Keyed by
-    // name they read as multiple definitions, so the check withholds.
+    // ?FOO and ?FOO(X) are distinct macros; keyed by name they look duplicated, so the check withholds.
     let both = "-module(ra_server).\n-define(FOO, 1).\n-define(FOO(X), X).\n";
     let analysis = analyse("handle(S) -> ?FOO + S.\n", both, Some(both));
     assert!(analysis.reasons.is_empty());

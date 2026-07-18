@@ -76,8 +76,7 @@ fn applies_with_adaptation_when_function_set_drifts() {
     let snap_path = tmp.path().join("v1.0.0.api.txt");
     write_file(&snap_path, SNAPSHOT_WITH_TEST_ONLY);
     let ref_path = tmp.path().join("reference.toml");
-    // Reference expects an extra function `register_projections/0`
-    // that the branch's snapshot does not have.
+    // the reference expects an extra function register_projections/0 the branch snapshot lacks
     write_file(
         &ref_path,
         r#"
@@ -149,8 +148,7 @@ fn variant_mismatch_yields_applies_with_adaptation() {
     let snap_path = tmp.path().join("v1.0.0.api.txt");
     write_file(&snap_path, SNAPSHOT_WITH_TEST_ONLY);
     let ref_path = tmp.path().join("reference.toml");
-    // Reference says Variant A for rabbit_feature_flags but the
-    // snapshot has them as Variant B.
+    // the reference has Variant A for rabbit_feature_flags but the snapshot has Variant B
     write_file(
         &ref_path,
         r#"

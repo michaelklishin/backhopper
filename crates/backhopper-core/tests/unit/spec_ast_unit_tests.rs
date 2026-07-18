@@ -32,8 +32,7 @@ fn canonicalise_single_variant_union_collapses() {
     assert_eq!(u.canonicalise(), atom("ok"));
 }
 
-// A union mixing every shape kind exercises the canonical ordering across
-// all of its arms, flattens a nested union, and dedups a repeated atom.
+// A union of every shape kind: canonical ordering, nested-union flattening, atom dedup.
 #[test]
 fn canonicalise_flattens_sorts_and_dedups_diverse_variants() {
     let u = SpecType::Union {
@@ -147,8 +146,7 @@ fn collection_shapes_match_their_own_kind_only() {
     assert!(!SpecType::Map.matches(&SpecType::Fun));
 }
 
-// ra's apply/3 returns `{State, reply()} | {State, reply(), effects()}`: a
-// union matches when any variant does.
+// ra's apply/3 returns a union: it matches when any variant does.
 #[test]
 fn union_matches_when_any_variant_matches() {
     let u = SpecType::Union {

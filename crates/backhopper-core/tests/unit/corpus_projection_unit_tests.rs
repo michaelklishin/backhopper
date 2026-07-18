@@ -53,9 +53,7 @@ fn macro_undefined() -> Reason {
     }
 }
 
-// The break class comes from the observed outcome, never the predicted
-// reason: here the verdict flagged a macro, but the build broke on a local
-// call, and the row records the local call.
+// The break class comes from the observed outcome, never the predicted reason.
 #[test]
 fn to_corpus_entry_records_the_observed_break_class_not_the_predicted() {
     let verdict = Verdict::RequiresAdaptation {
@@ -80,8 +78,7 @@ fn to_corpus_entry_is_none_without_a_fingerprint() {
     assert!(entry.is_none());
 }
 
-// An empty verdict predicted nothing, so it is not a measurable row even
-// with a fingerprint.
+// An empty verdict predicted nothing: not a measurable row even with a fingerprint.
 #[test]
 fn to_corpus_entry_is_none_for_an_empty_verdict() {
     let entry = empty_row(Some("fp1")).to_corpus_entry(BuildOutcome::BuiltClean, None);

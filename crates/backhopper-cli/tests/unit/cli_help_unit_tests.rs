@@ -94,9 +94,7 @@ fn check_group_has_patch_commit_range() {
     assert!(names.contains(&"range"));
 }
 
-// Drift guard: the documented `check` surface is exactly these six,
-// catching both a dropped verb and a phantom (`multi`) the docs name
-// but the binary never shipped.
+// drift guard: catches a dropped verb and a documented verb the binary never shipped
 #[test]
 fn check_group_subcommand_set_is_exact() {
     let mut cmd = Cli::command();
@@ -174,7 +172,7 @@ fn init_accepts_rabbitmq_and_force() {
         .unwrap();
     let args: Vec<&str> = init.get_arguments().map(|a| a.get_id().as_str()).collect();
     assert!(args.contains(&"config_dir_path"));
-    // --snapshot-dir-path is the global flag, exposed via clap's `global = true`.
+    // --snapshot-dir-path is the global flag, exposed via clap's global = true.
     assert!(args.contains(&"snapshot_dir_path"));
     assert!(args.contains(&"rabbitmq_repo_dir_path"));
     assert!(args.contains(&"rabbitmq_branches"));
@@ -183,8 +181,7 @@ fn init_accepts_rabbitmq_and_force() {
 
 #[test]
 fn init_global_snapshot_dir_short_flag_is_available() {
-    // Regression: a local `--snapshot-dir-path` on `init` would shadow the
-    // global one's `-s` short flag, breaking `backhopper init -s /tmp/...`.
+    // regression: a local --snapshot-dir-path on init shadowed the global -s short flag
     let parsed = Cli::try_parse_from([
         "backhopper",
         "init",

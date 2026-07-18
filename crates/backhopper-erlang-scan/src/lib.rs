@@ -149,9 +149,9 @@ pub fn count_top_level_items(s: &str, open: char, close: char) -> usize {
 }
 
 /// Invoke `on_comma` at each byte index of a comma sitting at bracket
-/// depth zero, outside strings, atoms, char literals, and binaries. The
-/// one place the whole-string splitter and counter agree on what is a
-/// separator.
+/// depth zero, outside strings, atoms, char literals, and binaries.
+/// The shared separator definition used by both the splitter and the
+/// counter.
 fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
     let bytes = s.as_bytes();
     let mut depth_paren = 0i32;
@@ -246,7 +246,7 @@ pub enum ScannedList<'a> {
     Unterminated,
 }
 
-/// The list-literal twin of `scan_top_level_args`: splits the source
+/// The list-literal form of `scan_top_level_args`: splits the source
 /// after an already-consumed opening `[` into top-level element slices,
 /// with the same string, atom, char-literal, and binary handling.
 pub fn scan_list_elements(after_open_bracket: &str) -> ScannedList<'_> {
@@ -299,8 +299,7 @@ pub fn scan_list_elements(after_open_bracket: &str) -> ScannedList<'_> {
                     };
                 }
             }
-            // `||` is a comprehension, not a cons tail, and makes the
-            // element count meaningless too.
+            // || is a comprehension, not a cons tail, and makes the element count meaningless
             b'|' if depth == 1 => return ScannedList::ImproperTail,
             b',' if depth == 1 => {
                 elements.push(&after_open_bracket[start..i]);

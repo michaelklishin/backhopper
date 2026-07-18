@@ -77,7 +77,7 @@ pub struct BatchQuery {
 
 /// On-wire pin shape used inside `BatchQuery`. Distinct from
 /// `crate::model::pin::Pin` because the wire form is a `(project, tag)`
-/// projection without the resolution machinery.
+/// projection without the resolution logic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PinPayload {
@@ -118,7 +118,7 @@ pub struct BatchResult {
     /// non-2-parent merges and non-merge SHAs.
     ///
     /// Do NOT add `skip_serializing_if = "Option::is_none"`. The
-    /// `None` vs `Some(vec![])` distinction is wire-load-bearing.
+    /// `None` vs `Some(vec![])` distinction is part of the wire contract.
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
 

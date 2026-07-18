@@ -533,8 +533,7 @@ fn missing_translations_file_is_hard_error() {
     );
 }
 
-// A cleanly-applying hunk references a macro the target branch never
-// had: flagged pre-pick rather than at the build.
+// a cleanly-applying hunk references a macro the target branch never had: flagged pre-pick, not at the build
 fn make_macro_source_repo() -> GitRepoFixture {
     let repo = GitRepoFixture::new();
     repo.write_file(
@@ -598,8 +597,7 @@ fn macro_undefined_on_target_is_flagged_through_the_cli() {
     assert_eq!(flagged["macro_name"], "OAUTH2_BOOTSTRAP_PATH");
 }
 
-// A modified region the target branch diverged on: the preimage block
-// is absent on target, so the pick will conflict. Flagged pre-pick.
+// the preimage block is absent on target, so the pick will conflict: flagged pre-pick
 fn make_preimage_source_repo() -> GitRepoFixture {
     let repo = GitRepoFixture::new();
     repo.write_file(
@@ -661,7 +659,7 @@ fn target_preimage_divergence_is_flagged_through_the_cli() {
     );
 }
 
-// A `#record{}` use whose definition the target branch lacks.
+// A #record{} use whose definition the target branch lacks.
 #[test]
 fn record_undefined_on_target_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
@@ -765,15 +763,11 @@ fn local_call_undefined_on_target_is_flagged_through_the_cli() {
         .find(|r| r["kind"] == "local_call_undefined_on_target")
         .unwrap_or_else(|| panic!("expected local_call_undefined_on_target in {reasons:?}"));
     assert_eq!(r["function"], "helper");
-    // The call is the fourth line of the file: the line map made the
-    // report file-relative for the existing reasons too.
+    // the call is the fourth line of the file: the line map made the report file-relative
     assert_eq!(r["line"], 4);
 }
 
-// A patch that adds both a qualified call and the callee (with its
-// export, in the callee's own file) must not false-positive: the
-// collector's patch-wide added-functions map covers the cross-file case
-// even though the target tree lacks the new function.
+// a patch adding a qualified call and its callee in another file must not false-positive: the added-functions map is patch-wide
 #[test]
 fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
@@ -835,10 +829,8 @@ fn a_cross_file_patch_added_callee_is_not_flagged_through_the_cli() {
     );
 }
 
-// A patch that adds a qualified call into a first-party module the
-// target tree does not export is flagged, and the reported line is the
-// true file line (the #16771 shape). `helper` is present on the target
-// tree but absent from the demo snapshot, so it resolves live.
+// an added qualified call into a first-party module the target does not export is flagged
+// at the true file line; helper is absent from the demo snapshot, so it resolves live
 #[test]
 fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
@@ -895,8 +887,7 @@ fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
     assert_eq!(r["module"], "helper");
     assert_eq!(r["function"], "missing");
     assert_eq!(r["arity"], 1);
-    // The call is the fourth line of the new file, not the first line
-    // of the added block: the line map made the report file-relative.
+    // the call is the fourth line of the new file, not the first of the added block: the report is file-relative
     assert_eq!(r["line"], 4);
 
     // The text table names the reason and the m:f/a, not "UnknownReason".
@@ -922,8 +913,7 @@ fn qualified_call_undefined_on_target_is_flagged_through_the_cli() {
     );
 }
 
-// A patch touching one present and one absent target path: the absent
-// path surfaces as a TargetPathAbsent reason.
+// one present and one absent target path: the absent path surfaces as TargetPathAbsent
 #[test]
 fn partial_target_absence_emits_target_path_absent() {
     let workdir = TempDir::new().unwrap();
@@ -985,11 +975,8 @@ fn partial_target_absence_emits_target_path_absent() {
     assert_eq!(r["path"], "deps/demo/src/mgmt.erl");
 }
 
-// The 045 shape gate. `rabbit_classic_queue_index_v2` joins the source
-// tree after the pin tag, so no snapshot covers it and it resolves
-// live. `info/1` carries a spec whose return shape differs between the
-// checkouts; `segment_file/2` carries none on either side (the real
-// incident's shape), so it is counted shape-blind, never flagged.
+// spec return-shape gate: the module postdates the pin tag, so it resolves live; info/1
+// has drifting return shapes, segment_file/2 has no spec on either side and is counted shape-blind
 #[test]
 fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     let workdir = TempDir::new().unwrap();
@@ -1086,8 +1073,7 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     );
     // The call is the sixth line of the suite file.
     assert_eq!(r["line"], 6);
-    // segment_file/2 resolves but has no spec on either side: counted,
-    // never flagged.
+    // segment_file/2 resolves but has no spec on either side: counted, never flagged
     assert!(
         !reasons
             .iter()
@@ -1142,8 +1128,7 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
         "text output missing the drift reason: {text}"
     );
 
-    // Without a target repo the 037 gate never runs: no drift reason,
-    // no tally.
+    // without a target repo the qualified-call gate never runs: no drift reason, no tally
     let b = run([
         "--formatter",
         "json",
@@ -1170,8 +1155,7 @@ fn qualified_call_return_shape_drift_is_flagged_through_the_cli() {
     assert!(env["data"]["diagnostics"]["qualified_call_shape_checks"].is_null());
 }
 
-// A patch-file input carries no source checkout, so every resolved
-// call's shape check is withheld and counted, not silently dropped.
+// a patch-file input has no source checkout: every resolved call's shape check is withheld and counted
 #[test]
 fn a_patch_input_without_a_source_checkout_counts_unchecked_calls() {
     let workdir = TempDir::new().unwrap();

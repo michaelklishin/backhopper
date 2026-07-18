@@ -164,8 +164,7 @@ fn a_cons_tail_counts_as_withheld() {
     assert_eq!(out.withheld_dynamic, 1);
 }
 
-// No Elixir fun grammar: a meck expectation with an anonymous function
-// is a reference the axis saw and did not finish, counted not guessed.
+// No Elixir fun grammar: an anonymous-function meck expectation is counted, not guessed.
 #[test]
 fn an_elixir_fun_arity_counts_as_withheld() {
     let out = extract(":meck.expect(:rabbit_khepri, :is_enabled, fn -> true end)\n");
@@ -173,8 +172,7 @@ fn an_elixir_fun_arity_counts_as_withheld() {
     assert_eq!(out.withheld_dynamic, 1);
 }
 
-// Piping shifts every argument left by one, so a table position lands
-// on a non-atom and the occurrence skips.
+// Piping shifts arguments left by one, so the table position lands on a non-atom and skips.
 #[test]
 fn a_piped_form_extracts_nothing() {
     let src = "node |> :rabbit_misc.rpc_call(:rabbit_plugins, :list, [], 5000)\n";
@@ -213,7 +211,7 @@ fn fragments_from_different_hunks_do_not_concatenate() {
     assert_eq!(out.withheld_dynamic, 0);
 }
 
-// Resolution through `analyse_indirect_elixir_calls`.
+// Resolution through analyse_indirect_elixir_calls.
 
 fn analyse(
     added: &str,
