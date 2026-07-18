@@ -7,6 +7,30 @@ Given a set of public API snapshots of dependencies, it can detect whether a pat
 elements that are not available in a specific dependency version.
 
 
+## Table of Contents
+
+| Task | Section |
+|---|---|
+| First-time setup | [Getting Started](#getting-started) |
+| Capture or refresh dependency snapshots | [Capturing Snapshots](#capturing-snapshots) |
+| Track Erlang/OTP as a dependency | [Tracking Erlang/OTP](#tracking-erlangotp) |
+| Ask what an API looked like at a tag | [Looking Up the API at a Tag](#looking-up-the-api-at-a-tag) |
+| Compare two tags or two series | [Diffing the API Between Two Tags](#diffing-the-api-between-two-tags) |
+| Check a commit, merge, range, patch, or PR | [Checking a Patch Against a Series](#checking-a-patch-against-a-series) |
+| Check many commits or several series at once | [Checking Many Commits, and Whole Cascades](#checking-many-commits-and-whole-cascades) |
+| Compare against the target branch's own source | [Checking Against the Target Branch Itself](#checking-against-the-target-branch-itself) |
+| Check Elixir sources | [Elixir Sources](#elixir-sources) |
+| Find fixes that never got backported | [Finding Fixes That Should Have Cascaded](#finding-fixes-that-should-have-cascaded) |
+| Run a whole backport round | [A Full Backport Round](#a-full-backport-round) |
+| Decode an error message | [Common Errors](#common-errors) |
+| Find the tag where a commit's verdict flips | [Bisecting Across a Project's Tags](#bisecting-across-a-projects-tags) |
+| Interpret verdicts and exit codes | [Verdicts and Exit Codes](#verdicts-and-exit-codes) |
+| Inspect or clear the verdict cache | [The Verdict Cache](#the-verdict-cache) |
+| Consume results from scripts | [JSON Output](#json-output) |
+| Embed the tool in a Rust program | [Driving backhopper from Rust](#driving-backhopper-from-rust) |
+| Automate in CI | [Running in CI](#running-in-ci) |
+
+
 ## What Problem It Solves
 
 When a pull request or a commit (patch) is backported, it has to be
@@ -1095,30 +1119,6 @@ signals snapshots written by an older extractor than the running binary; rerun
 `backhopper doctor` reports the same staleness per pin, with the exact
 `rebuild` command to run. `snapshots verify --coverage` reports every
 `[[series]]` pin missing from the snapshot store.
-
-
-## Index
-
-| Task | Section |
-|---|---|
-| First-time setup | [Getting Started](#getting-started) |
-| Capture or refresh dependency snapshots | [Capturing Snapshots](#capturing-snapshots) |
-| Track Erlang/OTP as a dependency | [Tracking Erlang/OTP](#tracking-erlangotp) |
-| Ask what an API looked like at a tag | [Looking Up the API at a Tag](#looking-up-the-api-at-a-tag) |
-| Compare two tags or two series | [Diffing the API Between Two Tags](#diffing-the-api-between-two-tags) |
-| Check a commit, merge, range, patch, or PR | [Checking a Patch Against a Series](#checking-a-patch-against-a-series) |
-| Check many commits or several series at once | [Checking Many Commits, and Whole Cascades](#checking-many-commits-and-whole-cascades) |
-| Compare against the target branch's own source | [Checking Against the Target Branch Itself](#checking-against-the-target-branch-itself) |
-| Check Elixir sources | [Elixir Sources](#elixir-sources) |
-| Find fixes that never got backported | [Finding Fixes That Should Have Cascaded](#finding-fixes-that-should-have-cascaded) |
-| Run a whole backport round | [A Full Backport Round](#a-full-backport-round) |
-| Decode an error message | [Common Errors](#common-errors) |
-| Find the tag where a commit's verdict flips | [Bisecting Across a Project's Tags](#bisecting-across-a-projects-tags) |
-| Interpret verdicts and exit codes | [Verdicts and Exit Codes](#verdicts-and-exit-codes) |
-| Inspect or clear the verdict cache | [The Verdict Cache](#the-verdict-cache) |
-| Consume results from scripts | [JSON Output](#json-output) |
-| Embed the tool in a Rust program | [Driving backhopper from Rust](#driving-backhopper-from-rust) |
-| Automate in CI | [Running in CI](#running-in-ci) |
 
 
 ## Subprojects
