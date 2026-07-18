@@ -1,9 +1,17 @@
 # Changelog
 
-## v0.28.0 (in development)
+## v0.28.0 (July 18, 2026)
 
-No changes yet.
+### Bug Fixes
 
+ * Qualified-call resolution against a target repo no longer produces
+   false `qualified_call_undefined_on_target` findings for certain hunks
+
+### Release Infrastructure
+
+ * Adopt `michaelklishin/rust-release-action` for releases
+
+ 
 ## v0.27.0 (July 17, 2026)
 
 ### Enhancements
