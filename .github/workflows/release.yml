@@ -335,6 +335,8 @@ jobs:
         id: sbom
         with:
           command: generate-sbom
+          package: backhopper-cli
+          binary-name: backhopper
           sbom-format: 'spdx,cyclonedx'
 
       - name: Copy SBOMs to release
