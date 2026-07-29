@@ -10,7 +10,8 @@ use backhopper_erlang_scan::{
 };
 
 // each term is one top-level item with an internal comma the scanner must
-// not treat as a separator: one per bracket and quote family, plus a plain atom
+// not treat as a separator: one per bracket and quote family, a plain
+// atom, and the end-closed block expressions that carry no bracket
 const TERMS: &[&str] = &[
     "ra_log",
     "{ok, State}",
@@ -18,6 +19,13 @@ const TERMS: &[&str] = &[
     "\"x, y\"",
     "'quoted, atom'",
     "<<_:8, _:_*8>>",
+    "fun(X) -> ack(X), settle(X) end",
+    "fun Drain(N) -> Drain(N - 1), ok end",
+    "fun(X) when X > 0 -> drop(X), X end",
+    "fun rabbit_misc:pget/2",
+    "fun((a, b) -> ok)",
+    "case Mode of eager -> a, b; lazy -> c end",
+    "begin a(1, 2), b end",
 ];
 
 fn term_list() -> impl Strategy<Value = Vec<&'static str>> {

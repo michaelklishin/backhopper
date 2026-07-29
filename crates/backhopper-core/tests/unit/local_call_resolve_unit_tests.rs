@@ -11,11 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::local_call_resolve::{LocalCallAnalysis, analyse_local_calls};
 use backhopper_core::compat::qualified_call_resolve::{
-    PatchProvided, ReferenceContext, patch_provided,
+    ContextAwareSubject, PatchProvided, ReferenceContext, patch_provided,
 };
 use backhopper_core::model::names::{ModuleName, RelativePath};
+use backhopper_core::model::symbol::RefContext;
 use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
 
 fn rp(s: &str) -> RelativePath {
@@ -67,10 +69,30 @@ fn analyse_ctx(
     target: &[(&str, &str)],
     source: Option<&[(&str, &str)]>,
 ) -> LocalCallAnalysis {
-    let subjects = [AddedLinesSubject {
-        source_path: path,
-        added_text: added,
-        line_map: &[],
+    // self-derived classification: every relevant line is in the blob
+    let line_ctx = line_context(added);
+    analyse_with_line_context(path, added, &line_ctx, covered, patch_added, target, source)
+}
+
+/// `analyse_ctx` with an explicit per-line classification, for blobs
+/// whose attribute openers or terminators sit on dropped context lines.
+#[allow(clippy::too_many_arguments)]
+fn analyse_with_line_context(
+    path: &RelativePath,
+    added: &str,
+    line_ctx: &[RefContext],
+    covered: &[&str],
+    patch_added: &PatchProvided,
+    target: &[(&str, &str)],
+    source: Option<&[(&str, &str)]>,
+) -> LocalCallAnalysis {
+    let subjects = [ContextAwareSubject {
+        subject: AddedLinesSubject {
+            source_path: path,
+            added_text: added,
+            line_map: &[],
+        },
+        line_context: line_ctx,
     }];
     let target_map: BTreeMap<String, String> = target
         .iter()
@@ -657,4 +679,96 @@ fn a_patch_import_of_a_covered_module_is_withheld() {
         "unexpected: {:?}",
         analysis.reasons
     );
+}
+
+// The HF-49 shape: the patch changes parse_props/2 to /3, the spec's
+// terminating line stays context, and the target still defines only /2.
+// The added /3 heads must suppress the /3 calls.
+#[test]
+fn an_arity_change_redefinition_is_not_flagged() {
+    let path = rp("deps/rabbitmq_mqtt/src/rabbit_mqtt_packet.erl");
+    let added = "\
+{Props, Payload} = parse_props(Rest1, ProtoVer, Type),
+-spec parse_props(binary(), protocol_version(), packet_type()) ->
+parse_props(Bin, Vsn, _Type)
+parse_props(<<0, Rest/binary>>, 5, _Type) ->
+parse_props(Bin, 5, Type) ->
+";
+    // the hunk-walked classification: the spec terminator was a context line
+    let line_ctx = [
+        RefContext::Body,
+        RefContext::TypeAttribute,
+        RefContext::Body,
+        RefContext::Body,
+        RefContext::Body,
+    ];
+    let analysis = analyse_with_line_context(
+        &path,
+        added,
+        &line_ctx,
+        &[],
+        &PatchProvided::default(),
+        &[(
+            "deps/rabbitmq_mqtt/src/rabbit_mqtt_packet.erl",
+            "-module(rabbit_mqtt_packet).\nparse_props(Bin, Vsn) -> {#{}, Bin}.\n",
+        )],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+}
+
+// A single added clause head whose guard line stayed context: the
+// column-zero rule alone must classify it as a definition.
+#[test]
+fn a_single_clause_head_with_a_context_guard_is_not_flagged() {
+    let path = rp("deps/rabbit/src/rabbit_reader.erl");
+    let added = "handle_frame(Frame, State) -> validate_frame(Frame, State),\nvalidate_frame(Frame, State)\n";
+    let line_ctx = [RefContext::Body, RefContext::Body];
+    let analysis = analyse_with_line_context(
+        &path,
+        added,
+        &line_ctx,
+        &[],
+        &PatchProvided::default(),
+        &[(
+            "deps/rabbit/src/rabbit_reader.erl",
+            "-module(rabbit_reader).\n",
+        )],
+        None,
+    );
+    assert!(
+        analysis.reasons.is_empty(),
+        "unexpected: {:?}",
+        analysis.reasons
+    );
+}
+
+// Negative control: attribute context present, the call still resolves
+// against nothing and must keep firing.
+#[test]
+fn a_genuinely_undefined_local_call_is_still_flagged() {
+    let path = rp("deps/rabbit/src/rabbit_reader.erl");
+    let added = "-export([handle_frame/2]).\nhandle_frame(Frame, State) ->\n    validate_frame(Frame, State).\n";
+    let line_ctx = [
+        RefContext::OtherAttribute,
+        RefContext::Body,
+        RefContext::Body,
+    ];
+    let analysis = analyse_with_line_context(
+        &path,
+        added,
+        &line_ctx,
+        &[],
+        &PatchProvided::default(),
+        &[(
+            "deps/rabbit/src/rabbit_reader.erl",
+            "-module(rabbit_reader).\n",
+        )],
+        None,
+    );
+    assert_eq!(flagged(&analysis.reasons), [("validate_frame", 2)]);
 }

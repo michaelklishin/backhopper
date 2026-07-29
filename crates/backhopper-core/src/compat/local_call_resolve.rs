@@ -29,12 +29,13 @@ use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::qualified_call_resolve::{
-    ReferenceCaches, ReferenceContext, ShapeComparison, TreeReader, compare_return_shapes,
-    resolve_qualified_reference,
+    ContextAwareSubject, ReferenceCaches, ReferenceContext, ShapeComparison, TreeReader,
+    compare_return_shapes, resolve_qualified_reference,
 };
 use crate::compat::source_attributes::{
     FunctionSignature, ImportedFunction, SpecTable, declares_parse_transform,
-    extract_function_signatures, extract_imports, extract_specs,
+    extract_function_signatures, extract_function_signatures_with_context, extract_imports,
+    extract_specs,
 };
 use crate::model::names::{Arity, FunctionName};
 use crate::model::verdict::{Reason, ShapeCheckTally};
@@ -53,13 +54,14 @@ pub struct LocalCallAnalysis {
 /// target module itself defines. One reason per `(file, function,
 /// arity)`.
 pub fn analyse_local_calls(
-    subjects: &[AddedLinesSubject<'_>],
+    subjects: &[ContextAwareSubject<'_>],
     ctx: &ReferenceContext<'_>,
 ) -> LocalCallAnalysis {
     let mut analysis = LocalCallAnalysis::default();
     let mut caches = ReferenceCaches::default();
-    for subject in subjects {
-        let sigs = extract_function_signatures(subject.added_text);
+    for aware in subjects {
+        let subject = &aware.subject;
+        let sigs = extract_function_signatures_with_context(subject.added_text, aware.line_context);
         if sigs.iter().all(|s| s.is_definition) {
             continue;
         }

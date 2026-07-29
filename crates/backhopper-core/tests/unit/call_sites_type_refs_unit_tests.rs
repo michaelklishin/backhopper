@@ -122,10 +122,26 @@ fn scanner_classifies_callback_type_and_opaque_as_type_attribute() {
 }
 
 #[test]
-fn scanner_treats_export_attribute_as_body() {
+fn scanner_treats_export_attribute_as_other_attribute() {
     let mut s = AttrCtxScanner::new();
-    // -export is not a type-context attribute.
-    assert_eq!(s.classify("-export([start/1, stop/2])."), RefContext::Body);
+    // -export is an attribute region, but not a type-context one.
+    assert_eq!(
+        s.classify("-export([start/1, stop/2])."),
+        RefContext::OtherAttribute
+    );
+    // the single-line form closes itself: the next line is body again
+    assert_eq!(s.classify("start(X) -> X."), RefContext::Body);
+}
+
+#[test]
+fn scanner_tracks_a_multi_line_export_to_its_terminator() {
+    let mut s = AttrCtxScanner::new();
+    assert_eq!(s.classify("-export([start/1,"), RefContext::OtherAttribute);
+    assert_eq!(
+        s.classify("          stop/2])."),
+        RefContext::OtherAttribute
+    );
+    assert_eq!(s.classify("start(X) -> X."), RefContext::Body);
 }
 
 #[test]

@@ -136,3 +136,46 @@ fn classification_persists_across_hunks_in_the_same_file() {
         vec![RefContext::TypeAttribute, RefContext::TypeAttribute]
     );
 }
+
+#[test]
+fn an_export_attribute_classifies_as_other_attribute() {
+    let h = hunk(
+        3,
+        vec![
+            HunkLine::Added("-export([info/1,".into()),
+            HunkLine::Added("         format_status/2]).".into()),
+            HunkLine::Added("info(S) -> S.".into()),
+        ],
+    );
+    let (_, _, ctx) = added_lines_with_context(&[h]);
+    assert_eq!(
+        ctx,
+        vec![
+            RefContext::OtherAttribute,
+            RefContext::OtherAttribute,
+            RefContext::Body
+        ]
+    );
+}
+
+// The HF-49 hunk shape: the modified -spec head is added, the spec's
+// terminating line stayed context. The terminator must still close the
+// region so the clause heads after it classify as body.
+#[test]
+fn a_context_terminator_closes_a_region_an_added_opener_started() {
+    let h = hunk(
+        290,
+        vec![
+            HunkLine::Removed("-spec parse_props(binary(), protocol_version()) ->".into()),
+            HunkLine::Added(
+                "-spec parse_props(binary(), protocol_version(), packet_type()) ->".into(),
+            ),
+            HunkLine::Context("    {properties(), binary()}.".into()),
+            HunkLine::Removed("parse_props(Bin, Vsn)".into()),
+            HunkLine::Added("parse_props(Bin, Vsn, _Type)".into()),
+            HunkLine::Context("  when Vsn < 5 ->".into()),
+        ],
+    );
+    let (_, _, ctx) = added_lines_with_context(&[h]);
+    assert_eq!(ctx, vec![RefContext::TypeAttribute, RefContext::Body]);
+}

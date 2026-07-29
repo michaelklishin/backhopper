@@ -223,7 +223,8 @@ pub(crate) fn body_runs_from_context(
 ) -> Vec<BodyRun> {
     let mut idx = 0usize;
     body_runs_with(src, line_map, strip_line_comment, |_line| {
-        let body = ctx.get(idx).copied() == Some(RefContext::Body);
+        // other-attribute lines scan like body: a `-define` body holds real calls
+        let body = matches!(ctx.get(idx), Some(c) if *c != RefContext::TypeAttribute);
         idx += 1;
         body
     })
@@ -255,37 +256,41 @@ pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
     value_at_or_before(run_lines, offset, run_lines.first().map_or(1, |(_, l)| *l))
 }
 
-/// Cross-line classifier that decides whether a hunk line is body or
-/// type-attribute context. `-spec`, `-callback`, `-type`, and
-/// `-opaque` open a type-attribute region that runs until the
-/// terminating `.` at the top level; a single line may both open and
-/// close one. Multi-line type attributes flow through `in_attr` so
-/// the second and later lines of a wrapped `-spec` classify
-/// correctly.
+/// Cross-line classifier that decides whether a hunk line is body,
+/// type-attribute, or other-attribute context. `-spec`, `-callback`,
+/// `-type`, and `-opaque` open a type-attribute region; any other `-`
+/// attribute form opens an other-attribute region. Both run until the
+/// terminating `.` at the top level, and a single line may both open
+/// and close one. Multi-line attributes flow through the stored
+/// region so their later lines classify correctly.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AttrCtxScanner {
-    in_attr: bool,
+    region: Option<RefContext>,
 }
 
 impl AttrCtxScanner {
     pub fn new() -> Self {
-        Self { in_attr: false }
+        Self { region: None }
     }
 
     pub fn classify(&mut self, line: &str) -> RefContext {
-        if self.in_attr {
+        if let Some(kind) = self.region {
             if line_closes_attribute(line) {
-                self.in_attr = false;
+                self.region = None;
             }
-            return RefContext::TypeAttribute;
+            return kind;
         }
-        if line_opens_type_attr(line) {
-            if !line_closes_attribute(line) {
-                self.in_attr = true;
-            }
-            return RefContext::TypeAttribute;
+        let opened = if line_opens_type_attr(line) {
+            RefContext::TypeAttribute
+        } else if line_opens_other_attr(line) {
+            RefContext::OtherAttribute
+        } else {
+            return RefContext::Body;
+        };
+        if !line_closes_attribute(line) {
+            self.region = Some(opened);
         }
-        RefContext::Body
+        opened
     }
 }
 
@@ -303,6 +308,14 @@ fn line_opens_type_attr(line: &str) -> bool {
         }
     }
     false
+}
+
+/// A line-leading `-` followed by a lowercase letter opens an
+/// attribute form; `-1` or `- X` on a wrapped expression line does not.
+fn line_opens_other_attr(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let mut chars = trimmed.chars();
+    chars.next() == Some('-') && chars.next().is_some_and(|c| c.is_ascii_lowercase())
 }
 
 fn line_closes_attribute(line: &str) -> bool {
@@ -785,17 +798,19 @@ pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
     let mut scanner = AttrCtxScanner::new();
     let mut text = String::new();
     let mut line_origins: Vec<(usize, RefOrigin)> = Vec::new();
-    let mut run_ctx: Option<RefContext> = None;
+    // runs group on the type-attribute boundary alone, so other-attribute
+    // lines join body runs exactly as they did before the third variant
+    let mut run_ctx: Option<bool> = None;
     for &(origin, raw) in lines {
         let stripped = strip_line_comment(raw);
-        let ctx = scanner.classify(stripped);
-        if run_ctx != Some(ctx) {
+        let type_attr = scanner.classify(stripped) == RefContext::TypeAttribute;
+        if run_ctx != Some(type_attr) {
             if let Some(prev) = run_ctx {
                 flush_run(prev, &text, &line_origins, macros, &mut out);
             }
             text.clear();
             line_origins.clear();
-            run_ctx = Some(ctx);
+            run_ctx = Some(type_attr);
         }
         line_origins.push((text.len(), origin));
         text.push_str(stripped);
@@ -808,32 +823,29 @@ pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
 }
 
 fn flush_run(
-    ctx: RefContext,
+    type_attr: bool,
     text: &str,
     line_origins: &[(usize, RefOrigin)],
     macros: &MacroTable,
     out: &mut HunkScan,
 ) {
-    match ctx {
-        RefContext::Body => {
-            let mut refs = Vec::new();
-            push_refs_with_offsets(text, macros, &mut refs);
-            tag_by_origin(refs, line_origins, &mut out.referenced);
-            extract_definitions_into(text, &mut out.defined);
-            extract_dynamic_into(text, &mut out.dynamic_calls);
-            let mut args = Vec::new();
-            push_call_args_with_offsets(text, &mut args);
-            // context-line calls are pre-existing target facts, not clause-mismatch input
-            for (call, offset) in args {
-                if origin_at(line_origins, offset) == RefOrigin::Added {
-                    out.call_args.push(call);
-                }
-            }
-        }
-        RefContext::TypeAttribute => {
-            let mut refs = Vec::new();
-            push_type_refs_with_offsets(text, &mut refs);
-            tag_by_origin(refs, line_origins, &mut out.referenced);
+    if type_attr {
+        let mut refs = Vec::new();
+        push_type_refs_with_offsets(text, &mut refs);
+        tag_by_origin(refs, line_origins, &mut out.referenced);
+        return;
+    }
+    let mut refs = Vec::new();
+    push_refs_with_offsets(text, macros, &mut refs);
+    tag_by_origin(refs, line_origins, &mut out.referenced);
+    extract_definitions_into(text, &mut out.defined);
+    extract_dynamic_into(text, &mut out.dynamic_calls);
+    let mut args = Vec::new();
+    push_call_args_with_offsets(text, &mut args);
+    // context-line calls are pre-existing target facts, not clause-mismatch input
+    for (call, offset) in args {
+        if origin_at(line_origins, offset) == RefOrigin::Added {
+            out.call_args.push(call);
         }
     }
 }

@@ -7,6 +7,24 @@ use proptest::prelude::*;
 use backhopper_core::SymbolKind;
 use backhopper_core::compat::call_sites::extract_into;
 
+/// A generated atom in module or function position. Reserved words are
+/// excluded: they are not legal bare atoms, and `apply(if, a, [])` is
+/// not a Erlang expression any scanner has to read.
+fn arb_atom(max_len: usize) -> impl Strategy<Value = String> {
+    let pattern = format!("[a-z][a-z0-9_]{{0,{max_len}}}");
+    proptest::string::string_regex(&pattern)
+        .unwrap()
+        .prop_filter("reserved words are not bare atoms", |s| {
+            !RESERVED_WORDS.contains(&s.as_str())
+        })
+}
+
+const RESERVED_WORDS: &[&str] = &[
+    "after", "and", "andalso", "band", "begin", "bnot", "bor", "bsl", "bsr", "bxor", "case",
+    "catch", "cond", "div", "end", "fun", "if", "let", "not", "of", "or", "orelse", "receive",
+    "rem", "try", "when", "xor",
+];
+
 fn mfas(source: &str) -> Vec<String> {
     let mut out = Vec::new();
     extract_into(source, &mut out);
@@ -23,8 +41,8 @@ proptest! {
     /// must resolve to `module:function/n`.
     #[test]
     fn apply_3_with_atom_literals_always_resolves(
-        module in "[a-z][a-z0-9_]{0,7}",
-        function in "[a-z][a-z0-9_]{0,7}",
+        module in arb_atom(7),
+        function in arb_atom(7),
         list_arity in 0u8..8,
     ) {
         let list = (0..list_arity)
@@ -47,8 +65,8 @@ proptest! {
             "spawn_monitor",
             "hibernate",
         ]),
-        module in "[a-z][a-z0-9_]{0,5}",
-        function in "[a-z][a-z0-9_]{0,5}",
+        module in arb_atom(5),
+        function in arb_atom(5),
         list_arity in 0u8..6,
     ) {
         let list = (0..list_arity)

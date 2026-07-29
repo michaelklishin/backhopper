@@ -2,5 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+mod block_comma_proptests;
 mod scan_proptests;
 mod signature_proptests;

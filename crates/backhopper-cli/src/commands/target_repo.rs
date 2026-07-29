@@ -366,8 +366,8 @@ fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedL
 /// Added-line text of every touched `.erl` file, with the blob-line to
 /// file-line map and each blob line's attribute-region classification,
 /// walked against the full hunk so an orphaned attribute continuation
-/// still classifies correctly. Only the qualified-call and
-/// Erlang indirect-call axes need the classification.
+/// still classifies correctly. The qualified-call, Erlang
+/// indirect-call, and local-call axes consume the classification.
 fn erl_subject_context(
     files: &[PatchedFile],
 ) -> Vec<(RelativePath, String, Vec<u32>, Vec<RefContext>)> {
@@ -486,13 +486,13 @@ impl<'a> TargetResolveSession<'a> {
         files: &[PatchedFile],
         covered_modules: &BTreeSet<ModuleName>,
     ) -> LocalCallAnalysis {
-        let subjects_text = erl_subject_text(files);
-        if subjects_text.is_empty() {
+        let subjects_ctx = erl_subject_context(files);
+        if subjects_ctx.is_empty() {
             return LocalCallAnalysis::default();
         }
-        let per_file: Vec<(ModuleName, &str)> = subjects_text
+        let per_file: Vec<(ModuleName, &str)> = subjects_ctx
             .iter()
-            .filter_map(|(p, t, _)| Some((module_of_erl_path(p)?, t.as_str())))
+            .filter_map(|(p, t, _, _)| Some((module_of_erl_path(p)?, t.as_str())))
             .collect();
         let patch_added = patch_provided(&per_file);
         let resolve_module_path = |m: &ModuleName| self.resolve_module_path(m);
@@ -503,7 +503,7 @@ impl<'a> TargetResolveSession<'a> {
         let read_source = read_source_fn
             .as_ref()
             .map(|f| f as &dyn Fn(&RelativePath) -> Option<String>);
-        let subjects = to_subjects(&subjects_text);
+        let subjects = to_context_subjects(&subjects_ctx);
         let reference_ctx = ReferenceContext {
             covered_modules,
             patch_added: &patch_added,

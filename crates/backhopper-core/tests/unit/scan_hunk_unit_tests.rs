@@ -202,3 +202,23 @@ fn an_empty_hunk_scans_to_nothing() {
     assert!(scan.referenced.is_empty());
     assert!(scan.defined.is_empty());
 }
+
+// The HF-50 shape: a wrapped lists:foreach whose first argument is an
+// inline fun carrying statement commas must read /2, not /4.
+#[test]
+fn a_wrapped_call_with_an_inline_fun_argument_scans_at_exact_arity() {
+    let scan = scan(&[
+        added("    lists:foreach("),
+        added("      fun({Name, Val}) ->"),
+        added("              C = connect(atom_to_binary(Name), Config),"),
+        added("              ok = emqtt:publish(C, Topic, #{Name => Val},"),
+        added("                                 atom_to_binary(Name), [{qos, 0}]),"),
+        added("              util:await_exit(C)"),
+        added("      end, NotApplicable),"),
+    ]);
+    let foreach: Vec<_> = functions(&scan.referenced)
+        .into_iter()
+        .filter(|(m, _)| m.starts_with("lists:foreach"))
+        .collect();
+    assert_eq!(foreach, [("lists:foreach/2".to_owned(), RefOrigin::Added)]);
+}

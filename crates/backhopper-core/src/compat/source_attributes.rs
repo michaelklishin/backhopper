@@ -24,12 +24,13 @@ use std::str;
 use std::str::FromStr;
 
 use backhopper_erlang_scan::{
-    count_top_level_commas, parse_callable_signature, take_balanced_parens,
+    arity_of_args, count_top_level_commas, parse_callable_signature, take_balanced_parens,
 };
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath, TypeName};
+use crate::model::symbol::RefContext;
 use crate::model::verdict::IncludeDirective;
 use crate::snapshot::spec_normalize::normalize_signature;
 
@@ -294,16 +295,35 @@ pub struct FunctionSignature {
 /// attribute or spec forms (`-export(...)`, `-spec ... term()`) hold no
 /// local calls, so they are consumed without emitting a signature.
 pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
+    signatures_with_line_context(src, None)
+}
+
+/// `extract_function_signatures` for an added-lines blob, with each
+/// blob line's hunk-walked classification. The byte-level attribute
+/// tracking alone misreads a blob whose attribute opener or terminator
+/// sits on a dropped context line; `ctx` is authoritative at each line
+/// start and the intra-line transitions still apply within a line.
+pub fn extract_function_signatures_with_context(
+    src: &str,
+    ctx: &[RefContext],
+) -> Vec<FunctionSignature> {
+    signatures_with_line_context(src, Some(ctx))
+}
+
+fn signatures_with_line_context(src: &str, ctx: Option<&[RefContext]>) -> Vec<FunctionSignature> {
     let bytes = src.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
     let mut line = 1u32;
     // inside an attribute or spec form type names look like zero-arity calls
-    let mut in_attribute = false;
+    let mut in_attribute = line_starts_attribute(ctx, line);
     while i < bytes.len() {
         match bytes[i] {
             b'\n' => {
                 line += 1;
+                if ctx.is_some() {
+                    in_attribute = line_starts_attribute(ctx, line);
+                }
                 i += 1;
             }
             b'%' => {
@@ -311,9 +331,17 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
+            b'"' => {
+                let end = skip_string(bytes, i, b'"');
+                line += count_newlines(&bytes[i..end]);
+                i = end;
+            }
             b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'\'' => {
+                let end = skip_string(bytes, i, b'\'');
+                line += count_newlines(&bytes[i..end]);
+                i = end;
+            }
             b'-' if !in_attribute && at_form_start(bytes, i) => {
                 in_attribute = true;
                 i += 1;
@@ -339,8 +367,11 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
                 if bytes.get(j) == Some(&b'(') && !qualified && !is_reserved_word(name) {
                     if let Some(close) = match_parens(bytes, j + 1) {
                         if !in_attribute {
-                            let arity = top_level_arity(&bytes[j + 1..close]);
-                            let is_definition = followed_by_clause_arrow(bytes, close + 1);
+                            let arity = arity_of_args(&src[j + 1..close]);
+                            // a column-zero occurrence is a clause head even when
+                            // its arrow or guard sits on a line the input lacks
+                            let is_definition = followed_by_clause_arrow(bytes, close + 1)
+                                || starts_line(bytes, start);
                             out.push(FunctionSignature {
                                 name: String::from_utf8_lossy(name).into_owned(),
                                 arity,
@@ -359,6 +390,20 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
         }
     }
     out
+}
+
+/// Whether `line` (1-based) opens inside an attribute region per the
+/// supplied classification; without one the byte tracking stands alone.
+fn line_starts_attribute(ctx: Option<&[RefContext]>, line: u32) -> bool {
+    ctx.is_some_and(|ctx| {
+        ctx.get(line.saturating_sub(1) as usize)
+            .is_some_and(|c| c.is_attribute())
+    })
+}
+
+/// True when `start` is the first byte of its line.
+fn starts_line(bytes: &[u8], start: usize) -> bool {
+    start == 0 || bytes[start - 1] == b'\n'
 }
 
 /// True when only whitespace precedes `pos` back to the last newline:
@@ -809,48 +854,6 @@ fn followed_by_clause_arrow(bytes: &[u8], pos: usize) -> bool {
         i += 1;
     }
     bytes[i..].starts_with(b"->") || bytes[i..].starts_with(b"when")
-}
-
-fn top_level_arity(args: &[u8]) -> usize {
-    if args.iter().all(|b| b.is_ascii_whitespace()) {
-        return 0;
-    }
-    let mut depth = 0i32;
-    let mut commas = 0usize;
-    let mut i = 0;
-    while i < args.len() {
-        match args[i] {
-            b'(' | b'[' | b'{' => depth += 1,
-            b')' | b']' | b'}' => depth -= 1,
-            // binary delimiters << >> nest like brackets, so their commas do not separate arguments
-            b'<' if args.get(i + 1) == Some(&b'<') => {
-                depth += 1;
-                i += 2;
-                continue;
-            }
-            b'>' if args.get(i + 1) == Some(&b'>') => {
-                depth -= 1;
-                i += 2;
-                continue;
-            }
-            b'"' => {
-                i = skip_string(args, i, b'"');
-                continue;
-            }
-            b'\'' => {
-                i = skip_string(args, i, b'\'');
-                continue;
-            }
-            b'$' => {
-                i += 2;
-                continue;
-            }
-            b',' if depth == 0 => commas += 1,
-            _ => {}
-        }
-        i += 1;
-    }
-    commas + 1
 }
 
 fn count_newlines(bytes: &[u8]) -> u32 {

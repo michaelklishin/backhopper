@@ -8,15 +8,17 @@
 
 use std::str::FromStr;
 
+use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::source_attributes::{
     ImportedFunction, declares_parse_transform, extract_behaviours, extract_defined_macro_values,
     extract_defined_macros, extract_defined_records, extract_exported_types,
-    extract_function_signatures, extract_imports, extract_includes, extract_macro_uses,
-    extract_record_uses, extract_specs, is_predefined_macro,
+    extract_function_signatures, extract_function_signatures_with_context, extract_imports,
+    extract_includes, extract_macro_uses, extract_record_uses, extract_specs, is_predefined_macro,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
 use backhopper_core::model::spec_parser::parse_signature_return;
+use backhopper_core::model::symbol::RefContext;
 use backhopper_core::model::verdict::IncludeDirective;
 
 #[test]
@@ -460,4 +462,104 @@ fn include_line_survives_a_multiline_string_literal() {
     let incs = extract_includes(src);
     assert_eq!(incs.len(), 1);
     assert_eq!(incs[0].line, 4);
+}
+
+// An added-lines blob can hold a `-spec` head whose terminating line
+// stayed unchanged in the hunk: without the hunk-walked classification
+// the byte tracking stays in the attribute and eats the clause heads.
+#[test]
+fn an_added_spec_head_does_not_swallow_following_definitions() {
+    let blob = "-spec parse_props(binary(), protocol_version(), packet_type() | will_props) ->\n\
+                parse_props(Bin, Vsn, _Type)\n\
+                parse_props(<<0, Rest/binary>>, 5, _Type) ->\n\
+                parse_props(Bin, 5, Type) ->\n";
+    let ctx = [
+        RefContext::TypeAttribute,
+        RefContext::Body,
+        RefContext::Body,
+        RefContext::Body,
+    ];
+    let sigs = extract_function_signatures_with_context(blob, &ctx);
+    let defs: Vec<_> = sigs
+        .iter()
+        .filter(|s| s.name == "parse_props" && s.is_definition)
+        .collect();
+    assert_eq!(defs.len(), 3);
+    assert!(defs.iter().all(|s| s.arity == 3));
+}
+
+#[test]
+fn an_orphaned_attribute_continuation_emits_no_signatures() {
+    // continuation lines of a -spec whose opener stayed context
+    let blob = "        rabbit_net:socket() | rabbit_net:proxy_socket(),\n\
+                        keepalive_interval()) -> state().\n";
+    let ctx = [RefContext::TypeAttribute, RefContext::TypeAttribute];
+    let sigs = extract_function_signatures_with_context(blob, &ctx);
+    assert!(sigs.is_empty(), "sigs: {sigs:?}");
+}
+
+#[test]
+fn a_column_zero_head_without_a_visible_arrow_is_a_definition() {
+    // the guard line carrying `when ... ->` stayed context and is absent
+    let sigs = extract_function_signatures("parse_props(Bin, Vsn, _Type)\n");
+    assert_eq!(sigs.len(), 1);
+    assert!(sigs[0].is_definition);
+    assert_eq!(sigs[0].arity, 3);
+}
+
+#[test]
+fn an_indented_call_is_not_a_definition() {
+    let sigs = extract_function_signatures("    parse_props(Bin, Vsn, Type)\n");
+    assert_eq!(sigs.len(), 1);
+    assert!(!sigs[0].is_definition);
+}
+
+#[test]
+fn context_free_extraction_is_unchanged_on_full_files() {
+    let src = "-module(rabbit_mqtt_packet).\n-export([parse/2]).\n-spec parse(binary(), integer()) ->\n    {ok, term()}.\nparse(Bin, Vsn)\n  when Vsn < 5 ->\n    parse_props(Bin, Vsn).\n";
+    let sigs = extract_function_signatures(src);
+    let def = sigs.iter().find(|s| s.name == "parse").unwrap();
+    assert!(def.is_definition);
+    assert_eq!((def.arity, def.line), (2, 5));
+    let call = sigs.iter().find(|s| s.name == "parse_props").unwrap();
+    assert!(!call.is_definition);
+    assert_eq!((call.arity, call.line), (2, 7));
+}
+
+#[test]
+fn a_local_call_with_an_inline_fun_argument_keeps_its_arity() {
+    // the fun body's statement commas are not argument separators
+    let src = "run(Props) ->\n    for_each_prop(\n      fun({Name, Val}) ->\n          assert_prop(Name, Val),\n          ok\n      end, Props).\n";
+    let sigs = extract_function_signatures(src);
+    let call = sigs
+        .iter()
+        .find(|s| s.name == "for_each_prop" && !s.is_definition)
+        .unwrap();
+    assert_eq!(call.arity, 2);
+}
+
+#[test]
+fn signature_lines_survive_a_multiline_string_literal() {
+    let src = "-define(BANNER, \"line one\nline two\").\nf(X) -> g(X).\n";
+    let sigs = extract_function_signatures(src);
+    let def = sigs.iter().find(|s| s.name == "f").unwrap();
+    assert_eq!(def.line, 3);
+}
+
+// The self-derived classification and the byte tracking agree when the
+// text holds every relevant line, so the two forms are interchangeable
+// on full files.
+#[test]
+fn self_derived_context_matches_context_free_extraction() {
+    let src = "-module(m).\n\
+               -export([f/1]).\n\
+               -spec f(integer()) ->\n\
+                   integer().\n\
+               f(X) ->\n\
+                   g(X, X).\n";
+    let ctx = line_context(src);
+    assert_eq!(
+        extract_function_signatures_with_context(src, &ctx),
+        extract_function_signatures(src)
+    );
 }

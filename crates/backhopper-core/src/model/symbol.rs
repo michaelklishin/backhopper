@@ -15,12 +15,24 @@ use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, Type
 /// emits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RefContext {
-    /// Inside a function body, top-level expression, or anywhere that
-    /// is not a `-spec`, `-callback`, `-type`, or `-opaque` attribute.
+    /// Inside a function body or top-level expression.
     Body,
     /// Inside a `-spec`, `-callback`, `-type`, or `-opaque` attribute,
     /// where `mod:ident(...)` is a type reference, not a function call.
     TypeAttribute,
+    /// Inside any other attribute form (`-export`, `-define`,
+    /// `-record`, ...), where an identifier is never a local call.
+    OtherAttribute,
+}
+
+impl RefContext {
+    /// True in either attribute region; a local `name(` there is a
+    /// type name, an export entry, or a macro parameter, never a call
+    /// or a clause head.
+    #[must_use]
+    pub fn is_attribute(self) -> bool {
+        matches!(self, Self::TypeAttribute | Self::OtherAttribute)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

@@ -30,6 +30,117 @@ pub fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
     2
 }
 
+/// Bracketless block tracking: `case`, `if`, `begin`, `receive`, and
+/// `try` open a region that one `end` closes, and the expression forms
+/// of `fun` do too. A comma inside such a region separates statements
+/// or clauses, never arguments. `maybe` is deliberately absent: it is
+/// not a reserved word, so a bare `maybe` atom is legal in any
+/// argument position and would desync the depth.
+#[derive(Debug, Clone, Copy, Default)]
+struct BlockDepth(i32);
+
+impl BlockDepth {
+    fn in_block(self) -> bool {
+        self.0 > 0
+    }
+
+    /// Consume the identifier starting at `at` and adjust the depth.
+    /// Returns the bytes consumed; the caller guarantees `at` is a
+    /// token start on a lowercase letter outside literals.
+    fn observe(&mut self, bytes: &[u8], at: usize) -> usize {
+        let mut j = at;
+        while j < bytes.len() && is_name_byte(bytes[j]) {
+            j += 1;
+        }
+        match &bytes[at..j] {
+            b"case" | b"if" | b"begin" | b"receive" | b"try" => self.0 += 1,
+            b"end" => self.0 = (self.0 - 1).max(0),
+            b"fun" if fun_opens_block(bytes, j) => self.0 += 1,
+            _ => {}
+        }
+        j - at
+    }
+}
+
+fn is_name_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
+}
+
+fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    i
+}
+
+/// The expression forms `fun (...) ->`, `fun Name(...) ->`, and their
+/// guarded first clauses open a block; `fun m:f/1`-style references
+/// and the type forms `fun()` and `fun((...) -> ...)` do not. What
+/// follows the balanced paren group decides: an expression clause
+/// continues with `->` or a `when` guard, a type or reference does
+/// not, because a type's own `->` sits inside the group.
+fn fun_opens_block(bytes: &[u8], after_fun: usize) -> bool {
+    let mut j = skip_ws(bytes, after_fun);
+    if bytes
+        .get(j)
+        .is_some_and(|b| b.is_ascii_uppercase() || *b == b'_')
+    {
+        while j < bytes.len() && is_name_byte(bytes[j]) {
+            j += 1;
+        }
+        j = skip_ws(bytes, j);
+    }
+    if bytes.get(j) != Some(&b'(') {
+        return false;
+    }
+    let Some(close) = matching_paren(bytes, j) else {
+        return false;
+    };
+    let j = skip_ws(bytes, close + 1);
+    bytes[j..].starts_with(b"->")
+        || (bytes[j..].starts_with(b"when") && !bytes.get(j + 4).copied().is_some_and(is_name_byte))
+}
+
+/// Byte offset of the `)` matching the `(` at `open`, tracking nested
+/// parens, strings, quoted atoms, and char literals.
+fn matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut in_atom = false;
+    let mut i = open;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_str || in_atom {
+            match b {
+                b'\\' => i += 1,
+                b'"' if in_str => in_str = false,
+                b'\'' if in_atom => in_atom = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'\'' => in_atom = true,
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 /// Result of scanning one call's argument list after the opening `(`.
 /// `Unterminated` means the closing paren is not in the input, so any
 /// arity derived from it would be a guess.
@@ -53,6 +164,7 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
     let bytes = after_open_paren.as_bytes();
     let mut args: Vec<&str> = Vec::new();
     let mut depth = 1i32;
+    let mut blocks = BlockDepth::default();
     let mut in_str = false;
     let mut in_atom = false;
     let mut start = 0usize;
@@ -67,6 +179,10 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
                 _ => {}
             }
             i += 1;
+            continue;
+        }
+        if c.is_ascii_lowercase() && (i == 0 || !is_name_byte(bytes[i - 1])) {
+            i += blocks.observe(bytes, i);
             continue;
         }
         match c {
@@ -88,7 +204,9 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
             b']' | b'}' => depth -= 1,
             b')' => {
                 depth -= 1;
-                if depth == 0 {
+                // a close at depth zero inside an unclosed block means a
+                // missing `end`: no terminated read, so no guessed arity
+                if depth == 0 && !blocks.in_block() {
                     let slice = &after_open_paren[start..i];
                     if !slice.trim().is_empty() || !args.is_empty() {
                         args.push(slice);
@@ -99,7 +217,7 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
                     };
                 }
             }
-            b',' if depth == 1 => {
+            b',' if depth == 1 && !blocks.in_block() => {
                 args.push(&after_open_paren[start..i]);
                 start = i + 1;
             }
@@ -149,15 +267,16 @@ pub fn count_top_level_items(s: &str, open: char, close: char) -> usize {
 }
 
 /// Invoke `on_comma` at each byte index of a comma sitting at bracket
-/// depth zero, outside strings, atoms, char literals, and binaries.
-/// The shared separator definition used by both the splitter and the
-/// counter.
+/// depth zero, outside strings, atoms, char literals, binaries, and
+/// `end`-closed block expressions. The shared separator definition
+/// used by both the splitter and the counter.
 fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
     let bytes = s.as_bytes();
     let mut depth_paren = 0i32;
     let mut depth_brace = 0i32;
     let mut depth_brack = 0i32;
     let mut depth_angle = 0i32;
+    let mut blocks = BlockDepth::default();
     let mut in_string = false;
     let mut in_atom_quote = false;
     let mut prev_back = false;
@@ -171,6 +290,14 @@ fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
         }
         if !in_string && !in_atom_quote && ch == '$' {
             i += skip_char_literal_span(bytes, i);
+            continue;
+        }
+        if !in_string
+            && !in_atom_quote
+            && ch.is_ascii_lowercase()
+            && (i == 0 || !is_name_byte(bytes[i - 1]))
+        {
+            i += blocks.observe(bytes, i);
             continue;
         }
         if !in_string && !in_atom_quote && ch == '<' && bytes.get(i + 1) == Some(&b'<') {
@@ -198,7 +325,8 @@ fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
                 && depth_paren == 0
                 && depth_brace == 0
                 && depth_brack == 0
-                && depth_angle == 0 =>
+                && depth_angle == 0
+                && !blocks.in_block() =>
             {
                 on_comma(i);
             }

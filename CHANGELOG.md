@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.29.0 (in development)
+
+### Bug Fixes
+
+ * Avoid false positives on patches that modify a function `-spec` and its arity
+ * Fix phantom arity readings with functions such as `lists:foreach/4` that
+   take an anonymous function that can be multi-line
+
 ## v0.28.0 (July 18, 2026)
 
 ### Bug Fixes

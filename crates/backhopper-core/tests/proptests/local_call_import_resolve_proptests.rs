@@ -12,8 +12,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
+use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::local_call_resolve::analyse_local_calls;
-use backhopper_core::compat::qualified_call_resolve::{PatchProvided, ReferenceContext};
+use backhopper_core::compat::qualified_call_resolve::{
+    ContextAwareSubject, PatchProvided, ReferenceContext,
+};
+use backhopper_core::compat::source_attributes::{
+    extract_function_signatures, extract_function_signatures_with_context,
+};
 use backhopper_core::model::names::{ModuleName, RelativePath};
 use backhopper_core::model::verdict::Reason;
 use proptest::prelude::*;
@@ -51,10 +57,14 @@ fn locally_flagged(reasons: &[Reason], function: &str, arity: usize) -> bool {
 
 fn analyse(added: &str, target: &[(&str, &str)]) -> Vec<Reason> {
     let path = RelativePath::new(CALLER_PATH).unwrap();
-    let subjects = [AddedLinesSubject {
-        source_path: &path,
-        added_text: added,
-        line_map: &[],
+    let line_ctx = line_context(added);
+    let subjects = [ContextAwareSubject {
+        subject: AddedLinesSubject {
+            source_path: &path,
+            added_text: added,
+            line_map: &[],
+        },
+        line_context: &line_ctx,
     }];
     let target_map: BTreeMap<String, String> = target
         .iter()
@@ -114,4 +124,59 @@ proptest! {
         let reasons = analyse(&added, &[(CALLER_PATH, "-module(caller_SUITE).\n")]);
         prop_assert!(locally_flagged(&reasons, &function, arity), "reasons: {reasons:?}");
     }
+
+    // With every relevant line present in the text, the hunk-walked
+    // classification is self-derived and both extraction forms agree.
+    #[test]
+    fn context_and_context_free_extraction_agree_when_every_line_is_added(
+        lines in prop::collection::vec(arb_module_line(), 1..12),
+    ) {
+        let src = lines.concat();
+        let ctx = line_context(&src);
+        prop_assert_eq!(
+            extract_function_signatures_with_context(&src, &ctx),
+            extract_function_signatures(&src)
+        );
+    }
+
+    // A definition the patch itself adds suppresses its own calls no
+    // matter which attributes sit between them.
+    #[test]
+    fn a_definition_added_by_the_patch_is_never_flagged(
+        function in arb_fun(),
+        arity in 0usize..=4,
+        attrs in prop::collection::vec(arb_attribute_chunk(), 0..3),
+    ) {
+        let params = vec!["_"; arity].join(", ");
+        let added = format!(
+            "{}{function}({params}) -> ok.\n{}",
+            attrs.concat(),
+            call_body(&function, arity),
+        );
+        let reasons = analyse(&added, &[(CALLER_PATH, "-module(caller_SUITE).\n")]);
+        prop_assert!(!locally_flagged(&reasons, &function, arity), "reasons: {reasons:?}");
+    }
+}
+
+/// One module line the equivalence property mixes: attributes, wrapped
+/// attributes, definitions, and calls. Lines that the byte tracker and
+/// the line classifier read differently by design (multi-line strings,
+/// `-` continuation lines that are not attributes) stay out.
+fn arb_module_line() -> impl Strategy<Value = String> {
+    prop_oneof![
+        Just("-export([info/1]).\n".to_owned()),
+        Just("-spec info(map()) ->\n    map().\n".to_owned()),
+        Just("-define(WIDTH, 8).\n".to_owned()),
+        Just("info(S) ->\n    format_status(S, all).\n".to_owned()),
+        Just("format_status(S, _) when is_map(S) ->\n    S.\n".to_owned()),
+        Just("drain(Q) -> queue:len(Q).\n".to_owned()),
+    ]
+}
+
+fn arb_attribute_chunk() -> impl Strategy<Value = String> {
+    prop_oneof![
+        Just("-export([info/1]).\n".to_owned()),
+        Just("-spec info(map()) ->\n    map().\n".to_owned()),
+        Just("-define(WIDTH, 8).\n".to_owned()),
+    ]
 }
