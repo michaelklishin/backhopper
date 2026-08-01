@@ -5,3 +5,4 @@
 mod block_comma_proptests;
 mod scan_proptests;
 mod signature_proptests;
+mod triple_quote_proptests;

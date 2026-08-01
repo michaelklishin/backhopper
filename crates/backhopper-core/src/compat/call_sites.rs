@@ -224,7 +224,7 @@ pub(crate) fn body_runs_from_context(
     let mut idx = 0usize;
     body_runs_with(src, line_map, strip_line_comment, |_line| {
         // other-attribute lines scan like body: a `-define` body holds real calls
-        let body = matches!(ctx.get(idx), Some(c) if *c != RefContext::TypeAttribute);
+        let body = ctx.get(idx).is_some_and(|c| c.holds_calls());
         idx += 1;
         body
     })
@@ -256,16 +256,32 @@ pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
     value_at_or_before(run_lines, offset, run_lines.first().map_or(1, |(_, l)| *l))
 }
 
-/// Cross-line classifier that decides whether a hunk line is body,
-/// type-attribute, or other-attribute context. `-spec`, `-callback`,
-/// `-type`, and `-opaque` open a type-attribute region; any other `-`
-/// attribute form opens an other-attribute region. Both run until the
-/// terminating `.` at the top level, and a single line may both open
-/// and close one. Multi-line attributes flow through the stored
-/// region so their later lines classify correctly.
+/// Cross-line classifier that decides which `RefContext` a hunk line
+/// sits in. `-spec`, `-callback`, `-type`, and `-opaque` open a
+/// type-attribute region; any other `-` attribute form opens an
+/// other-attribute region. Both run until the terminating `.` at the
+/// top level, and a single line may both open and close one. Multi-line
+/// attributes flow through the stored region so their later lines
+/// classify correctly.
+///
+/// A triple-quoted string suspends the close rule while it is open,
+/// because documentation prose ends lines with full stops constantly
+/// and would otherwise close the region at its first sentence.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AttrCtxScanner {
-    region: Option<RefContext>,
+    region: Option<AttrRegion>,
+}
+
+/// The open region, if any. A multi-line string only exists inside an
+/// attribute form, so it carries that form's context rather than
+/// sitting in a second field that could contradict it.
+#[derive(Debug, Clone, Copy)]
+enum AttrRegion {
+    /// An attribute form, closed by a line ending in `.`.
+    Open(RefContext),
+    /// A multi-line string in one, closed by a line whose first content
+    /// is a run of at least `quotes` quotes.
+    String { attr: RefContext, quotes: usize },
 }
 
 impl AttrCtxScanner {
@@ -274,24 +290,58 @@ impl AttrCtxScanner {
     }
 
     pub fn classify(&mut self, line: &str) -> RefContext {
-        if let Some(kind) = self.region {
-            if line_closes_attribute(line) {
-                self.region = None;
+        match self.region {
+            Some(AttrRegion::String { attr, quotes }) => {
+                if line_closes_quote_run(line, quotes) {
+                    self.region = (!line_closes_attribute(line)).then_some(AttrRegion::Open(attr));
+                }
+                RefContext::AttributeString
             }
-            return kind;
+            Some(AttrRegion::Open(attr)) => self.continue_attribute(attr, line),
+            None => {
+                let opened = if line_opens_type_attr(line) {
+                    RefContext::TypeAttribute
+                } else if line_opens_other_attr(line) {
+                    RefContext::OtherAttribute
+                } else {
+                    return RefContext::Body;
+                };
+                self.continue_attribute(opened, line)
+            }
         }
-        let opened = if line_opens_type_attr(line) {
-            RefContext::TypeAttribute
-        } else if line_opens_other_attr(line) {
-            RefContext::OtherAttribute
-        } else {
-            return RefContext::Body;
-        };
-        if !line_closes_attribute(line) {
-            self.region = Some(opened);
-        }
-        opened
     }
+
+    /// Advance an attribute region across `line`: a trailing quote run
+    /// opens a string, a terminating `.` closes the region, and
+    /// anything else carries it to the next line.
+    fn continue_attribute(&mut self, attr: RefContext, line: &str) -> RefContext {
+        self.region = match trailing_quote_run(line) {
+            Some(quotes) => Some(AttrRegion::String { attr, quotes }),
+            None if line_closes_attribute(line) => None,
+            None => Some(AttrRegion::Open(attr)),
+        };
+        attr
+    }
+}
+
+/// The length of a trailing run of three or more `"`, which opens a
+/// triple-quoted string that the rest of the line does not close. The
+/// rule is name-independent: such a string can open inside any
+/// attribute, not only the documentation forms.
+fn trailing_quote_run(line: &str) -> Option<usize> {
+    let run = strip_line_comment(line)
+        .trim_end()
+        .bytes()
+        .rev()
+        .take_while(|b| *b == b'"')
+        .count();
+    (run >= 3).then_some(run)
+}
+
+/// Whether `line` starts, after leading whitespace, with a run of at
+/// least `open` quotes: the EEP-64 closing form.
+fn line_closes_quote_run(line: &str, open: usize) -> bool {
+    line.trim_start().bytes().take_while(|b| *b == b'"').count() >= open
 }
 
 fn line_opens_type_attr(line: &str) -> bool {
@@ -803,7 +853,19 @@ pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
     let mut run_ctx: Option<bool> = None;
     for &(origin, raw) in lines {
         let stripped = strip_line_comment(raw);
-        let type_attr = scanner.classify(stripped) == RefContext::TypeAttribute;
+        let ctx = scanner.classify(stripped);
+        // a multi-line string in an attribute holds no references at all,
+        // and joining its prose to the lines around it would build one
+        // construct out of two unrelated halves
+        if ctx == RefContext::AttributeString {
+            if let Some(prev) = run_ctx.take() {
+                flush_run(prev, &text, &line_origins, macros, &mut out);
+                text.clear();
+                line_origins.clear();
+            }
+            continue;
+        }
+        let type_attr = ctx == RefContext::TypeAttribute;
         if run_ctx != Some(type_attr) {
             if let Some(prev) = run_ctx {
                 flush_run(prev, &text, &line_origins, macros, &mut out);

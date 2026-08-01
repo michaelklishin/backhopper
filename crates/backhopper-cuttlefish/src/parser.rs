@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::Path;
 
-use backhopper_erlang_scan::skip_char_literal_span;
+use backhopper_erlang_scan::{skip_char_literal_span, triple_quoted_span};
 
 use crate::fragments::{CuttlefishFragment, FragmentKind};
 
@@ -45,7 +45,10 @@ pub fn parse_schema(
                 }
             }
             b'"' => {
-                i = skip_string(bytes, i + 1);
+                i = match triple_quoted_span(bytes, i) {
+                    Some(span) => i + span,
+                    None => skip_string(bytes, i + 1),
+                };
             }
             b'\'' => {
                 i = skip_atom_quoted(bytes, i + 1);

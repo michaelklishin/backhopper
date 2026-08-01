@@ -30,6 +30,56 @@ pub fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
     2
 }
 
+/// Length of the run of `"` bytes starting at `at`, zero when `at` is
+/// not a quote or is past the end.
+fn quote_run_len(bytes: &[u8], at: usize) -> usize {
+    let mut i = at;
+    while i < bytes.len() && bytes[i] == b'"' {
+        i += 1;
+    }
+    i - at
+}
+
+fn skip_horizontal_ws(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    i
+}
+
+/// Byte length of the EEP-64 triple-quoted string starting at `at`, or
+/// `None` when `at` does not start one. Total: any position that does
+/// not begin a run of three or more `"` returns `None`.
+///
+/// The string ends at the next line whose first non-whitespace content
+/// is a run of at least as many quotes as the opener, and the span
+/// covers through the end of that run. Content in between is verbatim:
+/// an `-export([...]).` line inside a documentation block is string
+/// content, not an attribute. An opener with no closer runs to the end
+/// of the input, which is what a real parse of that source concludes.
+pub fn triple_quoted_span(bytes: &[u8], at: usize) -> Option<usize> {
+    let open = quote_run_len(bytes, at);
+    if open < 3 {
+        return None;
+    }
+    let mut i = at + open;
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i] != b'\n' {
+            i += 1;
+        }
+        if i == bytes.len() {
+            break;
+        }
+        i += 1;
+        let content = skip_horizontal_ws(bytes, i);
+        let close = quote_run_len(bytes, content);
+        if close >= open {
+            return Some(content + close - at);
+        }
+    }
+    Some(bytes.len() - at)
+}
+
 /// Bracketless block tracking: `case`, `if`, `begin`, `receive`, and
 /// `try` open a region that one `end` closes, and the expression forms
 /// of `fun` do too. A comma inside such a region separates statements
@@ -121,7 +171,13 @@ fn matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
             continue;
         }
         match b {
-            b'"' => in_str = true,
+            b'"' => {
+                if let Some(span) = triple_quoted_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+                in_str = true;
+            }
             b'\'' => in_atom = true,
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
@@ -186,7 +242,13 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
             continue;
         }
         match c {
-            b'"' => in_str = true,
+            b'"' => {
+                if let Some(span) = triple_quoted_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+                in_str = true;
+            }
             b'\'' => in_atom = true,
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
@@ -290,6 +352,14 @@ fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
         }
         if !in_string && !in_atom_quote && ch == '$' {
             i += skip_char_literal_span(bytes, i);
+            continue;
+        }
+        if !in_string
+            && !in_atom_quote
+            && ch == '"'
+            && let Some(span) = triple_quoted_span(bytes, i)
+        {
+            i += span;
             continue;
         }
         if !in_string
@@ -398,7 +468,13 @@ pub fn scan_list_elements(after_open_bracket: &str) -> ScannedList<'_> {
             continue;
         }
         match c {
-            b'"' => in_str = true,
+            b'"' => {
+                if let Some(span) = triple_quoted_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+                in_str = true;
+            }
             b'\'' => in_atom = true,
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
@@ -510,6 +586,14 @@ pub fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
         let ch = bytes[i] as char;
         if !in_string && !in_atom_quote && ch == '$' {
             i += skip_char_literal_span(bytes, i);
+            continue;
+        }
+        if !in_string
+            && !in_atom_quote
+            && ch == '"'
+            && let Some(span) = triple_quoted_span(bytes, i)
+        {
+            i += span;
             continue;
         }
         match ch {

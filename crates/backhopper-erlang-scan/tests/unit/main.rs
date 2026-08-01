@@ -6,3 +6,4 @@ mod block_comma_unit_tests;
 mod list_scan_unit_tests;
 mod scan_unit_tests;
 mod signature_unit_tests;
+mod triple_quote_unit_tests;

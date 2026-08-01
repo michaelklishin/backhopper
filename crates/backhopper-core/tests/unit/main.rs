@@ -9,6 +9,7 @@ mod apply_conflict_unit_tests;
 mod apply_forecast_unit_tests;
 mod arg_shape_unit_tests;
 mod arity_try_from_unit_tests;
+mod attribute_string_context_unit_tests;
 mod batch_clearance_self_projects_unit_tests;
 mod batch_payload_unit_tests;
 mod behaviour_callback_resolve_unit_tests;

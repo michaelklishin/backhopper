@@ -15,7 +15,9 @@
 //! re-exported here; this module keeps the block-oriented attribute-body
 //! reader that drives `attributes.rs`.
 
-pub use backhopper_erlang_scan::{skip_char_literal_span, split_top_level_commas};
+pub use backhopper_erlang_scan::{
+    skip_char_literal_span, split_top_level_commas, triple_quoted_span,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributeBlock {
@@ -87,6 +89,11 @@ pub fn iterate_attributes(source: &str) -> Vec<AttributeBlock> {
     out
 }
 
+#[allow(clippy::naive_bytecount)]
+fn newlines_in(span: &[u8]) -> usize {
+    span.iter().filter(|&&b| b == b'\n').count()
+}
+
 fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
     let bytes = source.as_bytes();
     let mut depth_paren = 0i32;
@@ -105,12 +112,21 @@ fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
             continue;
         }
         if !in_string && !in_atom_quote && ch == '$' {
-            let span = skip_char_literal_span(bytes, p);
-            let end = (p + span).min(bytes.len());
-            #[allow(clippy::naive_bytecount)]
-            let nls = bytes[p..end].iter().filter(|&&b| b == b'\n').count();
-            newlines += nls;
-            p += span;
+            let end = (p + skip_char_literal_span(bytes, p)).min(bytes.len());
+            newlines += newlines_in(&bytes[p..end]);
+            p = end;
+            continue;
+        }
+        // a `-moduledoc """ ... """` body is one lexeme: its prose must not
+        // drive string state, or the attributes after it are swallowed
+        if !in_string
+            && !in_atom_quote
+            && ch == '"'
+            && let Some(span) = triple_quoted_span(bytes, p)
+        {
+            let end = p + span;
+            newlines += newlines_in(&bytes[p..end]);
+            p = end;
             continue;
         }
         match ch {

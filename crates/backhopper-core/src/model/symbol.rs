@@ -23,15 +23,27 @@ pub enum RefContext {
     /// Inside any other attribute form (`-export`, `-define`,
     /// `-record`, ...), where an identifier is never a local call.
     OtherAttribute,
+    /// Inside a multi-line string in an attribute, such as the
+    /// documentation prose of `-moduledoc """ ... """`. Every byte is
+    /// string content, so nothing here is a reference of any kind.
+    AttributeString,
 }
 
 impl RefContext {
-    /// True in either attribute region; a local `name(` there is a
-    /// type name, an export entry, or a macro parameter, never a call
-    /// or a clause head.
+    /// True in any attribute region; a local `name(` there is a
+    /// type name, an export entry, a macro parameter, or string
+    /// content, never a call or a clause head.
     #[must_use]
     pub fn is_attribute(self) -> bool {
-        matches!(self, Self::TypeAttribute | Self::OtherAttribute)
+        !matches!(self, Self::Body)
+    }
+
+    /// True where `mod:fun(...)` may be a real call. False in type
+    /// attributes, where it names a type, and in attribute strings,
+    /// where a documentation example is not a call the patch adds.
+    #[must_use]
+    pub fn holds_calls(self) -> bool {
+        matches!(self, Self::Body | Self::OtherAttribute)
     }
 }
 

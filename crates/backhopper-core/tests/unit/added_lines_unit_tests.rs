@@ -179,3 +179,29 @@ fn a_context_terminator_closes_a_region_an_added_opener_started() {
     let (_, _, ctx) = added_lines_with_context(&[h]);
     assert_eq!(ctx, vec![RefContext::TypeAttribute, RefContext::Body]);
 }
+
+// A hunk that adds only part of a documentation block classifies its
+// added lines against the region the unchanged opener started, so prose
+// never reaches the resolvers as code.
+#[test]
+fn added_prose_inside_an_unchanged_doc_block_classifies_as_attribute_string() {
+    let h = hunk(
+        1,
+        vec![
+            HunkLine::Context("-moduledoc \"\"\"".into()),
+            HunkLine::Added("Applies commands. Seeded per scheduler.".into()),
+            HunkLine::Added("1> ra_machine:apply(1, 2, 3).".into()),
+            HunkLine::Context("\"\"\".".into()),
+            HunkLine::Added("tick() -> ra_machine:apply(1, 2, 3).".into()),
+        ],
+    );
+    let (_, _, ctx) = added_lines_with_context(&[h]);
+    assert_eq!(
+        ctx,
+        vec![
+            RefContext::AttributeString,
+            RefContext::AttributeString,
+            RefContext::Body,
+        ]
+    );
+}

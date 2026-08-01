@@ -473,3 +473,24 @@ fn module_macro_as_value_records_no_call() {
     );
     assert!(m.local_calls.is_empty(), "local={:?}", m.local_calls);
 }
+
+// documentation prose after a `-moduledoc` opener must not lex as code,
+// or the call sites following it are read against a desynced string state
+#[test]
+fn calls_after_a_moduledoc_block_are_still_found() {
+    let m = read(
+        "-module(ra_server).\n\
+         -moduledoc \"\"\"\n\
+         Applies commands. See \"the guide.\n\
+         1> ra_server:tick().\n\
+         \"\"\".\n\
+         -export([tick/0]).\n\
+         tick() -> ra_machine:apply(1, 2, 3).\n",
+    );
+    assert_eq!(m.exports.len(), 1);
+    assert_eq!(m.external_calls.len(), 1);
+    let CallTarget::External(FunctionRef::Concrete(mfa)) = &m.external_calls[0].callee else {
+        panic!("expected external concrete");
+    };
+    assert_eq!(mfa.module.as_str(), "ra_machine");
+}

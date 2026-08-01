@@ -182,3 +182,26 @@ fn skip_balanced_parens_handles_comment_in_nested_brackets() {
     assert_eq!(commas, 1);
     assert_eq!(sc.peek(), Some(b't'));
 }
+
+#[test]
+fn consume_string_runs_a_triple_quoted_block_to_its_closing_line() {
+    let src = "\"\"\"\nFunctions for cryptography.\nSee \"the guide.\n\"\"\".\nrest";
+    let mut sc = Scanner::new(src);
+    sc.consume_string();
+    assert_eq!(
+        sc.src_slice(sc.pos().byte_offset as usize, src.len()),
+        ".\nrest"
+    );
+    assert_eq!(sc.pos().line, 4);
+}
+
+#[test]
+fn consume_string_still_stops_at_the_closing_quote_of_an_ordinary_string() {
+    let src = "\"ra_log\" ++ Rest";
+    let mut sc = Scanner::new(src);
+    sc.consume_string();
+    assert_eq!(
+        sc.src_slice(sc.pos().byte_offset as usize, src.len()),
+        " ++ Rest"
+    );
+}

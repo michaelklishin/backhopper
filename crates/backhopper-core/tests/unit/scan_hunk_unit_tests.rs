@@ -222,3 +222,35 @@ fn a_wrapped_call_with_an_inline_fun_argument_scans_at_exact_arity() {
         .collect();
     assert_eq!(foreach, [("lists:foreach/2".to_owned(), RefOrigin::Added)]);
 }
+
+// documentation prose is string content: it contributes no references
+// and does not join the lines around it into one construct
+#[test]
+fn a_documentation_block_contributes_nothing_and_breaks_the_run() {
+    let out = scan(&[
+        added("-moduledoc \"\"\""),
+        added("Applies commands. See ra_machine:apply(1, 2, 3)."),
+        added("\"\"\"."),
+        added("tick() -> ra_server:tick(1)."),
+    ]);
+    assert_eq!(
+        functions(&out.referenced),
+        vec![("ra_server:tick/1".to_string(), RefOrigin::Added)]
+    );
+}
+
+#[test]
+fn a_call_split_across_a_documentation_block_does_not_join_into_one() {
+    let out = scan(&[
+        added("tick() -> ra_server:tick("),
+        added("-doc \"\"\""),
+        added("prose"),
+        added("\"\"\"."),
+        added("1)."),
+    ]);
+    let names: Vec<_> = functions(&out.referenced)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    assert_eq!(names, vec!["ra_server:tick/?".to_string()]);
+}

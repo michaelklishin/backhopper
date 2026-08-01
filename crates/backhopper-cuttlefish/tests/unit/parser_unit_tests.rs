@@ -207,3 +207,21 @@ fn start_line_tracks_the_opening_brace_position() {
     let frags = parse_schema(body, p()).unwrap();
     assert_eq!(frags[0].start_line, 4);
 }
+
+// a `.schema` file is Erlang syntax, so a triple-quoted doc string can
+// appear in one and must not swallow the mappings after it
+#[test]
+fn a_triple_quoted_string_does_not_swallow_the_mapping_after_it() {
+    let src = "{mapping, \"auth.oauth2.issuer\", \"rabbitmq_auth_backend_oauth2.issuer\", [\n\
+                   {doc, \"\"\"\n\
+                   The issuer URL. Braces { and } here are prose.\n\
+                   \"\"\"},\n\
+                   {datatype, string}\n\
+               ]}.\n\
+               {mapping, \"auth.oauth2.scope_prefix\", \"rabbitmq_auth_backend_oauth2.scope_prefix\", [\n\
+                   {datatype, string}\n\
+               ]}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    assert_eq!(frags.len(), 2);
+    assert!(frags.iter().all(|f| f.kind == FragmentKind::Mapping));
+}

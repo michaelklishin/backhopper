@@ -7,9 +7,13 @@
 //! headers). Each test asserts only the essential surface, so a real
 //! parsing regression shows up without pinning every detail.
 
+use std::fs;
+use std::path::Path;
+
 use backhopper_erlang::ErlangExtractor;
 
 const ATEN: &str = include_str!("../fixtures/aten.erl");
+const MODULEDOC_TRIPLE_QUOTED: &str = include_str!("../fixtures/moduledoc_triple_quoted.erl");
 const ATEN_DETECTOR: &str = include_str!("../fixtures/aten_detector.erl");
 const RA_COUNTERS: &str = include_str!("../fixtures/ra_counters.erl");
 const RA_MACHINE: &str = include_str!("../fixtures/ra_machine.erl");
@@ -59,6 +63,65 @@ fn extracts_ra_counters_surface() {
     assert_eq!(m.name.as_str(), "ra_counters");
     assert_eq!(m.exports.len(), 8);
     assert!(m.specs.len() >= 7, "specs={}", m.specs.len());
+}
+
+// moduledoc_triple_quoted: OTP 27 documentation attributes whose prose
+// holds bullets, a fenced example, an attribute-shaped line, and
+// unbalanced quotes, none of which may reach the extractor as code
+#[test]
+fn extracts_documented_module_surface() {
+    let m = ErlangExtractor::default()
+        .extract_module(MODULEDOC_TRIPLE_QUOTED)
+        .unwrap();
+    assert_eq!(m.name.as_str(), "moduledoc_triple_quoted");
+    assert_eq!(m.exports.len(), 3);
+    assert!(!m.exports.iter().any(|e| e.name.as_str() == "phantom"));
+    assert_eq!(m.specs.len(), 3);
+}
+
+/// Nesting depth of the conditional-compilation block a line sits in.
+fn cond_compile_depth(lines: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut depth = 0usize;
+    lines.lines().map(move |line| {
+        if line.starts_with("-endif") {
+            depth = depth.saturating_sub(1);
+        }
+        let at = depth;
+        if line.starts_with("-ifdef") || line.starts_with("-ifndef") || line.starts_with("-if") {
+            depth += 1;
+        }
+        (at, line)
+    })
+}
+
+// The structural invariant behind HF-52: a wiped export list is a total
+// loss, not a partial one, so an unconditional -export in the source and
+// an empty extracted export set can never both be true. Independent of
+// which lexical shape caused the loss, so it catches the next one.
+#[test]
+fn every_fixture_with_an_unconditional_export_extracts_a_non_empty_export_set() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut checked = 0usize;
+    for entry in fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("erl") {
+            continue;
+        }
+        let source = fs::read_to_string(&path).unwrap();
+        let has_unconditional_export = cond_compile_depth(&source)
+            .any(|(depth, line)| depth == 0 && line.starts_with("-export(["));
+        if !has_unconditional_export {
+            continue;
+        }
+        let m = ErlangExtractor::default().extract_module(&source).unwrap();
+        assert!(
+            !m.exports.is_empty(),
+            "{} declares exports but extracted none",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(checked >= 5, "expected the fixture set, checked {checked}");
 }
 
 // seshat_counters_server: a behaviour, an -include, a -record, a -define, and the full gen_server callback surface

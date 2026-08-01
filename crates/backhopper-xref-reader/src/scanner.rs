@@ -11,6 +11,7 @@
 //! A separate block-oriented tokenizer exists in `backhopper_erlang::tokenizer`.
 //! Consolidation is deferred until a third consumer needs it.
 
+use backhopper_erlang_scan::triple_quoted_span;
 use backhopper_xref_graph::Position;
 
 #[derive(Debug, Clone)]
@@ -101,8 +102,16 @@ impl<'a> Scanner<'a> {
 
     /// Consume a string literal starting at `"`, leaving the cursor
     /// just past the closing quote. Handles escaped characters minimally.
+    /// A triple-quoted opener runs to its own closing line, so
+    /// documentation prose is never lexed as code.
     pub fn consume_string(&mut self) {
         debug_assert_eq!(self.peek(), Some(b'"'));
+        if let Some(span) = triple_quoted_span(self.bytes, self.pos.byte_offset as usize) {
+            for _ in 0..span {
+                self.advance();
+            }
+            return;
+        }
         self.advance();
         while let Some(b) = self.peek() {
             self.advance();
