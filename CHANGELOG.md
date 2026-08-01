@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.31.0 (in development)
+
+No changes yet.
+
+
 ## v0.30.0 (August 1, 2026)
 
 ### Enhancements
