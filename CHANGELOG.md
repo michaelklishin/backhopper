@@ -1,16 +1,16 @@
 # Changelog
 
-## v0.30.0 (in development)
+## v0.30.0 (August 1, 2026)
+
+### Enhancements
+
+ * Erlang lexers now handle EEP-64 triple-quoted strings
 
 ### Bug Fixes
 
  * Avoid false positives on patches that modify a function `-spec` and its arity
  * Fix phantom arity readings with functions such as `lists:foreach/4` that
    take an anonymous function that can be multi-line
-
- ### Enhacements
-
-  * Erlang lexers now handle EEP-74 triple-quoted strings
 
 
 ## v0.28.0 (July 18, 2026)
