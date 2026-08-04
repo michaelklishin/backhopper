@@ -8,10 +8,13 @@
 //! show <N>` serves and verifies the on-disk files match the types.
 //! `eval-corpus` folds a corpus of paired verdicts and build outcomes
 //! into accuracy rates and a harvest worklist.
+//! `install` builds the release binary, copies it into place, ad-hoc
+//! re-signs it, and runs it once to absorb the macOS first-run scan so
+//! later launches are instant.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command as ProcessCommand, ExitCode};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -48,6 +51,21 @@ enum Command {
         #[arg(long)]
         harvest: Option<PathBuf>,
     },
+    /// Build `backhopper` in release, copy it to `--dest`, ad-hoc
+    /// re-sign it, and run it once so the macOS first-run scan is paid
+    /// here rather than on first use of the installed binary.
+    Install {
+        /// Destination path for the installed binary. Defaults to
+        /// `$HOME/bin/backhopper`.
+        #[arg(long)]
+        dest: Option<PathBuf>,
+        /// Skip the ad-hoc `codesign` step.
+        #[arg(long)]
+        no_sign: bool,
+        /// Skip the warm-up run.
+        #[arg(long)]
+        no_warmup: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -69,6 +87,17 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Command::Install {
+            dest,
+            no_sign,
+            no_warmup,
+        } => match run_install(dest, no_sign, no_warmup) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("xtask install: {e:?}");
+                ExitCode::from(1)
+            }
+        },
     }
 }
 
@@ -111,6 +140,54 @@ fn run_gen_schema(bless: bool) -> Result<()> {
             }
             println!("verified {}", target.display());
         }
+    }
+    Ok(())
+}
+
+fn run_install(dest: Option<PathBuf>, no_sign: bool, no_warmup: bool) -> Result<()> {
+    run_command(ProcessCommand::new("cargo").args(["build", "--release", "-p", "backhopper-cli"]))?;
+
+    let built = workspace_root().join("target/release/backhopper");
+    let dest = match dest {
+        Some(path) => path,
+        None => default_install_dest()?,
+    };
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    fs::copy(&built, &dest)
+        .with_context(|| format!("copy {} to {}", built.display(), dest.display()))?;
+    println!("installed {}", dest.display());
+
+    // `codesign` is macOS-only; the guard keeps signing a no-op elsewhere.
+    if !no_sign && cfg!(target_os = "macos") {
+        run_command(ProcessCommand::new("codesign").args(["--force", "--sign", "-"]).arg(&dest))?;
+        println!("re-signed {}", dest.display());
+    }
+
+    // A new binary's first run triggers a synchronous macOS malware scan
+    // that can stall for tens of seconds. We use `codesign` proactively
+    // because a Developer Tools exemption is not a given.
+    if !no_warmup {
+        println!("warming up {} (absorbing the macOS first-run scan)", dest.display());
+        run_command(ProcessCommand::new(&dest).arg("--version"))?;
+        println!("warmed up {}", dest.display());
+    }
+    Ok(())
+}
+
+fn default_install_dest() -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    Ok(PathBuf::from(home).join("bin/backhopper"))
+}
+
+fn run_command(command: &mut ProcessCommand) -> Result<()> {
+    let program = command.get_program().to_owned();
+    let status = command
+        .status()
+        .with_context(|| format!("spawn {}", program.to_string_lossy()))?;
+    if !status.success() {
+        bail!("{} exited with {status}", program.to_string_lossy());
     }
     Ok(())
 }

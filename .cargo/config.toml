@@ -1,0 +1,3 @@
+[alias]
+xtask = "run --package xtask --"
+install-locally = "run --package xtask -- install"
