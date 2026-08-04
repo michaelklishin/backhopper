@@ -88,8 +88,10 @@ fn collapse_whitespace_erlang(input: &str) -> String {
         }
         i += ch.len_utf8();
     }
-    let new_len = out.trim_end_matches(' ').len();
-    out.truncate(new_len);
+    // drop the trailing space only when collapse added it
+    if prev_space {
+        out.pop();
+    }
     out
 }
 
