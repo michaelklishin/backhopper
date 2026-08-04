@@ -153,6 +153,7 @@ fn walk_attributes(
         match byte {
             b'\'' => sc.consume_quoted_atom(),
             b'"' => sc.consume_string(),
+            b'~' => sc.consume_sigil_or_advance(),
             b'$' => sc.consume_char_literal(),
             _ => {
                 sc.advance();

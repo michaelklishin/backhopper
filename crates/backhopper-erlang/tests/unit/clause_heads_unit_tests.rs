@@ -257,3 +257,38 @@ apply(_Meta, _Cmd, State) ->
     let heads = out.get(&fa("apply", 3)).expect("apply/3");
     assert_eq!(heads.len(), 2);
 }
+
+#[test]
+fn triple_quoted_body_does_not_swallow_the_following_heads() {
+    let src = r#"log_summary(Ra) ->
+    Doc = """
+    Prose with "quotes" and sentences. Ending with dots.
+    -export([not_an_attribute/0]).
+    """,
+    Doc.
+add_member(Cluster, Member) -> {ok, Member, Cluster}.
+remove_member(Cluster, Member, Timeout) -> {Cluster, Member, Timeout}.
+"#;
+    let heads = extract(src);
+    let keys: Vec<FunArity> = heads.keys().cloned().collect();
+    assert_eq!(
+        keys,
+        vec![
+            fa("add_member", 2),
+            fa("log_summary", 1),
+            fa("remove_member", 3),
+        ]
+    );
+}
+
+#[test]
+fn sigil_body_does_not_swallow_the_following_heads() {
+    let src = r#"banner(Node) ->
+    ~s(quotes " and arrows -> and dots. here),
+    Node.
+tick(State) -> State.
+"#;
+    let heads = extract(src);
+    let keys: Vec<FunArity> = heads.keys().cloned().collect();
+    assert_eq!(keys, vec![fa("banner", 1), fa("tick", 1)]);
+}

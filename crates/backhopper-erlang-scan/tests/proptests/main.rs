@@ -3,6 +3,8 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod block_comma_proptests;
+mod lexeme_proptests;
 mod scan_proptests;
+mod sigil_proptests;
 mod signature_proptests;
 mod triple_quote_proptests;

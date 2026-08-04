@@ -36,6 +36,11 @@ fn arb_plain_term() -> impl Strategy<Value = String> {
         "{ok, 1}",
         "fun rabbit_misc:pget/2",
         "case X of a -> 1, 2; b -> 3 end",
+        "maybe V ?= f(X), V else _ -> err end",
+        "maybe A = g(X), h(A), A end",
+        "#end{a = 1, b = 2}",
+        "#'try'{x = 1}",
+        "State#state.field",
     ])
     .prop_map(str::to_owned)
 }

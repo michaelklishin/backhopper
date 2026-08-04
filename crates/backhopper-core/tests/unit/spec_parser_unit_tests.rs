@@ -349,3 +349,155 @@ fn parse_real_world_callback_return_dedups_same_shape() {
         other => panic!("expected Union, got {other:?}"),
     }
 }
+
+#[test]
+fn parse_range_at_top_level() {
+    match parse("1..255") {
+        SpecType::Range { low, high } => {
+            assert_eq!(low, 1);
+            assert_eq!(high, 255);
+        }
+        other => panic!("expected Range, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_range_inside_a_tuple_no_longer_poisons_the_tuple() {
+    match parse("{frame, 1..255}") {
+        SpecType::TaggedTuple { tag, arity } => {
+            assert_eq!(tag, "frame");
+            assert_eq!(arity, 2);
+        }
+        other => panic!("expected TaggedTuple, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_range_inside_a_union() {
+    match parse("undefined | 1..16") {
+        SpecType::Union { variants } => {
+            assert!(
+                variants
+                    .iter()
+                    .any(|v| matches!(v, SpecType::Range { low: 1, high: 16 }))
+            );
+        }
+        other => panic!("expected Union, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_binary_size_specs() {
+    assert!(matches!(parse("<<>>"), SpecType::Binary));
+    assert!(matches!(parse("<<_:8>>"), SpecType::Binary));
+    assert!(matches!(parse("<<_:_*8>>"), SpecType::Binary));
+}
+
+#[test]
+fn an_annotated_return_reads_as_its_type() {
+    match parse("Result :: ok | error") {
+        SpecType::Union { variants } => assert_eq!(variants.len(), 2),
+        other => panic!("expected Union, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_annotated_argument_reads_as_its_type() {
+    let t = parse_signature_return("info(Name :: atom()) -> Value :: binary()");
+    match t {
+        SpecType::Builtin { name } => assert_eq!(name, "binary"),
+        other => panic!("expected Builtin(binary), got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_based_and_underscored_integers_and_char_literals() {
+    assert!(matches!(parse("16#FF"), SpecType::Integer { value: 255 }));
+    assert!(matches!(parse("1_000"), SpecType::Integer { value: 1000 }));
+    assert!(matches!(parse("$a"), SpecType::Integer { value: 97 }));
+    assert!(matches!(
+        parse("$a..$z"),
+        SpecType::Range { low: 97, high: 122 }
+    ));
+}
+
+#[test]
+fn each_new_builtin_name_parses_as_builtin() {
+    for name in [
+        "dynamic",
+        "nonempty_binary",
+        "nonempty_bitstring",
+        "nonempty_improper_list",
+        "nonempty_maybe_improper_list",
+    ] {
+        match parse(&format!("{name}()")) {
+            SpecType::Builtin { name: n } => assert_eq!(n, name),
+            other => panic!("expected Builtin({name}), got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn dynamic_matches_any_shape() {
+    let dynamic = SpecType::Builtin {
+        name: "dynamic".into(),
+    };
+    assert!(dynamic.matches(&parse("integer()")));
+    assert!(dynamic.matches(&parse("binary()")));
+    assert!(dynamic.matches(&parse("#ra_server_state{}")));
+    assert!(parse("#ra_server_state{}").matches(&dynamic));
+}
+
+#[test]
+fn range_matches_ranges_and_integer_builtins() {
+    let range = parse("1..255");
+    assert!(range.matches(&parse("1..255")));
+    assert!(!range.matches(&parse("1..16")));
+    assert!(range.matches(&parse("integer()")));
+    assert!(range.matches(&parse("non_neg_integer()")));
+    assert!(range.matches(&parse("number()")));
+    assert!(!range.matches(&parse("binary()")));
+}
+
+#[test]
+fn binary_matches_binary_and_bitstring_builtins() {
+    let bin = parse("<<_:8>>");
+    assert!(bin.matches(&parse("<<>>")));
+    assert!(bin.matches(&parse("binary()")));
+    assert!(bin.matches(&parse("bitstring()")));
+    assert!(!bin.matches(&parse("integer()")));
+}
+
+#[test]
+fn char_literal_range_survives_the_arrow_search() {
+    // `$-` and `$>` must not read as part of an arrow, and `$(` must not
+    // unbalance the depth the arrow search keeps
+    assert!(matches!(
+        parse_signature_return("classify(char()) -> $a..$z"),
+        SpecType::Range { low: 97, high: 122 }
+    ));
+    assert!(matches!(
+        parse_signature_return("open_paren() -> $("),
+        SpecType::Integer { value: 40 }
+    ));
+}
+
+#[test]
+fn char_literal_quote_does_not_open_a_string_before_the_arrow() {
+    assert!(matches!(
+        parse_signature_return("quote_char() -> $\" | eof"),
+        SpecType::Union { .. }
+    ));
+}
+
+#[test]
+fn char_literal_comma_inside_a_tuple_parses_as_its_code_point() {
+    let t = parse("{sep, $,}");
+    match t {
+        SpecType::TaggedTuple { tag, arity } => {
+            assert_eq!(tag, "sep");
+            assert_eq!(arity, 2);
+        }
+        other => panic!("expected tagged tuple, got {other:?}"),
+    }
+}

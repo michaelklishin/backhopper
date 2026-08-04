@@ -381,7 +381,7 @@ fn a_missing_local_spec_withholds_and_is_counted() {
 fn an_unmodelled_local_return_type_withholds_and_is_counted() {
     let analysis = analyse_shapes(
         "publish(S) -> info(S).\n",
-        "-spec info(state()) -> <<_:8, _:_*8>>.\n",
+        "-spec info(state()) -> ?RESULT_TYPE.\n",
         "-spec info(state()) -> list().\n",
     );
     assert!(

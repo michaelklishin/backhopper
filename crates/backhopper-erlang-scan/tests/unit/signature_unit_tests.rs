@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_erlang_scan::parse_callable_signature;
+use backhopper_erlang_scan::{parse_callable_signature, split_leading_name, split_name_and_args};
 
 #[test]
 fn parses_simple_spec() {
@@ -58,4 +58,39 @@ fn module_qualified_form_is_not_recognised() {
 #[test]
 fn missing_arrow_is_not_recognised() {
     assert_eq!(parse_callable_signature("info(state())"), None);
+}
+
+#[test]
+fn split_leading_name_takes_one_name_run() {
+    assert_eq!(
+        split_leading_name("init_ra_server(Config)"),
+        ("init_ra_server", "(Config)")
+    );
+    assert_eq!(split_leading_name("  khepri  rest"), ("khepri", "rest"));
+}
+
+#[test]
+fn split_leading_name_tolerates_quoted_names() {
+    assert_eq!(split_leading_name("'weird name'()"), ("'weird", "name'()"));
+}
+
+#[test]
+fn split_leading_name_yields_empty_name_for_non_name_start() {
+    assert_eq!(split_leading_name("(X) -> ok"), ("", "(X) -> ok"));
+    assert_eq!(split_leading_name(""), ("", ""));
+}
+
+#[test]
+fn split_name_and_args_returns_the_three_parts() {
+    let (name, args, rest) = split_name_and_args("apply(Meta, Cmd) -> ok").unwrap();
+    assert_eq!(name, "apply");
+    assert_eq!(args, "Meta, Cmd");
+    assert_eq!(rest, "-> ok");
+}
+
+#[test]
+fn split_name_and_args_rejects_headless_bodies() {
+    assert!(split_name_and_args("(X) -> ok").is_none());
+    assert!(split_name_and_args("ra_server:handle(X) -> ok").is_none());
+    assert!(split_name_and_args("just_an_atom").is_none());
 }

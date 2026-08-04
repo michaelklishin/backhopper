@@ -205,3 +205,19 @@ fn consume_string_still_stops_at_the_closing_quote_of_an_ordinary_string() {
         " ++ Rest"
     );
 }
+
+#[test]
+fn a_sigil_with_an_unbalanced_quote_does_not_desync_the_scanner() {
+    let mut sc = Scanner::new("~s(a \" b)\nnext");
+    sc.consume_sigil_or_advance();
+    assert_eq!(sc.peek(), Some(b'\n'));
+    sc.advance();
+    assert_eq!(sc.pos().line, 2);
+}
+
+#[test]
+fn a_bare_tilde_advances_one_byte() {
+    let mut sc = Scanner::new("~ x");
+    sc.consume_sigil_or_advance();
+    assert_eq!(sc.peek(), Some(b' '));
+}

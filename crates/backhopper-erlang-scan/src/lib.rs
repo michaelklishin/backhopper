@@ -10,24 +10,247 @@
 //! No model types, so the scanners return only offsets and slices and
 //! cannot construct a domain primitive.
 
+use std::borrow::Cow;
+
+/// The attribute keywords that declare a type name: their visibility
+/// and equivalence rules differ, which does not bear on whether a
+/// reference to the name resolves.
+pub fn is_type_declaration_keyword(name: &str) -> bool {
+    matches!(name, "type" | "opaque" | "nominal")
+}
+
+/// The attribute keywords whose bodies are type expressions, so a
+/// `mod:t(...)` inside them is a type reference, not a call.
+pub fn opens_type_ref_context(name: &str) -> bool {
+    is_type_declaration_keyword(name) || matches!(name, "spec" | "callback")
+}
+
 /// Byte length of the `$`-led char literal starting at `at`, covering
-/// `$x`, `$\n`, and `$\^X` control-char escapes.
+/// `$x`, the single-char escapes, `$\^X`, `$\xHH`, `$\x{...}`, and one
+/// to three octal digits. `$` consumes exactly one char-or-escape.
 pub fn skip_char_literal_span(bytes: &[u8], at: usize) -> usize {
     debug_assert_eq!(bytes[at], b'$');
     let next = at + 1;
     if next >= bytes.len() {
         return 1;
     }
-    if bytes[next] == b'\\' {
-        if next + 1 < bytes.len() && bytes[next + 1] == b'^' && next + 2 < bytes.len() {
-            return 4;
-        }
-        if next + 1 < bytes.len() {
-            return 3;
-        }
+    if bytes[next] != b'\\' {
         return 2;
     }
-    2
+    let esc = next + 1;
+    if esc >= bytes.len() {
+        return 2;
+    }
+    match bytes[esc] {
+        b'^' => {
+            if esc + 1 < bytes.len() {
+                4
+            } else {
+                3
+            }
+        }
+        b'x' if bytes.get(esc + 1) == Some(&b'{') => {
+            let mut i = esc + 2;
+            while i < bytes.len() && bytes[i] != b'}' {
+                i += 1;
+            }
+            if i < bytes.len() { i + 1 - at } else { i - at }
+        }
+        b'x' => {
+            let mut i = esc + 1;
+            let stop = (esc + 3).min(bytes.len());
+            while i < stop && bytes[i].is_ascii_hexdigit() {
+                i += 1;
+            }
+            i - at
+        }
+        b'0'..=b'7' => {
+            let mut i = esc + 1;
+            let stop = (esc + 3).min(bytes.len());
+            while i < stop && (b'0'..=b'7').contains(&bytes[i]) {
+                i += 1;
+            }
+            i - at
+        }
+        _ => 3,
+    }
+}
+
+/// Byte length of the string literal starting at `at`: an ordinary
+/// escape-aware `"` string, a triple-quoted string, or a `~` sigil
+/// string. `None` when `at` starts none of them. An unterminated
+/// ordinary string runs to the end of the input.
+pub fn string_span(bytes: &[u8], at: usize) -> Option<usize> {
+    match bytes.get(at)? {
+        b'"' => {
+            if let Some(span) = triple_quoted_span(bytes, at) {
+                return Some(span);
+            }
+            Some(quoted_span(bytes, at, b'"'))
+        }
+        b'~' => sigil_span(bytes, at),
+        _ => None,
+    }
+}
+
+/// Byte length of the quoted atom starting at `at`, escape-aware;
+/// quoted atoms legally span newlines. `None` when `at` is not `'`.
+/// An unterminated atom runs to the end of the input.
+pub fn quoted_atom_span(bytes: &[u8], at: usize) -> Option<usize> {
+    if bytes.get(at) != Some(&b'\'') {
+        return None;
+    }
+    Some(quoted_span(bytes, at, b'\''))
+}
+
+fn quoted_span(bytes: &[u8], at: usize, quote: u8) -> usize {
+    let mut i = at + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i = (i + 2).min(bytes.len()),
+            b if b == quote => return i + 1 - at,
+            _ => i += 1,
+        }
+    }
+    i - at
+}
+
+/// True when the byte at `i` is a `.` that ends a form: the next byte
+/// is whitespace, a `%` comment opener, or the end of the input. This
+/// is `erl_scan`'s rule.
+pub fn dot_terminates(bytes: &[u8], i: usize) -> bool {
+    if bytes.get(i) != Some(&b'.') {
+        return false;
+    }
+    match bytes.get(i + 1) {
+        None => true,
+        Some(b) => b.is_ascii_whitespace() || *b == b'%',
+    }
+}
+
+/// Digit value for `number_span`'s based forms: `0-9`, then `a-z` and
+/// `A-Z` as 10 to 35. `None` for anything else.
+fn based_digit_value(b: u8) -> Option<u32> {
+    match b {
+        b'0'..=b'9' => Some(u32::from(b - b'0')),
+        b'a'..=b'z' => Some(u32::from(b - b'a') + 10),
+        b'A'..=b'Z' => Some(u32::from(b - b'A') + 10),
+        _ => None,
+    }
+}
+
+/// Consume digits valid under `base` starting at `from`, with `_`
+/// allowed between digits. Returns the position after the run.
+fn based_digit_run(bytes: &[u8], from: usize, base: u32) -> usize {
+    let is_digit = |b: u8| based_digit_value(b).is_some_and(|v| v < base);
+    let mut i = from;
+    while i < bytes.len() {
+        if is_digit(bytes[i]) {
+            i += 1;
+        } else if bytes[i] == b'_' && i > from && bytes.get(i + 1).copied().is_some_and(is_digit) {
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    i
+}
+
+/// Byte length of the numeric literal starting at `at`, or `None` when
+/// `at` is not an ASCII digit. Covers integers with `_` separators,
+/// `base#digits` for bases 2 to 36, decimal floats with optional
+/// signed exponents, and based floats (`base#int.frac` with an
+/// optional `#e` signed exponent). A malformed tail ends the span at
+/// the last valid position.
+pub fn number_span(bytes: &[u8], at: usize) -> Option<usize> {
+    if !bytes.get(at)?.is_ascii_digit() {
+        return None;
+    }
+    let int_end = based_digit_run(bytes, at, 10);
+    if bytes.get(int_end) == Some(&b'#') {
+        let base: Option<u32> = std::str::from_utf8(&bytes[at..int_end])
+            .ok()
+            .and_then(|s| s.replace('_', "").parse().ok());
+        let Some(base) = base.filter(|b| (2..=36).contains(b)) else {
+            return Some(int_end - at);
+        };
+        let digits_end = based_digit_run(bytes, int_end + 1, base);
+        if digits_end == int_end + 1 {
+            return Some(int_end - at);
+        }
+        let mut end = digits_end;
+        if bytes.get(end) == Some(&b'.')
+            && bytes
+                .get(end + 1)
+                .copied()
+                .is_some_and(|b| based_digit_value(b).is_some_and(|v| v < base))
+        {
+            end = based_digit_run(bytes, end + 1, base);
+            if bytes.get(end) == Some(&b'#')
+                && let Some(exp) = exponent_run(bytes, end + 1)
+            {
+                end = exp;
+            }
+        }
+        return Some(end - at);
+    }
+    let mut end = int_end;
+    if bytes.get(end) == Some(&b'.')
+        && bytes
+            .get(end + 1)
+            .copied()
+            .is_some_and(|b| b.is_ascii_digit())
+    {
+        end = based_digit_run(bytes, end + 1, 10);
+        if let Some(exp) = exponent_run(bytes, end) {
+            end = exp;
+        }
+    }
+    Some(end - at)
+}
+
+/// Consume `e|E [+-] digits` starting at `from`; `None` when the shape
+/// is not a complete exponent.
+fn exponent_run(bytes: &[u8], from: usize) -> Option<usize> {
+    if !matches!(bytes.get(from), Some(b'e') | Some(b'E')) {
+        return None;
+    }
+    let mut i = from + 1;
+    if matches!(bytes.get(i), Some(b'+') | Some(b'-')) {
+        i += 1;
+    }
+    if !bytes.get(i).copied().is_some_and(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(based_digit_run(bytes, i, 10))
+}
+
+/// True when the `#` at `at` sits inside one numeric literal, such as
+/// the base or exponent hash of `16#ff` or `16#fe.fe#e16`. The scan
+/// walks back to the token start, crossing name bytes and `.` or `#`
+/// flanked by name bytes; the guard fires only when that start is a
+/// digit at a token boundary and the number's span covers the `#`.
+pub fn hash_inside_number(bytes: &[u8], at: usize) -> bool {
+    debug_assert_eq!(bytes.get(at), Some(&b'#'));
+    let mut start = at;
+    while start > 0 {
+        let prev = bytes[start - 1];
+        if is_name_byte(prev) {
+            start -= 1;
+        } else if (prev == b'.' || prev == b'#')
+            && start >= 2
+            && is_name_byte(bytes[start - 2])
+            && bytes.get(start).copied().is_some_and(is_name_byte)
+        {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    if start == at || !bytes[start].is_ascii_digit() {
+        return false;
+    }
+    number_span(bytes, start).is_some_and(|n| start + n > at)
 }
 
 /// Length of the run of `"` bytes starting at `at`, zero when `at` is
@@ -80,47 +303,267 @@ pub fn triple_quoted_span(bytes: &[u8], at: usize) -> Option<usize> {
     Some(bytes.len() - at)
 }
 
+/// The closing delimiter matching an EEP-66 sigil's opening one, or
+/// `None` when the byte cannot open a sigil string.
+fn sigil_closer(open: u8) -> Option<u8> {
+    match open {
+        b'(' => Some(b')'),
+        b'[' => Some(b']'),
+        b'{' => Some(b'}'),
+        b'<' => Some(b'>'),
+        b'/' | b'|' | b'#' | b'`' | b'\'' | b'"' => Some(open),
+        _ => None,
+    }
+}
+
+/// Byte length of the EEP-66 sigil string (prefix, string, suffix)
+/// starting at the `~` at `at`, or `None` when `at` does not start one.
+/// Only the empty, `b`, and `s` prefixes process backslash escapes,
+/// matching `erl_scan`; an unterminated sigil runs to end of input.
+pub fn sigil_span(bytes: &[u8], at: usize) -> Option<usize> {
+    if bytes.get(at) != Some(&b'~') {
+        return None;
+    }
+    let mut i = at + 1;
+    while i < bytes.len() && is_name_byte(bytes[i]) {
+        i += 1;
+    }
+    let open = *bytes.get(i)?;
+    let closer = sigil_closer(open)?;
+    let prefix = &bytes[at + 1..i];
+    let escaped = matches!(prefix, b"" | b"b" | b"s");
+    if open == b'"'
+        && let Some(span) = triple_quoted_span(bytes, i)
+    {
+        i += span;
+    } else {
+        i += 1;
+        loop {
+            let Some(&b) = bytes.get(i) else {
+                return Some(bytes.len() - at);
+            };
+            i += 1;
+            if b == b'\\' && escaped {
+                i += 1;
+            } else if b == closer {
+                break;
+            }
+        }
+    }
+    while i < bytes.len() && is_name_byte(bytes[i]) {
+        i += 1;
+    }
+    Some(i - at)
+}
+
 /// Bracketless block tracking: `case`, `if`, `begin`, `receive`, and
 /// `try` open a region that one `end` closes, and the expression forms
-/// of `fun` do too. A comma inside such a region separates statements
-/// or clauses, never arguments. `maybe` is deliberately absent: it is
-/// not a reserved word, so a bare `maybe` atom is legal in any
-/// argument position and would desync the depth.
+/// of `fun` and `maybe` do too. A comma inside such a region separates
+/// statements or clauses, never arguments.
 #[derive(Debug, Clone, Copy, Default)]
-struct BlockDepth(i32);
+pub struct BlockDepth(i32);
 
 impl BlockDepth {
-    fn in_block(self) -> bool {
+    pub fn in_block(self) -> bool {
         self.0 > 0
     }
 
     /// Consume the identifier starting at `at` and adjust the depth.
     /// Returns the bytes consumed; the caller guarantees `at` is a
     /// token start on a lowercase letter outside literals.
-    fn observe(&mut self, bytes: &[u8], at: usize) -> usize {
+    pub fn observe(&mut self, bytes: &[u8], at: usize) -> usize {
         let mut j = at;
         while j < bytes.len() && is_name_byte(bytes[j]) {
             j += 1;
+        }
+        // a keyword after `#` is a native-record name, not a block token
+        if preceded_by_hash(bytes, at) {
+            return j - at;
         }
         match &bytes[at..j] {
             b"case" | b"if" | b"begin" | b"receive" | b"try" => self.0 += 1,
             b"end" => self.0 = (self.0 - 1).max(0),
             b"fun" if fun_opens_block(bytes, j) => self.0 += 1,
+            b"maybe" if maybe_opens_block(bytes, j) => self.0 += 1,
             _ => {}
         }
         j - at
     }
 }
 
-fn is_name_byte(b: u8) -> bool {
+fn preceded_by_hash(bytes: &[u8], at: usize) -> bool {
+    let mut i = at;
+    while i > 0 && (bytes[i - 1] == b' ' || bytes[i - 1] == b'\t') {
+        i -= 1;
+    }
+    i > 0 && bytes[i - 1] == b'#'
+}
+
+// words that continue an expression rather than begin one: after atom
+// `maybe` they are the only legal word followers
+const EXPRESSION_CONTINUERS: [&[u8]; 19] = [
+    b"of", b"when", b"andalso", b"orelse", b"end", b"after", b"else", b"div", b"rem", b"band",
+    b"bor", b"bxor", b"bsl", b"bsr", b"and", b"or", b"xor", b"not", b"bnot",
+];
+
+/// `maybe` is a block opener since OTP 27 and a legal atom before it
+/// (and after `-feature(maybe_expr, disable)`). The gate fails closed:
+/// it opens a block only when the follower can begin a block body and
+/// cannot follow an atom; every uncertain case, hunk truncation
+/// included, keeps the atom reading and today's contained miscount.
+fn maybe_opens_block(bytes: &[u8], after_maybe: usize) -> bool {
+    let k = skip_ws(bytes, after_maybe);
+    let Some(&b) = bytes.get(k) else {
+        return false;
+    };
+    if b == b'<' {
+        return bytes.get(k + 1) == Some(&b'<');
+    }
+    match b {
+        b'[' | b'{' | b'"' | b'\'' | b'$' | b'~' => true,
+        _ if b.is_ascii_uppercase() || b == b'_' || b.is_ascii_digit() => true,
+        _ if b.is_ascii_lowercase() => {
+            let mut m = k;
+            while m < bytes.len() && is_name_byte(bytes[m]) {
+                m += 1;
+            }
+            !EXPRESSION_CONTINUERS.contains(&&bytes[k..m])
+        }
+        _ => false,
+    }
+}
+
+pub fn is_name_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
 }
 
-fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+/// True when `s` is a bare atom needing no quotes: a lowercase start
+/// followed by name bytes only.
+pub fn is_bare_atom(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    match bytes.first() {
+        Some(b) if b.is_ascii_lowercase() => {}
+        _ => return false,
+    }
+    bytes.iter().all(|&b| is_name_byte(b))
+}
+
+/// Invokes `visit` at each byte of `s` sitting at bracket depth zero,
+/// outside strings (ordinary, triple-quoted, and sigil), quoted atoms,
+/// `$c` char literals, and `%` comments. Depth counts `()` `[]` `{}`
+/// and `<<`/`>>` pairs. A `true` return stops the walk and yields that
+/// byte's offset; `None` means the walk reached the end.
+pub fn for_each_top_level_byte(s: &str, mut visit: impl FnMut(usize) -> bool) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut depth_angle = 0i32;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' | b'~' => {
+                if let Some(span) = string_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+            }
+            b'\'' => {
+                if let Some(span) = quoted_atom_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+            }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
+                continue;
+            }
+            b'%' => {
+                i += line_comment_span(bytes, i);
+                continue;
+            }
+            _ => {}
+        }
+        match bytes[i] {
+            b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                depth_angle += 1;
+                i += 2;
+                continue;
+            }
+            b'>' if bytes.get(i + 1) == Some(&b'>') && depth_angle > 0 => {
+                depth_angle -= 1;
+                i += 2;
+                continue;
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            _ if depth == 0 && depth_angle == 0 => {
+                if visit(i) {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
         i += 1;
     }
-    i
+    None
+}
+
+/// `s` with every `%`-to-newline comment outside literals removed.
+/// List entries keep the comments the splitter saw around them; parsing
+/// an entry needs them gone.
+pub fn remove_line_comments(s: &str) -> Cow<'_, str> {
+    let bytes = s.as_bytes();
+    let mut out: Option<String> = None;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let span = match bytes[i] {
+            b'%' => {
+                out.get_or_insert_with(|| s[..i].to_string());
+                i += line_comment_span(bytes, i);
+                continue;
+            }
+            b'"' | b'~' => string_span(bytes, i).unwrap_or(1),
+            b'\'' => quoted_atom_span(bytes, i).unwrap_or(1),
+            b'$' => skip_char_literal_span(bytes, i),
+            _ => 1,
+        };
+        // a span may end inside a multi-byte char (`$ä` reads two bytes)
+        let mut end = (i + span).min(bytes.len());
+        while !s.is_char_boundary(end) {
+            end += 1;
+        }
+        if let Some(acc) = out.as_mut() {
+            acc.push_str(&s[i..end]);
+        }
+        i = end;
+    }
+    match out {
+        Some(acc) => Cow::Owned(acc),
+        None => Cow::Borrowed(s),
+    }
+}
+
+/// Bytes from the `%` at `at` to the end of the line, newline excluded.
+/// Attribute bodies reach the scanners with their comments in place, so
+/// a `% maybe` note in an export list must never feed the block depth.
+fn line_comment_span(bytes: &[u8], at: usize) -> usize {
+    let mut i = at;
+    while i < bytes.len() && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i - at
+}
+
+fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && bytes[i] == b'%' {
+            i += line_comment_span(bytes, i);
+            continue;
+        }
+        return i;
+    }
 }
 
 /// The expression forms `fun (...) ->`, `fun Name(...) ->`, and their
@@ -182,6 +625,16 @@ fn matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
                 continue;
+            }
+            b'%' => {
+                i += line_comment_span(bytes, i);
+                continue;
+            }
+            b'~' => {
+                if let Some(span) = sigil_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
             }
             b'(' => depth += 1,
             b')' => {
@@ -253,6 +706,16 @@ pub fn scan_top_level_args(after_open_paren: &str) -> ScannedArgs<'_> {
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
                 continue;
+            }
+            b'%' => {
+                i += line_comment_span(bytes, i);
+                continue;
+            }
+            b'~' => {
+                if let Some(span) = sigil_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
             }
             b'<' if bytes.get(i + 1) == Some(&b'<') => {
                 depth += 1;
@@ -354,10 +817,22 @@ fn for_each_top_level_comma(s: &str, mut on_comma: impl FnMut(usize)) {
             i += skip_char_literal_span(bytes, i);
             continue;
         }
+        if !in_string && !in_atom_quote && ch == '%' {
+            i += line_comment_span(bytes, i);
+            continue;
+        }
         if !in_string
             && !in_atom_quote
             && ch == '"'
             && let Some(span) = triple_quoted_span(bytes, i)
+        {
+            i += span;
+            continue;
+        }
+        if !in_string
+            && !in_atom_quote
+            && ch == '~'
+            && let Some(span) = sigil_span(bytes, i)
         {
             i += span;
             continue;
@@ -480,6 +955,16 @@ pub fn scan_list_elements(after_open_bracket: &str) -> ScannedList<'_> {
                 i += skip_char_literal_span(bytes, i);
                 continue;
             }
+            b'%' => {
+                i += line_comment_span(bytes, i);
+                continue;
+            }
+            b'~' => {
+                if let Some(span) = sigil_span(bytes, i) {
+                    i += span;
+                    continue;
+                }
+            }
             b'<' if bytes.get(i + 1) == Some(&b'<') => {
                 depth += 1;
                 i += 1;
@@ -588,10 +1073,22 @@ pub fn take_balanced_parens(s: &str) -> Option<(&str, &str)> {
             i += skip_char_literal_span(bytes, i);
             continue;
         }
+        if !in_string && !in_atom_quote && ch == '%' {
+            i += line_comment_span(bytes, i);
+            continue;
+        }
         if !in_string
             && !in_atom_quote
             && ch == '"'
             && let Some(span) = triple_quoted_span(bytes, i)
+        {
+            i += span;
+            continue;
+        }
+        if !in_string
+            && !in_atom_quote
+            && ch == '~'
+            && let Some(span) = sigil_span(bytes, i)
         {
             i += span;
             continue;

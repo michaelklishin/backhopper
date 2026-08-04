@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::Path;
 
-use backhopper_erlang_scan::{skip_char_literal_span, triple_quoted_span};
+use backhopper_erlang_scan::{BlockDepth, quoted_atom_span, skip_char_literal_span, string_span};
 
 use crate::fragments::{CuttlefishFragment, FragmentKind};
 
@@ -44,14 +44,11 @@ pub fn parse_schema(
                     i += 1;
                 }
             }
-            b'"' => {
-                i = match triple_quoted_span(bytes, i) {
-                    Some(span) => i + span,
-                    None => skip_string(bytes, i + 1),
-                };
+            b'"' | b'~' => {
+                i += string_span(bytes, i).unwrap_or(1);
             }
             b'\'' => {
-                i = skip_atom_quoted(bytes, i + 1);
+                i += quoted_atom_span(bytes, i).unwrap_or(1);
             }
             b'$' => {
                 i += skip_char_literal_span(bytes, i);
@@ -84,28 +81,6 @@ pub fn parse_schema(
         }
     }
     Ok(fragments)
-}
-
-fn skip_string(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' if i + 1 < bytes.len() => i += 2,
-            b'"' => return i + 1,
-            _ => i += 1,
-        }
-    }
-    i
-}
-
-fn skip_atom_quoted(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' if i + 1 < bytes.len() => i += 2,
-            b'\'' => return i + 1,
-            _ => i += 1,
-        }
-    }
-    i
 }
 
 fn classify_top_level(
@@ -182,9 +157,9 @@ fn leading_string_after_atom(span: &str) -> Option<String> {
 /// Returns `(body_text, body_offset_in_span)`.
 fn locate_fun_body(span: &str) -> Option<(String, usize)> {
     let outer_fun = find_outer_fun_keyword(span)?;
-    let arrow = find_substring(span, "->", outer_fun)?;
+    let arrow = find_arrow_skipping_literals(span.as_bytes(), outer_fun)?;
     let body_start = arrow + 2;
-    let end_of_end = balanced_end_offset(span, body_start)?;
+    let end_of_end = balanced_end_offset(span, outer_fun)?;
     let raw = &span[body_start..end_of_end];
     // the offset must skip the whitespace trim() dropped, or a body starting on the next line reports the arrow's line
     let leading_ws = raw.len() - raw.trim_start().len();
@@ -201,12 +176,12 @@ fn find_outer_fun_keyword(span: &str) -> Option<usize> {
     let mut i = 0usize;
     while i < bytes.len() {
         let c = bytes[i];
-        if c == b'"' {
-            i = skip_string(bytes, i + 1);
+        if c == b'"' || c == b'~' {
+            i += string_span(bytes, i).unwrap_or(1);
             continue;
         }
         if c == b'\'' {
-            i = skip_atom_quoted(bytes, i + 1);
+            i += quoted_atom_span(bytes, i).unwrap_or(1);
             continue;
         }
         if c == b'%' {
@@ -227,22 +202,45 @@ fn find_outer_fun_keyword(span: &str) -> Option<usize> {
     None
 }
 
-/// Walk forward from `start` balancing Erlang block openers vs `end`,
-/// starting with depth = 1 (we are already inside the outer fun).
-/// Returns the byte offset of the matching `end`.
+/// Byte offset of the first `->` at or after `start`, with string,
+/// atom, char, and comment spans skipped so an arrow inside a literal
+/// cannot match.
+fn find_arrow_skipping_literals(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i + 1 < bytes.len() {
+        match bytes[i] {
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'-' if bytes[i + 1] == b'>' => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Walk forward from the outer `fun` keyword at `start`, tracking
+/// block depth through the shared `BlockDepth`. Returns the byte
+/// offset of the `end` matching the outer fun: the position where the
+/// depth transitions back to zero.
 fn balanced_end_offset(span: &str, start: usize) -> Option<usize> {
     let bytes = span.as_bytes();
-    let mut depth: i32 = 1;
+    let mut blocks = BlockDepth::default();
     let mut i = start;
-    'outer: while i < bytes.len() {
+    while i < bytes.len() {
         let c = bytes[i];
-        // skip strings and quoted atoms so block keywords inside them do not affect the depth
-        if c == b'"' {
-            i = skip_string(bytes, i + 1);
+        // skip literals so block keywords inside them do not affect the depth
+        if c == b'"' || c == b'~' {
+            i += string_span(bytes, i).unwrap_or(1);
             continue;
         }
         if c == b'\'' {
-            i = skip_atom_quoted(bytes, i + 1);
+            i += quoted_atom_span(bytes, i).unwrap_or(1);
             continue;
         }
         if c == b'%' {
@@ -255,30 +253,13 @@ fn balanced_end_offset(span: &str, start: usize) -> Option<usize> {
             i += skip_char_literal_span(bytes, i);
             continue;
         }
-        if is_keyword_at(bytes, i, b"end") {
-            depth -= 1;
-            if depth == 0 {
+        if c.is_ascii_lowercase() && (i == 0 || !is_ident_byte(bytes[i - 1])) {
+            let was_in_block = blocks.in_block();
+            let consumed = blocks.observe(bytes, i);
+            if was_in_block && !blocks.in_block() {
                 return Some(i);
             }
-            i += 3;
-            continue;
-        }
-        for opener in [
-            b"case".as_slice(),
-            b"if".as_slice(),
-            b"receive".as_slice(),
-            b"try".as_slice(),
-            b"begin".as_slice(),
-        ] {
-            if is_keyword_at(bytes, i, opener) {
-                depth += 1;
-                i += opener.len();
-                continue 'outer;
-            }
-        }
-        if is_keyword_at(bytes, i, b"fun") && next_non_ws_is(bytes, i + 3, b'(') {
-            depth += 1;
-            i += 3;
+            i += consumed.max(1);
             continue;
         }
         i += 1;
@@ -330,10 +311,6 @@ fn find_unescaped(s: &str, target: u8) -> Option<usize> {
         }
     }
     None
-}
-
-fn find_substring(s: &str, needle: &str, start: usize) -> Option<usize> {
-    s.get(start..)?.find(needle).map(|p| p + start)
 }
 
 fn line_of_byte(s: &str, byte_offset: usize) -> usize {

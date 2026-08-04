@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
-use backhopper_core::erlang_macros::MacroKey;
+use backhopper_core::erlang_macros::{MacroKey, parse_define};
 
 fn key(name: &str, arity: Option<u8>) -> MacroKey {
     MacroKey {
@@ -143,4 +143,60 @@ fn build_table_does_not_panic_on_trailing_backslash_in_quoted_atom() {
     let source = "-define(BAD, 'ra\\";
     let files = FileMap::new();
     let _ = build_macro_table(source, &PathBuf::from("ra_log.erl"), &files);
+}
+
+#[test]
+fn define_body_keeps_a_dotted_record_access_and_a_based_float() {
+    let src = "-define(FIELD(X), X#rec.field + 16#fe.fe#e16).\n";
+    let table = build_macro_table(src, &PathBuf::from("src/ra_log.erl"), &FileMap::new());
+    let value = table.get(&key("FIELD", Some(1))).expect("macro present");
+    assert!(value.contains("X#rec.field + 16#fe.fe#e16"));
+}
+
+#[test]
+fn a_stray_bracket_inside_a_string_does_not_close_the_define() {
+    let src = "-define(MSG, \"unbalanced ] here\").\n-define(OTHER, ok).\n";
+    let table = build_macro_table(src, &PathBuf::from("src/ra_log.erl"), &FileMap::new());
+    assert_eq!(
+        table.get(&key("MSG", None)).map(String::as_str),
+        Some("\"unbalanced ] here\"")
+    );
+    assert_eq!(
+        table.get(&key("OTHER", None)).map(String::as_str),
+        Some("ok")
+    );
+}
+
+#[test]
+fn parse_define_keeps_a_char_literal_comma_body() {
+    let (key, value) = parse_define("(SEP, $,)").expect("parse");
+    assert_eq!(key.name, "SEP");
+    assert_eq!(key.arity, None);
+    assert_eq!(value, "$,");
+}
+
+#[test]
+fn parse_define_keeps_a_char_literal_paren_body() {
+    let (key, value) = parse_define("(OPEN, $()").expect("parse");
+    assert_eq!(key.name, "OPEN");
+    assert_eq!(value, "$(");
+    let (key, value) = parse_define("(CLOSE, $))").expect("parse");
+    assert_eq!(key.name, "CLOSE");
+    assert_eq!(value, "$)");
+}
+
+#[test]
+fn parse_define_ignores_a_comment_between_name_and_body() {
+    let (key, value) = parse_define("(TIMEOUT % (in milliseconds\n, 30000)").expect("parse");
+    assert_eq!(key.name, "TIMEOUT");
+    assert_eq!(value, "30000");
+}
+
+#[test]
+fn parse_define_keeps_a_triple_quoted_body_whole() {
+    let body = "(DOC, \"\"\"\n  prose, with (brackets\n  \"\"\")";
+    let (key, value) = parse_define(body).expect("parse");
+    assert_eq!(key.name, "DOC");
+    assert!(value.starts_with("\"\"\""));
+    assert!(value.contains("prose, with (brackets"));
 }

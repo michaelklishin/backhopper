@@ -75,3 +75,20 @@ fn char_literal_dot_does_not_terminate_form() {
         "$. is a char literal; it must not terminate the form"
     );
 }
+
+#[test]
+fn dot_before_comment_terminates_the_attribute() {
+    let src = "-export([f/1]).% comment\n-behaviour(gen_server).\n";
+    let blocks = iterate_attributes(src);
+    let names: Vec<&str> = blocks.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, vec!["export", "behaviour"]);
+    assert_eq!(blocks[0].body, "([f/1])");
+}
+
+#[test]
+fn based_float_dots_do_not_terminate_the_attribute() {
+    let src = "-define(SCALE, 16#fe.fe#e16).\n-define(LIMIT, 1_000).\n";
+    let blocks = iterate_attributes(src);
+    let bodies: Vec<&str> = blocks.iter().map(|b| b.body.as_str()).collect();
+    assert_eq!(bodies, vec!["(SCALE, 16#fe.fe#e16)", "(LIMIT, 1_000)"]);
+}

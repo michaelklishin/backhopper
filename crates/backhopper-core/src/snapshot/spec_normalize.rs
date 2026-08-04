@@ -9,16 +9,88 @@
 //! algorithm is intentionally simple: it normalizes whitespace, balances
 //! brackets, wraps at top-level `|` past a width target.
 
+use backhopper_erlang_scan::{
+    for_each_top_level_byte, quoted_atom_span, remove_line_comments, skip_char_literal_span,
+    string_span,
+};
+
 const WRAP_WIDTH: usize = 80;
 const CONTINUATION_INDENT: &str = "       ";
 
+/// Erlang entry point: `$c` char literals, triple-quoted strings, and
+/// sigils are lexed as such, so `$"` or `$,` cannot derail the walk.
 pub fn normalize_signature(input: &str) -> String {
+    let stripped = remove_line_comments(input);
+    let collapsed = collapse_whitespace_erlang(&stripped);
+    if collapsed.len() <= WRAP_WIDTH {
+        return collapsed;
+    }
+    wrap_at(&collapsed, &erlang_pipe_positions(&collapsed))
+}
+
+/// Elixir entry point: `$` is an ordinary byte in Elixir type text, so
+/// the char-literal-aware Erlang lexing must not apply.
+pub fn normalize_elixir_signature(input: &str) -> String {
     let stripped = strip_line_comments(input);
     let collapsed = collapse_whitespace(&stripped);
     if collapsed.len() <= WRAP_WIDTH {
         return collapsed;
     }
-    wrap_top_level_alternatives(&collapsed)
+    wrap_at(&collapsed, &top_level_pipe_positions(&collapsed))
+}
+
+fn erlang_pipe_positions(input: &str) -> Vec<usize> {
+    let bytes = input.as_bytes();
+    let mut positions = Vec::new();
+    for_each_top_level_byte(input, |i| {
+        if bytes[i] == b'|' {
+            positions.push(i);
+        }
+        false
+    });
+    positions
+}
+
+/// Whitespace runs collapsed to one space, with string, quoted atom,
+/// and char-literal spans copied verbatim so their contents stay exact.
+fn collapse_whitespace_erlang(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut prev_space = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let span = match bytes[i] {
+            b'"' | b'~' => string_span(bytes, i),
+            b'\'' => quoted_atom_span(bytes, i),
+            b'$' => Some(skip_char_literal_span(bytes, i)),
+            _ => None,
+        };
+        if let Some(span) = span {
+            // a span may end inside a multi-byte char (`$ä` reads two bytes)
+            let mut end = (i + span).min(bytes.len());
+            while !input.is_char_boundary(end) {
+                end += 1;
+            }
+            out.push_str(&input[i..end]);
+            prev_space = false;
+            i = end;
+            continue;
+        }
+        let ch = input[i..].chars().next().expect("char at boundary");
+        if ch.is_whitespace() {
+            if !prev_space && !out.is_empty() {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+        i += ch.len_utf8();
+    }
+    let new_len = out.trim_end_matches(' ').len();
+    out.truncate(new_len);
+    out
 }
 
 fn strip_line_comments(input: &str) -> String {
@@ -111,14 +183,13 @@ fn collapse_whitespace(input: &str) -> String {
     out
 }
 
-fn wrap_top_level_alternatives(input: &str) -> String {
-    let pipes = top_level_pipe_positions(input);
+fn wrap_at(input: &str, pipes: &[usize]) -> String {
     if pipes.is_empty() {
         return input.to_owned();
     }
     let mut out = String::with_capacity(input.len() + pipes.len() * 8);
     let mut last = 0usize;
-    for &pos in &pipes {
+    for &pos in pipes {
         let segment = input[last..pos].trim_end();
         if last == 0 {
             out.push_str(segment);

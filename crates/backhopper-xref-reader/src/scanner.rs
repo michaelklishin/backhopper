@@ -11,7 +11,7 @@
 //! A separate block-oriented tokenizer exists in `backhopper_erlang::tokenizer`.
 //! Consolidation is deferred until a third consumer needs it.
 
-use backhopper_erlang_scan::triple_quoted_span;
+use backhopper_erlang_scan::{sigil_span, skip_char_literal_span, triple_quoted_span};
 use backhopper_xref_graph::Position;
 
 #[derive(Debug, Clone)]
@@ -125,6 +125,16 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// Consume the sigil string starting at `~`, or the single byte when
+    /// `~` is an ordinary operator here.
+    pub fn consume_sigil_or_advance(&mut self) {
+        debug_assert_eq!(self.peek(), Some(b'~'));
+        let span = sigil_span(self.bytes, self.pos.byte_offset as usize).unwrap_or(1);
+        for _ in 0..span {
+            self.advance();
+        }
+    }
+
     /// Consume a quoted-atom literal starting at `'`, leaving the cursor
     /// just past the closing quote. Does not validate the contents.
     pub fn consume_quoted_atom(&mut self) {
@@ -145,14 +155,10 @@ impl<'a> Scanner<'a> {
     /// Consume a `$c`, `$\n`, or `$\^X` character literal.
     pub fn consume_char_literal(&mut self) {
         debug_assert_eq!(self.peek(), Some(b'$'));
-        self.advance();
-        if self.peek() == Some(b'\\') {
-            self.advance();
-            if self.peek() == Some(b'^') {
-                self.advance();
-            }
-            self.advance();
-        } else {
+        let at = self.pos.byte_offset as usize;
+        let span = skip_char_literal_span(self.bytes, at);
+        // advance byte by byte to keep the position counters honest
+        for _ in 0..span {
             self.advance();
         }
     }
@@ -228,6 +234,7 @@ impl<'a> Scanner<'a> {
                                 }
                             }
                             b'"' => self.consume_string(),
+                            b'~' => self.consume_sigil_or_advance(),
                             b'\'' => self.consume_quoted_atom(),
                             b'$' => self.consume_char_literal(),
                             b'%' => self.skip_line(),
@@ -242,6 +249,7 @@ impl<'a> Scanner<'a> {
                     self.advance();
                 }
                 b'"' => self.consume_string(),
+                b'~' => self.consume_sigil_or_advance(),
                 b'\'' => self.consume_quoted_atom(),
                 b'$' => self.consume_char_literal(),
                 b'%' => self.skip_line(),

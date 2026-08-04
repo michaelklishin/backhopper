@@ -22,6 +22,8 @@ use std::str;
 
 use thiserror::Error;
 
+use backhopper_erlang_scan::{quoted_atom_span, skip_char_literal_span, string_span};
+
 use crate::compat::otp::is_otp_module;
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
@@ -287,12 +289,22 @@ fn scan_helper_calls(source: &str) -> Vec<HelperCall> {
             }
             continue;
         }
-        if b == b'"' {
-            i = skip_string(bytes, i, b'"');
+        if b == b'"' || b == b'~' {
+            let span = string_span(bytes, i).unwrap_or(1);
+            line += newline_count(&bytes[i..i + span]);
+            i += span;
+            continue;
+        }
+        if b == b'$' {
+            let span = skip_char_literal_span(bytes, i);
+            line += newline_count(&bytes[i..i + span]);
+            i += span;
             continue;
         }
         if b == b'\'' {
-            i = skip_string(bytes, i, b'\'');
+            let span = quoted_atom_span(bytes, i).unwrap_or(1);
+            line += newline_count(&bytes[i..i + span]);
+            i += span;
             continue;
         }
         // skip the whole variable span so a restart inside Mod does not read od:f(...) as a call
@@ -364,19 +376,14 @@ fn is_atom_continue(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
 }
 
-fn skip_string(bytes: &[u8], start: usize, quote: u8) -> usize {
-    let mut i = start + 1;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' && i + 1 < bytes.len() {
-            i += 2;
-            continue;
+fn newline_count(span: &[u8]) -> u32 {
+    let mut n = 0;
+    for &b in span {
+        if b == b'\n' {
+            n += 1;
         }
-        if bytes[i] == quote {
-            return i + 1;
-        }
-        i += 1;
     }
-    i
+    n
 }
 
 fn skip_spaces(bytes: &[u8], mut i: usize) -> usize {
@@ -411,13 +418,18 @@ fn count_top_level_args(bytes: &[u8], open: usize) -> u32 {
             b',' if depth == 1 => {
                 commas += 1;
             }
-            b'"' => {
-                i = skip_string(bytes, i, b'"');
+            b'"' | b'~' => {
+                i += string_span(bytes, i).unwrap_or(1);
+                saw_token = true;
+                continue;
+            }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
                 saw_token = true;
                 continue;
             }
             b'\'' => {
-                i = skip_string(bytes, i, b'\'');
+                i += quoted_atom_span(bytes, i).unwrap_or(1);
                 saw_token = true;
                 continue;
             }

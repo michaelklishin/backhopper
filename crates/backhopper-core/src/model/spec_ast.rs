@@ -46,6 +46,10 @@ pub enum SpecType {
     Var { name: String },
     /// Numeric literal in a type position.
     Integer { value: i64 },
+    /// `Low..High`, bounds inclusive.
+    Range { low: i64, high: i64 },
+    /// `<<...>>` bitstring size spec. The size expression is not retained.
+    Binary,
     /// Anything else: the parser could not classify the expression.
     Unknown,
 }
@@ -82,6 +86,12 @@ impl SpecType {
         match (self, expected) {
             (Self::Union { variants }, _) => variants.iter().any(|v| v.matches(expected)),
             (_, Self::Union { variants }) => variants.iter().any(|v| self.matches(v)),
+            // the universal and gradual types admit any shape
+            (Self::Builtin { name }, _) | (_, Self::Builtin { name })
+                if matches!(name.as_str(), "term" | "any" | "dynamic") =>
+            {
+                true
+            }
             (Self::TaggedTuple { tag: a, arity: aa }, Self::TaggedTuple { tag: b, arity: bb }) => {
                 a == b && aa == bb
             }
@@ -102,6 +112,23 @@ impl SpecType {
             }
             (Self::Builtin { name }, Self::Integer { .. }) => {
                 matches!(name.as_str(), "integer" | "non_neg_integer" | "pos_integer")
+            }
+            (Self::Range { low: a, high: b }, Self::Range { low: c, high: d }) => a == c && b == d,
+            (Self::Range { .. }, Self::Builtin { name })
+            | (Self::Builtin { name }, Self::Range { .. }) => {
+                matches!(
+                    name.as_str(),
+                    "integer" | "non_neg_integer" | "pos_integer" | "neg_integer" | "number"
+                )
+            }
+            (Self::Integer { value }, Self::Range { low, high })
+            | (Self::Range { low, high }, Self::Integer { value }) => low <= value && value <= high,
+            (Self::Binary, Self::Binary) => true,
+            (Self::Binary, Self::Builtin { name }) | (Self::Builtin { name }, Self::Binary) => {
+                matches!(
+                    name.as_str(),
+                    "binary" | "bitstring" | "nonempty_binary" | "nonempty_bitstring"
+                )
             }
             (
                 Self::TypeCall {
@@ -150,6 +177,8 @@ fn canonical_cmp(a: &SpecType, b: &SpecType) -> Ordering {
             SpecType::Var { name } => (10, name.clone()),
             SpecType::Union { .. } => (11, String::new()),
             SpecType::Unknown => (12, String::new()),
+            SpecType::Range { low, high } => (13, format!("{low}..{high}")),
+            SpecType::Binary => (14, String::new()),
         }
     };
     let (ka, va) = order(a);

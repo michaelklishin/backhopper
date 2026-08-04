@@ -25,7 +25,9 @@
 use std::str::FromStr;
 use std::sync::OnceLock;
 
-use backhopper_erlang_scan::{ScannedArgs, ScannedList, scan_list_elements, scan_top_level_args};
+use backhopper_erlang_scan::{
+    ScannedArgs, ScannedList, is_bare_atom, scan_list_elements, scan_top_level_args,
+};
 use regex::Regex;
 
 use crate::compat::call_sites::{
@@ -280,11 +282,7 @@ fn parse_atom(raw: &str) -> Option<String> {
         }
         return Some(inner.to_owned());
     }
-    let mut chars = raw.chars();
-    let first = chars.next()?;
-    if first.is_ascii_lowercase()
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
-    {
+    if is_bare_atom(raw) {
         Some(raw.to_owned())
     } else {
         None

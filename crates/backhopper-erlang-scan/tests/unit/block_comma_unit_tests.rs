@@ -86,13 +86,6 @@ fn an_end_in_an_identifier_does_not_decrement() {
 }
 
 #[test]
-fn a_bare_maybe_atom_keeps_the_argument_count() {
-    // `maybe` is not reserved, so a bare atom in argument position is
-    // legal and must not open a block
-    assert_eq!(exact("maybe, exclusive)"), 2);
-}
-
-#[test]
 fn a_keyword_in_a_string_is_inert() {
     assert_eq!(exact("\"fun end case\", Mode)"), 2);
 }
@@ -116,4 +109,116 @@ fn a_missing_end_never_terminates_the_argument_list() {
         scan_arity("fun(X) -> a(X), b(X), L)"),
         ScanArity::Unterminated
     );
+}
+
+#[test]
+fn a_maybe_block_argument_counts_as_one() {
+    assert_eq!(
+        exact("maybe ok ?= khepri:put(Id, V), V else _ -> err end, Fallback)"),
+        2
+    );
+}
+
+#[test]
+fn maybe_blocks_nest_with_other_blocks() {
+    assert_eq!(exact("case X of _ -> maybe A = f(X), A end end, Y)"), 2);
+    assert_eq!(
+        exact("maybe case f(X) of ok -> ok end else _ -> err end, Y)"),
+        2
+    );
+}
+
+#[test]
+fn a_bare_maybe_atom_keeps_the_argument_count() {
+    assert_eq!(exact("maybe, x)"), 2);
+    assert_eq!(exact("f(maybe), x)"), 2);
+    assert_eq!(exact("{maybe, on}, x)"), 2);
+}
+
+#[test]
+fn atom_maybe_before_an_arrow_never_opens_a_phantom_block() {
+    assert_eq!(exact("case get() of maybe -> a end, Y)"), 2);
+}
+
+#[test]
+fn atom_maybe_before_a_semicolon_stays_inert() {
+    assert_eq!(exact("fun(x) -> maybe; (y) -> ok end, Z)"), 2);
+}
+
+#[test]
+fn atom_maybe_before_a_continuation_word_stays_inert() {
+    assert_eq!(exact("X =:= maybe orelse Y, Z)"), 2);
+    assert_eq!(exact("V == maybe andalso W, Z)"), 2);
+}
+
+#[test]
+fn the_accepted_misreads_degrade_to_the_old_reading() {
+    // a block whose first expression is parenthesized reads as a call
+    // to an atom named maybe: depth short by one, never a phantom block
+    assert_eq!(scan_arity("maybe (A + B), x end, Y)"), ScanArity::Exact(3));
+    assert_eq!(exact("maybe ?LOG(X), ok end, Y)"), 3);
+}
+
+#[test]
+fn record_access_on_atom_maybe_keeps_the_count() {
+    assert_eq!(exact("maybe#state.field, Y)"), 2);
+    assert_eq!(exact("maybe #state{f = 1}, Y)"), 2);
+}
+
+#[test]
+fn a_truncated_slice_ending_in_maybe_opens_nothing() {
+    assert_eq!(split_top_level_args("A, maybe").len(), 2);
+}
+
+#[test]
+fn a_reserved_word_record_name_is_not_a_block_token() {
+    assert_eq!(exact("#end{a = 1, b = 2}, Y)"), 2);
+    assert_eq!(exact("#case{f = g(1), h = 2}, Y)"), 2);
+    assert_eq!(exact("case f(X) of _ -> #end{a = 1} end, Y)"), 2);
+}
+
+#[test]
+fn a_comment_inside_an_attribute_body_never_feeds_the_block_depth() {
+    // an export list annotated with `% maybe` must keep every entry
+    // after the comment
+    let entries = backhopper_erlang_scan::split_top_level_commas(
+        "ignore/2,\n% maybe\niter_maybe/2,\n% coercion\nto_list/1,\ncons/2",
+    );
+    assert_eq!(entries.len(), 4);
+    assert_eq!(entries[3], "cons/2");
+}
+
+#[test]
+fn a_comment_holding_a_block_keyword_stays_inert_in_arity_reads() {
+    assert_eq!(exact("A, % case of doom\nB)"), 2);
+}
+
+#[test]
+fn a_quoted_record_name_beside_block_keywords_stays_inert() {
+    assert_eq!(exact("case f(X) of _ -> #'end'{a = 1} end, Y)"), 2);
+}
+
+#[test]
+fn a_maybe_block_opening_with_a_record_literal_degrades_to_the_old_reading() {
+    // the `#` follower keeps the atom reading: depth short by one, the
+    // block's own `end` absorbs the difference, neighbors keep counting
+    assert_eq!(exact("maybe #state{f = 1} = g(X), ok end, Y)"), 3);
+}
+
+#[test]
+fn a_comment_between_maybe_and_its_body_keeps_the_block_reading() {
+    assert_eq!(exact("maybe % note\n X = f(), Y = g(), ok end, B)"), 2);
+}
+
+#[test]
+fn a_comment_between_fun_and_its_clause_keeps_the_block_reading() {
+    assert_eq!(exact("fun % note\n (X) -> a(X), b(X) end, B)"), 2);
+}
+
+#[test]
+fn comment_removal_keeps_multibyte_chars_whole() {
+    use backhopper_erlang_scan::remove_line_comments;
+    assert_eq!(remove_line_comments("f % note\n= $ä"), "f \n= $ä");
+    assert_eq!(remove_line_comments("% c\n é"), "\n é");
+    assert_eq!(remove_line_comments("\"a%b\", x"), "\"a%b\", x");
 }

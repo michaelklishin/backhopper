@@ -3,7 +3,11 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod block_comma_unit_tests;
+mod lexeme_unit_tests;
 mod list_scan_unit_tests;
+mod operator_inertness_unit_tests;
 mod scan_unit_tests;
+mod sigil_unit_tests;
 mod signature_unit_tests;
+mod top_level_walker_unit_tests;
 mod triple_quote_unit_tests;

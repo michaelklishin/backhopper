@@ -9,6 +9,10 @@
 
 use std::str;
 
+use backhopper_erlang_scan::{
+    for_each_top_level_byte, is_name_byte, number_span, skip_char_literal_span,
+};
+
 use crate::model::spec_ast::SpecType;
 
 pub fn parse_signature_return(signature: &str) -> SpecType {
@@ -29,83 +33,24 @@ pub fn parse(text: &str) -> SpecType {
 
 fn find_top_level_arrow(s: &str) -> Option<usize> {
     let bytes = s.as_bytes();
-    let mut depth_paren = 0i32;
-    let mut depth_brace = 0i32;
-    let mut depth_brack = 0i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut i = 0usize;
-    while i + 1 < bytes.len() {
-        let ch = bytes[i] as char;
-        match ch {
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            '-' if !in_string
-                && !in_atom_quote
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_brack == 0
-                && bytes[i + 1] as char == '>' =>
-            {
-                return Some(i);
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    for_each_top_level_byte(s, |i| bytes[i] == b'-' && bytes.get(i + 1) == Some(&b'>'))
 }
 
 fn strip_when_guard(rest: &str) -> &str {
     let bytes = rest.as_bytes();
-    let mut depth_paren = 0i32;
-    let mut depth_brace = 0i32;
-    let mut depth_brack = 0i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut i = 0usize;
-    while i + 4 <= bytes.len() {
-        let ch = bytes[i] as char;
-        match ch {
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
-            'w' if !in_string
-                && !in_atom_quote
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_brack == 0
-                && &bytes[i..i + 4] == b"when"
-                && is_word_boundary(bytes, i, i + 4) =>
-            {
-                return rest[..i].trim_end();
-            }
-            _ => {}
-        }
-        i += 1;
+    let found = for_each_top_level_byte(rest, |i| {
+        bytes[i..].starts_with(b"when") && is_word_boundary(bytes, i, i + 4)
+    });
+    match found {
+        Some(i) => rest[..i].trim_end(),
+        None => rest.trim(),
     }
-    rest.trim()
 }
 
 fn is_word_boundary(bytes: &[u8], start: usize, end: usize) -> bool {
-    let before_ok = start == 0 || !is_ident_byte(bytes[start - 1]);
-    let after_ok = end >= bytes.len() || !is_ident_byte(bytes[end]);
+    let before_ok = start == 0 || !is_name_byte(bytes[start - 1]);
+    let after_ok = end >= bytes.len() || !is_name_byte(bytes[end]);
     before_ok && after_ok
-}
-
-fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
 }
 
 struct Parser<'a> {
@@ -187,7 +132,8 @@ impl<'a> Parser<'a> {
             b'#' => self.parse_hash(budget),
             b'\'' => self.parse_quoted_atom(),
             b'_' => self.parse_underscore(),
-            b'-' | b'0'..=b'9' => self.parse_integer(),
+            b'-' | b'0'..=b'9' | b'$' => self.parse_integer(),
+            b'<' if self.peek_at(1) == Some(b'<') => self.parse_binary(),
             b if b.is_ascii_uppercase() => self.parse_var_or_unknown(budget),
             b if b.is_ascii_lowercase() => self.parse_lowercase_form(budget),
             _ => {
@@ -289,7 +235,7 @@ impl<'a> Parser<'a> {
     fn parse_underscore(&mut self) -> SpecType {
         let next = self.peek_at(1);
         let is_word = match next {
-            Some(c) => is_ident_byte(c),
+            Some(c) => is_name_byte(c),
             None => false,
         };
         if !is_word {
@@ -303,29 +249,77 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_integer(&mut self) -> SpecType {
-        let start = self.cursor;
-        if self.peek() == Some(b'-') {
+        let Some(low) = self.read_integer_value() else {
+            self.skip_unknown();
+            return SpecType::Unknown;
+        };
+        let save = self.cursor;
+        self.skip_ws();
+        if self.peek() == Some(b'.') && self.peek_at(1) == Some(b'.') {
+            self.cursor += 2;
+            self.skip_ws();
+            let Some(high) = self.read_integer_value() else {
+                self.skip_unknown();
+                return SpecType::Unknown;
+            };
+            return SpecType::Range { low, high };
+        }
+        self.cursor = save;
+        SpecType::Integer { value: low }
+    }
+
+    /// Reads one signed integer literal: decimal with `_` separators,
+    /// `base#digits`, or a `$c` char literal read as its code point.
+    /// `None` when the token is not a whole integer, such as a float.
+    fn read_integer_value(&mut self) -> Option<i64> {
+        let negative = self.peek() == Some(b'-');
+        if negative {
             self.cursor += 1;
         }
-        while let Some(b) = self.peek() {
-            if b.is_ascii_digit() {
-                self.cursor += 1;
+        if self.peek() == Some(b'$') {
+            let span = skip_char_literal_span(self.bytes, self.cursor);
+            let raw = str::from_utf8(&self.bytes[self.cursor..self.cursor + span]).ok()?;
+            let value = char_literal_value(raw)?;
+            self.cursor += span;
+            return Some(if negative { -value } else { value });
+        }
+        let span = number_span(self.bytes, self.cursor)?;
+        let raw = str::from_utf8(&self.bytes[self.cursor..self.cursor + span]).ok()?;
+        let value = integer_literal_value(raw)?;
+        self.cursor += span;
+        Some(if negative { -value } else { value })
+    }
+
+    fn parse_binary(&mut self) -> SpecType {
+        debug_assert_eq!(self.peek(), Some(b'<'));
+        self.cursor += 2;
+        let mut depth = 1i32;
+        while self.cursor < self.bytes.len() {
+            if self.peek() == Some(b'<') && self.peek_at(1) == Some(b'<') {
+                depth += 1;
+                self.cursor += 2;
+            } else if self.peek() == Some(b'>') && self.peek_at(1) == Some(b'>') {
+                depth -= 1;
+                self.cursor += 2;
+                if depth == 0 {
+                    return SpecType::Binary;
+                }
             } else {
-                break;
+                self.cursor += 1;
             }
         }
-        let raw = &self.bytes[start..self.cursor];
-        let s = str::from_utf8(raw).unwrap_or("");
-        match s.parse::<i64>() {
-            Ok(v) => SpecType::Integer { value: v },
-            Err(_) => SpecType::Unknown,
-        }
+        SpecType::Binary
     }
 
     fn parse_var_or_unknown(&mut self, budget: usize) -> SpecType {
         let name = self.read_identifier();
         self.skip_ws();
         match self.peek() {
+            // annotation: the name documents, the type after `::` is the shape
+            Some(b':') if self.peek_at(1) == Some(b':') => {
+                self.cursor += 2;
+                self.parse_union_with_budget(budget)
+            }
             Some(b':') => {
                 self.cursor += 1;
                 let sub = self.read_identifier();
@@ -398,7 +392,7 @@ impl<'a> Parser<'a> {
     fn read_identifier(&mut self) -> String {
         let start = self.cursor;
         while let Some(b) = self.peek() {
-            if is_ident_byte(b) {
+            if is_name_byte(b) {
                 self.cursor += 1;
             } else {
                 break;
@@ -542,6 +536,69 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Value of an integer literal slice: `_` separators and `base#digits`
+/// forms. `None` for floats and out-of-range values.
+fn integer_literal_value(raw: &str) -> Option<i64> {
+    let s = raw.replace('_', "");
+    if s.contains('.') {
+        return None;
+    }
+    match s.split_once('#') {
+        Some((base, digits)) => {
+            if digits.contains('#') {
+                return None;
+            }
+            let base: u32 = base.parse().ok()?;
+            if !(2..=36).contains(&base) {
+                return None;
+            }
+            i64::from_str_radix(digits, base).ok()
+        }
+        None => s.parse().ok(),
+    }
+}
+
+/// Code point of a `$c` char literal slice, escapes included. `None`
+/// for a malformed or truncated escape.
+fn char_literal_value(raw: &str) -> Option<i64> {
+    let body = raw.strip_prefix('$')?;
+    let mut chars = body.chars();
+    let first = chars.next()?;
+    if first != '\\' {
+        return Some(i64::from(u32::from(first)));
+    }
+    let esc = chars.next()?;
+    let value = match esc {
+        'n' => 10,
+        'r' => 13,
+        't' => 9,
+        'b' => 8,
+        'f' => 12,
+        'e' => 27,
+        's' => 32,
+        'd' => 127,
+        'v' => 11,
+        '^' => u32::from(chars.next()?) & 31,
+        'x' => {
+            let rest = chars.as_str();
+            let hex = rest
+                .strip_prefix('{')
+                .and_then(|r| r.strip_suffix('}'))
+                .unwrap_or(rest);
+            u32::from_str_radix(hex, 16).ok()?
+        }
+        '0'..='7' => {
+            let mut v = u32::from(esc) - u32::from('0');
+            for c in chars {
+                v = v * 8 + c.to_digit(8)?;
+            }
+            v
+        }
+        other => u32::from(other),
+    };
+    Some(i64::from(value))
+}
+
 fn is_builtin_type(name: &str) -> bool {
     matches!(
         name,
@@ -553,6 +610,7 @@ fn is_builtin_type(name: &str) -> bool {
             | "boolean"
             | "byte"
             | "char"
+            | "dynamic"
             | "float"
             | "function"
             | "identifier"
@@ -570,7 +628,11 @@ fn is_builtin_type(name: &str) -> bool {
             | "node"
             | "non_neg_integer"
             | "none"
+            | "nonempty_binary"
+            | "nonempty_bitstring"
+            | "nonempty_improper_list"
             | "nonempty_list"
+            | "nonempty_maybe_improper_list"
             | "nonempty_string"
             | "number"
             | "pid"

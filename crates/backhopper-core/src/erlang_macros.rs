@@ -11,6 +11,8 @@
 
 use std::collections::BTreeMap;
 
+use backhopper_erlang_scan::{for_each_top_level_byte, is_bare_atom, remove_line_comments};
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MacroKey {
     pub name: String,
@@ -29,6 +31,9 @@ pub fn parse_define(body: &str) -> Option<(MacroKey, String)> {
         .map(|x| x.strip_suffix(')').unwrap_or(x))
         .unwrap_or(s);
     let (name_part, value_part) = split_define_head(s)?;
+    // a `%` note between the name and the separator is not part of the name
+    let name_part = remove_line_comments(name_part);
+    let name_part = name_part.as_ref();
     if let Some((name, params)) = parse_parameterized_head(name_part) {
         let arity = u8::try_from(params).ok()?;
         return Some((
@@ -46,31 +51,11 @@ pub fn parse_define(body: &str) -> Option<(MacroKey, String)> {
     Some((MacroKey { name, arity: None }, value_part.trim().to_owned()))
 }
 
+// the first top-level comma separates the macro head from its body
 fn split_define_head(s: &str) -> Option<(&str, &str)> {
     let bytes = s.as_bytes();
-    let mut depth = 0i32;
-    let mut in_str = false;
-    let mut in_atom = false;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if c == b'\\' && (in_str || in_atom) {
-            i = (i + 2).min(bytes.len());
-            continue;
-        }
-        match c {
-            b'"' if !in_atom => in_str = !in_str,
-            b'\'' if !in_str => in_atom = !in_atom,
-            b'(' | b'[' | b'{' if !in_str && !in_atom => depth += 1,
-            b')' | b']' | b'}' if !in_str && !in_atom => depth -= 1,
-            b',' if depth == 0 && !in_str && !in_atom => {
-                return Some((&s[..i], &s[i + 1..]));
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
+    let i = for_each_top_level_byte(s, |i| bytes[i] == b',')?;
+    Some((&s[..i], &s[i + 1..]))
 }
 
 fn parse_parameterized_head(s: &str) -> Option<(String, usize)> {
@@ -98,7 +83,7 @@ pub fn expand_value_macro_to_atom(table: &MacroTable, name: &str) -> Option<Stri
         arity: None,
     })?;
     let trimmed = body.trim();
-    if looks_like_lowercase_atom(trimmed) {
+    if is_bare_atom(trimmed) {
         Some(trimmed.to_owned())
     } else {
         None
@@ -116,18 +101,9 @@ pub fn expand_value_macro_to_mf(table: &MacroTable, name: &str) -> Option<(Strin
     let (m, f) = trimmed.split_once(':')?;
     let m = m.trim();
     let f = f.trim();
-    if looks_like_lowercase_atom(m) && looks_like_lowercase_atom(f) {
+    if is_bare_atom(m) && is_bare_atom(f) {
         Some((m.to_owned(), f.to_owned()))
     } else {
         None
     }
-}
-
-fn looks_like_lowercase_atom(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_lowercase() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
 }

@@ -128,3 +128,41 @@ fn a_closer_shorter_than_the_opener_keeps_the_string_open() {
     assert_eq!(contexts(src).last(), Some(&RefContext::Body));
     assert_eq!(contexts(src)[2], RefContext::AttributeString);
 }
+
+#[test]
+fn a_sigil_prefixed_doc_region_classifies_its_prose_as_attribute_string() {
+    let src = "-doc ~S\"\"\"\n\
+               Prose with a full stop.\n\
+               1> rabbit_misc:version().\n\
+               \"\"\".\n\
+               v() -> rabbit_misc:version().\n";
+    assert_eq!(
+        contexts(src),
+        vec![
+            RefContext::OtherAttribute,
+            RefContext::AttributeString,
+            RefContext::AttributeString,
+            RefContext::AttributeString,
+            RefContext::Body,
+        ]
+    );
+    assert_eq!(calls(src), vec!["rabbit_misc:version/0"]);
+}
+
+#[test]
+fn a_multi_line_nominal_body_classifies_as_type_attribute_context() {
+    let src = "-nominal query_result() ::\n\
+               \x20   ra:index() |\n\
+               \x20   ra_server:state().\n\
+               run() -> ra:members(S).\n";
+    assert_eq!(
+        contexts(src),
+        vec![
+            RefContext::TypeAttribute,
+            RefContext::TypeAttribute,
+            RefContext::TypeAttribute,
+            RefContext::Body,
+        ]
+    );
+    assert_eq!(calls(src), vec!["ra:members/1"]);
+}

@@ -24,7 +24,9 @@ use std::str;
 use std::str::FromStr;
 
 use backhopper_erlang_scan::{
-    arity_of_args, count_top_level_commas, parse_callable_signature, take_balanced_parens,
+    arity_of_args, count_top_level_commas, dot_terminates, hash_inside_number, is_name_byte,
+    is_type_declaration_keyword, parse_callable_signature, quoted_atom_span,
+    skip_char_literal_span, string_span, take_balanced_parens,
 };
 
 use crate::compat::target_tree_index::TargetTreeIndex;
@@ -192,7 +194,7 @@ pub fn extract_macro_uses(src: &str) -> Vec<ScannedUse> {
             k += 1;
         }
         let start = k;
-        while k < bytes.len() && is_name_char(bytes[k]) {
+        while k < bytes.len() && is_name_byte(bytes[k]) {
             k += 1;
         }
         (start, k)
@@ -213,8 +215,14 @@ pub fn extract_record_uses(src: &str) -> Vec<ScannedUse> {
             }
             return (start, k);
         }
+        // `#_{...}` wildcards and `#Var{...}` native records declare no
+        // lowercase record name: reporting one flags a missing record
+        match bytes.get(start) {
+            Some(b) if b.is_ascii_lowercase() => {}
+            _ => return (start, start),
+        }
         let mut k = start;
-        while k < bytes.len() && is_name_char(bytes[k]) {
+        while k < bytes.len() && is_name_byte(bytes[k]) {
             k += 1;
         }
         (start, k)
@@ -252,17 +260,18 @@ fn scan_uses(
                     i += 1;
                 }
             }
-            b'"' => {
-                let end = skip_string(bytes, i, b'"');
+            b'"' | b'~' => {
+                let end = i + string_span(bytes, i).unwrap_or(1);
                 line += newline_count(&bytes[i..end]);
                 i = end;
             }
-            b'$' => i += 2.min(bytes.len() - i),
+            b'$' => i += skip_char_literal_span(bytes, i),
             b'\'' => {
-                let end = skip_string(bytes, i, b'\'');
+                let end = i + quoted_atom_span(bytes, i).unwrap_or(1);
                 line += newline_count(&bytes[i..end]);
                 i = end;
             }
+            b'#' if sigil == b'#' && hash_inside_number(bytes, i) => i += 1,
             b if b == sigil => {
                 let (start, end) = name_span(bytes, i + 1);
                 if end > start {
@@ -331,14 +340,14 @@ fn signatures_with_line_context(src: &str, ctx: Option<&[RefContext]>) -> Vec<Fu
                     i += 1;
                 }
             }
-            b'"' => {
-                let end = skip_string(bytes, i, b'"');
+            b'"' | b'~' => {
+                let end = i + string_span(bytes, i).unwrap_or(1);
                 line += count_newlines(&bytes[i..end]);
                 i = end;
             }
-            b'$' => i += 2.min(bytes.len() - i),
+            b'$' => i += skip_char_literal_span(bytes, i),
             b'\'' => {
-                let end = skip_string(bytes, i, b'\'');
+                let end = i + quoted_atom_span(bytes, i).unwrap_or(1);
                 line += count_newlines(&bytes[i..end]);
                 i = end;
             }
@@ -346,20 +355,20 @@ fn signatures_with_line_context(src: &str, ctx: Option<&[RefContext]>) -> Vec<Fu
                 in_attribute = true;
                 i += 1;
             }
-            b'.' if in_attribute && is_form_terminator(bytes, i) => {
+            b'.' if in_attribute && dot_terminates(bytes, i) => {
                 in_attribute = false;
                 i += 1;
             }
             b if b.is_ascii_uppercase() || b == b'_' => {
                 // consume the whole variable name so its tail is not re-lexed
-                while i < bytes.len() && is_name_char(bytes[i]) {
+                while i < bytes.len() && is_name_byte(bytes[i]) {
                     i += 1;
                 }
             }
             b if b.is_ascii_lowercase() => {
                 let start = i;
                 let mut j = i;
-                while j < bytes.len() && is_name_char(bytes[j]) {
+                while j < bytes.len() && is_name_byte(bytes[j]) {
                     j += 1;
                 }
                 let name = &bytes[start..j];
@@ -414,15 +423,6 @@ fn at_form_start(bytes: &[u8], pos: usize) -> bool {
         .rev()
         .take_while(|&&b| b != b'\n')
         .all(|&b| b.is_ascii_whitespace())
-}
-
-/// True when `.` at `pos` ends a form: followed by whitespace or end of
-/// input, not a `..` range or a `mod.field` dot.
-fn is_form_terminator(bytes: &[u8], pos: usize) -> bool {
-    match bytes.get(pos + 1) {
-        None => true,
-        Some(b) => b.is_ascii_whitespace(),
-    }
 }
 
 /// A function brought into a module's namespace by `-import(Module,
@@ -585,10 +585,6 @@ pub fn extract_exported_types(src: &str) -> ExportedTypeSet {
     ExportedTypeSet { types, complete }
 }
 
-/// All three declare a name; their visibility and equivalence rules
-/// differ, which does not bear on whether an export resolves.
-const TYPE_DECL_KEYWORDS: [&[u8]; 3] = [b"type", b"opaque", b"nominal"];
-
 /// True when the source declares a macro-expanded attribute form
 /// (`-?PROTOCOL_TYPE(t()).`), which can expand to any attribute:
 /// `rabbit_framing` declares its whole type surface this way. No
@@ -603,9 +599,9 @@ pub fn has_macro_expanded_attribute(src: &str) -> bool {
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
-            b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
             b'-' if at_form_start(bytes, i) => {
                 let rest = &bytes[i + 1..];
                 let after_space = rest.iter().position(|b| !b.is_ascii_whitespace());
@@ -634,18 +630,21 @@ pub fn extract_defined_types(src: &str) -> BTreeSet<(TypeName, Arity)> {
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
-            b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
             b'-' if at_form_start(bytes, i) => {
-                let Some(keyword) = TYPE_DECL_KEYWORDS
-                    .iter()
-                    .find(|k| at_keyword(bytes, i + 1, k))
-                else {
+                let name_start = i + 1;
+                let mut name_end = name_start;
+                while name_end < bytes.len() && is_attribute_name_char(bytes[name_end]) {
+                    name_end += 1;
+                }
+                let name = str::from_utf8(&bytes[name_start..name_end]).unwrap_or("");
+                if !is_type_declaration_keyword(name) {
                     i += 1;
                     continue;
-                };
-                let body_start = i + 1 + keyword.len();
+                }
+                let body_start = name_end;
                 let body_end = form_end(bytes, body_start);
                 let body = str::from_utf8(&bytes[body_start..body_end]).unwrap_or("");
                 if let Some((name, arity)) = parse_type_name_arity(strip_outer_parens(body))
@@ -668,7 +667,7 @@ fn parse_type_name_arity(body: &str) -> Option<(String, usize)> {
     let trimmed = body.trim();
     let name_end = trimmed
         .bytes()
-        .position(|b| !is_name_char(b))
+        .position(|b| !is_name_byte(b))
         .unwrap_or(trimmed.len());
     if name_end == 0 {
         return None;
@@ -738,9 +737,9 @@ fn extract_signature_forms(src: &str, keyword: &[u8]) -> SpecTable {
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
-            b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
             b'-' if at_form_start(bytes, i) && at_keyword(bytes, i + 1, keyword) => {
                 let body_start = i + 1 + keyword.len();
                 let body_end = form_end(bytes, body_start);
@@ -793,10 +792,10 @@ fn form_end(bytes: &[u8], start: usize) -> usize {
                     i += 1;
                 }
             }
-            b'"' => i = skip_string(bytes, i, b'"'),
-            b'$' => i += 2.min(bytes.len() - i),
-            b'\'' => i = skip_string(bytes, i, b'\''),
-            b'.' if is_form_terminator(bytes, i) => return i,
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
+            b'.' if dot_terminates(bytes, i) => return i,
             _ => i += 1,
         }
     }
@@ -806,7 +805,7 @@ fn form_end(bytes: &[u8], start: usize) -> usize {
 fn parse_fun_arity(entry: &str) -> Option<(String, usize)> {
     let (name, arity) = entry.trim().split_once('/')?;
     let name = name.trim();
-    if name.is_empty() || !name.bytes().all(is_name_char) {
+    if name.is_empty() || !name.bytes().all(is_name_byte) {
         return None;
     }
     Some((name.to_owned(), arity.trim().parse().ok()?))
@@ -882,10 +881,6 @@ pub fn is_predefined_macro(name: &str) -> bool {
             | "FEATURE_AVAILABLE"
             | "FEATURE_ENABLED"
     )
-}
-
-fn is_name_char(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_' || b == b'@'
 }
 
 fn parse_macro_define_name(body: &str) -> Option<String> {
@@ -1063,14 +1058,18 @@ fn iter_attribute_bodies<'a>(src: &'a str, names: &'a [&'a str]) -> Vec<AttrHit<
             }
             continue;
         }
-        if b == b'"' {
-            let end = skip_string(bytes, i, b'"');
+        if b == b'"' || b == b'~' {
+            let end = i + string_span(bytes, i).unwrap_or(1);
             line += newline_count(&bytes[i..end]);
             i = end;
             continue;
         }
+        if b == b'$' {
+            i += skip_char_literal_span(bytes, i);
+            continue;
+        }
         if b == b'\'' {
-            let end = skip_string(bytes, i, b'\'');
+            let end = i + quoted_atom_span(bytes, i).unwrap_or(1);
             line += newline_count(&bytes[i..end]);
             i = end;
             continue;
@@ -1142,12 +1141,16 @@ fn match_parens(bytes: &[u8], start: usize) -> Option<usize> {
                     return Some(i);
                 }
             }
-            b'"' => {
-                i = skip_string(bytes, i, b'"');
+            b'"' | b'~' => {
+                i += string_span(bytes, i).unwrap_or(1);
+                continue;
+            }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
                 continue;
             }
             b'\'' => {
-                i = skip_string(bytes, i, b'\'');
+                i += quoted_atom_span(bytes, i).unwrap_or(1);
                 continue;
             }
             b'%' => {
@@ -1161,21 +1164,6 @@ fn match_parens(bytes: &[u8], start: usize) -> Option<usize> {
         i += 1;
     }
     None
-}
-
-fn skip_string(bytes: &[u8], start: usize, quote: u8) -> usize {
-    let mut i = start + 1;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' && i + 1 < bytes.len() {
-            i += 2;
-            continue;
-        }
-        if bytes[i] == quote {
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
 }
 
 fn newline_count(span: &[u8]) -> u32 {

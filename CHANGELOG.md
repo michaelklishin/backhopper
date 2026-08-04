@@ -2,7 +2,32 @@
 
 ## v0.31.0 (in development)
 
-No changes yet.
+### Enhancements
+
+ * Erlang lexers now handle EEP-66 sigil strings (`~"..."`, `~S"""`,
+   plus the delimiter forms)
+ * Support for `-nominal` types (EEP 69, new in Erlang 28)
+ * The `-spec` type parser understands ranges (`1..255`), binary
+   specs (`<<_:8>>`), annotated types (`Name :: t()`), based and
+   underscored integers, char literals, and the Erlang 27 and 28
+   built-ins (`dynamic()` and the `nonempty_*` family)
+
+### Bug Fixes
+
+ * A based numeric literal (`16#ff`, `16#fe.fe#e16`) no longer
+   produces a phantom record reference
+ * A dotted expression or based float in a `-define` body no longer
+   truncates the macro table entry
+ * A triple-quoted string in a function body no longer swallows the
+   clause heads after it
+ * Record fields with map defaults or map types
+   (`f = #{a => b} :: map()`) no longer truncate at the `=>`
+ * A form ending in `.` immediately followed by a `%` comment now
+   terminates where the compiler says it does
+ * Comments inside attribute bodies no longer perturb the argument
+   scanners: a comment with a stray apostrophe in `khepri.erl`'s
+   export list was silently dropping 93 exports per tag, and entries
+   directly below a comment line were lost in `ra_lib`
 
 
 ## v0.30.0 (August 1, 2026)

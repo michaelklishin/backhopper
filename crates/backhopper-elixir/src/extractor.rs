@@ -14,7 +14,7 @@ pub use backhopper_core::extract::{ExtractError, ExtractedSource};
 use backhopper_core::extract::classify_visibility;
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, TypeName};
 use backhopper_core::model::snapshot::{CallbackSig, FunArity, Module, SpecSig, TypeDecl};
-use backhopper_core::snapshot::spec_normalize::normalize_signature;
+use backhopper_core::snapshot::spec_normalize::normalize_elixir_signature;
 use regex::Regex;
 use tracing::warn;
 
@@ -207,7 +207,7 @@ fn collect_module_recursive(
                 types.push(TypeDecl {
                     name,
                     arity: Arity::new(arity),
-                    rhs: normalize_signature(&rhs),
+                    rhs: normalize_elixir_signature(&rhs),
                 });
             }
             continue;

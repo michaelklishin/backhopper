@@ -316,6 +316,7 @@ fn scan_macro_body_calls(
         let Some(byte) = sc.peek() else { break };
         match byte {
             b'"' => sc.consume_string(),
+            b'~' => sc.consume_sigil_or_advance(),
             b'\'' => sc.consume_quoted_atom(),
             b'$' => sc.consume_char_literal(),
             b'%' => sc.skip_line(),
@@ -483,6 +484,7 @@ fn parse_literal_args(
                 arg_start = sc.pos().byte_offset as usize;
             }
             b'"' => sc.consume_string(),
+            b'~' => sc.consume_sigil_or_advance(),
             b'\'' => sc.consume_quoted_atom(),
             b'$' => sc.consume_char_literal(),
             b'%' => sc.skip_line(),

@@ -36,3 +36,34 @@ fn normalizer_wraps_long_top_level_alternatives() {
         "expected wrapping for long alternatives, got {n:?}"
     );
 }
+
+#[test]
+fn char_literal_quote_does_not_open_a_string() {
+    // whitespace after `$"` must still collapse: the quote is a char
+    // literal, not a string opener
+    assert_eq!(
+        normalize_signature("quote_char() ->   $\"   |   eof"),
+        "quote_char() -> $\" | eof"
+    );
+}
+
+#[test]
+fn char_literal_space_is_preserved() {
+    assert_eq!(normalize_signature("space() ->   $ "), "space() -> $ ");
+}
+
+#[test]
+fn char_literal_comma_and_parens_pass_through() {
+    assert_eq!(
+        normalize_signature("{sep,  $,,  open,  $(,  close,  $)}"),
+        "{sep, $,, open, $(, close, $)}"
+    );
+}
+
+#[test]
+fn char_literal_percent_does_not_start_a_comment() {
+    assert_eq!(
+        normalize_signature("percent() -> $% | eof"),
+        "percent() -> $% | eof"
+    );
+}

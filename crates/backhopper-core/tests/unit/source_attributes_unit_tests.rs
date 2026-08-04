@@ -563,3 +563,65 @@ fn self_derived_context_matches_context_free_extraction() {
         extract_function_signatures(src)
     );
 }
+
+#[test]
+fn doc_triple_quoted_block_between_functions_yields_real_calls_only() {
+    let src = r#"start() -> ra_directory:init().
+-doc """
+Prose that mentions fake_call(1) and half a "string.
+""".
+stop() -> ra_directory:deinit().
+"#;
+    let sigs = extract_function_signatures(src);
+    let names: Vec<&str> = sigs.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["start", "stop"]);
+}
+
+#[test]
+fn char_literal_quote_escape_does_not_perturb_later_signatures() {
+    let src = "quote() -> $\\'.\nmembers(Cluster) -> Cluster.\n";
+    let sigs = extract_function_signatures(src);
+    let names: Vec<(&str, usize)> = sigs.iter().map(|s| (s.name.as_str(), s.arity)).collect();
+    assert_eq!(names, vec![("quote", 0), ("members", 1)]);
+}
+
+#[test]
+fn based_literal_hash_is_not_a_record_use() {
+    let uses = extract_record_uses("mask() -> X = 16#ff, X.\n");
+    assert!(uses.is_empty());
+    let uses = extract_record_uses("mask() -> X = 16#ff, #ff{}.\n");
+    let names: Vec<&str> = uses.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(names, vec!["ff"]);
+}
+
+#[test]
+fn record_update_shapes_keep_their_references() {
+    let uses = extract_record_uses("update(State2) -> State2#state{count = 1}.\n");
+    assert_eq!(uses.len(), 1);
+    assert_eq!(uses[0].name, "state");
+    let uses = extract_record_uses("update(X2) -> X2 #state{}.\n");
+    assert_eq!(uses.len(), 1);
+    assert_eq!(uses[0].name, "state");
+}
+
+#[test]
+fn based_float_exponent_hash_is_not_a_record_use() {
+    let uses = extract_record_uses("scale() -> Y = 16#fe.fe#e16, Y.\n");
+    assert!(uses.is_empty());
+    let uses = extract_record_uses("bits() -> X = 2#1010, #state{}.\n");
+    let names: Vec<&str> = uses.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(names, vec!["state"]);
+}
+
+#[test]
+fn wildcard_and_variable_record_uses_report_no_name() {
+    let uses = extract_record_uses("f(X) -> {#_{}, X#state{a = 1}, #'Weird'{}}.\n");
+    let names: Vec<&str> = uses.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(names, vec!["state", "Weird"]);
+}
+
+#[test]
+fn a_conditional_match_produces_no_phantom_macro_use() {
+    let uses = extract_macro_uses("go(Id) ->\n    maybe Pid ?= find(Id), Pid end.\n");
+    assert!(uses.is_empty());
+}

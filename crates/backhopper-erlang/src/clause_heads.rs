@@ -16,6 +16,8 @@ use backhopper_core::compat::call_sites::{classify_arg, split_top_level_args};
 use backhopper_core::model::names::{Arity, FunctionName};
 use backhopper_core::model::snapshot::FunArity;
 
+use backhopper_erlang_scan::{dot_terminates, quoted_atom_span, string_span};
+
 use crate::tokenizer::skip_char_literal_span;
 
 pub fn extract(source: &str) -> BTreeMap<FunArity, Vec<Vec<ArgShape>>> {
@@ -133,33 +135,29 @@ fn take_balanced(bytes: &[u8], open_at: usize) -> Option<((usize, usize), usize)
     debug_assert_eq!(bytes[open_at], b'(');
     let inner_start = open_at + 1;
     let mut depth_paren = 1i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut prev_back = false;
     let mut cursor = inner_start;
     while cursor < bytes.len() {
-        let ch = bytes[cursor] as char;
-        if prev_back {
-            prev_back = false;
-            cursor += 1;
-            continue;
-        }
-        match ch {
-            '\\' if in_string || in_atom_quote => prev_back = true,
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '%' if !in_string && !in_atom_quote => {
+        match bytes[cursor] {
+            b'"' | b'~' => {
+                cursor += string_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'\'' => {
+                cursor += quoted_atom_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'%' => {
                 cursor = skip_to_eol(bytes, cursor);
                 continue;
             }
             // a $ char literal like $( or $" is data: consume the whole span
             // so it cannot unbalance brackets or toggle string state
-            '$' if !in_string && !in_atom_quote => {
+            b'$' => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;
             }
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => {
+            b'(' => depth_paren += 1,
+            b')' => {
                 depth_paren -= 1;
                 if depth_paren == 0 {
                     return Some(((inner_start, cursor), cursor + 1));
@@ -212,39 +210,33 @@ fn skip_to_arrow(bytes: &[u8], start: usize) -> Option<usize> {
     let mut depth_paren = 0i32;
     let mut depth_brace = 0i32;
     let mut depth_brack = 0i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut prev_back = false;
     while cursor + 1 < bytes.len() {
-        let ch = bytes[cursor] as char;
-        if prev_back {
-            prev_back = false;
-            cursor += 1;
-            continue;
-        }
-        match ch {
-            '\\' if in_string || in_atom_quote => prev_back = true,
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '%' if !in_string && !in_atom_quote => {
+        match bytes[cursor] {
+            b'"' | b'~' => {
+                cursor += string_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'\'' => {
+                cursor += quoted_atom_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'%' => {
                 cursor = skip_to_eol(bytes, cursor);
                 continue;
             }
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
+            b'(' => depth_paren += 1,
+            b')' => depth_paren -= 1,
+            b'{' => depth_brace += 1,
+            b'}' => depth_brace -= 1,
+            b'[' => depth_brack += 1,
+            b']' => depth_brack -= 1,
             // a $ char literal like $" or $- is data: consume the whole span
             // so it cannot toggle string state or read as the -> arrow
-            '$' if !in_string && !in_atom_quote => {
+            b'$' => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;
             }
-            '-' if !in_string
-                && !in_atom_quote
-                && depth_paren == 0
+            b'-' if depth_paren == 0
                 && depth_brace == 0
                 && depth_brack == 0
                 && bytes[cursor + 1] == b'>' =>
@@ -266,57 +258,43 @@ fn skip_body(bytes: &[u8], from: usize) -> usize {
     let mut depth_paren = 0i32;
     let mut depth_brace = 0i32;
     let mut depth_brack = 0i32;
-    let mut in_string = false;
-    let mut in_atom_quote = false;
-    let mut prev_back = false;
     while cursor < bytes.len() {
-        let ch = bytes[cursor] as char;
-        if prev_back {
-            prev_back = false;
-            cursor += 1;
-            continue;
-        }
-        match ch {
-            '\\' if in_string || in_atom_quote => prev_back = true,
-            '"' if !in_atom_quote => in_string = !in_string,
-            '\'' if !in_string => in_atom_quote = !in_atom_quote,
-            '%' if !in_string && !in_atom_quote => {
+        match bytes[cursor] {
+            b'"' | b'~' => {
+                cursor += string_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'\'' => {
+                cursor += quoted_atom_span(bytes, cursor).unwrap_or(1);
+                continue;
+            }
+            b'%' => {
                 cursor = skip_to_eol(bytes, cursor);
                 continue;
             }
-            '(' if !in_string && !in_atom_quote => depth_paren += 1,
-            ')' if !in_string && !in_atom_quote => depth_paren -= 1,
-            '{' if !in_string && !in_atom_quote => depth_brace += 1,
-            '}' if !in_string && !in_atom_quote => depth_brace -= 1,
-            '[' if !in_string && !in_atom_quote => depth_brack += 1,
-            ']' if !in_string && !in_atom_quote => depth_brack -= 1,
+            b'(' => depth_paren += 1,
+            b')' => depth_paren -= 1,
+            b'{' => depth_brace += 1,
+            b'}' => depth_brace -= 1,
+            b'[' => depth_brack += 1,
+            b']' => depth_brack -= 1,
             // a $ char literal like $" or $; is data: consume the whole span
             // so it cannot toggle string state or read as a clause terminator
-            '$' if !in_string && !in_atom_quote => {
+            b'$' => {
                 cursor += skip_char_literal_span(bytes, cursor);
                 continue;
             }
-            '.' | ';'
-                if !in_string
-                    && !in_atom_quote
-                    && depth_paren == 0
-                    && depth_brace == 0
-                    && depth_brack == 0 =>
+            b'.' if depth_paren == 0
+                && depth_brace == 0
+                && depth_brack == 0
+                && dot_terminates(bytes, cursor) =>
             {
-                let after = cursor + 1;
-                let next = bytes.get(after).copied();
-                let prev = if cursor > 0 {
-                    Some(bytes[cursor - 1])
-                } else {
-                    None
-                };
-                let next_is_alnum =
-                    matches!(next, Some(b) if b.is_ascii_alphanumeric() || b == b'_');
-                let prev_is_alnum =
-                    matches!(prev, Some(b) if b.is_ascii_alphanumeric() || b == b'_');
-                let is_terminator = matches!(next, Some(b'\n') | Some(b' ') | Some(b'\t') | None);
-                if is_terminator && !next_is_alnum && !(prev_is_alnum && next == Some(b'.')) {
-                    return after;
+                return cursor + 1;
+            }
+            b';' if depth_paren == 0 && depth_brace == 0 && depth_brack == 0 => {
+                let next = bytes.get(cursor + 1).copied();
+                if matches!(next, Some(b'\n') | Some(b' ') | Some(b'\t') | None) {
+                    return cursor + 1;
                 }
             }
             _ => {}

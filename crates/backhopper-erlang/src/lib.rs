@@ -24,4 +24,4 @@ pub use extractor::{ErlangExtractor, ExtractError, ExtractedSource};
 /// could rewrite extraction results for the same input (new attribute support,
 /// fixed parser bug, new clause-head capture, etc.). Snapshots embed this in
 /// their header so `snapshots verify --all` can warn on drift.
-pub const EXTRACTOR_VERSION: &str = "6";
+pub const EXTRACTOR_VERSION: &str = "7";

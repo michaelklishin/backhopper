@@ -340,3 +340,28 @@ fn extract_definitions_into_ignores_non_definition_lines() {
     extract_definitions_into("    cowboy_req:set_resp_header(...)", &mut out);
     assert!(out.is_empty());
 }
+
+fn record_names(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    extract_into(line, &mut out);
+    out.iter()
+        .filter_map(|s| match &s.kind {
+            SymbolKind::Record { name } => Some(name.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn based_literals_produce_no_record_references() {
+    assert!(record_names("X = 16#ff,").is_empty());
+    assert!(record_names("Y = 16#fe.fe#e16,").is_empty());
+}
+
+#[test]
+fn record_references_survive_the_number_guard() {
+    assert_eq!(record_names("State2#state{count = 1}"), vec!["state"]);
+    assert_eq!(record_names("X2 #state{}"), vec!["state"]);
+    assert_eq!(record_names("X = 2#1010, #state{}"), vec!["state"]);
+    assert_eq!(record_names("#ff{}"), vec!["ff"]);
+}

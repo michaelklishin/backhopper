@@ -16,7 +16,40 @@ fn identity_line_map(src: &str) -> Vec<u32> {
 }
 
 fn atom() -> impl Strategy<Value = String> {
-    "[a-z][a-z0-9_]{0,10}"
+    // a reserved word is not a legal bare atom in these positions
+    "[a-z][a-z0-9_]{0,10}".prop_filter("reserved word", |s| {
+        !matches!(
+            s.as_str(),
+            "after"
+                | "and"
+                | "andalso"
+                | "band"
+                | "begin"
+                | "bnot"
+                | "bor"
+                | "bsl"
+                | "bsr"
+                | "bxor"
+                | "case"
+                | "catch"
+                | "cond"
+                | "div"
+                | "end"
+                | "fun"
+                | "if"
+                | "let"
+                | "maybe"
+                | "not"
+                | "of"
+                | "or"
+                | "orelse"
+                | "receive"
+                | "rem"
+                | "try"
+                | "when"
+                | "xor"
+        )
+    })
 }
 
 /// One well-formed Elixir rpc form with a literal module and function,

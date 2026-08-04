@@ -76,3 +76,29 @@ fn classifies_doc_hidden() {
     let d = classify_first("-doc(hidden).\n");
     assert!(matches!(d, ParsedAttribute::DocHidden));
 }
+
+#[test]
+fn export_entries_annotated_with_comments_all_survive() {
+    let attr = classify_first(
+        "-export([ignore/2,\n         % maybe\n         iter_maybe/2,\n         % coercion\n         to_list/1,\n         cons/2]).\n",
+    );
+    match attr {
+        ParsedAttribute::Export(items) => {
+            let names: Vec<String> = items.iter().map(|fa| fa.name.to_string()).collect();
+            assert_eq!(names, vec!["ignore", "iter_maybe", "to_list", "cons"]);
+        }
+        other => panic!("expected export, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_export_entry_with_a_trailing_comment_survives() {
+    let attr = classify_first("-export([foo/1, %% legacy\n bar/2 %% note\n]).\n");
+    match attr {
+        ParsedAttribute::Export(items) => {
+            let names: Vec<String> = items.iter().map(|fa| fa.name.to_string()).collect();
+            assert_eq!(names, vec!["foo", "bar"]);
+        }
+        other => panic!("expected export, got {other:?}"),
+    }
+}

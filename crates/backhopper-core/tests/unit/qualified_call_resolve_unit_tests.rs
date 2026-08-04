@@ -501,10 +501,10 @@ fn a_missing_source_spec_withholds_and_is_counted() {
 
 #[test]
 fn an_unmodelled_return_type_withholds_and_is_counted() {
-    // A literal bitstring type is not modeled by the return parser: SpecType::Unknown.
+    // a macro in return position is not modeled by the return parser
     let analysis = analyse_shapes(
         "f(S) -> rabbit_classic_queue_index_v2:info(S).\n",
-        "-spec info(state()) -> <<_:8, _:_*8>>.\n",
+        "-spec info(state()) -> ?RESULT_TYPE.\n",
         "-spec info(state()) -> list().\n",
     );
     assert!(

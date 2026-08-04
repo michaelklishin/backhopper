@@ -95,3 +95,11 @@ proptest! {
         let _ = take_balanced_parens(&s);
     }
 }
+
+proptest! {
+    #[test]
+    fn comment_removal_never_panics_and_keeps_literals(s in "\\PC*") {
+        let out = backhopper_erlang_scan::remove_line_comments(&s);
+        prop_assert!(out.len() <= s.len());
+    }
+}

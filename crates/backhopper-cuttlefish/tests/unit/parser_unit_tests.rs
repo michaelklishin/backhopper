@@ -225,3 +225,55 @@ fn a_triple_quoted_string_does_not_swallow_the_mapping_after_it() {
     assert_eq!(frags.len(), 2);
     assert!(frags.iter().all(|f| f.kind == FragmentKind::Mapping));
 }
+
+#[test]
+fn a_sigil_doc_string_with_an_unbalanced_brace_leaves_both_mappings_parsed() {
+    let src = "{mapping, \"a.b\", \"app.a_b\", [{doc, ~s(unbalanced { brace)}]}.\n\
+               {mapping, \"c.d\", \"app.c_d\", []}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    assert_eq!(frags.len(), 2);
+}
+
+#[test]
+fn nested_blocks_still_locate_the_outer_end() {
+    let schema = r#"{translation, "ra.wal_dir",
+ fun(Conf) ->
+   case cuttlefish:conf_get("ra.wal_dir", Conf) of
+     undefined -> begin default end;
+     Dir -> Dir
+   end
+ end}.
+"#;
+    let frags = parse_schema(schema, p()).expect("parse");
+    assert_eq!(frags.len(), 1);
+    let body = frags[0].erlang_body.as_deref().expect("body");
+    assert!(body.starts_with("case"));
+    assert!(body.ends_with("end"));
+    assert!(!body.contains("end}"));
+}
+
+#[test]
+fn arrow_inside_a_doc_string_does_not_mislocate_the_body() {
+    let schema = r#"{translation, "ra.notes",
+ fun(Conf) ->
+   Doc = ~s(maps a -> b at startup),
+   Note = "see a -> b at the end of startup",
+   Note
+ end}.
+"#;
+    let frags = parse_schema(schema, p()).expect("parse");
+    assert_eq!(frags.len(), 1);
+    let body = frags[0].erlang_body.as_deref().expect("body");
+    assert!(body.starts_with("Doc ="));
+    assert!(body.ends_with("Note"));
+}
+
+#[test]
+fn a_maybe_block_inside_a_fun_body_keeps_the_located_end() {
+    let src = "{translation, \"a.b\",\n fun(Conf) ->\n   maybe V ?= cuttlefish:conf_get(\"a.b\", Conf), V else _ -> 1 end\n end}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    assert_eq!(frags.len(), 1);
+    let body = frags[0].erlang_body.as_deref().unwrap();
+    assert!(body.starts_with("maybe"), "body: {body}");
+    assert!(body.ends_with("end"), "body: {body}");
+}

@@ -34,6 +34,7 @@ pub(super) fn consume_attribute_body<'a>(sc: &mut Scanner<'a>) -> &'a str {
                 return sc.src_slice(start, end);
             }
             b'"' => sc.consume_string(),
+            b'~' => sc.consume_sigil_or_advance(),
             b'\'' => sc.consume_quoted_atom(),
             b'$' => sc.consume_char_literal(),
             b'%' => sc.skip_line(),

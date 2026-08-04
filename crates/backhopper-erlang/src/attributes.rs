@@ -15,6 +15,7 @@ use crate::specs::{ParsedSignature, parse_callable_signature, parse_type_decl};
 use crate::tokenizer::{
     AttributeBlock, split_top_level_commas, strip_outer_brackets, strip_outer_parens,
 };
+use backhopper_erlang_scan::remove_line_comments;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedAttribute {
@@ -67,12 +68,15 @@ pub fn classify(block: &AttributeBlock) -> Option<ParsedAttribute> {
             body,
         ))),
         "spec" => parse_callable_signature(body).map(ParsedAttribute::Spec),
-        "type" => parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
-            name,
-            arity,
-            rhs,
-            opaque: false,
-        }),
+        // nominal checking is name-based, which does not change the declared surface
+        "type" | "nominal" => {
+            parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
+                name,
+                arity,
+                rhs,
+                opaque: false,
+            })
+        }
         "opaque" => parse_type_decl(body).map(|(name, arity, rhs)| ParsedAttribute::Type {
             name,
             arity,
@@ -106,7 +110,7 @@ fn parse_fun_arity_list(body: &str) -> Vec<FunArity> {
     let inside = strip_outer_brackets(body);
     let mut out = Vec::new();
     for chunk in split_top_level_commas(inside) {
-        if let Some(fa) = parse_single_fun_arity(chunk) {
+        if let Some(fa) = parse_single_fun_arity(&remove_line_comments(chunk)) {
             out.push(fa);
         }
     }
@@ -117,7 +121,7 @@ fn parse_type_arity_list(body: &str) -> Vec<TypeArityRaw> {
     let inside = strip_outer_brackets(body);
     let mut out = Vec::new();
     for chunk in split_top_level_commas(inside) {
-        if let Some((n, a)) = chunk.split_once('/')
+        if let Some((n, a)) = remove_line_comments(chunk).split_once('/')
             && let Ok(arity) = a.trim().parse::<u8>()
         {
             out.push(TypeArityRaw {

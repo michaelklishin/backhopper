@@ -16,8 +16,10 @@
 //! reader that drives `attributes.rs`.
 
 pub use backhopper_erlang_scan::{
-    skip_char_literal_span, split_top_level_commas, triple_quoted_span,
+    sigil_span, skip_char_literal_span, split_top_level_commas, triple_quoted_span,
 };
+
+use backhopper_erlang_scan::{dot_terminates, is_name_byte, number_span};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributeBlock {
@@ -129,6 +131,25 @@ fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
             p = end;
             continue;
         }
+        if !in_string
+            && !in_atom_quote
+            && ch == '~'
+            && let Some(span) = sigil_span(bytes, p)
+        {
+            let end = p + span;
+            newlines += newlines_in(&bytes[p..end]);
+            p = end;
+            continue;
+        }
+        // a based float's interior `.` and `#` are one lexeme
+        if !in_string
+            && !in_atom_quote
+            && ch.is_ascii_digit()
+            && (p == start || !is_name_byte(bytes[p - 1]))
+        {
+            p += number_span(bytes, p).unwrap_or(1);
+            continue;
+        }
         match ch {
             '\\' if in_string || in_atom_quote => prev_back = true,
             '"' if !in_atom_quote => in_string = !in_string,
@@ -152,23 +173,8 @@ fn consume_until_terminating_dot(source: &str, start: usize) -> (usize, usize) {
                 && depth_brace == 0
                 && depth_brack == 0 =>
             {
-                let after = p + 1;
-                let next = bytes.get(after).map(|&b| b as char);
-                let is_terminator = matches!(
-                    next,
-                    Some('\n') | Some('\r') | Some(' ') | Some('\t') | Some('\0') | None
-                );
-                let prev = if p > 0 {
-                    Some(bytes[p - 1] as char)
-                } else {
-                    None
-                };
-                let prev_is_alnum =
-                    matches!(prev, Some(c) if c.is_ascii_alphanumeric() || c == '_');
-                let next_is_alnum =
-                    matches!(next, Some(c) if c.is_ascii_alphanumeric() || c == '_');
-                if is_terminator && !next_is_alnum && !(prev_is_alnum && next == Some('.')) {
-                    return (after, newlines);
+                if dot_terminates(bytes, p) {
+                    return (p + 1, newlines);
                 }
             }
             _ => {}

@@ -11,7 +11,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use backhopper_erlang_scan::skip_char_literal_span;
+use backhopper_erlang_scan::{
+    dot_terminates, is_name_byte, number_span, quoted_atom_span, skip_char_literal_span,
+    string_span,
+};
 
 use crate::erlang_macros::{MacroTable, parse_define};
 
@@ -115,8 +118,9 @@ fn fold_attributes(source: &str, macros: &mut MacroTable, pending: &mut Vec<Path
         }
         at_line_start = false;
         match c {
-            b'"' => i = skip_string(source, i + 1),
-            b'\'' => i = skip_atom(source, i + 1),
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
+            b'$' => i += skip_char_literal_span(bytes, i),
             _ => i += 1,
         }
     }
@@ -125,53 +129,55 @@ fn fold_attributes(source: &str, macros: &mut MacroTable, pending: &mut Vec<Path
 fn scan_to_terminator(source: &str, start: usize) -> usize {
     let bytes = source.as_bytes();
     let mut i = start;
-    let mut depth = 0i32;
+    let mut depth_paren = 0i32;
+    let mut depth_brack = 0i32;
+    let mut depth_brace = 0i32;
     while i < bytes.len() {
         let c = bytes[i];
+        if c.is_ascii_digit() && (i == start || !is_name_byte(bytes[i - 1])) {
+            i += number_span(bytes, i).unwrap_or(1);
+            continue;
+        }
         match c {
-            b'(' | b'[' | b'{' => {
-                depth += 1;
+            b'(' => {
+                depth_paren += 1;
                 i += 1;
             }
-            b')' | b']' | b'}' => {
-                depth -= 1;
+            b'[' => {
+                depth_brack += 1;
                 i += 1;
             }
-            b'.' if depth <= 0 => return i,
-            b'"' => i = skip_string(source, i + 1),
-            b'\'' => i = skip_atom(source, i + 1),
+            b'{' => {
+                depth_brace += 1;
+                i += 1;
+            }
+            b')' => {
+                depth_paren -= 1;
+                i += 1;
+            }
+            b']' => {
+                depth_brack -= 1;
+                i += 1;
+            }
+            b'}' => {
+                depth_brace -= 1;
+                i += 1;
+            }
+            b'.' if depth_paren <= 0
+                && depth_brack <= 0
+                && depth_brace <= 0
+                && dot_terminates(bytes, i) =>
+            {
+                return i;
+            }
+            b'"' | b'~' => i += string_span(bytes, i).unwrap_or(1),
+            b'\'' => i += quoted_atom_span(bytes, i).unwrap_or(1),
             b'$' => i += skip_char_literal_span(bytes, i),
             b'%' => {
                 while i < bytes.len() && bytes[i] != b'\n' {
                     i += 1;
                 }
             }
-            _ => i += 1,
-        }
-    }
-    i
-}
-
-fn skip_string(source: &str, start: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut i = start;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => i = (i + 2).min(bytes.len()),
-            b'"' => return i + 1,
-            _ => i += 1,
-        }
-    }
-    i
-}
-
-fn skip_atom(source: &str, start: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut i = start;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => i = (i + 2).min(bytes.len()),
-            b'\'' => return i + 1,
             _ => i += 1,
         }
     }

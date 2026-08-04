@@ -33,7 +33,10 @@ use crate::model::symbol::{RefContext, RefOrigin, SymbolRef};
 pub use backhopper_erlang_scan::{
     ScanArity, ScannedArgs, scan_top_level_args, split_top_level_args,
 };
-use backhopper_erlang_scan::{count_top_level_items, scan_arity};
+use backhopper_erlang_scan::{
+    count_top_level_items, hash_inside_number, is_bare_atom, opens_type_ref_context, scan_arity,
+    skip_char_literal_span,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DynamicCall {
@@ -346,18 +349,16 @@ fn line_closes_quote_run(line: &str, open: usize) -> bool {
 
 fn line_opens_type_attr(line: &str) -> bool {
     let trimmed = line.trim_start();
-    if !trimmed.starts_with('-') {
+    let Some(rest) = trimmed.strip_prefix('-') else {
+        return false;
+    };
+    let name_end = rest
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '@'))
+        .unwrap_or(rest.len());
+    if !opens_type_ref_context(&rest[..name_end]) {
         return false;
     }
-    for prefix in ["-spec", "-callback", "-type", "-opaque"] {
-        if let Some(rest) = trimmed.strip_prefix(prefix) {
-            match rest.chars().next() {
-                Some(c) if c == '(' || c.is_whitespace() => return true,
-                _ => {}
-            }
-        }
-    }
-    false
+    matches!(rest[name_end..].chars().next(), Some(c) if c == '(' || c.is_whitespace())
 }
 
 /// A line-leading `-` followed by a lowercase letter opens an
@@ -396,10 +397,8 @@ pub fn strip_line_comment(line: &str) -> &str {
             b'"' => in_str = true,
             b'\'' => in_atom = true,
             b'$' => {
-                i += 1;
-                if bytes.get(i) == Some(&b'\\') {
-                    i += 1;
-                }
+                i += skip_char_literal_span(bytes, i);
+                continue;
             }
             b'%' => return &line[..i],
             _ => {}
@@ -485,6 +484,10 @@ fn push_refs_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(Symbol
     push_fun_refs_with_offsets(text, macros, out);
     for caps in record_re().captures_iter(text) {
         let start = caps.get(0).expect("capture").start();
+        // a based literal's `#` is not a record reference
+        if hash_inside_number(text.as_bytes(), start) {
+            continue;
+        }
         if let Ok(name) = RecordName::from_str(&caps[1]) {
             out.push((SymbolRef::record(name), start));
         }
@@ -644,7 +647,7 @@ fn atom_or_macro_to<T: FromStr>(raw: &str, macros: &MacroTable) -> Option<T> {
     if let Some(name) = s.strip_prefix('?') {
         return expand_value_macro_to_atom(macros, name).and_then(|a| T::from_str(&a).ok());
     }
-    if looks_like_lowercase_atom(s) {
+    if is_bare_atom(s) {
         return T::from_str(s).ok();
     }
     if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
@@ -661,15 +664,6 @@ fn literal_list_length(raw: &str) -> Option<u8> {
         return Some(0);
     }
     u8::try_from(count_top_level_items(s, '[', ']')).ok()
-}
-
-fn looks_like_lowercase_atom(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_lowercase() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@')
 }
 
 /// Collects per-call argument shapes from one source line. Mirrors
