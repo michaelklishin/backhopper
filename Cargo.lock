@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "aho-corasick"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
+checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
 dependencies = [
  "memchr",
 ]
@@ -117,7 +117,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cache"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "blake3",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cli"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-erlang-scan",
  "backhopper-test-support",
@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -193,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-driver"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -217,7 +217,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -230,14 +230,14 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang-scan"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "backhopper-git"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "backhopper-test-support",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-test-support"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "tempfile",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "backhopper-xref-graph",
@@ -275,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -358,9 +358,9 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "blake3"
-version = "1.8.5"
+version = "1.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aa83c34e62843d924f905e0f5c866eb1dd6545fc4d719e803d9ba6030371fce"
+checksum = "76ae7bad254120e9e4c63bafc385310756f90c484eac0e36b8317cf09cb92a77"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -416,9 +416,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "bytesize"
-version = "2.6.0"
+version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "351a3e803ee3c6eaeee6b00076b767514b37c32a73d326c3ec7abddb7d6c3493"
+checksum = "7354288c522e7e980fafd2075d63d1285794c3a6a16cdd492f189ea406e5f18b"
 
 [[package]]
 name = "cc"
@@ -954,9 +954,9 @@ dependencies = [
 
 [[package]]
 name = "gix-command"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00706d4fef135ef4b01680d5218c6ee40cda8baf697b864296cbc887d19118f6"
+checksum = "cf4363accdf6ef7ba861871d2d521ab7418a04aaaed919fadb022af71d379b12"
 dependencies = [
  "bstr",
  "gix-path",
@@ -1000,9 +1000,9 @@ dependencies = [
 
 [[package]]
 name = "gix-config-value"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f813e312a3f7f327187823cd4c754a3e4d948c98907d11e8f37554a2b6b8059"
+checksum = "6f6af5321bfd3711a279d6b244d58532ba1cfabf9eb6374791f19929d8970082"
 dependencies = [
  "bitflags 2.13.1",
  "bstr",
@@ -1013,9 +1013,9 @@ dependencies = [
 
 [[package]]
 name = "gix-credentials"
-version = "0.39.0"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b637f873d5f9aa67e672c1b23741a18e046d33028017adede32f4b4087a2e7"
+checksum = "f9fbdb1c417980d05d547c19fc2b63344b5257c2387048d69ffe957bda142b59"
 dependencies = [
  "bstr",
  "gix-command",
@@ -1023,6 +1023,7 @@ dependencies = [
  "gix-date",
  "gix-path",
  "gix-prompt",
+ "gix-quote",
  "gix-sec",
  "gix-trace",
  "gix-url",
@@ -1362,9 +1363,9 @@ dependencies = [
 
 [[package]]
 name = "gix-path"
-version = "0.12.3"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ed3e8d7a82e886e17a72e03d4ba0c13db6f2219b6cd4e2900b4cae426ec20c9"
+checksum = "751d6bd162106f8c1e7e9aaccb5bbdd605267e91a930a17a4560c46e33a9100c"
 dependencies = [
  "bstr",
  "gix-trace",
@@ -1589,9 +1590,9 @@ checksum = "be3eb81d9dc914335923e50d52829c551feefd6a72d176c4130c546b67a60814"
 
 [[package]]
 name = "gix-transport"
-version = "0.58.0"
+version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7c1bcf30081eb8ab04540a5795c67a2fcb22cb2e976e8b1a4ea657b1ed61469"
+checksum = "3f36d045b840f8aeee1a527e677eab1fbebfbbe94bf2e708fa81d0b4b742d5fc"
 dependencies = [
  "bstr",
  "gix-command",
@@ -1623,9 +1624,9 @@ dependencies = [
 
 [[package]]
 name = "gix-url"
-version = "0.37.0"
+version = "0.37.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d10e53b8eae21ee601687f47bbbd6cb2ed7162cb4c1cafdd422fb7ec64cbee"
+checksum = "31bdfc93aa880cda3272718a5879ce3aa7723fa13514320dd6608151607afe72"
 dependencies = [
  "bstr",
  "gix-path",
@@ -2293,9 +2294,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.16"
+version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fcfdb36bda0c880c5931cdc7a2bcdc8ba4556847b9d912bca70bc94708711ad"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -3023,7 +3024,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xtask"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "backhopper-core",
@@ -3054,9 +3055,9 @@ dependencies = [
 
 [[package]]
 name = "zlib-rs"
-version = "0.6.6"
+version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b142a20ec14a91d5bc708c1dc21b080c550113d8aa77afa29635673a65dd02c5"
+checksum = "34b31d188d9d685a4f9c7b46d6e36631b07058d2cfe190267adce54dc230bf12"
 
 [[package]]
 name = "zmij"
