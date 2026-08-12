@@ -299,9 +299,9 @@ dependencies = [
 
 [[package]]
 name = "bel7-cli"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "160c7f536c80cca14d8d1d64101fca093ed63f96f2e6b88a311a4a44f5daf9d8"
+checksum = "df9e5df63d0fd9817a131f84f01d8d8fa1bc34d052fa5b23b9eb7d44a07b0c1c"
 dependencies = [
  "clap",
  "clap_complete",
@@ -2553,9 +2553,9 @@ dependencies = [
 
 [[package]]
 name = "sysexits"
-version = "0.11.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3613ad1bd92252ed318c3b30812e739b6574b2adb7e8656b07e3a1793a2397"
+checksum = "5dffab7eaf1889aaff43c92ee7ffaeeb0d34de8214867c41c6e7587361f867f7"
 
 [[package]]
 name = "tabled"

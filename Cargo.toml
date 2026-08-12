@@ -41,7 +41,7 @@ backhopper-xref        = { path = "crates/backhopper-xref",        version = "0.
 backhopper-driver      = { path = "crates/backhopper-driver",      version = "0.32.0" }
 
 anyhow             = "1.0.102"
-bel7-cli           = { version = "0.13.0", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
+bel7-cli           = { version = "0.14.0", features = ["tables", "clap", "completions", "progress", "errors", "serde"] }
 blake3             = "1.8.5"
 clap               = { version = "4.6.1", features = ["cargo", "derive", "env", "wrap_help"] }
 gix                = { version = "=0.86.0" }
