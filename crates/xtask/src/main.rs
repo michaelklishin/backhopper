@@ -161,7 +161,11 @@ fn run_install(dest: Option<PathBuf>, no_sign: bool, no_warmup: bool) -> Result<
 
     // `codesign` is macOS-only; the guard keeps signing a no-op elsewhere.
     if !no_sign && cfg!(target_os = "macos") {
-        run_command(ProcessCommand::new("codesign").args(["--force", "--sign", "-"]).arg(&dest))?;
+        run_command(
+            ProcessCommand::new("codesign")
+                .args(["--force", "--sign", "-"])
+                .arg(&dest),
+        )?;
         println!("re-signed {}", dest.display());
     }
 
@@ -169,7 +173,10 @@ fn run_install(dest: Option<PathBuf>, no_sign: bool, no_warmup: bool) -> Result<
     // that can stall for tens of seconds. We use `codesign` proactively
     // because a Developer Tools exemption is not a given.
     if !no_warmup {
-        println!("warming up {} (absorbing the macOS first-run scan)", dest.display());
+        println!(
+            "warming up {} (absorbing the macOS first-run scan)",
+            dest.display()
+        );
         run_command(ProcessCommand::new(&dest).arg("--version"))?;
         println!("warmed up {}", dest.display());
     }
