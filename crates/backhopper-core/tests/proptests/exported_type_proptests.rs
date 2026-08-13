@@ -5,7 +5,7 @@
 //! Soundness of the exported-type axis: it may only flag a type that
 //! is in neither the target's declarations nor the patch's.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 use std::path::PathBuf;
 
@@ -70,7 +70,7 @@ fn run(added: &str, target: &str) -> Vec<Reason> {
         [PathBuf::from(ERL)].into_iter().collect(),
     );
     let read_target = |p: &RelativePath| (p.as_str() == ERL).then(|| target.to_owned());
-    analyse_exported_types(&subjects, &index, &read_target)
+    analyse_exported_types(&subjects, &BTreeMap::new(), &index, &read_target)
 }
 
 fn flagged(reasons: &[Reason]) -> BTreeSet<(TypeName, Arity)> {

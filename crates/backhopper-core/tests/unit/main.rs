@@ -93,7 +93,6 @@ mod scope_unit_tests;
 mod self_project_config_unit_tests;
 mod series_evaluation_v2_unit_tests;
 mod series_summary_blocking_unit_tests;
-mod sibling_drift_unit_tests;
 mod snapshot_apps_scanned_unit_tests;
 mod snapshot_diff_payload_unit_tests;
 mod snapshot_enum_labels_unit_tests;

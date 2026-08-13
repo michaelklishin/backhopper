@@ -15,7 +15,7 @@ struct VersionPayload<'a> {
     name: &'a str,
     version: &'a str,
     /// Capability list: every verb this binary ships, as
-    /// space-separated paths (`"check batch"`, `"siblings doctor"`).
+    /// space-separated paths (`"check batch"`, `"suites plan"`).
     /// Lets the driver probe verb presence by name instead of
     /// inferring it from a schema version number.
     verbs: Vec<String>,

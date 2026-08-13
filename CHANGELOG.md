@@ -2,7 +2,22 @@
 
 ## v0.32.0 (in development)
 
-No changes yet.
+### Bug Fixes
+
+ * The macro, record, and exported-type axes now read `-include` and
+   `-include_lib` directives from the patch's added text, so a file a
+   patch adds no longer reports every header-supplied macro and record
+   as undefined on the target. The added module and its header are analyzed
+   together
+
+### Removals
+
+ * The `siblings doctor` verb is removed along with its scoring
+   pipeline, its per-family drift vocabulary, and its workspace cache.
+   It has never proven its work in real world use
+ * As a consequence the envelope schema version moves to 16, which
+   drops the `siblings_doctor_payload` document, the `siblings` cache
+   level, and the `siblings` counters in the `cache stats` payload
 
 ## v0.31.0 (August 5, 2026)
 

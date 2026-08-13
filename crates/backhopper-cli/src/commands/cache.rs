@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! The `cache` verb group: inspection and maintenance of both
-//! workspace caches (the verdict cache and the siblings doctor
-//! cache). Deliberately tiny; every operation is scan-and-filter
-//! over self-describing entries.
+//! The `cache` verb group: inspection and maintenance of the
+//! verdict cache. Deliberately tiny; every operation is
+//! scan-and-filter over self-describing entries.
 
 use crate::outcome::CommandOutcome;
 use std::io::Write;
@@ -90,11 +89,6 @@ fn run_stats(args: &GlobalArgs, caches: &WorkspaceCaches) -> CliResult<CommandOu
                 level: "by-content",
                 entries: payload.by_content.entries,
                 bytes: payload.by_content.bytes,
-            },
-            StatsRow {
-                level: "siblings",
-                entries: payload.siblings.entries,
-                bytes: payload.siblings.bytes,
             },
         ];
         writeln!(w, "{}", styled_table(rows, style))?;

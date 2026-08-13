@@ -13,15 +13,12 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::time::{Duration, SystemTime};
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
 use crate::errors::CacheError;
 
@@ -121,107 +118,4 @@ pub(crate) fn is_older_than(path: &Path, max_age: Duration) -> bool {
     SystemTime::now()
         .duration_since(modified)
         .is_ok_and(|age| age > max_age)
-}
-
-/// One cache directory holding entries of a single logical kind
-/// (e.g. `.siblings_doctor_cache/`).
-#[derive(Debug, Clone)]
-pub struct CacheDir {
-    root: PathBuf,
-    max_age: Option<Duration>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct EntryEnvelope<V> {
-    entry_format_version: u32,
-    written_at: String,
-    key: Value,
-    freshness: Value,
-    value: V,
-}
-
-impl CacheDir {
-    pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            root: root.into(),
-            max_age: None,
-        }
-    }
-
-    /// Adopt a TTL: lookups treat entries older than `max_age` as
-    /// misses and delete them. `None` disables expiry.
-    pub fn with_max_age(mut self, max_age: Option<Duration>) -> Self {
-        self.max_age = max_age;
-        self
-    }
-
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
-    /// Path of the entry for `key` (whether or not it exists).
-    pub fn entry_path<K: Serialize>(&self, key: &K) -> Result<PathBuf, CacheError> {
-        let hash = content_hash(key)?;
-        Ok(self.root.join(entry_file_name(&hash)))
-    }
-
-    /// Serve the stored value for `key` when the entry exists, parses,
-    /// is younger than any configured TTL, and its stored freshness
-    /// document equals `freshness`. Every other outcome (absent, torn,
-    /// foreign layout, expired, stale) is a miss.
-    pub fn lookup<K, F, V>(&self, key: &K, freshness: &F) -> Result<Option<V>, CacheError>
-    where
-        K: Serialize,
-        F: Serialize,
-        V: DeserializeOwned,
-    {
-        let path = self.entry_path(key)?;
-        if let Some(max_age) = self.max_age
-            && is_older_than(&path, max_age)
-        {
-            let _ = fs::remove_file(&path);
-            return Ok(None);
-        }
-        let Ok(bytes) = fs::read(&path) else {
-            return Ok(None);
-        };
-        let Ok(entry) = serde_json::from_slice::<EntryEnvelope<V>>(&bytes) else {
-            tracing::debug!(path = %path.display(), "cache entry unparsable; treating as a miss");
-            return Ok(None);
-        };
-        if entry.entry_format_version != ENTRY_FORMAT_VERSION {
-            return Ok(None);
-        }
-        let expected: Value = serde_json::to_value(freshness)?;
-        if entry.freshness != expected {
-            tracing::debug!(path = %path.display(), "cache entry stale; freshness mismatch");
-            return Ok(None);
-        }
-        Ok(Some(entry.value))
-    }
-
-    /// Write (or overwrite) the entry for `key`. Returns the entry
-    /// path. The write is atomic: temp file in the same directory,
-    /// then rename.
-    pub fn store<K, F, V>(&self, key: &K, freshness: &F, value: &V) -> Result<PathBuf, CacheError>
-    where
-        K: Serialize,
-        F: Serialize,
-        V: Serialize,
-    {
-        let path = self.entry_path(key)?;
-        fs::create_dir_all(&self.root)?;
-        let entry = EntryEnvelope {
-            entry_format_version: ENTRY_FORMAT_VERSION,
-            written_at: OffsetDateTime::now_utc()
-                .format(&Rfc3339)
-                .unwrap_or_default(),
-            key: serde_json::to_value(key)?,
-            freshness: serde_json::to_value(freshness)?,
-            value,
-        };
-        let bytes = serde_json::to_vec_pretty(&entry)?;
-        write_atomic(&path, &bytes)?;
-        Ok(path)
-    }
 }

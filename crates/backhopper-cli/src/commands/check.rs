@@ -767,9 +767,11 @@ fn apply_target_context(
             target_findings.reasons.extend(reasons.iter().cloned());
             target_repo::merge_reasons_into_evaluation(reasons, evaluation);
         };
-        let define_reasons = session.define_symbol_findings(&parsed.files);
+        // built once: both include-walking axes consult the same map
+        let patch_added = target_repo::patch_added_file_map(&parsed.files);
+        let define_reasons = session.define_symbol_findings(&parsed.files, &patch_added);
         merge_symbol_reasons(define_reasons, evaluation);
-        let exported_types = session.exported_type_findings(&parsed.files);
+        let exported_types = session.exported_type_findings(&parsed.files, &patch_added);
         merge_symbol_reasons(exported_types, evaluation);
         let local_calls = session.local_call_findings(&parsed.files, covered_modules);
         merge_symbol_reasons(local_calls.reasons, evaluation);

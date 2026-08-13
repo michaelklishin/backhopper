@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 //! First-parent window walks and cascade-suppression primitives for
-//! `siblings doctor`.
+//! the already-present scan.
 //!
 //! The walk reads each commit once and carries everything later
 //! pipeline stages need (parents, committer time, subject, full
@@ -158,7 +158,7 @@ pub fn patch_id(
 /// BLAKE3 hex over a unified diff with the `@@` hunk-header lines
 /// excluded, so pure offset drift keeps the identity while any
 /// content-line or path drift changes it. Returns `None` for an
-/// empty diff. Shared by the sibling-drift `PatchId` and the verdict
+/// empty diff. Shared by `PatchId` computation and the verdict
 /// cache's content key.
 #[must_use]
 pub fn normalized_patch_hash(diff: &[u8]) -> Option<String> {

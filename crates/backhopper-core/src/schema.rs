@@ -18,7 +18,6 @@ use crate::model::cache::{
     CacheListPayload, CacheMutationPayload, CacheShowPayload, CacheStatsPayload,
 };
 use crate::model::check_payload::CheckPayload;
-use crate::model::sibling_drift::SiblingDoctorReport;
 use crate::model::summary::SummaryRow;
 use crate::suites::SuitePlan;
 
@@ -57,6 +56,10 @@ const SCHEMA_V13_FROZEN: &str = include_str!("schema_v13_snapshot.json");
 /// v14 froze when v15 added `ExportedTypeUndefinedOnTarget` to
 /// `Reason`, which every payload carrying a verdict embeds.
 const SCHEMA_V14_FROZEN: &str = include_str!("schema_v14_snapshot.json");
+/// v15 froze when v16 removed the `siblings doctor` verb: the
+/// `siblings_doctor_payload` document, `CacheLevel::Siblings`, and
+/// `CacheStatsPayload.siblings` left the live types.
+const SCHEMA_V15_FROZEN: &str = include_str!("schema_v15_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -102,7 +105,10 @@ pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
         14 => {
             Ok(serde_json::from_str(SCHEMA_V14_FROZEN).expect("frozen v14 snapshot is valid JSON"))
         }
-        15 => Ok(combined_v15()),
+        15 => {
+            Ok(serde_json::from_str(SCHEMA_V15_FROZEN).expect("frozen v15 snapshot is valid JSON"))
+        }
+        16 => Ok(combined_v16()),
         other => Err(SchemaError::UnknownVersion {
             requested: other,
             known: embedded_versions(),
@@ -150,14 +156,13 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v15() -> Value {
+fn combined_v16() -> Value {
     combined_live(
-        15,
-        "v15 adds `ExportedTypeUndefinedOnTarget` to `Reason`: an `-export_type` entry \
-         a patch adds naming a type the target version of the same module does not \
-         declare. An `erlc` error rather than the dialyzer-level concern `MissingType` \
-         reports, but non-blocking like the other target-tree axes, and carried on \
-         `target_findings` so an inapplicable pin cannot drop it.",
+        16,
+        "v16 removes the `siblings doctor` verb and its wire surface: the \
+         `siblings_doctor_payload` document is gone, `CacheLevel` no longer has a \
+         `siblings` value, and `CacheStatsPayload` no longer carries a `siblings` \
+         level.",
     )
 }
 
@@ -169,8 +174,6 @@ fn combined_live(version: u32, description: &str) -> Value {
         serde_json::to_value(schema_for!(SummaryRow)).expect("SummaryRow schema serialises");
     let batch_payload =
         serde_json::to_value(schema_for!(BatchPayload)).expect("BatchPayload schema serialises");
-    let siblings_doctor_payload = serde_json::to_value(schema_for!(SiblingDoctorReport))
-        .expect("SiblingDoctorReport schema serialises");
     let cache_stats_payload = serde_json::to_value(schema_for!(CacheStatsPayload))
         .expect("CacheStatsPayload schema serialises");
     let cache_list_payload = serde_json::to_value(schema_for!(CacheListPayload))
@@ -186,7 +189,6 @@ fn combined_live(version: u32, description: &str) -> Value {
     };
     obj.insert("summary_row".into(), summary_row);
     obj.insert("batch_payload".into(), batch_payload);
-    obj.insert("siblings_doctor_payload".into(), siblings_doctor_payload);
     obj.insert("cache_stats_payload".into(), cache_stats_payload);
     obj.insert("cache_list_payload".into(), cache_list_payload);
     obj.insert("cache_show_payload".into(), cache_show_payload);

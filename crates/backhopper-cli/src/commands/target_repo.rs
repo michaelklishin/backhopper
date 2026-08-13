@@ -269,6 +269,16 @@ pub fn synthesise_added_file_content(file: &PatchedFile) -> Option<(RelativePath
     Some((path, content))
 }
 
+/// Full text of every file the patch creates, keyed by path. Only pure
+/// additions enter: for a modified file the added lines are not the
+/// whole content, so the target text stays authoritative.
+pub(crate) fn patch_added_file_map(files: &[PatchedFile]) -> BTreeMap<RelativePath, String> {
+    files
+        .iter()
+        .filter_map(synthesise_added_file_content)
+        .collect()
+}
+
 fn is_erl_or_hrl(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())
@@ -456,26 +466,34 @@ impl<'a> TargetResolveSession<'a> {
 
     /// Resolve `?MACRO` and `#record` uses the patch adds against the
     /// target tree.
-    pub(crate) fn define_symbol_findings(&self, files: &[PatchedFile]) -> Vec<Reason> {
+    pub(crate) fn define_symbol_findings(
+        &self,
+        files: &[PatchedFile],
+        patch_added: &BTreeMap<RelativePath, String>,
+    ) -> Vec<Reason> {
         let subjects_text = collect_define_subject_text(files);
         if subjects_text.is_empty() {
             return Vec::new();
         }
         let read_target = |path: &RelativePath| self.read_target_text(path);
         let subjects = to_subjects(&subjects_text);
-        analyse_define_symbols(&subjects, &self.ctx.index, &read_target)
+        analyse_define_symbols(&subjects, patch_added, &self.ctx.index, &read_target)
     }
 
     /// Resolve `-export_type` entries the patch adds against the type
     /// declarations the target module reaches. `.erl` files only.
-    pub(crate) fn exported_type_findings(&self, files: &[PatchedFile]) -> Vec<Reason> {
+    pub(crate) fn exported_type_findings(
+        &self,
+        files: &[PatchedFile],
+        patch_added: &BTreeMap<RelativePath, String>,
+    ) -> Vec<Reason> {
         let subjects_text = erl_subject_text(files);
         if subjects_text.is_empty() {
             return Vec::new();
         }
         let read_target = |path: &RelativePath| self.read_target_text(path);
         let subjects = to_subjects(&subjects_text);
-        analyse_exported_types(&subjects, &self.ctx.index, &read_target)
+        analyse_exported_types(&subjects, patch_added, &self.ctx.index, &read_target)
     }
 
     /// Resolve unqualified calls the patch adds against the target

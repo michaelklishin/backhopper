@@ -20,7 +20,6 @@ elements that are not available in a specific dependency version.
 | Check many commits or several series at once | [Checking Many Commits, and Whole Cascades](#checking-many-commits-and-whole-cascades) |
 | Compare against the target branch's own source | [Checking Against the Target Branch Itself](#checking-against-the-target-branch-itself) |
 | Check Elixir sources | [Elixir Sources](#elixir-sources) |
-| Find fixes that never got backported | [Finding Fixes That Should Have Cascaded](#finding-fixes-that-should-have-cascaded) |
 | Run a whole backport round | [A Full Backport Round](#a-full-backport-round) |
 | Decode an error message | [Common Errors](#common-errors) |
 | Find the tag where a commit's verdict flips | [Bisecting Across a Project's Tags](#bisecting-across-a-projects-tags) |
@@ -728,31 +727,6 @@ A diff that touches only `.ex` files is analyzable surface like any
 other, not `Inapplicable`.
 
 
-### Finding Fixes That Should Have Cascaded
-
-`siblings doctor` walks a source branch (default: `main`) and ranks
-commits that look like they should have been cherry-picked to a series'
-branch but never were: small test-infrastructure fixes whose subjects
-match a per-family vocabulary. Fixes that already cascaded are
-suppressed via their `git cherry-pick -x` trailers and patch-id
-equivalence, so the list stays quiet on a healthy branch:
-
-```shell
-backhopper siblings doctor --series rabbitmq-4.2 \
-                           --repo-dir-path /path/to/rabbitmq-server.git
-```
-
-The same example with Nu shell:
-
-```nu
-backhopper siblings doctor --series rabbitmq-4.2 --repo-dir-path /path/to/rabbitmq-server.git
-```
-
-The window starts at the last release tag reachable from the target
-branch (`--since <SHA|TAG>` overrides it). The exit code is `0` for no
-candidates and `3` when at least one surfaced; `--explain` adds the
-per-factor score breakdown to every row.
-
 
 ### The Verdict Cache
 
@@ -948,7 +922,7 @@ envelope:
 
 ```json
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "command": "check commit",
   "exit_code": 3,
   "data": {
@@ -1053,13 +1027,6 @@ backhopper check cascade --series rabbitmq-4.3,rabbitmq-4.2 \
     --commits-file-path candidates.txt
 ```
 
-Check whether earlier fixes should ride along:
-
-```shell
-backhopper siblings doctor --series rabbitmq-4.2 \
-    --repo-dir-path /path/to/rabbitmq-server.git
-```
-
 After the picks land on the target branch, select the Common Test
 suites to run:
 
@@ -1074,8 +1041,6 @@ a trailing `|`, and the git range needs quotes:
 
 ```nu
 backhopper check cascade --series "rabbitmq-4.3,rabbitmq-4.2" --repo-dir-path /path/to/rabbitmq-server.git --commits-file-path candidates.txt
-
-backhopper siblings doctor --series rabbitmq-4.2 --repo-dir-path /path/to/rabbitmq-server.git
 
 git -C /path/to/checkouts/v4.2.x diff --name-only "v4.2.1..HEAD" |
   backhopper suites plan --repo-dir-path /path/to/checkouts/v4.2.x --modified-paths-file-path -

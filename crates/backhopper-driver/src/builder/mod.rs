@@ -6,7 +6,6 @@
 
 pub mod check;
 pub(crate) mod list_input;
-pub mod siblings;
 pub mod snapshots;
 pub mod state;
 pub mod suites;
@@ -16,6 +15,5 @@ pub use check::{
     CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind, PatchSource, PositionalKind,
     RangeKind,
 };
-pub use siblings::{Siblings, SiblingsDoctorBuilder};
 pub use snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
 pub use suites::{Suites, SuitesPlanBuilder};

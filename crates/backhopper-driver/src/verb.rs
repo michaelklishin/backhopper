@@ -71,8 +71,6 @@ pub enum Verb {
     CheckMerge,
     /// `backhopper check batch`.
     CheckBatch,
-    /// `backhopper siblings doctor`.
-    SiblingsDoctor,
     /// `backhopper suites plan`.
     SuitesPlan,
     /// `backhopper cache stats`.
@@ -111,8 +109,8 @@ impl Verb {
     }
 
     /// True for verbs that define a `--repo-dir-path` argument. A
-    /// superset of `requires_global_repo_dir`: the check verbs and
-    /// `siblings doctor` accept it but default it.
+    /// superset of `requires_global_repo_dir`: the check verbs
+    /// accept it but default it.
     #[must_use]
     pub const fn accepts_global_repo_dir(self) -> bool {
         matches!(
@@ -122,7 +120,6 @@ impl Verb {
                 | Self::CheckRange
                 | Self::CheckMerge
                 | Self::CheckBatch
-                | Self::SiblingsDoctor
                 | Self::SuitesPlan
         )
     }
@@ -163,7 +160,6 @@ impl Verb {
             Self::CheckRange => &["check", "range"],
             Self::CheckMerge => &["check", "merge"],
             Self::CheckBatch => &["check", "batch"],
-            Self::SiblingsDoctor => &["siblings", "doctor"],
             Self::SuitesPlan => &["suites", "plan"],
             Self::CacheStats => &["cache", "stats"],
             Self::CacheList => &["cache", "list"],
@@ -235,7 +231,6 @@ impl Verb {
         Self::CheckRange,
         Self::CheckMerge,
         Self::CheckBatch,
-        Self::SiblingsDoctor,
         Self::SuitesPlan,
         Self::CacheStats,
         Self::CacheList,

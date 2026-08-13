@@ -18,8 +18,7 @@ pub mod sweep;
 pub mod verdict;
 
 pub use cache_io::{
-    CacheDir, ENTRY_FORMAT_VERSION, canonical_json, content_hash, hash_bytes, hash_file,
-    is_entry_file_name,
+    ENTRY_FORMAT_VERSION, canonical_json, content_hash, hash_bytes, hash_file, is_entry_file_name,
 };
 pub use errors::CacheError;
 pub use inspect::{
@@ -30,6 +29,6 @@ pub use policy::{CacheMode, FORCE_CACHE_ENV, NO_CACHE_ENV};
 pub use sweep::{maybe_daily_sweep, sweep_dir};
 pub use verdict::{
     CacheKeyInputs, CachedVerdict, ContentKeyInputs, ContentOutcome, EvaluationShape,
-    InputMissToken, InputOutcome, MissToken, PinKeyRow, SIBLINGS_CACHE_DIR_NAME, TargetKeyInputs,
-    VERDICT_CACHE_DIR_NAME, VerdictCache, ttl_from_days,
+    InputMissToken, InputOutcome, MissToken, PinKeyRow, TargetKeyInputs, VERDICT_CACHE_DIR_NAME,
+    VerdictCache, ttl_from_days,
 };

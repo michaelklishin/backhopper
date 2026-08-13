@@ -4,8 +4,7 @@
 
 //! The inspection surface behind the `cache` verb group: scanning,
 //! stats, key-prefix resolution, eviction, pruning, and clearing,
-//! across both workspace caches (the verdict cache and the siblings
-//! doctor cache).
+//! over the verdict cache.
 //!
 //! The caches hold a few hundred entries, so every operation scans
 //! and parses the self-describing entries instead of maintaining a
@@ -23,14 +22,13 @@ use backhopper_core::model::cache::{CacheLevel, CacheStatsPayload};
 
 use crate::cache_io::is_entry_file_name;
 use crate::sweep::sweep_dir;
-use crate::verdict::{SIBLINGS_CACHE_DIR_NAME, VERDICT_CACHE_DIR_NAME};
+use crate::verdict::VERDICT_CACHE_DIR_NAME;
 
 /// The cache directories of one snapshot workspace.
 #[derive(Debug, Clone)]
 pub struct WorkspaceCaches {
     pub verdict_by_input: PathBuf,
     pub verdict_by_content: PathBuf,
-    pub siblings: PathBuf,
 }
 
 impl WorkspaceCaches {
@@ -40,21 +38,18 @@ impl WorkspaceCaches {
         Self {
             verdict_by_input: verdict.join("by-input"),
             verdict_by_content: verdict.join("by-content"),
-            siblings: snapshot_dir.join(SIBLINGS_CACHE_DIR_NAME),
         }
     }
 
-    fn levels(&self) -> [(&Path, CacheLevel); 3] {
+    fn levels(&self) -> [(&Path, CacheLevel); 2] {
         [
             (self.verdict_by_input.as_path(), CacheLevel::ByInput),
             (self.verdict_by_content.as_path(), CacheLevel::ByContent),
-            (self.siblings.as_path(), CacheLevel::Siblings),
         ]
     }
 }
 
-/// One parsed cache entry, normalized across the two entry layouts
-/// (verdict entries and the generic `cache_io` envelope).
+/// One parsed verdict-cache entry.
 #[derive(Debug, Clone)]
 pub struct ScannedEntry {
     /// The hex key: the file-name stem between the format prefix and
@@ -67,8 +62,7 @@ pub struct ScannedEntry {
     pub created_at: Option<String>,
     pub key_inputs: Value,
     pub alias: bool,
-    /// The stored value: the evaluation for verdict entries, the run
-    /// payload for siblings entries.
+    /// The stored evaluation.
     pub value: Value,
 }
 
@@ -107,12 +101,11 @@ pub fn scan(caches: &WorkspaceCaches) -> Vec<ScannedEntry> {
     out
 }
 
-// presentation order: the fast path first, then content, then siblings
+// presentation order: the fast path first, then content
 fn level_rank(level: CacheLevel) -> u8 {
     match level {
         CacheLevel::ByInput => 0,
         CacheLevel::ByContent => 1,
-        CacheLevel::Siblings => 2,
     }
 }
 
@@ -129,25 +122,15 @@ fn scan_one(path: &Path, level: CacheLevel) -> Option<ScannedEntry> {
         .and_then(|m| SystemTime::now().duration_since(m).ok())
         .unwrap_or_default();
     let doc: Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-    // verdict entries carry key_inputs, created_at, and evaluation; the generic envelope carries key, written_at, and value
-    let key_inputs = doc
-        .get("key_inputs")
-        .or_else(|| doc.get("key"))
-        .cloned()
-        .unwrap_or(Value::Null);
+    let key_inputs = doc.get("key_inputs").cloned().unwrap_or(Value::Null);
     let created_at = doc
         .get("created_at")
-        .or_else(|| doc.get("written_at"))
         .and_then(Value::as_str)
         .map(str::to_owned);
     let alias = doc
         .get("alias_of_content_key")
         .is_some_and(|v| !v.is_null());
-    let value = doc
-        .get("evaluation")
-        .or_else(|| doc.get("value"))
-        .cloned()
-        .unwrap_or(Value::Null);
+    let value = doc.get("evaluation").cloned().unwrap_or(Value::Null);
     Some(ScannedEntry {
         key,
         level,
@@ -174,7 +157,6 @@ pub fn stats(caches: &WorkspaceCaches) -> CacheStatsPayload {
         let level = match entry.level {
             CacheLevel::ByInput => &mut payload.by_input,
             CacheLevel::ByContent => &mut payload.by_content,
-            CacheLevel::Siblings => &mut payload.siblings,
         };
         level.entries += 1;
         level.bytes += entry.bytes;

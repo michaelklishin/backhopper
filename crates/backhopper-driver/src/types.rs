@@ -35,10 +35,6 @@ pub use backhopper_core::model::names::{
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
 pub use backhopper_core::model::resolver_coverage::{ResolverClass, ResolverCoverage};
-pub use backhopper_core::model::sibling_drift::{
-    CandidateFeatures, Confidence, ScoreComponents, Scored, SiblingCandidate, SiblingDoctorReport,
-    SiblingDriftAction, SinceDerivation, VocabularySource,
-};
 pub use backhopper_core::model::snapshot::{
     FORMAT_VERSION, HrlFile, Module, Provenance, SUPPORTED_FORMAT_VERSIONS, Snapshot,
     SnapshotHeader, VendoredDep, VendoredDepSource, VersionedMachineVersion, WireConstantBinding,

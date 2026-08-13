@@ -38,7 +38,6 @@ use crate::cache_io::{content_hash, entry_file_name, is_older_than, write_atomic
 use crate::sweep::maybe_daily_sweep;
 
 pub const VERDICT_CACHE_DIR_NAME: &str = ".verdict_cache";
-pub const SIBLINGS_CACHE_DIR_NAME: &str = ".siblings_doctor_cache";
 const BY_INPUT_DIR: &str = "by-input";
 const BY_CONTENT_DIR: &str = "by-content";
 
@@ -274,7 +273,6 @@ struct VerdictEntry {
 pub struct VerdictCache {
     by_input: PathBuf,
     by_content: PathBuf,
-    siblings_dir: PathBuf,
     sweep_marker: PathBuf,
     ttl: Option<Duration>,
     swept: OnceLock<()>,
@@ -288,7 +286,6 @@ impl VerdictCache {
         Self {
             by_input: root.join(BY_INPUT_DIR),
             by_content: root.join(BY_CONTENT_DIR),
-            siblings_dir: snapshot_dir.join(SIBLINGS_CACHE_DIR_NAME),
             sweep_marker: root.join(".last_sweep"),
             ttl: ttl_from_days(ttl_days),
             swept: OnceLock::new(),
@@ -375,11 +372,7 @@ impl VerdictCache {
     fn sweep_once(&self) {
         self.swept.get_or_init(|| {
             maybe_daily_sweep(
-                &[
-                    self.by_input.clone(),
-                    self.by_content.clone(),
-                    self.siblings_dir.clone(),
-                ],
+                &[self.by_input.clone(), self.by_content.clone()],
                 self.ttl,
                 &self.sweep_marker,
             );

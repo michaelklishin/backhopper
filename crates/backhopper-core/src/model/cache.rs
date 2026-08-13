@@ -19,8 +19,6 @@ pub enum CacheLevel {
     ByInput,
     /// `.verdict_cache/by-content/`: content-keyed verdict entries.
     ByContent,
-    /// `.siblings_doctor_cache/`: `siblings doctor` run entries.
-    Siblings,
 }
 
 impl CacheLevel {
@@ -29,7 +27,6 @@ impl CacheLevel {
         match self {
             Self::ByInput => "by-input",
             Self::ByContent => "by-content",
-            Self::Siblings => "siblings",
         }
     }
 }
@@ -42,13 +39,12 @@ pub struct CacheLevelStats {
     pub bytes: u64,
 }
 
-/// The `cache stats` payload, covering both workspace caches.
+/// The `cache stats` payload.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CacheStatsPayload {
     pub by_input: CacheLevelStats,
     pub by_content: CacheLevelStats,
-    pub siblings: CacheLevelStats,
     /// `by-input` entries created as aliases of a content-level hit.
     pub aliases: u64,
     pub total_bytes: u64,
@@ -104,8 +100,7 @@ pub struct CacheShowPayload {
     pub alias: bool,
     /// The canonical-JSON key pre-image stored inside the entry.
     pub key_inputs: serde_json::Value,
-    /// Verdict counts for verdict entries; absent for siblings
-    /// entries.
+    /// Verdict counts for the stored evaluation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verdict_summary: Option<serde_json::Value>,
     /// The full stored value, under `--full` only.

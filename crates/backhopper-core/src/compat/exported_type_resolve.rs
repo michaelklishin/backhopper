@@ -28,7 +28,7 @@
 //! text, so an OTP header would have to declare a type that a
 //! first-party module then re-exports as its own.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::define_resolve::collect_target_defines;
@@ -37,6 +37,7 @@ use crate::compat::source_attributes::{
     declares_parse_transform, extract_defined_types, extract_exported_types,
 };
 use crate::compat::target_tree_index::TargetTreeIndex;
+use crate::model::names::RelativePath;
 use crate::model::verdict::Reason;
 
 /// Flag each `-export_type` entry a patch adds that resolves to no type
@@ -44,6 +45,7 @@ use crate::model::verdict::Reason;
 /// itself declare. One reason per `(file, type, arity)`.
 pub fn analyse_exported_types(
     subjects: &[AddedLinesSubject<'_>],
+    patch_added: &BTreeMap<RelativePath, String>,
     target: &TargetTreeIndex,
     read_target: TreeReader<'_>,
 ) -> Vec<Reason> {
@@ -60,7 +62,7 @@ pub fn analyse_exported_types(
         if declares_parse_transform(&text) {
             continue;
         }
-        let defines = collect_target_defines(subject.source_path, target, read_target);
+        let defines = collect_target_defines(subject, patch_added, target, read_target);
         // An unread first-party header or a macro-expanded attribute form may hold the declaration.
         if !defines.complete || defines.macro_attributes {
             continue;

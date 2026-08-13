@@ -297,7 +297,6 @@ impl ProjectFamily {
                 }],
                 versioned_machine_impls: Vec::new(),
                 test_helper_search_paths: Vec::new(),
-                sibling_drift_vocabulary: Vec::new(),
             },
             Self::Osiris => FamilyDefaults {
                 wire_constants: vec![WireConstantDecl::new(
@@ -336,7 +335,6 @@ impl ProjectFamily {
                     },
                 ],
                 test_helper_search_paths: rabbitmq_default_test_helper_search_paths(),
-                sibling_drift_vocabulary: rabbitmq_default_sibling_drift_vocabulary(),
             },
         }
     }
@@ -357,43 +355,6 @@ fn rabbitmq_default_test_helper_search_paths() -> Vec<String> {
     ]
 }
 
-/// Subject-prefilter terms `siblings doctor` matches against
-/// first-parent commit subjects when ranking sibling-branch fixes
-/// that should have cascaded. Empty for `Generic`, so only RabbitMQ
-/// projects opt into the heuristic by default. Calibrated against the
-/// labeled corpus in
-/// `backhopper-cli/tests/fixtures/sibling_drift_corpus/`; the F1 gate
-/// there fails the build if an edit here regresses the scorer.
-fn rabbitmq_default_sibling_drift_vocabulary() -> Vec<String> {
-    [
-        "flake",
-        "crash",
-        "find_crashes",
-        "ignored_crashes",
-        "await",
-        "wait_for",
-        "assertMatch",
-        "_SUITE",
-        "deflake",
-        "race",
-        "retry",
-        "wait_until",
-        "eventually",
-        "polling",
-        "flaky",
-        "intermittent",
-        "mixed version",
-        "fix a test",
-        "fix test",
-        "test fix",
-        "fragile",
-        "expected exception",
-    ]
-    .iter()
-    .map(|s| (*s).to_owned())
-    .collect()
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FamilyDefaults {
     pub wire_constants: Vec<WireConstantDecl>,
@@ -402,9 +363,6 @@ pub struct FamilyDefaults {
     /// See `rabbitmq_default_test_helper_search_paths` for the
     /// `ProjectFamily::Rabbitmq` default and the glob convention.
     pub test_helper_search_paths: Vec<String>,
-    /// See `rabbitmq_default_sibling_drift_vocabulary`. Consumed by
-    /// `siblings doctor`'s subject prefilter.
-    pub sibling_drift_vocabulary: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

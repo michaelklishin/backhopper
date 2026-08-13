@@ -180,9 +180,7 @@ fn build_payload(
         unpinned_projects: unpinned_projects(cfg),
         series_pin_gaps: series_pin_gaps(cfg, cmd.series.as_deref()),
         cache: CacheRow {
-            entries: cache_stats.by_input.entries
-                + cache_stats.by_content.entries
-                + cache_stats.siblings.entries,
+            entries: cache_stats.by_input.entries + cache_stats.by_content.entries,
             bytes: cache_stats.total_bytes,
         },
     })

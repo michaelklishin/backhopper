@@ -25,7 +25,6 @@ mod schema_version_unit_tests;
 mod send_sync_unit_tests;
 mod series_evaluation_018_findings_unit_tests;
 mod series_evaluation_unit_tests;
-mod siblings_builder_unit_tests;
 mod snapshot_types_reexport_unit_tests;
 mod snapshots_builder_unit_tests;
 mod stdin_payload_unit_tests;

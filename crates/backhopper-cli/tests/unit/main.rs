@@ -31,7 +31,6 @@ mod series_sync_skipped_unit_tests;
 mod series_sync_unit_tests;
 mod sha_input_discipline_unit_tests;
 mod sha_prefix_helpers_unit_tests;
-mod siblings_render_unit_tests;
 mod snapshot_cache_unit_tests;
 mod snapshot_dir_escape_unit_tests;
 mod snapshots_diff_cross_series_unit_tests;

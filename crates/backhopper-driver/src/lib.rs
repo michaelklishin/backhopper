@@ -40,7 +40,6 @@ pub use builder::check::{
     CheckPatchBuilder, CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind,
     PatchSource, PositionalKind, RangeKind,
 };
-pub use builder::siblings::{Siblings, SiblingsDoctorBuilder};
 pub use builder::snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
 pub use builder::state::{InputState, NoInput, NoTarget, TargetState, WithInput, WithTarget};
 pub use builder::suites::{Suites, SuitesPlanBuilder};

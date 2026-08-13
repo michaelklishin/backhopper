@@ -62,12 +62,26 @@ fn analyse(
     idx: &TargetTreeIndex,
     files: &[(&str, &str)],
 ) -> Vec<Reason> {
+    analyse_with_patch_added(path, added, &[], idx, files)
+}
+
+fn analyse_with_patch_added(
+    path: &RelativePath,
+    added: &str,
+    patch_added: &[(&str, &str)],
+    idx: &TargetTreeIndex,
+    files: &[(&str, &str)],
+) -> Vec<Reason> {
     let subjects = [AddedLinesSubject {
         source_path: path,
         added_text: added,
         line_map: &[],
     }];
-    analyse_define_symbols(&subjects, idx, &reader(files))
+    let patch_added: BTreeMap<RelativePath, String> = patch_added
+        .iter()
+        .map(|(p, c)| (RelativePath::new(*p).unwrap(), (*c).to_owned()))
+        .collect();
+    analyse_define_symbols(&subjects, &patch_added, idx, &reader(files))
 }
 
 // A file present on target but missing the define the added line uses.
@@ -244,6 +258,150 @@ fn a_record_defined_on_target_is_clean() {
         )],
     );
     assert!(reasons.is_empty());
+}
+
+// The added file is absent on target, so its includes come from the added text alone.
+#[test]
+fn an_added_file_whose_macro_comes_from_a_target_resolvable_include_is_clean() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse(
+        &path,
+        "-module(rabbit_new).\n-include(\"defs.hrl\").\ninit() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&["deps/rabbit/src/defs.hrl"]),
+        &[("deps/rabbit/src/defs.hrl", "-define(DEFAULT_TIMEOUT, 1).\n")],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// The proper dep is fetched, not committed, so the include cannot resolve: withhold instead of flagging.
+#[test]
+fn an_added_file_with_an_unresolvable_non_stdlib_include_lib_is_withheld() {
+    let path = rp("deps/rabbitmq_management/test/mgmt_prop_SUITE.erl");
+    let reasons = analyse(
+        &path,
+        "-module(mgmt_prop_SUITE).\n\
+         -include_lib(\"proper/include/proper.hrl\").\n\
+         prop_roundtrip() -> ?FORALL(X, list(atom()), X =:= X).\n\
+         shape(S) -> S#forall_props.field.\n",
+        &index(&[]),
+        &[],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+#[test]
+fn an_added_file_with_a_stdlib_include_lib_is_withheld() {
+    let path = rp("deps/rabbit/test/rabbit_new_SUITE.erl");
+    let reasons = analyse(
+        &path,
+        "-module(rabbit_new_SUITE).\n\
+         -include_lib(\"eunit/include/eunit.hrl\").\n\
+         verify() -> ?assertEqual(1, 1), #file_info{}.\n",
+        &index(&[]),
+        &[],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// All includes resolve, so the closure is fully known and the miss is real.
+#[test]
+fn an_added_file_whose_macro_resolves_nowhere_is_still_flagged() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse(
+        &path,
+        "-module(rabbit_new).\n-include(\"defs.hrl\").\ninit() -> ?TRULY_ABSENT.\n",
+        &index(&["deps/rabbit/src/defs.hrl"]),
+        &[("deps/rabbit/src/defs.hrl", "-define(DEFAULT_TIMEOUT, 1).\n")],
+    );
+    assert_eq!(macros_flagged(&reasons), ["TRULY_ABSENT"]);
+}
+
+// The include line exists only in the patch, but the header it names is on target.
+#[test]
+fn a_patch_added_include_line_on_a_modified_file_supplies_its_macros() {
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
+    let reasons = analyse(
+        &path,
+        "-include(\"defs.hrl\").\ninit() -> ?DEFAULT_TIMEOUT.\n",
+        &index(&[
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "deps/rabbit/src/defs.hrl",
+        ]),
+        &[
+            (
+                "deps/rabbit/src/rabbit_amqqueue.erl",
+                "-module(rabbit_amqqueue).\n",
+            ),
+            ("deps/rabbit/src/defs.hrl", "-define(DEFAULT_TIMEOUT, 1).\n"),
+        ],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// A patch that adds a module and its header together stays fully analyzable.
+#[test]
+fn a_patch_added_header_supplies_the_added_module() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse_with_patch_added(
+        &path,
+        "-module(rabbit_new).\n-include(\"rabbit_new.hrl\").\n\
+         init() -> {?NEW_TIMEOUT, #new_state{}}.\n",
+        &[(
+            "deps/rabbit/src/rabbit_new.hrl",
+            "-define(NEW_TIMEOUT, 5).\n-record(new_state, {field}).\n",
+        )],
+        &index(&[]),
+        &[],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// A patch-added header walks at depth like any other: its own includes resolve against the map too.
+#[test]
+fn a_patch_added_header_chain_resolves_transitively() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse_with_patch_added(
+        &path,
+        "-module(rabbit_new).\n-include(\"outer.hrl\").\ninit() -> ?INNER_TIMEOUT.\n",
+        &[
+            ("deps/rabbit/src/outer.hrl", "-include(\"inner.hrl\").\n"),
+            ("deps/rabbit/src/inner.hrl", "-define(INNER_TIMEOUT, 5).\n"),
+        ],
+        &index(&[]),
+        &[],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// The pair resolves fully, so the axis keeps its sensitivity: no suppression.
+#[test]
+fn a_patch_added_header_pair_still_flags_a_macro_defined_nowhere() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse_with_patch_added(
+        &path,
+        "-module(rabbit_new).\n-include(\"rabbit_new.hrl\").\ninit() -> ?TRULY_ABSENT.\n",
+        &[(
+            "deps/rabbit/src/rabbit_new.hrl",
+            "-define(NEW_TIMEOUT, 5).\n",
+        )],
+        &index(&[]),
+        &[],
+    );
+    assert_eq!(macros_flagged(&reasons), ["TRULY_ABSENT"]);
+}
+
+// A path present on both sides reads the target text: the pick's collision is the apply axis's problem.
+#[test]
+fn a_patch_added_header_that_also_exists_on_target_reads_the_target_text() {
+    let path = rp("deps/rabbit/src/rabbit_new.erl");
+    let reasons = analyse_with_patch_added(
+        &path,
+        "-module(rabbit_new).\n-include(\"shared.hrl\").\ninit() -> ?PATCH_ONLY.\n",
+        &[("deps/rabbit/src/shared.hrl", "-define(PATCH_ONLY, 1).\n")],
+        &index(&["deps/rabbit/src/shared.hrl"]),
+        &[("deps/rabbit/src/shared.hrl", "-define(TARGET_ONLY, 1).\n")],
+    );
+    assert_eq!(macros_flagged(&reasons), ["PATCH_ONLY"]);
 }
 
 // #{...} is a map, not a record use: never flagged.

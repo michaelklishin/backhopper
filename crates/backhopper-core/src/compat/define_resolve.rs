@@ -10,7 +10,7 @@
 //! declarations too: the exported-type axis needs the same closure.
 //! `read_target` is injected: core stays I/O-free.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use crate::compat::added_file::is_stdlib_include_lib;
@@ -33,6 +33,7 @@ const MAX_INCLUDE_DEPTH: usize = 16;
 /// reason per `(file, symbol)`.
 pub fn analyse_define_symbols(
     subjects: &[AddedLinesSubject<'_>],
+    patch_added: &BTreeMap<RelativePath, String>,
     target: &TargetTreeIndex,
     read_target: &dyn Fn(&RelativePath) -> Option<String>,
 ) -> Vec<Reason> {
@@ -43,7 +44,7 @@ pub fn analyse_define_symbols(
         if macro_uses.is_empty() && record_uses.is_empty() {
             continue;
         }
-        let defs = collect_target_defines(subject.source_path, target, read_target);
+        let defs = collect_target_defines(subject, patch_added, target, read_target);
         // Incomplete define set: the symbol could be in an unreadable header, so suppress rather than risk a false positive.
         if !defs.defines_complete() {
             continue;
@@ -86,8 +87,10 @@ pub fn analyse_define_symbols(
     reasons
 }
 
-/// Macros, records, and types defined in the target version of
-/// `source_path` or a header it transitively includes. `complete` is
+/// Macros, records, and types defined in the target version of the
+/// subject's file or a header it transitively includes, with the
+/// include set taken from the target text and the patch's added text
+/// alike. `complete` is
 /// false when a first-party include could not be resolved or read: a
 /// definition might hide in the header we missed. A skipped stdlib
 /// header is tracked separately, since which sets it can hide differs
@@ -117,52 +120,112 @@ impl TargetDefines {
     }
 }
 
-pub fn collect_target_defines(
-    source_path: &RelativePath,
-    target: &TargetTreeIndex,
-    read_target: &dyn Fn(&RelativePath) -> Option<String>,
-) -> TargetDefines {
-    let mut out = TargetDefines {
-        macros: BTreeSet::new(),
-        records: BTreeSet::new(),
-        types: BTreeSet::new(),
-        complete: true,
-        stdlib_unread: false,
-        macro_attributes: false,
-    };
-    let mut visited: BTreeSet<RelativePath> = BTreeSet::new();
-    let mut stack = vec![(source_path.clone(), 0usize)];
-    while let Some((path, depth)) = stack.pop() {
-        if !visited.insert(path.clone()) {
-            continue;
+/// The empty closure is complete: nothing was reached, nothing was missed.
+impl Default for TargetDefines {
+    fn default() -> Self {
+        Self {
+            macros: BTreeSet::new(),
+            records: BTreeSet::new(),
+            types: BTreeSet::new(),
+            complete: true,
+            stdlib_unread: false,
+            macro_attributes: false,
         }
-        if depth > MAX_INCLUDE_DEPTH {
-            out.complete = false;
-            continue;
-        }
-        let Some(content) = read_target(&path) else {
-            // An absent top file is the new-file case (complete); an unreadable header leaves the set incomplete.
-            if depth > 0 {
-                out.complete = false;
-            }
-            continue;
-        };
-        out.macros.extend(extract_defined_macros(&content));
-        out.records.extend(extract_defined_records(&content));
-        out.types.extend(extract_defined_types(&content));
-        out.macro_attributes |= has_macro_expanded_attribute(&content);
-        for inc in extract_includes(&content) {
+    }
+}
+
+/// Which side of the pick a header's text comes from.
+enum HeaderSource {
+    Target,
+    PatchAdded,
+}
+
+struct IncludeWalk<'a> {
+    out: TargetDefines,
+    visited: BTreeSet<RelativePath>,
+    stack: Vec<(RelativePath, usize, HeaderSource)>,
+    patch_added: &'a BTreeMap<RelativePath, String>,
+    target: &'a TargetTreeIndex,
+}
+
+impl IncludeWalk<'_> {
+    fn absorb(&mut self, content: &str) {
+        self.out.macros.extend(extract_defined_macros(content));
+        self.out.records.extend(extract_defined_records(content));
+        self.out.types.extend(extract_defined_types(content));
+        self.out.macro_attributes |= has_macro_expanded_attribute(content);
+    }
+
+    fn follow_includes(&mut self, content: &str, from: &RelativePath, depth: usize) {
+        for inc in extract_includes(content) {
             if is_stdlib_include_lib(&inc.directive) {
-                out.stdlib_unread = true;
+                self.out.stdlib_unread = true;
                 continue;
             }
-            match resolve_include(target, &path, &inc.directive) {
-                Ok(resolved) => stack.push((resolved, depth + 1)),
-                Err(_) => out.complete = false,
+            // Target-first: a path present on both sides reads the target text.
+            match resolve_include(self.target, from, &inc.directive) {
+                Ok(resolved) => self.push(resolved, depth, HeaderSource::Target),
+                Err(candidates) => {
+                    let patch_hit = candidates
+                        .into_iter()
+                        .find(|c| self.patch_added.contains_key(c));
+                    match patch_hit {
+                        Some(path) => self.push(path, depth, HeaderSource::PatchAdded),
+                        None => self.out.complete = false,
+                    }
+                }
             }
         }
     }
-    out
+
+    fn push(&mut self, path: RelativePath, depth: usize, source: HeaderSource) {
+        if !self.visited.insert(path.clone()) {
+            return;
+        }
+        if depth > MAX_INCLUDE_DEPTH {
+            self.out.complete = false;
+            return;
+        }
+        self.stack.push((path, depth, source));
+    }
+}
+
+/// `patch_added` holds the full text of every file the patch creates,
+/// so an include that fails to resolve on the target can still resolve
+/// against a header the same patch adds.
+pub fn collect_target_defines(
+    subject: &AddedLinesSubject<'_>,
+    patch_added: &BTreeMap<RelativePath, String>,
+    target: &TargetTreeIndex,
+    read_target: &dyn Fn(&RelativePath) -> Option<String>,
+) -> TargetDefines {
+    let mut walk = IncludeWalk {
+        out: TargetDefines::default(),
+        visited: BTreeSet::new(),
+        stack: Vec::new(),
+        patch_added,
+        target,
+    };
+    walk.visited.insert(subject.source_path.clone());
+    // At the top file the includes to follow are the union of the target text's and the patch's added text's; an absent top file is the new-file case and stays complete.
+    if let Some(content) = read_target(subject.source_path) {
+        walk.absorb(&content);
+        walk.follow_includes(&content, subject.source_path, 1);
+    }
+    walk.follow_includes(subject.added_text, subject.source_path, 1);
+    while let Some((path, depth, source)) = walk.stack.pop() {
+        let content = match source {
+            HeaderSource::Target => read_target(&path),
+            HeaderSource::PatchAdded => walk.patch_added.get(&path).cloned(),
+        };
+        let Some(content) = content else {
+            walk.out.complete = false;
+            continue;
+        };
+        walk.absorb(&content);
+        walk.follow_includes(&content, &path, depth + 1);
+    }
+    walk.out
 }
 
 /// What the macro-value check produced: the drift reasons plus the

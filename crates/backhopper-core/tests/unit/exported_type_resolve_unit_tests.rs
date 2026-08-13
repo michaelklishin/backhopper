@@ -54,7 +54,7 @@ fn analyse(added: &str, files: &[(&str, &str)]) -> Vec<Reason> {
         line_map: &line_map,
     }];
     let paths: Vec<&str> = files.iter().map(|(p, _)| *p).collect();
-    analyse_exported_types(&subjects, &index(&paths), &reader(files))
+    analyse_exported_types(&subjects, &BTreeMap::new(), &index(&paths), &reader(files))
 }
 
 fn on_erl(added: &str, target: &str) -> Vec<Reason> {
@@ -201,6 +201,25 @@ fn arity_is_part_of_the_key() {
     let target = "-module(rabbit_net).\n-type result(Ok, Err) :: {ok, Ok} | {error, Err}.\n";
     let reasons = on_erl("-export_type([result/2, result/0]).\n", target);
     assert_eq!(flagged(&reasons), vec![("result".to_owned(), 0)]);
+}
+
+// The include line exists only in the patch; the header on target declares the type.
+#[test]
+fn a_patch_added_include_line_supplying_the_exported_type_is_clean() {
+    let erl = "-module(rabbit_net).\n";
+    let hrl = "-type name() :: binary().\n";
+    let reasons = analyse(
+        "-include(\"types.hrl\").\n-export_type([name/0]).\n",
+        &[(ERL, erl), ("deps/rabbit_common/src/types.hrl", hrl)],
+    );
+    assert!(reasons.is_empty(), "{reasons:?}");
+}
+
+// The axis resolves against the target module's text, so a file the target lacks stays out of scope.
+#[test]
+fn an_added_file_is_still_skipped() {
+    let added = "-module(rabbit_net).\n-export_type([nowhere_defined/0]).\n";
+    assert!(analyse(added, &[]).is_empty());
 }
 
 #[test]

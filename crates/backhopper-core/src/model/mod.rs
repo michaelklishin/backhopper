@@ -16,7 +16,6 @@ pub mod pin;
 pub mod pr_commit;
 pub mod resolver_coverage;
 pub(crate) mod serde_util;
-pub mod sibling_drift;
 pub mod snapshot;
 pub mod snapshot_diff;
 pub mod spec_ast;

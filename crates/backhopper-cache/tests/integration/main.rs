@@ -2,6 +2,5 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-mod cache_io_integration_tests;
 mod sweep_integration_tests;
 mod verdict_cache_integration_tests;

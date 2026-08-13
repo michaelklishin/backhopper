@@ -511,6 +511,82 @@ fn a_cache_hit_restores_the_findings() {
     );
 }
 
+const PROP_SUITE: &str = "-module(mgmt_prop_SUITE).\n\
+     -include_lib(\"proper/include/proper.hrl\").\n\
+     -export([all/0]).\n\
+     all() -> [prop_roundtrip].\n\
+     prop_roundtrip() -> ?FORALL(X, ?LET(Y, 1, Y), X =:= X).\n";
+
+fn set_up_prop_round(suite: &str) -> Round {
+    let workdir = TempDir::new().unwrap();
+    let source = GitRepoFixture::new();
+    source.write_file("src/rabbit_fifo.erl", SRC_MODULE);
+    source.write_file("test/helpers.hrl", "-define(HELPER_TIMEOUT, 1).\n");
+    source.commit("baseline");
+    source.tag("v1.0.0");
+    source.write_file("test/mgmt_prop_SUITE.erl", suite);
+    source.commit("add a property suite");
+    let cfg = write_config(
+        workdir.path(),
+        source.dir.path(),
+        &workdir.path().join("snapshots"),
+    );
+    generate_snapshots(&cfg);
+    let sha = source.head_sha();
+    Round {
+        workdir,
+        cfg,
+        source,
+        sha,
+    }
+}
+
+/// The target at the source baseline: no deps/proper anywhere.
+fn build_prop_target() -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
+    repo.write_file("src/rabbit_fifo.erl", SRC_MODULE);
+    repo.write_file("test/helpers.hrl", "-define(HELPER_TIMEOUT, 1).\n");
+    repo.commit("target at baseline");
+    repo
+}
+
+fn macro_findings(env: &Value) -> Vec<String> {
+    env["data"]["target_findings"]["reasons"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| r["kind"] == "macro_undefined_on_target")
+        .filter_map(|r| r["macro_name"].as_str().map(str::to_owned))
+        .collect()
+}
+
+// An added suite drawing macros from a fetched dep's header must withhold, not flag.
+#[test]
+fn an_added_suite_including_an_out_of_tree_header_reports_no_macro_findings() {
+    let round = set_up_prop_round(PROP_SUITE);
+    let target = build_prop_target();
+    let (env, _) = check_commit_json(&round, Some(target.dir.path()));
+    let hits = macro_findings(&env);
+    assert!(hits.is_empty(), "?FORALL and ?LET must not flag: {hits:?}");
+}
+
+// Every include resolves, so a macro defined nowhere still flags end to end.
+#[test]
+fn an_added_suite_with_resolved_includes_still_flags_an_undefined_macro() {
+    let suite = "-module(mgmt_prop_SUITE).\n\
+         -include(\"helpers.hrl\").\n\
+         -export([all/0]).\n\
+         all() -> [t_check].\n\
+         t_check(Config) -> {?HELPER_TIMEOUT, ?GENUINELY_ABSENT, Config}.\n";
+    let round = set_up_prop_round(suite);
+    let target = build_prop_target();
+    let (env, code) = check_commit_json(&round, Some(target.dir.path()));
+    let hits = macro_findings(&env);
+    assert_eq!(hits, ["GENUINELY_ABSENT"], "{}", env["data"]);
+    assert_eq!(code, 3);
+}
+
 #[test]
 fn markdown_output_names_the_finding() {
     let round = set_up_round();

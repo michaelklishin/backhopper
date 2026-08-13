@@ -23,7 +23,6 @@ pub mod rev;
 pub mod schema;
 pub mod series;
 pub mod shell;
-pub mod siblings;
 pub mod snapshots;
 pub mod suites;
 pub mod tree;
@@ -41,7 +40,6 @@ pub use rev::RevCmd;
 pub use schema::{SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
 pub use series::{PinsArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 pub use shell::{CompletionsCmd, ShellCmd};
-pub use siblings::{SiblingsCmd, SiblingsDoctorArgs};
 pub use snapshots::SnapshotsCmd;
 pub use suites::SuitesCmd;
 pub use tree::TreeCmd;
@@ -235,11 +233,6 @@ pub enum Group {
     Tree {
         #[command(subcommand)]
         cmd: TreeCmd,
-    },
-    /// Cross-branch drift checks against sibling release branches.
-    Siblings {
-        #[command(subcommand)]
-        cmd: SiblingsCmd,
     },
     /// Print the `backhopper` version.
     Version,

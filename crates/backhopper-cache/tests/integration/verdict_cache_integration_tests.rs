@@ -351,27 +351,24 @@ fn key_prefix_resolution_handles_unique_ambiguous_and_unknown() {
 }
 
 #[test]
-fn the_daily_sweep_is_marker_gated_and_covers_the_sibling_cache() {
+fn the_daily_sweep_is_marker_gated() {
     let dir = TempDir::new().unwrap();
-    // a stale sibling-cache entry the sweep should collect
-    let siblings = dir.path().join(".siblings_doctor_cache");
-    fs::create_dir_all(&siblings).unwrap();
-    let stale = siblings.join("v1-deadbeefdeadbeefdeadbeefdeadbeef.json");
+    // a stale entry the sweep should collect
+    let by_input = dir.path().join(".verdict_cache/by-input");
+    fs::create_dir_all(&by_input).unwrap();
+    let stale = by_input.join("v1-deadbeefdeadbeefdeadbeefdeadbeef.json");
     fs::write(&stale, b"{}").unwrap();
     backdate(&stale, Duration::from_hours(60 * 24));
 
     // the first write of a run sweeps and touches the marker
     let cache = VerdictCache::open(dir.path(), 42);
     seed(&cache, 'a', "patch-hash");
-    assert!(
-        !stale.exists(),
-        "the sweep must collect expired siblings entries"
-    );
+    assert!(!stale.exists(), "the sweep must collect expired entries");
     let marker = dir.path().join(".verdict_cache/.last_sweep");
     assert!(marker.exists());
 
     // a fresh marker suppresses the next sweep
-    let stale_again = siblings.join("v1-feedfacefeedfacefeedfacefeedface.json");
+    let stale_again = by_input.join("v1-feedfacefeedfacefeedfacefeedface.json");
     fs::write(&stale_again, b"{}").unwrap();
     backdate(&stale_again, Duration::from_hours(60 * 24));
     let cache = VerdictCache::open(dir.path(), 42);

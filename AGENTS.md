@@ -125,10 +125,6 @@ Model (`src/model/`):
    normalizer
  * `summary.rs`, `pr_commit.rs`, `cache.rs`: run-summary, PR-commit, and
    cache-key model types
- * `sibling_drift.rs`: the `siblings doctor` types, namely the
-   `SiblingCandidate` scoring pipeline (`Unscored`, then `Scored`),
-   `Confidence`, `Vocabulary`, and the pure scorer the labeled-corpus
-   F1 gate exercises
 
 Snapshot I/O and store (`src/snapshot/`, `src/store/`):
 
@@ -288,7 +284,7 @@ Suites (`src/suites/`):
    Style Guide for the enum-level pitfall)
  * `src/commands/*.rs`: one handler module per group (`projects`,
    `series`, `snapshots`, `check`, `cache`, `config`, `shell`, `xref`,
-   `suites`, `bisect`, `rev`, `siblings`, `schema`, `doctor`, `init`,
+   `suites`, `bisect`, `rev`, `schema`, `doctor`, `init`,
    `version`) plus feature-specific helpers (`batch_plan`, `summary`,
    `availability`, `suggest`, `auto_generate`, `self_snapshot`,
    `pin_bump`, `sha_prefix`, `snapshot_cache`, `context`,
@@ -312,7 +308,7 @@ Suites (`src/suites/`):
  * `src/mock.rs`: `MockBackend` family (`MockMatcher`, `MockResponse`,
    `RecordedInvocation`) for testing without a binary
  * `src/builder/`: type-state builders (`state.rs` markers `NoTarget`,
-   `WithTarget`; per-verb `check.rs`, `siblings.rs`, `snapshots.rs`,
+   `WithTarget`; per-verb `check.rs`, `snapshots.rs`,
    `suites.rs`) so "required argument missing" is a compile-time error
  * `src/envelope.rs`: JSON envelope parsing (`Envelope<T>`,
    `SchemaVersion`, `EnvelopeWarning`)
@@ -390,8 +386,6 @@ Markdown, or summary format is requested.
  * `schema`: `show` (embedded JSON schema for an envelope version),
    `diff`, `supported_envelope_versions`
  * `rev resolve`: expand a SHA prefix to the full 40-char commit SHA
- * `siblings doctor`: rank sibling-branch commits that look like they
-   should have cascaded to a series but never did
  * `version`: build and version info
 
 ## Key Dependencies

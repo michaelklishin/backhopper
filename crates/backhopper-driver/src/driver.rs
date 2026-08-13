@@ -24,7 +24,6 @@ use backhopper_core::model::check_payload::CheckPayload;
 use backhopper_core::model::wire_envelope::WireEnvelope;
 
 use crate::builder::check::Check;
-use crate::builder::siblings::Siblings;
 use crate::builder::snapshots::Snapshots;
 use crate::builder::suites::Suites;
 use crate::envelope::{Envelope, ExecutedInvocation, SchemaVersion};
@@ -151,11 +150,6 @@ impl<B: Backend> Backhopper<B> {
     /// Access the `check` verb group.
     pub fn check(&self) -> Check<'_, B> {
         Check { driver: self }
-    }
-
-    /// Access the `siblings` verb group.
-    pub fn siblings(&self) -> Siblings<'_, B> {
-        Siblings { driver: self }
     }
 
     /// Access the `suites` verb group.
@@ -343,14 +337,14 @@ pub struct VersionInfo {
     /// Schema version reported in the envelope.
     pub schema_version: SchemaVersion,
     /// Capability list: every verb the binary ships, as
-    /// space-separated paths (`"check batch"`, `"siblings doctor"`).
+    /// space-separated paths (`"check batch"`, `"suites plan"`).
     /// Empty for binaries that predate the list.
     pub verbs: Vec<String>,
 }
 
 impl VersionInfo {
     /// True when the binary advertises `verb` (e.g.
-    /// `"siblings doctor"`) in its capability list.
+    /// `"check batch"`) in its capability list.
     #[must_use]
     pub fn has_verb(&self, verb: &str) -> bool {
         self.verbs.iter().any(|v| v == verb)
