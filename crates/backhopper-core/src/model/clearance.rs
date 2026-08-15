@@ -27,7 +27,7 @@ pub enum RoundClearance {
     /// Every candidate was inapplicable; backhopper's dep and symbol domain
     /// did not intersect this round.
     ZeroDomain(ClearanceFacts),
-    /// A reviewer should look: a blocking verdict, tracked-dep references,
+    /// A reviewer should review: a blocking verdict, tracked-dep references,
     /// or a snapshot-missing pin bump.
     Findings(ClearanceFacts),
 }
