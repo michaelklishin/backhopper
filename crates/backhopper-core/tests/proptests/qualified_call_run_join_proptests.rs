@@ -69,7 +69,7 @@ proptest! {
         let (added, line_map, ctx) = added_lines_with_context(std::slice::from_ref(&hunk));
         let calls = extract_qualified_calls_with_context(&added, &line_map, &ctx);
         for (i, c) in ctx.iter().enumerate() {
-            if *c == RefContext::TypeAttribute {
+            if c.context == RefContext::TypeAttribute {
                 let file_line = line_map[i];
                 prop_assert!(calls.iter().all(|call| call.line != file_line));
             }

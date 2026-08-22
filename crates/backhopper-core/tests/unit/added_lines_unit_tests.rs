@@ -12,7 +12,11 @@ use backhopper_core::compat::added_lines::{
     added_lines_with_context, added_lines_with_offsets, file_line,
 };
 use backhopper_core::compat::patch::{Hunk, HunkLine};
-use backhopper_core::model::symbol::RefContext;
+use backhopper_core::model::symbol::{LineClass, RefContext};
+
+fn contexts(ctx: &[LineClass]) -> Vec<RefContext> {
+    ctx.iter().map(|c| c.context).collect()
+}
 
 fn hunk(new_start: usize, lines: Vec<HunkLine>) -> Hunk {
     Hunk {
@@ -97,7 +101,7 @@ fn a_continuation_line_classifies_against_its_context_opener() {
         "           Socket :: rabbit_net:socket() | rabbit_net:proxy_socket()) -> ok.\n"
     );
     assert_eq!(map, vec![119]);
-    assert_eq!(ctx, vec![RefContext::TypeAttribute]);
+    assert_eq!(contexts(&ctx), vec![RefContext::TypeAttribute]);
 }
 
 // Negative control: a wrapped call opener in unchanged context; the continuation must stay Body.
@@ -111,7 +115,7 @@ fn a_body_continuation_after_a_context_call_opener_stays_body() {
         ],
     );
     let (_, _, ctx) = added_lines_with_context(&[h]);
-    assert_eq!(ctx, vec![RefContext::Body]);
+    assert_eq!(contexts(&ctx), vec![RefContext::Body]);
 }
 
 // No Added lines: the scanner still advances through context but emits nothing.
@@ -132,7 +136,7 @@ fn classification_persists_across_hunks_in_the_same_file() {
     let b = hunk(90, vec![HunkLine::Added("      X :: othermod:t().".into())]);
     let (_, _, ctx) = added_lines_with_context(&[a, b]);
     assert_eq!(
-        ctx,
+        contexts(&ctx),
         vec![RefContext::TypeAttribute, RefContext::TypeAttribute]
     );
 }
@@ -149,7 +153,7 @@ fn an_export_attribute_classifies_as_other_attribute() {
     );
     let (_, _, ctx) = added_lines_with_context(&[h]);
     assert_eq!(
-        ctx,
+        contexts(&ctx),
         vec![
             RefContext::OtherAttribute,
             RefContext::OtherAttribute,
@@ -177,7 +181,10 @@ fn a_context_terminator_closes_a_region_an_added_opener_started() {
         ],
     );
     let (_, _, ctx) = added_lines_with_context(&[h]);
-    assert_eq!(ctx, vec![RefContext::TypeAttribute, RefContext::Body]);
+    assert_eq!(
+        contexts(&ctx),
+        vec![RefContext::TypeAttribute, RefContext::Body]
+    );
 }
 
 // A hunk that adds only part of a documentation block classifies its
@@ -197,7 +204,7 @@ fn added_prose_inside_an_unchanged_doc_block_classifies_as_attribute_string() {
     );
     let (_, _, ctx) = added_lines_with_context(&[h]);
     assert_eq!(
-        ctx,
+        contexts(&ctx),
         vec![
             RefContext::AttributeString,
             RefContext::AttributeString,

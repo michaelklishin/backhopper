@@ -78,45 +78,52 @@ fn body_extractor_still_emits_function_refs_for_calls() {
 #[test]
 fn scanner_classifies_body_line_as_body() {
     let mut s = AttrCtxScanner::new();
-    assert_eq!(s.classify("increment(X) -> X + 1."), RefContext::Body);
+    assert_eq!(
+        s.classify("increment(X) -> X + 1.").context,
+        RefContext::Body
+    );
 }
 
 #[test]
 fn scanner_classifies_single_line_spec_as_type_attribute() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-spec handle(int()) -> ok."),
+        s.classify("-spec handle(int()) -> ok.").context,
         RefContext::TypeAttribute
     );
     // After a self-closing spec, the next line is body again.
-    assert_eq!(s.classify("handle(X) -> X."), RefContext::Body);
+    assert_eq!(s.classify("handle(X) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn scanner_classifies_multiline_spec_through_to_closing_period() {
     let mut s = AttrCtxScanner::new();
-    assert_eq!(s.classify("-spec merge(int(),"), RefContext::TypeAttribute);
     assert_eq!(
-        s.classify("           atom()) ->"),
+        s.classify("-spec merge(int(),").context,
         RefContext::TypeAttribute
     );
-    assert_eq!(s.classify("    ok."), RefContext::TypeAttribute);
-    assert_eq!(s.classify("merge(X, Y) -> X."), RefContext::Body);
+    assert_eq!(
+        s.classify("           atom()) ->").context,
+        RefContext::TypeAttribute
+    );
+    assert_eq!(s.classify("    ok.").context, RefContext::TypeAttribute);
+    assert_eq!(s.classify("merge(X, Y) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn scanner_classifies_callback_type_and_opaque_as_type_attribute() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-callback handle_call(term(), term(), term()) -> ok."),
+        s.classify("-callback handle_call(term(), term(), term()) -> ok.")
+            .context,
         RefContext::TypeAttribute
     );
     assert_eq!(
-        s.classify("-type state() :: #state{}."),
+        s.classify("-type state() :: #state{}.").context,
         RefContext::TypeAttribute
     );
     assert_eq!(
-        s.classify("-opaque token() :: binary()."),
+        s.classify("-opaque token() :: binary().").context,
         RefContext::TypeAttribute
     );
 }
@@ -126,38 +133,41 @@ fn scanner_treats_export_attribute_as_other_attribute() {
     let mut s = AttrCtxScanner::new();
     // -export is an attribute region, but not a type-context one.
     assert_eq!(
-        s.classify("-export([start/1, stop/2])."),
+        s.classify("-export([start/1, stop/2]).").context,
         RefContext::OtherAttribute
     );
     // the single-line form closes itself: the next line is body again
-    assert_eq!(s.classify("start(X) -> X."), RefContext::Body);
+    assert_eq!(s.classify("start(X) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn scanner_tracks_a_multi_line_export_to_its_terminator() {
     let mut s = AttrCtxScanner::new();
-    assert_eq!(s.classify("-export([start/1,"), RefContext::OtherAttribute);
     assert_eq!(
-        s.classify("          stop/2])."),
+        s.classify("-export([start/1,").context,
         RefContext::OtherAttribute
     );
-    assert_eq!(s.classify("start(X) -> X."), RefContext::Body);
+    assert_eq!(
+        s.classify("          stop/2]).").context,
+        RefContext::OtherAttribute
+    );
+    assert_eq!(s.classify("start(X) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn scanner_treats_minus_prefixed_function_names_as_body() {
     let mut s = AttrCtxScanner::new();
     // A function named spectacular should not look like -spec.
-    assert_eq!(s.classify("spectacular(X) -> X."), RefContext::Body);
+    assert_eq!(s.classify("spectacular(X) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn scanner_trailing_comment_does_not_block_closing_period() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-spec flush() -> ok.  %% trailing"),
+        s.classify("-spec flush() -> ok.  %% trailing").context,
         RefContext::TypeAttribute
     );
     // Period was outside the comment, so we are back to body.
-    assert_eq!(s.classify("flush() -> ok."), RefContext::Body);
+    assert_eq!(s.classify("flush() -> ok.").context, RefContext::Body);
 }

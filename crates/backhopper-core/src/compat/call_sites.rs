@@ -19,6 +19,7 @@
 //! These flow into a separate diagnostic envelope and never feed `Verdict`.
 
 use std::mem;
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::OnceLock;
 
@@ -27,15 +28,15 @@ use regex::Regex;
 use crate::compat::arg_shape::ArgShape;
 use crate::erlang_macros::{MacroTable, expand_value_macro_to_atom, expand_value_macro_to_mf};
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName, RecordName, TypeName};
-use crate::model::symbol::{RefContext, RefOrigin, SymbolRef};
+use crate::model::symbol::{LineClass, RefContext, RefOrigin, SymbolRef};
 
 // re-exported from the scan crate so the import path stays stable
 pub use backhopper_erlang_scan::{
     ScanArity, ScannedArgs, scan_top_level_args, split_top_level_args,
 };
 use backhopper_erlang_scan::{
-    count_top_level_items, hash_inside_number, is_bare_atom, opens_type_ref_context, scan_arity,
-    skip_char_literal_span,
+    count_top_level_items, hash_inside_number, is_bare_atom, opens_type_ref_context,
+    quoted_atom_span, scan_arity, skip_char_literal_span, string_span,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -126,7 +127,7 @@ pub fn extract_qualified_calls(src: &str, line_map: &[u32]) -> Vec<QualifiedCall
 pub fn extract_qualified_calls_with_context(
     src: &str,
     line_map: &[u32],
-    ctx: &[RefContext],
+    ctx: &[LineClass],
 ) -> Vec<QualifiedCallSite> {
     let mut out = Vec::new();
     for run in body_runs_from_context(src, line_map, ctx) {
@@ -208,29 +209,84 @@ pub(crate) fn body_runs_with<'a>(
 /// `src` (a hunk's `Context` lines, dropped from the added-only blob)
 /// should classify those too and feed the result to
 /// `body_runs_from_context` instead.
-pub fn line_context(src: &str) -> Vec<RefContext> {
+pub fn line_context(src: &str) -> Vec<LineClass> {
     let mut scanner = AttrCtxScanner::new();
     src.lines()
         .map(|line| scanner.classify(strip_line_comment(line)))
         .collect()
 }
 
-/// Joins consecutive `Body` lines into runs, breaking on attribute
-/// context and on file-line gaps, from a precomputed classification
-/// rather than one derived from `src` alone: `ctx[i]` is text line
-/// `i`'s context.
+/// Joins consecutive body-holding lines into runs, breaking on
+/// attribute context and on file-line gaps, from a precomputed
+/// classification rather than one derived from `src` alone: `ctx[i]` is
+/// text line `i`'s classification. A record field's `::` annotation is
+/// masked out with spaces before the run is scanned, so the call view
+/// never sees the type half of the line: masking preserves every
+/// offset the run's line map and origin lookups depend on.
 pub(crate) fn body_runs_from_context(
     src: &str,
     line_map: &[u32],
-    ctx: &[RefContext],
+    ctx: &[LineClass],
 ) -> Vec<BodyRun> {
+    let has_spans = ctx.iter().any(|c| !c.type_spans.is_empty());
+    let masked;
+    let text: &str = if has_spans {
+        masked = mask_call_view(src, ctx);
+        &masked
+    } else {
+        src
+    };
     let mut idx = 0usize;
-    body_runs_with(src, line_map, strip_line_comment, |_line| {
-        // other-attribute lines scan like body: a `-define` body holds real calls
-        let body = ctx.get(idx).is_some_and(|c| c.holds_calls());
+    body_runs_with(text, line_map, strip_line_comment, |_line| {
+        // other-attribute and record lines scan like body: a `-define`
+        // body holds real calls, and a record field's default does too
+        let body = ctx.get(idx).is_some_and(|c| c.context.holds_calls());
         idx += 1;
         body
     })
+}
+
+/// `src` with each line's `type_spans` overwritten by ASCII spaces, so
+/// a call scan over the result never matches inside a `::` annotation.
+/// Length is preserved line for line, so every downstream byte offset
+/// stays valid.
+fn mask_call_view(src: &str, ctx: &[LineClass]) -> String {
+    let mut out = String::with_capacity(src.len());
+    for (idx, line) in src.lines().enumerate() {
+        let spans: &[Range<usize>] = ctx.get(idx).map_or(&[], |c| &c.type_spans);
+        out.push_str(&mask_ranges(line, spans));
+        out.push('\n');
+    }
+    out
+}
+
+/// `line` with each of `spans` overwritten by ASCII spaces. A span
+/// boundary always sits next to an ASCII delimiter byte (`::`, `,`,
+/// `{`, `}`), which is always a valid UTF-8 boundary, so the rebuilt
+/// line is guaranteed well-formed.
+fn mask_ranges(line: &str, spans: &[Range<usize>]) -> String {
+    if spans.is_empty() {
+        return line.to_owned();
+    }
+    let mut bytes = line.as_bytes().to_vec();
+    for span in spans {
+        let end = span.end.min(bytes.len());
+        let start = span.start.min(end);
+        bytes[start..end].fill(b' ');
+    }
+    String::from_utf8(bytes).expect("masking only touches ascii delimiter boundaries")
+}
+
+/// The complement of `mask_ranges`: only `spans` keep their text,
+/// everything else becomes an ASCII space.
+fn mask_outside_ranges(line: &str, spans: &[Range<usize>]) -> String {
+    let mut bytes = vec![b' '; line.len()];
+    for span in spans {
+        let end = span.end.min(line.len());
+        let start = span.start.min(end);
+        bytes[start..end].copy_from_slice(&line.as_bytes()[start..end]);
+    }
+    String::from_utf8(bytes).expect("masking only touches ascii delimiter boundaries")
 }
 
 /// The value of the last `(start, value)` entry whose start is at or
@@ -260,12 +316,14 @@ pub(crate) fn run_line_at(run_lines: &[(usize, u32)], offset: usize) -> u32 {
 }
 
 /// Cross-line classifier that decides which `RefContext` a hunk line
-/// sits in. `-spec`, `-callback`, `-type`, and `-opaque` open a
-/// type-attribute region; any other `-` attribute form opens an
-/// other-attribute region. Both run until the terminating `.` at the
-/// top level, and a single line may both open and close one. Multi-line
-/// attributes flow through the stored region so their later lines
-/// classify correctly.
+/// sits in, and, inside a `-record(...)` attribute, the byte ranges of
+/// its fields' `::` type annotations. `-spec`, `-callback`, `-type`,
+/// and `-opaque` open a type-attribute region; `-record` opens its own
+/// region and is split field by field; any other `-` attribute form
+/// opens an other-attribute region. All three run until the
+/// terminating `.` at the top level, and a single line may both open
+/// and close one. Multi-line attributes flow through the stored region
+/// so their later lines classify correctly.
 ///
 /// A triple-quoted string suspends the close rule while it is open,
 /// because documentation prose ends lines with full stops constantly
@@ -275,16 +333,53 @@ pub struct AttrCtxScanner {
     region: Option<AttrRegion>,
 }
 
+/// The region to resume once a suspended multi-line string closes.
+#[derive(Debug, Clone, Copy)]
+enum Resume {
+    Open(RefContext),
+    Record(FieldSplit),
+}
+
 /// The open region, if any. A multi-line string only exists inside an
-/// attribute form, so it carries that form's context rather than
+/// attribute form, so it carries the form to resume rather than
 /// sitting in a second field that could contradict it.
 #[derive(Debug, Clone, Copy)]
 enum AttrRegion {
     /// An attribute form, closed by a line ending in `.`.
     Open(RefContext),
+    /// A `-record(...)` attribute, tracking the field splitter's state.
+    Record(FieldSplit),
     /// A multi-line string in one, closed by a line whose first content
     /// is a run of at least `quotes` quotes.
-    String { attr: RefContext, quotes: usize },
+    String { resume: Resume, quotes: usize },
+}
+
+/// Cross-line state of the `::` splitter inside a `-record` region.
+/// `depth` is `-1` before the field list's own `{` is seen, and from
+/// then on the bracket depth relative to it: `0` is the top level
+/// between fields, deeper is a nested tuple, list, map, or call. A
+/// closer with no matching opener on the visible lines cannot push
+/// `depth` below `-1`, so malformed or partially visible input
+/// degrades to over-wide call context rather than a misread field
+/// separator. `angle` is the `<<`/`>>` depth, tracked apart from
+/// `depth` so a bit-size `:` inside a binary pattern is never mistaken
+/// for `::`. `in_type` is whether the walk is inside an annotation
+/// begun on this or an earlier line.
+#[derive(Debug, Clone, Copy)]
+struct FieldSplit {
+    depth: i32,
+    angle: i32,
+    in_type: bool,
+}
+
+impl FieldSplit {
+    fn new() -> Self {
+        Self {
+            depth: -1,
+            angle: 0,
+            in_type: false,
+        }
+    }
 }
 
 impl AttrCtxScanner {
@@ -292,39 +387,167 @@ impl AttrCtxScanner {
         Self { region: None }
     }
 
-    pub fn classify(&mut self, line: &str) -> RefContext {
+    pub fn classify(&mut self, line: &str) -> LineClass {
         match self.region {
-            Some(AttrRegion::String { attr, quotes }) => {
+            Some(AttrRegion::String { resume, quotes }) => {
                 if line_closes_quote_run(line, quotes) {
-                    self.region = (!line_closes_attribute(line)).then_some(AttrRegion::Open(attr));
+                    self.region = (!line_closes_attribute(line)).then_some(match resume {
+                        Resume::Open(attr) => AttrRegion::Open(attr),
+                        Resume::Record(split) => AttrRegion::Record(split),
+                    });
                 }
-                RefContext::AttributeString
+                LineClass::new(RefContext::AttributeString)
             }
-            Some(AttrRegion::Open(attr)) => self.continue_attribute(attr, line),
-            None => {
-                let opened = if line_opens_type_attr(line) {
-                    RefContext::TypeAttribute
-                } else if line_opens_other_attr(line) {
-                    RefContext::OtherAttribute
-                } else {
-                    return RefContext::Body;
-                };
-                self.continue_attribute(opened, line)
+            Some(AttrRegion::Open(attr)) => self.continue_open(attr, line),
+            Some(AttrRegion::Record(mut split)) => self.continue_record(&mut split, line),
+            None if line_opens_type_attr(line) => {
+                self.continue_open(RefContext::TypeAttribute, line)
             }
+            None if line_opens_record_attr(line) => {
+                self.continue_record(&mut FieldSplit::new(), line)
+            }
+            None if line_opens_other_attr(line) => {
+                self.continue_open(RefContext::OtherAttribute, line)
+            }
+            None => LineClass::new(RefContext::Body),
         }
     }
 
     /// Advance an attribute region across `line`: a trailing quote run
     /// opens a string, a terminating `.` closes the region, and
     /// anything else carries it to the next line.
-    fn continue_attribute(&mut self, attr: RefContext, line: &str) -> RefContext {
+    fn continue_open(&mut self, attr: RefContext, line: &str) -> LineClass {
         self.region = match trailing_quote_run(line) {
-            Some(quotes) => Some(AttrRegion::String { attr, quotes }),
+            Some(quotes) => Some(AttrRegion::String {
+                resume: Resume::Open(attr),
+                quotes,
+            }),
             None if line_closes_attribute(line) => None,
             None => Some(AttrRegion::Open(attr)),
         };
-        attr
+        LineClass::new(attr)
     }
+
+    /// Advance a record region across `line`: splits the field list's
+    /// `::` annotations from their default expressions, then applies
+    /// the same string-suspend and close rule `continue_open` does.
+    fn continue_record(&mut self, split: &mut FieldSplit, line: &str) -> LineClass {
+        let type_spans = record_field_spans(line, split);
+        self.region = match trailing_quote_run(line) {
+            Some(quotes) => Some(AttrRegion::String {
+                resume: Resume::Record(*split),
+                quotes,
+            }),
+            None if line_closes_attribute(line) => None,
+            None => Some(AttrRegion::Record(*split)),
+        };
+        LineClass {
+            context: RefContext::RecordAttribute,
+            type_spans,
+        }
+    }
+}
+
+/// The `::` type-annotation ranges on one physical, comment-stripped
+/// line of a record's field list, threading `split` across lines so a
+/// wrapped annotation, or a field list opener on an earlier line,
+/// still splits correctly. Literal strings, quoted atoms, and char
+/// literals are skipped whole so a `::` or `,` inside one is never
+/// mistaken for field punctuation.
+fn record_field_spans(line: &str, split: &mut FieldSplit) -> Vec<Range<usize>> {
+    let bytes = line.as_bytes();
+    let mut spans = Vec::new();
+    let mut span_start = split.in_type.then_some(0);
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' | b'~' => {
+                if let Some(len) = string_span(bytes, i) {
+                    i += len;
+                    continue;
+                }
+            }
+            b'\'' => {
+                if let Some(len) = quoted_atom_span(bytes, i) {
+                    i += len;
+                    continue;
+                }
+            }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
+                continue;
+            }
+            _ => {}
+        }
+        let at_field_level = split.depth == 0 && split.angle == 0;
+        match bytes[i] {
+            b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                split.angle += 1;
+                i += 2;
+                continue;
+            }
+            b'>' if bytes.get(i + 1) == Some(&b'>') && split.angle > 0 => {
+                split.angle -= 1;
+                i += 2;
+                continue;
+            }
+            b'{' if split.depth < 0 => {
+                // the field list opens here: the record name and
+                // whatever precedes it are not field-relative structure
+                split.depth = 0;
+                i += 1;
+                continue;
+            }
+            b'(' | b'[' | b')' | b']' if split.depth < 0 => {
+                // still inside the `-record(Name` head, before the field list
+                i += 1;
+                continue;
+            }
+            b'(' | b'[' | b'{' => {
+                split.depth += 1;
+                i += 1;
+                continue;
+            }
+            b')' | b']' | b'}' => {
+                if at_field_level && split.in_type {
+                    spans.push(close_span(&mut span_start, &mut split.in_type, i));
+                }
+                split.depth = (split.depth - 1).max(-1);
+                i += 1;
+                continue;
+            }
+            b':' if at_field_level && !split.in_type && bytes.get(i + 1) == Some(&b':') => {
+                i += 2;
+                span_start = Some(i);
+                split.in_type = true;
+                continue;
+            }
+            b',' if at_field_level && split.in_type => {
+                spans.push(close_span(&mut span_start, &mut split.in_type, i));
+                i += 1;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if split.in_type {
+        let start = span_start.expect("in_type implies span_start is set");
+        spans.push(start..bytes.len());
+    }
+    spans.retain(|span| !span.is_empty());
+    spans
+}
+
+/// Closes the type span open since `span_start`, at `at`: `in_type`
+/// only ever holds with `span_start` set, so the two always clear
+/// together.
+fn close_span(span_start: &mut Option<usize>, in_type: &mut bool, at: usize) -> Range<usize> {
+    let start = span_start
+        .take()
+        .expect("in_type implies span_start is set");
+    *in_type = false;
+    start..at
 }
 
 /// The length of a trailing run of three or more `"`, which opens a
@@ -359,6 +582,17 @@ fn line_opens_type_attr(line: &str) -> bool {
         return false;
     }
     matches!(rest[name_end..].chars().next(), Some(c) if c == '(' || c.is_whitespace())
+}
+
+/// A line-leading `-record` followed by `(` or whitespace opens the
+/// record region; checked before `line_opens_other_attr` so `-record`
+/// does not fall through to the generic attribute case.
+fn line_opens_record_attr(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("-record") else {
+        return false;
+    };
+    matches!(rest.chars().next(), Some(c) if c == '(' || c.is_whitespace())
 }
 
 /// A line-leading `-` followed by a lowercase letter opens an
@@ -833,25 +1067,37 @@ pub struct HunkScan {
 /// Scan one Erlang hunk's lines as logical units, not one diff line at a
 /// time. `lines` is the hunk's `Added` and `Context` lines in order,
 /// `Removed` already dropped. Consecutive lines of the same context
-/// (`Body` or `TypeAttribute`) are joined and scanned together, so a
-/// call or clause head whose argument list wraps across lines resolves
-/// at exact arity. Each reference takes the origin of the physical line
-/// its match started on.
+/// (`Body`, `OtherAttribute`, or `RecordAttribute`) are joined and
+/// scanned together, so a call or clause head whose argument list wraps
+/// across lines resolves at exact arity. A `RecordAttribute` line
+/// contributes its masked call view to that run and its masked `::`
+/// annotation, if any, to a separate run flushed as type references
+/// once the record region ends: no type reference can wrap from a
+/// record into a different form. Each reference takes the origin of
+/// the physical line its match started on.
 pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
     let mut out = HunkScan::default();
     let mut scanner = AttrCtxScanner::new();
     let mut text = String::new();
     let mut line_origins: Vec<(usize, RefOrigin)> = Vec::new();
     // runs group on the type-attribute boundary alone, so other-attribute
-    // lines join body runs exactly as they did before the third variant
+    // and record-attribute lines join body runs exactly as they did
+    // before the extra variants
     let mut run_ctx: Option<bool> = None;
+    let mut record_text = String::new();
+    let mut record_origins: Vec<(usize, RefOrigin)> = Vec::new();
     for &(origin, raw) in lines {
         let stripped = strip_line_comment(raw);
-        let ctx = scanner.classify(stripped);
+        let class = scanner.classify(stripped);
+        if class.context != RefContext::RecordAttribute && !record_text.is_empty() {
+            flush_run(true, &record_text, &record_origins, macros, &mut out);
+            record_text.clear();
+            record_origins.clear();
+        }
         // a multi-line string in an attribute holds no references at all,
         // and joining its prose to the lines around it would build one
         // construct out of two unrelated halves
-        if ctx == RefContext::AttributeString {
+        if class.context == RefContext::AttributeString {
             if let Some(prev) = run_ctx.take() {
                 flush_run(prev, &text, &line_origins, macros, &mut out);
                 text.clear();
@@ -859,7 +1105,7 @@ pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
             }
             continue;
         }
-        let type_attr = ctx == RefContext::TypeAttribute;
+        let type_attr = class.context == RefContext::TypeAttribute;
         if run_ctx != Some(type_attr) {
             if let Some(prev) = run_ctx {
                 flush_run(prev, &text, &line_origins, macros, &mut out);
@@ -868,12 +1114,26 @@ pub fn scan_hunk(lines: &[(RefOrigin, &str)], macros: &MacroTable) -> HunkScan {
             line_origins.clear();
             run_ctx = Some(type_attr);
         }
-        line_origins.push((text.len(), origin));
-        text.push_str(stripped);
-        text.push('\n');
+        if class.context == RefContext::RecordAttribute {
+            line_origins.push((text.len(), origin));
+            text.push_str(&mask_ranges(stripped, &class.type_spans));
+            text.push('\n');
+            if !class.type_spans.is_empty() {
+                record_origins.push((record_text.len(), origin));
+                record_text.push_str(&mask_outside_ranges(stripped, &class.type_spans));
+                record_text.push('\n');
+            }
+        } else {
+            line_origins.push((text.len(), origin));
+            text.push_str(stripped);
+            text.push('\n');
+        }
     }
     if let Some(prev) = run_ctx {
         flush_run(prev, &text, &line_origins, macros, &mut out);
+    }
+    if !record_text.is_empty() {
+        flush_run(true, &record_text, &record_origins, macros, &mut out);
     }
     out
 }

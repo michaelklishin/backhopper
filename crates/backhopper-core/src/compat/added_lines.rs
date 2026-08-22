@@ -10,7 +10,7 @@
 use crate::compat::call_sites::{AttrCtxScanner, strip_line_comment};
 use crate::compat::patch::{Hunk, HunkLine};
 use crate::model::names::RelativePath;
-use crate::model::symbol::RefContext;
+use crate::model::symbol::LineClass;
 
 /// One touched source file projected for the target-axis resolvers: its
 /// source-relative path, the text of its added lines where new symbols
@@ -55,7 +55,7 @@ pub fn added_lines_with_offsets(hunks: &[Hunk]) -> (String, Vec<u32>) {
 /// the region its unseen opener started. Only `Added` lines push into
 /// the blob, the line map, and the context vector; a `Context` line
 /// advances the classifier and contributes nothing else.
-pub fn added_lines_with_context(hunks: &[Hunk]) -> (String, Vec<u32>, Vec<RefContext>) {
+pub fn added_lines_with_context(hunks: &[Hunk]) -> (String, Vec<u32>, Vec<LineClass>) {
     let mut blob = String::new();
     let mut line_map = Vec::new();
     let mut ctx = Vec::new();

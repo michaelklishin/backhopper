@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::ops::Range;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -20,9 +21,13 @@ pub enum RefContext {
     /// Inside a `-spec`, `-callback`, `-type`, or `-opaque` attribute,
     /// where `mod:ident(...)` is a type reference, not a function call.
     TypeAttribute,
-    /// Inside any other attribute form (`-export`, `-define`,
-    /// `-record`, ...), where an identifier is never a local call.
+    /// Inside any other attribute form (`-export`, `-define`, ...),
+    /// where an identifier is never a local call.
     OtherAttribute,
+    /// Inside a `-record(...)` attribute: a field's default expression
+    /// holds calls, while the byte ranges a `LineClass` reports for the
+    /// line mark its `::` type annotation, which does not.
+    RecordAttribute,
     /// Inside a multi-line string in an attribute, such as the
     /// documentation prose of `-moduledoc """ ... """`. Every byte is
     /// string content, so nothing here is a reference of any kind.
@@ -38,12 +43,35 @@ impl RefContext {
         !matches!(self, Self::Body)
     }
 
-    /// True where `mod:fun(...)` may be a real call. False in type
-    /// attributes, where it names a type, and in attribute strings,
-    /// where a documentation example is not a call the patch adds.
+    /// True where `mod:fun(...)` may hold a real call. Also true in a
+    /// record attribute: a field's default expression can call a
+    /// function, and the caller is expected to mask out the `::`
+    /// annotation ranges first so the type half is not scanned as one.
     #[must_use]
     pub fn holds_calls(self) -> bool {
-        matches!(self, Self::Body | Self::OtherAttribute)
+        matches!(
+            self,
+            Self::Body | Self::OtherAttribute | Self::RecordAttribute
+        )
+    }
+}
+
+/// One line's attribute-region classification, plus the byte ranges of
+/// any `::` type annotations on it. `type_spans` is empty outside a
+/// `-record` region; each range indexes the comment-stripped line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineClass {
+    pub context: RefContext,
+    pub type_spans: Vec<Range<usize>>,
+}
+
+impl LineClass {
+    #[must_use]
+    pub fn new(context: RefContext) -> Self {
+        Self {
+            context,
+            type_spans: Vec::new(),
+        }
     }
 }
 

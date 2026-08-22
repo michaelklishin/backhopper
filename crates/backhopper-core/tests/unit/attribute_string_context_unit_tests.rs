@@ -11,7 +11,7 @@ use backhopper_core::compat::call_sites::{AttrCtxScanner, extract_qualified_call
 use backhopper_core::model::symbol::RefContext;
 
 fn contexts(src: &str) -> Vec<RefContext> {
-    line_context(src)
+    line_context(src).into_iter().map(|c| c.context).collect()
 }
 
 fn calls(src: &str) -> Vec<String> {
@@ -92,20 +92,20 @@ fn a_closer_whose_terminating_dot_sits_on_the_next_line_closes_there() {
 fn an_ordinary_single_line_doc_attribute_still_closes_on_its_own_line() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-doc \"Appends an entry.\"."),
+        s.classify("-doc \"Appends an entry.\".").context,
         RefContext::OtherAttribute
     );
-    assert_eq!(s.classify("append(X) -> X."), RefContext::Body);
+    assert_eq!(s.classify("append(X) -> X.").context, RefContext::Body);
 }
 
 #[test]
 fn a_short_quote_run_at_the_end_of_a_line_does_not_open_a_string() {
     let mut s = AttrCtxScanner::new();
     assert_eq!(
-        s.classify("-define(NAME, \"ra\")."),
+        s.classify("-define(NAME, \"ra\").").context,
         RefContext::OtherAttribute
     );
-    assert_eq!(s.classify("start() -> ok."), RefContext::Body);
+    assert_eq!(s.classify("start() -> ok.").context, RefContext::Body);
 }
 
 #[test]

@@ -35,6 +35,19 @@ fn functions(refs: &[SymbolRef]) -> Vec<(String, RefOrigin)> {
         .collect()
 }
 
+fn types(refs: &[SymbolRef]) -> Vec<String> {
+    refs.iter()
+        .filter_map(|r| match &r.kind {
+            SymbolKind::Type {
+                module,
+                name,
+                arity,
+            } => Some(format!("{module}:{name}/{arity}")),
+            _ => None,
+        })
+        .collect()
+}
+
 fn defined(refs: &[SymbolRef]) -> Vec<String> {
     refs.iter()
         .filter_map(|r| match &r.kind {
@@ -253,4 +266,37 @@ fn a_call_split_across_a_documentation_block_does_not_join_into_one() {
         .map(|(n, _)| n)
         .collect();
     assert_eq!(names, vec!["ra_server:tick/?".to_string()]);
+}
+
+// HF-45's record addendum: a field's `::` annotation is a type
+// reference, not a call into the same name.
+#[test]
+fn a_record_field_type_lands_as_a_type_reference() {
+    let out = scan(&[
+        added("-record(state, {"),
+        added("    vhost :: rabbit_types:vhost()"),
+        added("})."),
+    ]);
+    assert_eq!(types(&out.referenced), ["rabbit_types:vhost/0".to_owned()]);
+    assert!(
+        functions(&out.referenced).is_empty(),
+        "unexpected: {:?}",
+        out.referenced
+    );
+}
+
+// The same field's default expression still calls a function, and its
+// annotation is still a type reference: both halves route correctly.
+#[test]
+fn a_record_field_default_call_lands_as_a_function_reference() {
+    let out = scan(&[
+        added("-record(state, {"),
+        added("    timeout = rabbit_misc:get_timeout() :: rabbit_types:vhost()"),
+        added("})."),
+    ]);
+    assert_eq!(
+        functions(&out.referenced),
+        [("rabbit_misc:get_timeout/0".to_owned(), RefOrigin::Added)]
+    );
+    assert_eq!(types(&out.referenced), ["rabbit_types:vhost/0".to_owned()]);
 }

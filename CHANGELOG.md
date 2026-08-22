@@ -2,7 +2,11 @@
 
 ## v0.33.0 (in development)
 
-No changes yet.
+### Bug Fixes
+
+ * A record field's `::` type annotation (`vhost :: rabbit_types:vhost()`)
+   is now read as a type reference and not as a call. Field defaults
+   are still scanned for calls
 
 ## v0.32.0 (August 13, 2026)
 

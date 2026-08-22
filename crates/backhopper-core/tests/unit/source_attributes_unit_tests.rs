@@ -18,7 +18,7 @@ use backhopper_core::compat::source_attributes::{
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
 use backhopper_core::model::spec_parser::parse_signature_return;
-use backhopper_core::model::symbol::RefContext;
+use backhopper_core::model::symbol::{LineClass, RefContext};
 use backhopper_core::model::verdict::IncludeDirective;
 
 #[test]
@@ -474,10 +474,10 @@ fn an_added_spec_head_does_not_swallow_following_definitions() {
                 parse_props(<<0, Rest/binary>>, 5, _Type) ->\n\
                 parse_props(Bin, 5, Type) ->\n";
     let ctx = [
-        RefContext::TypeAttribute,
-        RefContext::Body,
-        RefContext::Body,
-        RefContext::Body,
+        LineClass::new(RefContext::TypeAttribute),
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
     ];
     let sigs = extract_function_signatures_with_context(blob, &ctx);
     let defs: Vec<_> = sigs
@@ -493,7 +493,10 @@ fn an_orphaned_attribute_continuation_emits_no_signatures() {
     // continuation lines of a -spec whose opener stayed context
     let blob = "        rabbit_net:socket() | rabbit_net:proxy_socket(),\n\
                         keepalive_interval()) -> state().\n";
-    let ctx = [RefContext::TypeAttribute, RefContext::TypeAttribute];
+    let ctx = [
+        LineClass::new(RefContext::TypeAttribute),
+        LineClass::new(RefContext::TypeAttribute),
+    ];
     let sigs = extract_function_signatures_with_context(blob, &ctx);
     assert!(sigs.is_empty(), "sigs: {sigs:?}");
 }

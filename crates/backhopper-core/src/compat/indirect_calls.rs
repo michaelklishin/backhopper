@@ -34,7 +34,7 @@ use crate::compat::call_sites::{
     BodyRun, body_runs_from_context, body_runs_with, call_re, line_context, run_line_at,
 };
 use crate::model::names::{Arity, FunctionName, Mfa, ModuleName};
-use crate::model::symbol::RefContext;
+use crate::model::symbol::LineClass;
 use crate::model::verdict::IndirectCallForm;
 
 /// Which source language a form was written in: selects the atom parser
@@ -174,7 +174,7 @@ pub fn extract_indirect_calls(src: &str, line_map: &[u32]) -> IndirectExtraction
 pub fn extract_indirect_calls_with_context(
     src: &str,
     line_map: &[u32],
-    ctx: &[RefContext],
+    ctx: &[LineClass],
 ) -> IndirectExtraction {
     let mut out = IndirectExtraction::default();
     for run in body_runs_from_context(src, line_map, ctx) {

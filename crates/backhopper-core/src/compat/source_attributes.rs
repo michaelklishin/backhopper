@@ -32,7 +32,7 @@ use backhopper_erlang_scan::{
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath, TypeName};
-use crate::model::symbol::RefContext;
+use crate::model::symbol::LineClass;
 use crate::model::verdict::IncludeDirective;
 use crate::snapshot::spec_normalize::normalize_signature;
 
@@ -314,12 +314,12 @@ pub fn extract_function_signatures(src: &str) -> Vec<FunctionSignature> {
 /// start and the intra-line transitions still apply within a line.
 pub fn extract_function_signatures_with_context(
     src: &str,
-    ctx: &[RefContext],
+    ctx: &[LineClass],
 ) -> Vec<FunctionSignature> {
     signatures_with_line_context(src, Some(ctx))
 }
 
-fn signatures_with_line_context(src: &str, ctx: Option<&[RefContext]>) -> Vec<FunctionSignature> {
+fn signatures_with_line_context(src: &str, ctx: Option<&[LineClass]>) -> Vec<FunctionSignature> {
     let bytes = src.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -403,10 +403,10 @@ fn signatures_with_line_context(src: &str, ctx: Option<&[RefContext]>) -> Vec<Fu
 
 /// Whether `line` (1-based) opens inside an attribute region per the
 /// supplied classification; without one the byte tracking stands alone.
-fn line_starts_attribute(ctx: Option<&[RefContext]>, line: u32) -> bool {
+fn line_starts_attribute(ctx: Option<&[LineClass]>, line: u32) -> bool {
     ctx.is_some_and(|ctx| {
         ctx.get(line.saturating_sub(1) as usize)
-            .is_some_and(|c| c.is_attribute())
+            .is_some_and(|c| c.context.is_attribute())
     })
 }
 

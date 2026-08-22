@@ -35,7 +35,7 @@ use backhopper_core::compat::{
 use backhopper_core::config::{Config, PathTranslations};
 use backhopper_core::model::apply::{ApplyForecast, PathApplyOutcome, UnassessedReason};
 use backhopper_core::model::names::{CommitSha, GitRef, ModuleName, RelativePath};
-use backhopper_core::model::symbol::RefContext;
+use backhopper_core::model::symbol::LineClass;
 use backhopper_core::model::verdict::{
     ApplyConflictKind, Diagnostics, InapplicableReason, PinVerdict, Reason, SeriesEvaluation,
     SeriesSummary, SeriesVerdict, TranslationSource, Verdict,
@@ -380,7 +380,7 @@ fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedL
 /// indirect-call, and local-call axes consume the classification.
 fn erl_subject_context(
     files: &[PatchedFile],
-) -> Vec<(RelativePath, String, Vec<u32>, Vec<RefContext>)> {
+) -> Vec<(RelativePath, String, Vec<u32>, Vec<LineClass>)> {
     let mut out = Vec::new();
     for file in files {
         if file.binary {
@@ -409,7 +409,7 @@ fn erl_subject_context(
 /// Borrow the context-carrying subject tuples as the `ContextAwareSubject`
 /// shape `analyse_qualified_calls` takes.
 fn to_context_subjects(
-    subjects: &[(RelativePath, String, Vec<u32>, Vec<RefContext>)],
+    subjects: &[(RelativePath, String, Vec<u32>, Vec<LineClass>)],
 ) -> Vec<ContextAwareSubject<'_>> {
     subjects
         .iter()

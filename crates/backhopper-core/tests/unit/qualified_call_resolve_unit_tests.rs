@@ -826,3 +826,36 @@ fn a_genuine_wrapped_call_after_context_is_still_flagged() {
         [("rabbit_net".to_owned(), "socket_ends".to_owned(), 2, 11)]
     );
 }
+
+fn rabbit_types_target() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![(
+        "rabbit_types",
+        "deps/rabbit_common/src/rabbit_types.erl",
+        "-module(rabbit_types).\n-export_type([vhost/0]).\n-type vhost() :: binary().\n",
+    )]
+}
+
+// HF-45's record addendum: a field's `::` annotation names a type the
+// target exports, and must not read as a call into the same name.
+#[test]
+fn a_record_field_type_annotation_is_not_flagged() {
+    let reasons = analyse(
+        "-record(state, {\n    vhost :: rabbit_types:vhost(),\n    n :: non_neg_integer()\n}).\n",
+        &rabbit_types_target(),
+    );
+    assert!(flagged(&reasons).is_empty(), "unexpected: {reasons:?}");
+}
+
+// Negative control: a field default that calls a function the target
+// lacks must still flag, so the split does not also swallow real calls.
+#[test]
+fn a_call_in_a_record_field_default_is_still_flagged() {
+    let reasons = analyse(
+        "-record(state, {\n    timeout = rabbit_types:missing() :: timeout()\n}).\n",
+        &rabbit_types_target(),
+    );
+    assert_eq!(
+        flagged(&reasons),
+        [("rabbit_types".to_owned(), "missing".to_owned(), 0, 2)]
+    );
+}

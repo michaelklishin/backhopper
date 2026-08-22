@@ -79,6 +79,7 @@ mod qualified_call_resolve_unit_tests;
 mod qualified_call_sites_unit_tests;
 mod reason_path_scoped_unit_tests;
 mod reason_resolver_class_unit_tests;
+mod record_field_split_unit_tests;
 mod ref_origin_unit_tests;
 mod relative_path_unit_tests;
 mod resolver_coverage_unit_tests;

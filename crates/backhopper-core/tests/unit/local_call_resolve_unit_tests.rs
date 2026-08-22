@@ -17,7 +17,7 @@ use backhopper_core::compat::qualified_call_resolve::{
     ContextAwareSubject, PatchProvided, ReferenceContext, patch_provided,
 };
 use backhopper_core::model::names::{ModuleName, RelativePath};
-use backhopper_core::model::symbol::RefContext;
+use backhopper_core::model::symbol::{LineClass, RefContext};
 use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
 
 fn rp(s: &str) -> RelativePath {
@@ -80,7 +80,7 @@ fn analyse_ctx(
 fn analyse_with_line_context(
     path: &RelativePath,
     added: &str,
-    line_ctx: &[RefContext],
+    line_ctx: &[LineClass],
     covered: &[&str],
     patch_added: &PatchProvided,
     target: &[(&str, &str)],
@@ -696,11 +696,11 @@ parse_props(Bin, 5, Type) ->
 ";
     // the hunk-walked classification: the spec terminator was a context line
     let line_ctx = [
-        RefContext::Body,
-        RefContext::TypeAttribute,
-        RefContext::Body,
-        RefContext::Body,
-        RefContext::Body,
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::TypeAttribute),
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
     ];
     let analysis = analyse_with_line_context(
         &path,
@@ -727,7 +727,10 @@ parse_props(Bin, 5, Type) ->
 fn a_single_clause_head_with_a_context_guard_is_not_flagged() {
     let path = rp("deps/rabbit/src/rabbit_reader.erl");
     let added = "handle_frame(Frame, State) -> validate_frame(Frame, State),\nvalidate_frame(Frame, State)\n";
-    let line_ctx = [RefContext::Body, RefContext::Body];
+    let line_ctx = [
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
+    ];
     let analysis = analyse_with_line_context(
         &path,
         added,
@@ -754,9 +757,9 @@ fn a_genuinely_undefined_local_call_is_still_flagged() {
     let path = rp("deps/rabbit/src/rabbit_reader.erl");
     let added = "-export([handle_frame/2]).\nhandle_frame(Frame, State) ->\n    validate_frame(Frame, State).\n";
     let line_ctx = [
-        RefContext::OtherAttribute,
-        RefContext::Body,
-        RefContext::Body,
+        LineClass::new(RefContext::OtherAttribute),
+        LineClass::new(RefContext::Body),
+        LineClass::new(RefContext::Body),
     ];
     let analysis = analyse_with_line_context(
         &path,

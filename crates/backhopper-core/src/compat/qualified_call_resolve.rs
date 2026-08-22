@@ -30,7 +30,7 @@ use crate::compat::source_attributes::{
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
-use crate::model::symbol::RefContext;
+use crate::model::symbol::LineClass;
 use crate::model::verdict::{IndirectCallForm, IndirectCallTally, Reason, ShapeCheckTally};
 
 /// `(function, arity)` pairs per module.
@@ -47,7 +47,7 @@ pub type PerModuleFunctionSet = BTreeMap<ModuleName, BTreeSet<(FunctionName, Ari
 #[derive(Debug, Clone, Copy)]
 pub struct ContextAwareSubject<'a> {
     pub subject: AddedLinesSubject<'a>,
-    pub line_context: &'a [RefContext],
+    pub line_context: &'a [LineClass],
 }
 
 /// What the patch's added lines themselves provide per module. A
