@@ -6,8 +6,8 @@
 //! number, and dot-terminator spans.
 
 use backhopper_erlang_scan::{
-    dot_terminates, hash_inside_number, number_span, quoted_atom_span, sigil_span,
-    skip_char_literal_span, string_span, triple_quoted_span,
+    dot_terminates, hash_inside_number, literal_span, matching_bracket, number_span,
+    quoted_atom_span, sigil_span, skip_char_literal_span, string_span, triple_quoted_span,
 };
 
 fn char_span(src: &str) -> usize {
@@ -162,4 +162,36 @@ fn hash_inside_number_keeps_record_references() {
     let second = two.iter().rposition(|&b| b == b'#').unwrap();
     assert!(hash_inside_number(two, 1));
     assert!(!hash_inside_number(two, second));
+}
+
+#[test]
+fn literal_span_covers_each_literal_kind() {
+    assert_eq!(literal_span(br#""a}b" rest"#, 0), Some(5));
+    assert_eq!(literal_span(b"'a}b' rest", 0), Some(5));
+    assert_eq!(literal_span(b"$} rest", 0), Some(2));
+    assert_eq!(literal_span(b"atom", 0), None);
+    assert_eq!(literal_span(b"", 0), None);
+}
+
+#[test]
+fn matching_bracket_pairs_each_opener_with_its_own_kind() {
+    assert_eq!(matching_bracket(b"(a, b) rest", 0), Some(5));
+    assert_eq!(matching_bracket(b"[a, b] rest", 0), Some(5));
+    assert_eq!(matching_bracket(b"{a, b} rest", 0), Some(5));
+    assert_eq!(matching_bracket(b"atom", 0), None);
+}
+
+#[test]
+fn matching_bracket_ignores_closers_of_another_kind() {
+    let nested = b"{mfa, {m, f, []}}";
+    assert_eq!(matching_bracket(nested, 0), Some(nested.len() - 1));
+    assert_eq!(matching_bracket(nested, 6), Some(15));
+}
+
+#[test]
+fn matching_bracket_steps_over_closers_inside_literals() {
+    assert_eq!(matching_bracket(br#"{"}", a}"#, 0), Some(7));
+    assert_eq!(matching_bracket(b"{'}', a}", 0), Some(7));
+    assert_eq!(matching_bracket(b"{$}, a}", 0), Some(6));
+    assert_eq!(matching_bracket(b"{a, b", 0), None);
 }

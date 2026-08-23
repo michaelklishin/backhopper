@@ -35,8 +35,9 @@ pub use backhopper_erlang_scan::{
     ScanArity, ScannedArgs, scan_top_level_args, split_top_level_args,
 };
 use backhopper_erlang_scan::{
-    count_top_level_items, hash_inside_number, is_bare_atom, opens_type_ref_context,
-    quoted_atom_span, scan_arity, skip_char_literal_span, split_top_level_commas, string_span,
+    count_top_level_items, hash_inside_number, is_bare_atom, literal_span, matching_bracket,
+    opens_type_ref_context, quoted_atom_span, scan_arity, skip_char_literal_span,
+    split_top_level_commas, string_span,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -246,31 +247,38 @@ pub(crate) fn body_runs_from_context(
     } else {
         src
     };
-    let mut idx = 0usize;
-    body_runs_with(text, line_map, strip_line_comment, |_line| {
-        // other-attribute and record lines scan like body: a `-define`
-        // body holds real calls, and a record field's default does too
-        let body = ctx.get(idx).is_some_and(|c| c.context.holds_calls());
-        idx += 1;
-        body
-    })
+    // other-attribute and record lines scan like body: a `-define`
+    // body holds real calls, and a record field's default does too
+    runs_of_lines(text, line_map, ctx, |c| c.context.holds_calls())
 }
 
-/// `OtherAttribute` lines only: `holds_calls` joins `Body` into the
-/// same run as `body_runs_from_context`, which would let a body tuple
-/// read as an attribute reference.
+/// Runs built from `OtherAttribute` lines alone. `holds_calls` admits
+/// `Body` too, so sharing `body_runs_from_context`'s runs would let a
+/// body tuple read as an attribute reference.
 pub(crate) fn attribute_runs_from_context(
     src: &str,
     line_map: &[u32],
     ctx: &[LineClass],
 ) -> Vec<BodyRun> {
+    runs_of_lines(src, line_map, ctx, |c| {
+        c.context == RefContext::OtherAttribute
+    })
+}
+
+/// `body_runs_with` driven by the per-line classification rather than
+/// the line text. The predicate runs once per line in order, so a
+/// positional counter stays in step with `ctx`.
+fn runs_of_lines(
+    text: &str,
+    line_map: &[u32],
+    ctx: &[LineClass],
+    keep: impl Fn(&LineClass) -> bool,
+) -> Vec<BodyRun> {
     let mut idx = 0usize;
-    body_runs_with(src, line_map, strip_line_comment, |_line| {
-        let is_attr = ctx
-            .get(idx)
-            .is_some_and(|c| c.context == RefContext::OtherAttribute);
+    body_runs_with(text, line_map, strip_line_comment, |_line| {
+        let keep = ctx.get(idx).is_some_and(&keep);
         idx += 1;
-        is_attr
+        keep
     })
 }
 
@@ -928,90 +936,38 @@ fn literal_list_length(raw: &str) -> Option<u8> {
     u8::try_from(count_top_level_items(s, '[', ']')).ok()
 }
 
-/// Every `{M, F, Args}` tuple in `text` at any brace-or-list nesting
-/// depth: a boot-step registration nests it inside a list inside its
-/// own outer tuple.
+/// Every `{M, F, Args}` tuple in `text`, at any nesting depth: the walk
+/// advances one byte past each `{` rather than over the whole group, so
+/// a tuple inside a boot-step's option list is found along with a
+/// top-level one.
 fn push_mfa_tuples_with_offsets(text: &str, macros: &MacroTable, out: &mut Vec<(Mfa, usize)>) {
-    push_mfa_tuples_from(text, 0, macros, out);
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(span) = literal_span(bytes, i) {
+            i += span;
+            continue;
+        }
+        if bytes[i] == b'{'
+            && let Some(close) = matching_bracket(bytes, i)
+        {
+            try_push_mfa_tuple(&text[i + 1..close], i, macros, out);
+        }
+        i += 1;
+    }
 }
 
-/// `push_mfa_tuples_with_offsets` without the offsets. The production
-/// wiring always passes an empty macro table, so this is what exercises
-/// macro expansion in tests.
+/// The references every `{M, F, Args}` tuple in `text` names, with
+/// `?Name` module and function heads resolved through `macros`.
 pub fn extract_mfa_tuples_with_macros(text: &str, macros: &MacroTable) -> Vec<Mfa> {
     let mut out = Vec::new();
     push_mfa_tuples_with_offsets(text, macros, &mut out);
     out.into_iter().map(|(mfa, _)| mfa).collect()
 }
 
-/// The length of the string, quoted-atom, or char-literal span at
-/// `bytes[at]`, if `bytes[at]` opens one.
-fn atomic_span_len(bytes: &[u8], at: usize) -> Option<usize> {
-    match bytes[at] {
-        b'"' | b'~' => string_span(bytes, at),
-        b'\'' => quoted_atom_span(bytes, at),
-        b'$' => Some(skip_char_literal_span(bytes, at)),
-        _ => None,
-    }
-}
-
-fn push_mfa_tuples_from(text: &str, base: usize, macros: &MacroTable, out: &mut Vec<(Mfa, usize)>) {
-    let bytes = text.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if let Some(span) = atomic_span_len(bytes, i) {
-            i += span;
-            continue;
-        }
-        match bytes[i] {
-            b'{' | b'[' => {
-                let opener = bytes[i];
-                let Some(close) = matching_group_close(bytes, i) else {
-                    i += 1;
-                    continue;
-                };
-                let inner = &text[i + 1..close];
-                if opener == b'{' {
-                    try_push_mfa_tuple(inner, base + i, macros, out);
-                }
-                push_mfa_tuples_from(inner, base + i + 1, macros, out);
-                i = close + 1;
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-}
-
-/// The matching close for `()`, `[]`, or `{}` opened at `open_at`, on
-/// one shared depth counter: well-formed Erlang never interleaves
-/// bracket types.
-fn matching_group_close(bytes: &[u8], open_at: usize) -> Option<usize> {
-    let mut depth = 1i32;
-    let mut i = open_at + 1;
-    while i < bytes.len() {
-        if let Some(span) = atomic_span_len(bytes, i) {
-            i += span;
-            continue;
-        }
-        match bytes[i] {
-            b'(' | b'[' | b'{' => depth += 1,
-            b')' | b']' | b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
-}
-
-/// `{M, F, Arity}` with a bare integer does not match: `literal_list_length`
-/// only accepts a literal list.
+/// The reference `inner` names, when it has the `M, F, Args` shape. A
+/// bare integer in the third slot is not accepted: `{M, F, Arity}`
+/// overlaps too much with plain data to read as a reference.
 fn try_push_mfa_tuple(
     inner: &str,
     tuple_offset: usize,

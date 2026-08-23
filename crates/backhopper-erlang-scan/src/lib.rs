@@ -103,6 +103,19 @@ pub fn quoted_atom_span(bytes: &[u8], at: usize) -> Option<usize> {
     Some(quoted_span(bytes, at, b'\''))
 }
 
+/// Byte length of the string, quoted atom, or char literal opening at
+/// `at`, or `None` when none of them does. A scan that walks bytes and
+/// must not read structure out of literal contents steps over the span
+/// this returns.
+pub fn literal_span(bytes: &[u8], at: usize) -> Option<usize> {
+    match *bytes.get(at)? {
+        b'"' | b'~' => string_span(bytes, at),
+        b'\'' => quoted_atom_span(bytes, at),
+        b'$' => Some(skip_char_literal_span(bytes, at)),
+        _ => None,
+    }
+}
+
 fn quoted_span(bytes: &[u8], at: usize, quote: u8) -> usize {
     let mut i = at + 1;
     while i < bytes.len() {
@@ -586,7 +599,7 @@ fn fun_opens_block(bytes: &[u8], after_fun: usize) -> bool {
     if bytes.get(j) != Some(&b'(') {
         return false;
     }
-    let Some(close) = matching_paren(bytes, j) else {
+    let Some(close) = matching_bracket(bytes, j) else {
         return false;
     };
     let j = skip_ws(bytes, close + 1);
@@ -594,9 +607,18 @@ fn fun_opens_block(bytes: &[u8], after_fun: usize) -> bool {
         || (bytes[j..].starts_with(b"when") && !bytes.get(j + 4).copied().is_some_and(is_name_byte))
 }
 
-/// Byte offset of the `)` matching the `(` at `open`, tracking nested
-/// parens, strings, quoted atoms, and char literals.
-fn matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
+/// Byte offset of the bracket closing the `(`, `[`, or `{` at `open`,
+/// tracking nesting, strings, quoted atoms, and char literals. Only the
+/// opener's own kind is counted, so a bracket of another kind inside the
+/// group cannot close it early.
+pub fn matching_bracket(bytes: &[u8], open: usize) -> Option<usize> {
+    let opener = *bytes.get(open)?;
+    let closer = match opener {
+        b'(' => b')',
+        b'[' => b']',
+        b'{' => b'}',
+        _ => return None,
+    };
     let mut depth = 0i32;
     let mut in_str = false;
     let mut in_atom = false;
@@ -636,8 +658,8 @@ fn matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
                     continue;
                 }
             }
-            b'(' => depth += 1,
-            b')' => {
+            _ if b == opener => depth += 1,
+            _ if b == closer => {
                 depth -= 1;
                 if depth == 0 {
                     return Some(i);
