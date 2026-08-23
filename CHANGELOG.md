@@ -7,6 +7,12 @@
  * A record field's `::` type annotation (`vhost :: rabbit_types:vhost()`)
    is now read as a type reference and not as a call. Field defaults
    are still scanned for calls
+ * An `{M, F, Args}` tuple in a registration attribute
+   (`-rabbit_boot_step`'s `mfa` field and similar) is now read as a
+   function reference and resolved against the target tree, the same
+   as a `mod:fun(...)` call. Previously such a tuple was never
+   extracted at all, so a callee it named could be undefined on the
+   target with no finding
 
 ## v0.32.0 (August 13, 2026)
 

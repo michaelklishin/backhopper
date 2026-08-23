@@ -859,3 +859,75 @@ fn a_call_in_a_record_field_default_is_still_flagged() {
         [("rabbit_types".to_owned(), "missing".to_owned(), 0, 2)]
     );
 }
+
+// An MFA tuple in a registration attribute resolves through the same
+// gate as a call: unexported on the target flags exactly like a call
+// would.
+#[test]
+fn an_mfa_tuple_to_an_unexported_target_function_is_flagged() {
+    let reasons = analyse(
+        "-rabbit_boot_step({logger_exchange,\n    [{mfa, {rabbit_logger_exchange_h, declare_exchange, []}}]}).\n",
+        &[(
+            "rabbit_logger_exchange_h",
+            "deps/rabbit/src/rabbit_logger_exchange_h.erl",
+            "-module(rabbit_logger_exchange_h).\n-export([declare_exchange/1]).\ndeclare_exchange(_) -> ok.\n",
+        )],
+    );
+    assert_eq!(
+        flagged(&reasons),
+        [(
+            "rabbit_logger_exchange_h".to_owned(),
+            "declare_exchange".to_owned(),
+            0,
+            2
+        )]
+    );
+}
+
+#[test]
+fn an_mfa_tuple_to_an_exported_target_function_is_clean() {
+    let reasons = analyse(
+        "-rabbit_boot_step({logger_exchange,\n    [{mfa, {rabbit_logger_exchange_h, declare_exchange, []}}]}).\n",
+        &[(
+            "rabbit_logger_exchange_h",
+            "deps/rabbit/src/rabbit_logger_exchange_h.erl",
+            "-module(rabbit_logger_exchange_h).\n-export([declare_exchange/0]).\ndeclare_exchange() -> ok.\n",
+        )],
+    );
+    assert!(reasons.is_empty(), "unexpected: {reasons:?}");
+}
+
+// The same cross-file exemption a patch-added call gets: the patch
+// itself introduces the tuple's callee.
+#[test]
+fn an_mfa_tuple_to_a_patch_added_function_is_not_flagged() {
+    let mut patch_added = PatchProvided::default();
+    patch_added.functions.insert(
+        module("rabbit_logger_exchange_h"),
+        BTreeSet::from([(
+            FunctionName::from_str("declare_exchange").unwrap(),
+            Arity::new(0),
+        )]),
+    );
+    let reasons = analyse_with(
+        "-rabbit_boot_step({logger_exchange,\n    [{mfa, {rabbit_logger_exchange_h, declare_exchange, []}}]}).\n",
+        &[],
+        &[],
+        &patch_added,
+        &[(
+            "rabbit_logger_exchange_h",
+            "deps/rabbit/src/rabbit_logger_exchange_h.erl",
+            "-module(rabbit_logger_exchange_h).\n-export([]).\n",
+        )],
+    );
+    assert!(reasons.is_empty(), "unexpected: {reasons:?}");
+}
+
+#[test]
+fn an_mfa_tuple_to_a_module_absent_from_the_tree_is_not_flagged() {
+    let reasons = analyse(
+        "-rabbit_boot_step({logger_exchange,\n    [{mfa, {rabbit_logger_exchange_h, declare_exchange, []}}]}).\n",
+        &[],
+    );
+    assert!(reasons.is_empty(), "unexpected: {reasons:?}");
+}

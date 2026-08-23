@@ -49,5 +49,6 @@ mod end_to_end_verdict_cache_integration_tests;
 mod end_to_end_xref_backport_applicability_integration_tests;
 mod end_to_end_xref_integration_tests;
 mod helpers;
+mod hf59_attribute_mfa_tuple_integration_tests;
 mod real_world_fixtures_integration_tests;
 mod verdict_cache_perf_integration_tests;

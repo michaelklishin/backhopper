@@ -57,6 +57,8 @@ mod indirect_calls_unit_tests;
 mod library_derivation_unit_tests;
 mod local_call_resolve_unit_tests;
 mod macro_value_resolve_unit_tests;
+mod mfa_tuple_attribute_context_unit_tests;
+mod mfa_tuple_shape_unit_tests;
 mod missing_type_reason_unit_tests;
 mod module_relocation_unit_tests;
 mod names_unit_tests;
