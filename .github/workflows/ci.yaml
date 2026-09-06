@@ -99,37 +99,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  publish-dry-run:
-    name: Publish dry-run (${{ matrix.package }})
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - backhopper-erlang-scan
-          - backhopper-core
-          - backhopper-cache
-          - backhopper-cuttlefish
-          - backhopper-driver
-          - backhopper-elixir
-          - backhopper-erlang
-          - backhopper-git
-          - backhopper-xref-graph
-          - backhopper-xref-reader
-          - backhopper-xref
-          - backhopper-cli
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish dry-run
-        uses: michaelklishin/rust-build-package-release-action@v3
-        with:
-          command: publish-crate
-          package: ${{ matrix.package }}
-          publish-dry-run: 'true'
-          locked: 'true'
-
   dependabot:
     needs: [lint, build-and-test]
     runs-on: ubuntu-latest
