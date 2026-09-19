@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.34.0 (in development)
+## v0.35.0 (in development)
 
 ### Enhancements
 
