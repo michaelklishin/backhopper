@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 
 use backhopper_core::model::names::{
     Arity, CommitSha, FieldName, FunctionName, MacroName, ModuleName, ProjectName, RecordName,
-    TagName, TypeName,
+    RelativePath, TagName, TypeName,
 };
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
@@ -177,8 +177,18 @@ fn type_decls_export_types_and_opaques_are_all_included_in_types_set() {
 
 #[test]
 fn headers_added_and_removed_appear_in_text() {
-    let a = snap("p", "v0.1.0", vec![], vec![HrlFile::new("include/old.hrl")]);
-    let b = snap("p", "v0.2.0", vec![], vec![HrlFile::new("include/new.hrl")]);
+    let a = snap(
+        "p",
+        "v0.1.0",
+        vec![],
+        vec![HrlFile::new(RelativePath::new("include/old.hrl").unwrap())],
+    );
+    let b = snap(
+        "p",
+        "v0.2.0",
+        vec![],
+        vec![HrlFile::new(RelativePath::new("include/new.hrl").unwrap())],
+    );
     let d = compute_diff(&a, &b);
     let text = render(&d);
     assert!(text.contains("removed header include/old.hrl"), "{text}");
@@ -187,7 +197,7 @@ fn headers_added_and_removed_appear_in_text() {
 
 #[test]
 fn records_added_and_removed_are_header_qualified() {
-    let mut a_hrl = HrlFile::new("include/x.hrl");
+    let mut a_hrl = HrlFile::new(RelativePath::new("include/x.hrl").unwrap());
     a_hrl.records.push(RecordDecl {
         name: RecordName::new("old_r").unwrap(),
         fields: vec![RecordField {
@@ -195,7 +205,7 @@ fn records_added_and_removed_are_header_qualified() {
             type_repr: None,
         }],
     });
-    let mut b_hrl = HrlFile::new("include/x.hrl");
+    let mut b_hrl = HrlFile::new(RelativePath::new("include/x.hrl").unwrap());
     b_hrl.records.push(RecordDecl {
         name: RecordName::new("new_r").unwrap(),
         fields: vec![],

@@ -14,14 +14,27 @@ use crate::model::names::{ProjectName, TagName};
 use crate::model::snapshot::{Snapshot, state};
 use crate::snapshot::{format, parser};
 
+mod private {
+    pub trait Sealed {}
+}
+
+/// Sealed so a foreign marker cannot stand in for `ReadOnly` or `Mutable`
+/// and give itself a `write`.
+pub trait StoreMode: private::Sealed {}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReadOnly;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Mutable;
 
+impl private::Sealed for ReadOnly {}
+impl private::Sealed for Mutable {}
+impl StoreMode for ReadOnly {}
+impl StoreMode for Mutable {}
+
 #[derive(Debug)]
-pub struct SnapshotStore<M> {
+pub struct SnapshotStore<M: StoreMode> {
     root: PathBuf,
     _mode: PhantomData<M>,
 }
@@ -52,7 +65,7 @@ impl SnapshotStore<Mutable> {
     }
 }
 
-impl<M> SnapshotStore<M> {
+impl<M: StoreMode> SnapshotStore<M> {
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -147,7 +160,7 @@ impl<M> SnapshotStore<M> {
 
 impl SnapshotStore<Mutable> {
     pub fn write(&self, snapshot: &Snapshot<state::Canonical>) -> Result<PathBuf, StoreError> {
-        let path = self.snapshot_path(&snapshot.header.project, &snapshot.header.tag)?;
+        let path = self.snapshot_path(&snapshot.header().project, &snapshot.header().tag)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }

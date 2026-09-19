@@ -181,7 +181,7 @@ fn multiple_mfas_get_independent_results_in_the_same_walk() {
 #[test]
 fn introduced_row_json_envelope_omits_timeline_when_absent() {
     let row = IntroducedRow {
-        mfa: "ra:m/0".into(),
+        mfa: "ra:m/0".parse().unwrap(),
         first_tag: Some(tag("v1.0.0")),
         first_commit: Some(sha(1)),
         last_tag: Some(tag("v2.0.0")),
@@ -203,7 +203,7 @@ fn introduced_row_json_envelope_omits_timeline_when_absent() {
 #[test]
 fn introduced_row_json_renders_missing_endpoints_as_null() {
     let row = IntroducedRow {
-        mfa: "never:there/0".into(),
+        mfa: "never:there/0".parse().unwrap(),
         first_tag: None,
         first_commit: None,
         last_tag: None,
@@ -222,7 +222,7 @@ fn introduced_row_json_renders_missing_endpoints_as_null() {
 #[test]
 fn timeline_serializes_as_array_of_entries_with_tag_commit_and_present() {
     let row = IntroducedRow {
-        mfa: "m:f/0".into(),
+        mfa: "m:f/0".parse().unwrap(),
         first_tag: Some(tag("v1.0.0")),
         first_commit: Some(sha(1)),
         last_tag: Some(tag("v1.0.0")),

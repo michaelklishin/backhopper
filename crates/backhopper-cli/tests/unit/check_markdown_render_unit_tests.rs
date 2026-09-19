@@ -13,7 +13,7 @@ use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
     BumpStatus, Diagnostics, InapplicableReason, PinBump, PinVerdict, Reason, SeriesEvaluation,
-    SeriesVerdict, Verdict,
+    SeriesVerdict, TargetAxisSlot, Verdict,
 };
 
 fn pin(project: &str, tag: &str) -> Pin {
@@ -30,8 +30,7 @@ fn build_eval(verdicts: Vec<PinVerdict>) -> SeriesEvaluation {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     }
 }
 

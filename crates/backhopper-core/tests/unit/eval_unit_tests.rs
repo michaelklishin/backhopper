@@ -2,10 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::model::eval::{BuildOutcome, CorpusEntry, Ratio, evaluate_corpus};
+use backhopper_core::model::eval::{
+    BreakAttribution, BuildOutcome, CorpusEntry, Ratio, evaluate_corpus,
+};
 use backhopper_core::model::evaluation::AggregateVerdict;
 use backhopper_core::model::fingerprint::VerdictFingerprint;
 use backhopper_core::model::resolver_coverage::{ResolverClass, ResolverCoverage};
+
+fn ratio(hits: usize, total: usize) -> Ratio {
+    let mut r = Ratio::zero();
+    for _ in 0..hits {
+        r.hit();
+    }
+    for _ in 0..(total - hits) {
+        r.miss();
+    }
+    r
+}
+
+/// A fingerprint carrying `label` in its low bytes, distinct labels
+/// giving distinct fingerprints: these tests only need identity, not a
+/// real digest.
+fn fingerprint_labelled(label: &str) -> VerdictFingerprint {
+    let mut digest = [0u8; 16];
+    let bytes = label.as_bytes();
+    let len = bytes.len().min(digest.len());
+    digest[..len].copy_from_slice(&bytes[..len]);
+    VerdictFingerprint::from_digest(digest)
+}
 
 fn entry(
     fp: &str,
@@ -14,7 +38,7 @@ fn entry(
     coverage: Option<ResolverCoverage>,
 ) -> CorpusEntry {
     CorpusEntry {
-        fingerprint: VerdictFingerprint::new(fp),
+        fingerprint: fingerprint_labelled(fp),
         verdict,
         outcome,
         coverage,
@@ -62,7 +86,7 @@ fn vacuous_trust_counts_clean_verdicts_that_built_clean() {
         ),
     ];
     let report = evaluate_corpus(&rows);
-    assert_eq!(report.vacuous_trust, Ratio { hits: 2, total: 3 });
+    assert_eq!(report.vacuous_trust, ratio(2, 3));
 }
 
 #[test]
@@ -88,12 +112,12 @@ fn recall_counts_flagged_breaks_and_missed_records_the_rest() {
         ),
     ];
     let report = evaluate_corpus(&rows);
-    assert_eq!(report.recall, Ratio { hits: 1, total: 2 });
+    assert_eq!(report.recall, ratio(1, 2));
     assert_eq!(report.missed_breaks.len(), 1);
     let missed = &report.missed_breaks[0];
-    assert_eq!(missed.fingerprint, VerdictFingerprint::new("missed"));
+    assert_eq!(missed.fingerprint, fingerprint_labelled("missed"));
     assert_eq!(missed.break_class, Some(ResolverClass::LocalCall));
-    assert_eq!(missed.is_resolver_bug, Some(true));
+    assert_eq!(missed.attribution, BreakAttribution::ResolverBug);
 }
 
 #[test]
@@ -113,7 +137,7 @@ fn precision_counts_real_breaks_among_flagged_rows() {
         ),
     ];
     let report = evaluate_corpus(&rows);
-    assert_eq!(report.precision, Ratio { hits: 1, total: 2 });
+    assert_eq!(report.precision, ratio(1, 2));
 }
 
 #[test]
@@ -173,13 +197,13 @@ fn bug_vs_gap_routes_by_the_rows_recorded_coverage() {
         report
             .missed_breaks
             .iter()
-            .find(|m| m.fingerprint == VerdictFingerprint::new(fp))
+            .find(|m| m.fingerprint == fingerprint_labelled(fp))
             .unwrap()
-            .is_resolver_bug
+            .attribution
     };
-    assert_eq!(bug_of("bug"), Some(true));
-    assert_eq!(bug_of("gap"), Some(false));
-    assert_eq!(bug_of("unknown"), None);
+    assert_eq!(bug_of("bug"), BreakAttribution::ResolverBug);
+    assert_eq!(bug_of("gap"), BreakAttribution::CoverageGap);
+    assert_eq!(bug_of("unknown"), BreakAttribution::Unknown);
 }
 
 // An apply or test miss is a predictor miss on a different axis: no class, no bug flag.
@@ -195,7 +219,7 @@ fn an_apply_miss_is_not_a_compile_coverage_gap() {
     assert_eq!(report.missed_breaks.len(), 1);
     let missed = &report.missed_breaks[0];
     assert_eq!(missed.break_class, None);
-    assert_eq!(missed.is_resolver_bug, None);
+    assert_eq!(missed.attribution, BreakAttribution::Unknown);
     assert_eq!(missed.outcome, BuildOutcome::ApplyConflicted);
 }
 
@@ -203,6 +227,6 @@ fn an_apply_miss_is_not_a_compile_coverage_gap() {
 fn an_empty_corpus_yields_zero_rates() {
     let report = evaluate_corpus(&[]);
     assert_eq!(report.rows, 0);
-    assert_eq!(report.recall, Ratio { hits: 0, total: 0 });
+    assert_eq!(report.recall, ratio(0, 0));
     assert!(report.missed_breaks.is_empty());
 }

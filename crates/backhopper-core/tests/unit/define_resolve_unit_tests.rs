@@ -9,7 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
-use backhopper_core::compat::define_resolve::analyse_define_symbols;
+use backhopper_core::compat::define_resolve::{
+    IncludeCoverage, analyse_define_symbols, collect_target_defines,
+};
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::model::names::{CommitSha, GitRef, RelativePath};
 use backhopper_core::model::verdict::Reason;
@@ -110,6 +112,23 @@ fn macro_defined_in_the_target_file_is_clean() {
         &[(
             "deps/rabbit/src/rabbit_amqqueue.erl",
             "-define(DEFAULT_TIMEOUT, 1).\n",
+        )],
+    );
+    assert!(reasons.is_empty());
+}
+
+// The target set holds `MacroName`s, which refuse `@`; a use the scanner
+// admits but the newtype refuses could never match, so it is not flagged.
+#[test]
+fn a_macro_name_the_newtype_refuses_is_not_flagged() {
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
+    let reasons = analyse(
+        &path,
+        "init() -> ?NODE@HOST.\n",
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-define(NODE@HOST, 1).\n",
         )],
     );
     assert!(reasons.is_empty());
@@ -402,6 +421,76 @@ fn a_patch_added_header_that_also_exists_on_target_reads_the_target_text() {
         &[("deps/rabbit/src/shared.hrl", "-define(TARGET_ONLY, 1).\n")],
     );
     assert_eq!(macros_flagged(&reasons), ["PATCH_ONLY"]);
+}
+
+// A skipped stdlib header can hide a macro or a record; it cannot hide a
+// type, since a module can only export a type declared in its own text.
+#[test]
+fn stdlib_unread_hides_macros_but_not_types() {
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
+    let subjects = [AddedLinesSubject {
+        source_path: &path,
+        added_text: "-module(rabbit_amqqueue).\n-include_lib(\"kernel/include/logger.hrl\").\n",
+        line_map: &[],
+    }];
+    let defs = collect_target_defines(
+        &subjects[0],
+        &BTreeMap::new(),
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &reader(&[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-include_lib(\"kernel/include/logger.hrl\").\n",
+        )]),
+    );
+    assert_eq!(defs.coverage, IncludeCoverage::StdlibUnread);
+    assert!(defs.coverage.hides_macros_or_records());
+    assert!(!defs.coverage.hides_types());
+}
+
+// An unresolvable first-party include can hide a macro, a record, or a type.
+#[test]
+fn first_party_unread_hides_both() {
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
+    let subjects = [AddedLinesSubject {
+        source_path: &path,
+        added_text: "-module(rabbit_amqqueue).\n-include(\"absent.hrl\").\n",
+        line_map: &[],
+    }];
+    let defs = collect_target_defines(
+        &subjects[0],
+        &BTreeMap::new(),
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &reader(&[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n-include(\"absent.hrl\").\n",
+        )]),
+    );
+    assert_eq!(defs.coverage, IncludeCoverage::FirstPartyUnread);
+    assert!(defs.coverage.hides_macros_or_records());
+    assert!(defs.coverage.hides_types());
+}
+
+// The empty closure hides nothing.
+#[test]
+fn a_fully_read_closure_hides_nothing() {
+    let path = rp("deps/rabbit/src/rabbit_amqqueue.erl");
+    let subjects = [AddedLinesSubject {
+        source_path: &path,
+        added_text: "-module(rabbit_amqqueue).\n",
+        line_map: &[],
+    }];
+    let defs = collect_target_defines(
+        &subjects[0],
+        &BTreeMap::new(),
+        &index(&["deps/rabbit/src/rabbit_amqqueue.erl"]),
+        &reader(&[(
+            "deps/rabbit/src/rabbit_amqqueue.erl",
+            "-module(rabbit_amqqueue).\n",
+        )]),
+    );
+    assert_eq!(defs.coverage, IncludeCoverage::Complete);
+    assert!(!defs.coverage.hides_macros_or_records());
+    assert!(!defs.coverage.hides_types());
 }
 
 // #{...} is a map, not a record use: never flagged.

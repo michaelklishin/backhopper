@@ -9,6 +9,7 @@ use backhopper_core::model::names::{
     ApplicationName, Arity, BehaviourName, CommitSha, FunctionName, Mfa, ModuleName, ProjectName,
     SeriesName, TagName,
 };
+use backhopper_core::model::snapshot::{FunArity, TypeArity};
 
 #[test]
 fn project_name_accepts_lowercase_alnum_dash_underscore() {
@@ -160,4 +161,50 @@ fn mfa_implements_ord_for_btree_keys() {
     map.insert(m2.clone(), 2);
     let keys: Vec<&Mfa> = map.keys().collect();
     assert_eq!(keys, vec![&m1, &m2]);
+}
+
+#[test]
+fn fun_arity_displays_as_name_slash_arity() {
+    let fa = FunArity {
+        name: FunctionName::from_str("start").unwrap(),
+        arity: Arity::try_from(2).unwrap(),
+    };
+    assert_eq!(fa.to_string(), "start/2");
+}
+
+#[test]
+fn fun_arity_parses_what_it_displays() {
+    let fa = FunArity {
+        name: FunctionName::from_str("start").unwrap(),
+        arity: Arity::try_from(2).unwrap(),
+    };
+    assert_eq!(fa.to_string().parse::<FunArity>().unwrap(), fa);
+}
+
+#[test]
+fn fun_arity_refuses_a_missing_slash() {
+    assert!("start2".parse::<FunArity>().is_err());
+}
+
+#[test]
+fn type_arity_displays_as_name_slash_arity() {
+    let ta = TypeArity {
+        name: "state".parse().unwrap(),
+        arity: Arity::try_from(0).unwrap(),
+    };
+    assert_eq!(ta.to_string(), "state/0");
+}
+
+#[test]
+fn type_arity_parses_what_it_displays() {
+    let ta = TypeArity {
+        name: "state".parse().unwrap(),
+        arity: Arity::try_from(0).unwrap(),
+    };
+    assert_eq!(ta.to_string().parse::<TypeArity>().unwrap(), ta);
+}
+
+#[test]
+fn type_arity_refuses_a_missing_slash() {
+    assert!("state0".parse::<TypeArity>().is_err());
 }

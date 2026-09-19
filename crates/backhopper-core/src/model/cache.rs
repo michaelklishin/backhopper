@@ -22,8 +22,11 @@ pub enum CacheLevel {
 }
 
 impl CacheLevel {
+    /// The on-disk directory name, hyphenated. Distinct from the wire
+    /// spelling (`#[serde(rename_all = "snake_case")]`): this name is a
+    /// path component, not a label a `vocabulary!` enum would emit.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub fn dir_name(self) -> &'static str {
         match self {
             Self::ByInput => "by-input",
             Self::ByContent => "by-content",

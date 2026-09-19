@@ -11,7 +11,7 @@ use std::path::Path;
 
 use backhopper_core::config::{Config, Project};
 use backhopper_core::model::names::{CommitSha, TagName};
-use backhopper_core::model::pin::{Pin, PinSpec};
+use backhopper_core::model::pin::{Pin, SelfPin};
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
 use backhopper_git::GitRepo;
 
@@ -20,20 +20,20 @@ use crate::commands::context::open_store_mut;
 use crate::commands::snapshots::build_snapshot_at_commit;
 use crate::errors::{CliError, CliResult};
 
-/// Pick the repo path a self-pin should resolve against. The per-pin
-/// `repo_dir_path` on `PinSpec::SelfRef` wins; the CLI `--repo-dir-path`
-/// is the fallback. Both unset is the user error this returns.
+/// Pick the repo path a self-pin should resolve against. The pin's own
+/// `repo_dir_path`, when set, wins; the CLI `--repo-dir-path` is the
+/// fallback. Both unset is the user error this returns.
 pub fn effective_self_repo<'a>(
-    spec: &'a PinSpec,
+    pin: SelfPin<'a>,
     cli_fallback: Option<&'a Path>,
 ) -> CliResult<&'a Path> {
-    if let Some(p) = spec.self_repo_override() {
+    if let Some(p) = pin.repo_dir_path {
         return Ok(p);
     }
     cli_fallback.ok_or_else(|| {
         CliError::InvalidInput(format!(
             "self-pin {} has no `repo_dir_path` in the config and no `--repo-dir-path` was given",
-            spec.project()
+            pin.project
         ))
     })
 }
@@ -41,23 +41,19 @@ pub fn effective_self_repo<'a>(
 /// Resolve a self-pin's `git_ref` to a concrete `Pin` whose tag is the
 /// resolved commit SHA. The caller writes the snapshot to the store under
 /// that tag via `ensure_self_snapshot_present` before evaluation.
-pub fn resolve_self_pin(cli_fallback: Option<&Path>, spec: &PinSpec) -> CliResult<Pin> {
-    let (project, git_ref) = match spec {
-        PinSpec::SelfRef {
-            project, git_ref, ..
-        } => (project, git_ref),
-        _ => unreachable!("resolve_self_pin called on non-self pin"),
-    };
-    let self_repo = effective_self_repo(spec, cli_fallback)?;
+pub fn resolve_self_pin(cli_fallback: Option<&Path>, pin: SelfPin<'_>) -> CliResult<Pin> {
+    let self_repo = effective_self_repo(pin, cli_fallback)?;
     let repo = GitRepo::open(self_repo.to_path_buf())?;
-    let commit = repo.resolve_rev(git_ref.as_str())?;
+    let commit = repo.resolve_rev(pin.git_ref.as_str())?;
     let tag = TagName::new(commit.as_str()).map_err(|e| {
         CliError::Other(format!(
-            "self pin {project}@{git_ref} resolved to invalid sha {}: {e}",
+            "self pin {}@{} resolved to invalid sha {}: {e}",
+            pin.project,
+            pin.git_ref,
             commit.as_str()
         ))
     })?;
-    Ok(Pin::new(project.clone(), tag))
+    Ok(Pin::new(pin.project.clone(), tag))
 }
 
 /// Materialize the self-pin's snapshot into the store if absent. Cached
@@ -68,14 +64,14 @@ pub fn ensure_self_snapshot_present(
     cfg: &Config,
     store: &SnapshotStore<ReadOnly>,
     project: &Project,
-    spec: &PinSpec,
+    self_pin: SelfPin<'_>,
     cli_fallback: Option<&Path>,
     pin: &Pin,
 ) -> CliResult<()> {
     if store.has(&pin.project, &pin.tag) {
         return Ok(());
     }
-    let self_repo = effective_self_repo(spec, cli_fallback)?;
+    let self_repo = effective_self_repo(self_pin, cli_fallback)?;
     let repo = GitRepo::open(self_repo.to_path_buf())?;
     let commit = CommitSha::new(pin.tag.as_str()).map_err(|e| CliError::Other(e.to_string()))?;
     let snapshot = build_snapshot_at_commit(project, &repo, &commit, &pin.tag)?;

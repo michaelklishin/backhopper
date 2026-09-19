@@ -3,7 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use backhopper_core::errors::SnapshotError;
-use backhopper_core::model::names::{FieldName, RecordName};
+use backhopper_core::model::names::{FieldName, RecordName, RelativePath};
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
     HrlFile, RecordDecl, RecordField, Snapshot, SnapshotHeader,
@@ -19,7 +19,7 @@ fn minimal_header() -> SnapshotHeader {
 }
 
 fn snapshot_with_record_field(type_repr: Option<String>) -> Snapshot<Canonical> {
-    let mut hrl = HrlFile::new("include/khepri.hrl");
+    let mut hrl = HrlFile::new(RelativePath::new("include/khepri.hrl").unwrap());
     hrl.records.push(RecordDecl {
         name: RecordName::new("if_child_list_length").unwrap(),
         fields: vec![RecordField {
@@ -150,7 +150,7 @@ fn record_field_without_type_round_trips() {
 
 #[test]
 fn multi_field_record_with_one_multiline_round_trips() {
-    let mut hrl = HrlFile::new("include/ra.hrl");
+    let mut hrl = HrlFile::new(RelativePath::new("include/ra.hrl").unwrap());
     hrl.records.push(RecordDecl {
         name: RecordName::new("cfg").unwrap(),
         fields: vec![
@@ -201,7 +201,7 @@ header include/khepri.hrl
 
 #[test]
 fn two_records_with_multiline_fields_round_trip() {
-    let mut hrl = HrlFile::new("include/khepri.hrl");
+    let mut hrl = HrlFile::new(RelativePath::new("include/khepri.hrl").unwrap());
     hrl.records.push(RecordDecl {
         name: RecordName::new("khepri_machine").unwrap(),
         fields: vec![RecordField {
@@ -222,4 +222,18 @@ fn two_records_with_multiline_fields_round_trip() {
     let text = format::to_string(&snap).unwrap();
     let back = parser::parse(&text).unwrap();
     assert_eq!(snap, back);
+}
+
+// A header path is a `RelativePath` from the parser on: an absolute
+// path is refused where it is read, not where a diff later needs it.
+#[test]
+fn an_absolute_header_path_is_refused_by_the_parser() {
+    let snap = snapshot_with_record_field(None);
+    let text = format::to_string(&snap).unwrap();
+    let text = text.replace(
+        "header include/khepri.hrl",
+        "header /usr/include/khepri.hrl",
+    );
+    let err = parser::parse(&text).unwrap_err();
+    assert!(matches!(err, SnapshotError::Name(_)), "{err}");
 }

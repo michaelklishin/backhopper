@@ -13,7 +13,9 @@ use backhopper_cache::{
     WorkspaceCaches, clear, find_by_key_prefix, prune, scan, stats,
 };
 use backhopper_core::model::names::CommitSha;
-use backhopper_core::model::verdict::{Diagnostics, PatchFacts, SeriesEvaluation, SeriesVerdict};
+use backhopper_core::model::verdict::{
+    Diagnostics, PatchFacts, SeriesEvaluation, SeriesVerdict, TargetAxisSlot,
+};
 
 fn sha(fill: char) -> CommitSha {
     fill.to_string().repeat(40).parse().unwrap()
@@ -45,8 +47,7 @@ fn evaluation() -> SeriesEvaluation {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     }
 }
 

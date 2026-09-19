@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::str::FromStr;
+
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::config::{FamilyDefaults, VersionedMachineImplDecl, WireConstantDecl};
@@ -79,8 +81,8 @@ fn rabbitmq_defaults() -> FamilyDefaults {
         wire_constants: Vec::new(),
         versioned_machines: Vec::new(),
         versioned_machine_impls: vec![VersionedMachineImplDecl {
-            module: "rabbit_fifo".into(),
-            version_function: "version".into(),
+            module: ModuleName::from_str("rabbit_fifo").unwrap(),
+            version_function: FunctionName::from_str("version").unwrap(),
             allow_state_flag_gating: true,
         }],
         test_helper_search_paths: Vec::new(),
@@ -89,10 +91,13 @@ fn rabbitmq_defaults() -> FamilyDefaults {
 
 fn ra_defaults() -> FamilyDefaults {
     FamilyDefaults {
-        wire_constants: vec![WireConstantDecl::new(
-            "ra_log_segment",
-            &["VERSION", "MAGIC"],
-        )],
+        wire_constants: vec![WireConstantDecl {
+            module: ModuleName::from_str("ra_log_segment").unwrap(),
+            macros: vec![
+                MacroName::from_str("VERSION").unwrap(),
+                MacroName::from_str("MAGIC").unwrap(),
+            ],
+        }],
         versioned_machines: Vec::new(),
         versioned_machine_impls: Vec::new(),
         test_helper_search_paths: Vec::new(),

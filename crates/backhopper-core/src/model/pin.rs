@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::errors::ConfigError;
-use crate::model::names::{GitRef, ProjectName, TagGlob, TagName};
-use crate::store::SnapshotStore;
+use crate::model::names::{GitRef, ProjectName, SeriesName, TagGlob, TagName};
+use crate::store::{SnapshotStore, StoreMode};
 use crate::versions::version_cmp;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -116,7 +116,7 @@ impl PinSpec {
     /// `SelfRef` pins cannot be resolved here: the working repo is outside
     /// the snapshot store. The CLI resolves them via the `--repo-dir-path`
     /// before calling into the evaluation pipeline.
-    pub fn resolve<M>(&self, store: &SnapshotStore<M>) -> Result<Pin, ConfigError> {
+    pub fn resolve<M: StoreMode>(&self, store: &SnapshotStore<M>) -> Result<Pin, ConfigError> {
         match self {
             Self::Literal { project, tag } => Ok(Pin::new(project.clone(), tag.clone())),
             Self::Pattern {
@@ -149,20 +149,79 @@ impl PinSpec {
         }
     }
 
-    /// `Some(path)` when this pin carries a `repo_dir_path` override.
-    /// Returns `None` for non-self pins and for self pins that should
-    /// fall back to the CLI `--repo-dir-path` argument.
-    pub fn self_repo_override(&self) -> Option<&Path> {
+    /// `Some` with the self-ref payload for a `SelfRef` spec, `None` for
+    /// `Literal` and `Pattern`, which have no repo to resolve against.
+    pub fn as_self_pin(&self) -> Option<SelfPin<'_>> {
         match self {
-            Self::SelfRef { repo_dir_path, .. } => repo_dir_path.as_deref(),
-            _ => None,
+            Self::SelfRef {
+                project,
+                git_ref,
+                repo_dir_path,
+            } => Some(SelfPin {
+                project,
+                git_ref,
+                repo_dir_path: repo_dir_path.as_deref(),
+            }),
+            Self::Literal { .. } | Self::Pattern { .. } => None,
         }
+    }
+}
+
+/// The self-ref half of a `PinSpec`, handed to the one function that
+/// resolves it so a caller cannot pass a literal or pattern spec by mistake.
+#[derive(Debug, Clone, Copy)]
+pub struct SelfPin<'a> {
+    pub project: &'a ProjectName,
+    pub git_ref: &'a GitRef,
+    /// `Some` when the pin overrides the CLI `--repo-dir-path` fallback.
+    pub repo_dir_path: Option<&'a Path>,
+}
+
+/// Either a named series or a single `(project, tag)` pin: the "where" a
+/// check runs, addressed by `--series` or by `--project` and `--tag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PinSelector {
+    Series(SeriesName),
+    Pin { project: ProjectName, tag: TagName },
+}
+
+impl PinSelector {
+    pub fn series(name: impl Into<SeriesName>) -> Self {
+        Self::Series(name.into())
+    }
+
+    /// The series a `Series` selector names; `None` for a single pin.
+    #[must_use]
+    pub fn series_name(&self) -> Option<&SeriesName> {
+        match self {
+            Self::Series(name) => Some(name),
+            Self::Pin { .. } => None,
+        }
+    }
+
+    pub fn pin(project: impl Into<ProjectName>, tag: impl Into<TagName>) -> Self {
+        Self::Pin {
+            project: project.into(),
+            tag: tag.into(),
+        }
+    }
+}
+
+impl From<SeriesName> for PinSelector {
+    fn from(s: SeriesName) -> Self {
+        Self::Series(s)
+    }
+}
+
+impl From<(ProjectName, TagName)> for PinSelector {
+    fn from((project, tag): (ProjectName, TagName)) -> Self {
+        Self::Pin { project, tag }
     }
 }
 
 /// Resolve a slice of `PinSpec`s into concrete `Pin`s by consulting `store`.
 /// Returns at the first resolution failure.
-pub fn resolve_all<M>(
+pub fn resolve_all<M: StoreMode>(
     specs: &[PinSpec],
     store: &SnapshotStore<M>,
 ) -> Result<Vec<Pin>, ConfigError> {

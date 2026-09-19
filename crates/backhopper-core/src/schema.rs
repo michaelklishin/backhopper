@@ -77,40 +77,64 @@ pub fn rendered_schema(version: u32) -> Result<String, SchemaError> {
     Ok(String::from_utf8(bytes).expect("pretty json is utf-8"))
 }
 
+/// One embedded schema version: a frozen historical snapshot, or a
+/// function deriving the value from the current live types.
+enum Embedded {
+    Frozen(&'static str),
+    Derived(fn() -> Value),
+}
+
+/// One row per version `schema_value_for` can answer, in ascending
+/// order from `MIN_EMBEDDED_VERSION` to `CURRENT_SCHEMA_VERSION`. The
+/// assertion below turns a missing, duplicated, or misplaced row into a
+/// compile error rather than a wrong answer at run time.
+const EMBEDDED: &[(u32, Embedded)] = &[
+    (1, Embedded::Frozen(SCHEMA_V1_FROZEN)),
+    (2, Embedded::Frozen(SCHEMA_V2_FROZEN)),
+    (3, Embedded::Frozen(SCHEMA_V3_FROZEN)),
+    (4, Embedded::Derived(combined_v4)),
+    (5, Embedded::Frozen(SCHEMA_V5_FROZEN)),
+    (6, Embedded::Derived(combined_v6)),
+    (7, Embedded::Frozen(SCHEMA_V7_FROZEN)),
+    (8, Embedded::Frozen(SCHEMA_V8_FROZEN)),
+    (9, Embedded::Frozen(SCHEMA_V9_FROZEN)),
+    (10, Embedded::Frozen(SCHEMA_V10_FROZEN)),
+    (11, Embedded::Frozen(SCHEMA_V11_FROZEN)),
+    (12, Embedded::Frozen(SCHEMA_V12_FROZEN)),
+    (13, Embedded::Frozen(SCHEMA_V13_FROZEN)),
+    (14, Embedded::Frozen(SCHEMA_V14_FROZEN)),
+    (15, Embedded::Frozen(SCHEMA_V15_FROZEN)),
+    (16, Embedded::Derived(combined_v16)),
+];
+
+const _: () = {
+    assert!(
+        EMBEDDED.len() as u32 == CURRENT_SCHEMA_VERSION - MIN_EMBEDDED_VERSION + 1,
+        "EMBEDDED needs one row per version from MIN_EMBEDDED_VERSION to CURRENT_SCHEMA_VERSION"
+    );
+    let mut i = 0;
+    while i < EMBEDDED.len() {
+        assert!(
+            EMBEDDED[i].0 == MIN_EMBEDDED_VERSION + i as u32,
+            "EMBEDDED rows must run in ascending order from MIN_EMBEDDED_VERSION"
+        );
+        i += 1;
+    }
+};
+
 /// Structured `serde_json::Value` for one schema version. Used by
 /// `schema diff` to compare two versions field-by-field.
 pub fn schema_value_for(version: u32) -> Result<Value, SchemaError> {
-    match version {
-        1 => Ok(serde_json::from_str(SCHEMA_V1_FROZEN).expect("frozen v1 snapshot is valid JSON")),
-        2 => Ok(serde_json::from_str(SCHEMA_V2_FROZEN).expect("frozen v2 snapshot is valid JSON")),
-        3 => Ok(serde_json::from_str(SCHEMA_V3_FROZEN).expect("frozen v3 snapshot is valid JSON")),
-        4 => Ok(combined_v4()),
-        5 => Ok(serde_json::from_str(SCHEMA_V5_FROZEN).expect("frozen v5 snapshot is valid JSON")),
-        6 => Ok(combined_v6()),
-        7 => Ok(serde_json::from_str(SCHEMA_V7_FROZEN).expect("frozen v7 snapshot is valid JSON")),
-        8 => Ok(serde_json::from_str(SCHEMA_V8_FROZEN).expect("frozen v8 snapshot is valid JSON")),
-        9 => Ok(serde_json::from_str(SCHEMA_V9_FROZEN).expect("frozen v9 snapshot is valid JSON")),
-        10 => {
-            Ok(serde_json::from_str(SCHEMA_V10_FROZEN).expect("frozen v10 snapshot is valid JSON"))
+    let row = version
+        .checked_sub(MIN_EMBEDDED_VERSION)
+        .and_then(|i| EMBEDDED.get(i as usize));
+    match row {
+        Some((_, Embedded::Frozen(text))) => {
+            Ok(serde_json::from_str(text).expect("frozen schema snapshot is valid JSON"))
         }
-        11 => {
-            Ok(serde_json::from_str(SCHEMA_V11_FROZEN).expect("frozen v11 snapshot is valid JSON"))
-        }
-        12 => {
-            Ok(serde_json::from_str(SCHEMA_V12_FROZEN).expect("frozen v12 snapshot is valid JSON"))
-        }
-        13 => {
-            Ok(serde_json::from_str(SCHEMA_V13_FROZEN).expect("frozen v13 snapshot is valid JSON"))
-        }
-        14 => {
-            Ok(serde_json::from_str(SCHEMA_V14_FROZEN).expect("frozen v14 snapshot is valid JSON"))
-        }
-        15 => {
-            Ok(serde_json::from_str(SCHEMA_V15_FROZEN).expect("frozen v15 snapshot is valid JSON"))
-        }
-        16 => Ok(combined_v16()),
-        other => Err(SchemaError::UnknownVersion {
-            requested: other,
+        Some((_, Embedded::Derived(f))) => Ok(f()),
+        None => Err(SchemaError::UnknownVersion {
+            requested: version,
             known: embedded_versions(),
         }),
     }

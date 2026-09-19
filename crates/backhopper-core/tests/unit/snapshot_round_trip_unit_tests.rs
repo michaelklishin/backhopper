@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 
 use backhopper_core::model::names::{
     ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
-    MacroName, ModuleName, ProjectName, RecordName, TagName, TypeName,
+    MacroName, ModuleName, ProjectName, RecordName, RelativePath, TagName, TypeName,
 };
 use backhopper_core::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
@@ -56,7 +56,7 @@ fn ra_module() -> Module {
 }
 
 fn ra_header() -> HrlFile {
-    let mut h = HrlFile::new("include/ra.hrl");
+    let mut h = HrlFile::new(RelativePath::new("include/ra.hrl").unwrap());
     h.types.push(TypeDecl {
         name: TypeName::new("ra_index").unwrap(),
         arity: Arity::new(0),
@@ -303,7 +303,7 @@ fn round_trip_preserves_all_advanced_entry_kinds() {
         defined_in: None,
     });
 
-    let mut hrl = HrlFile::new("include/ra.hrl");
+    let mut hrl = HrlFile::new(RelativePath::new("include/ra.hrl").unwrap());
     hrl.types.push(TypeDecl {
         name: TypeName::new("ra_index").unwrap(),
         arity: Arity::new(0),

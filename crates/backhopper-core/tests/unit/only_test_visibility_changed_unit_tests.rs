@@ -76,7 +76,7 @@ fn empty_pin_context(project: &str) -> EvaluationContext {
 fn touched_paths_in_diff(diff: &str) -> Vec<PathBuf> {
     Patch::parse(diff.as_bytes())
         .unwrap()
-        .files
+        .files()
         .iter()
         .filter_map(|f| f.new_path.clone().or_else(|| f.old_path.clone()))
         .collect()

@@ -17,7 +17,7 @@ fn reasons(patch: &str, target: &str) -> Vec<Reason> {
         Ok(p) => p,
         Err(_) => return Vec::new(),
     };
-    let Some(file) = parsed.files.first() else {
+    let Some(file) = parsed.files().first() else {
         return Vec::new();
     };
     let Some(path) = file.new_path.as_deref() else {

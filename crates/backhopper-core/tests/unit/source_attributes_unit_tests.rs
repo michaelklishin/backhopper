@@ -10,10 +10,11 @@ use std::str::FromStr;
 
 use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::source_attributes::{
-    ImportedFunction, declares_parse_transform, extract_behaviours, extract_defined_macro_values,
-    extract_defined_macros, extract_defined_records, extract_exported_types,
-    extract_function_signatures, extract_function_signatures_with_context, extract_imports,
-    extract_includes, extract_macro_uses, extract_record_uses, extract_specs, is_predefined_macro,
+    ExportedTypes, ImportedFunction, declares_parse_transform, extract_behaviours,
+    extract_defined_macro_values, extract_defined_macros, extract_defined_records,
+    extract_exported_types, extract_function_signatures, extract_function_signatures_with_context,
+    extract_imports, extract_includes, extract_macro_uses, extract_record_uses, extract_specs,
+    is_predefined_macro,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
@@ -447,9 +448,10 @@ fn macro_values_keep_commas_inside_the_body() {
 #[test]
 fn exported_type_line_survives_a_multiline_earlier_attribute() {
     let src = "-module(m).\n-export_type([\n    a/0,\n    b/0]).\n-export_type([c/0]).\n";
-    let set = extract_exported_types(src);
-    let c = set
-        .types
+    let ExportedTypes::Listed(types) = extract_exported_types(src) else {
+        panic!("expected a readable list");
+    };
+    let c = types
         .iter()
         .find(|t| t.name.as_str() == "c")
         .expect("c/0 is exported");

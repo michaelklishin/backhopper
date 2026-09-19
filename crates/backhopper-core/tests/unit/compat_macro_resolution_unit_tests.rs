@@ -13,7 +13,7 @@ use backhopper_core::model::symbol::SymbolKind;
 fn analyze_with_files(patch_bytes: &[u8], files: &FileMap) -> Vec<String> {
     let parsed = Patch::parse(patch_bytes).expect("parse");
     let mut per_path: BTreeMap<PathBuf, MacroTable> = BTreeMap::new();
-    for file in &parsed.files {
+    for file in parsed.files() {
         let Some(path) = file.new_path.clone().or_else(|| file.old_path.clone()) else {
             continue;
         };

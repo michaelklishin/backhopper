@@ -17,6 +17,7 @@ use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{CommitSha, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
+use crate::model::producer::Producer;
 use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::verdict::{Diagnostics, PatchFacts, SeriesVerdict};
 
@@ -55,14 +56,26 @@ impl BatchPayload {
         RoundClearance::from_results(&self.results, self_projects)
     }
 
+    /// The producer generation that wrote `self_projects`,
+    /// `resolver_coverage`, and `fingerprint_version`.
+    #[must_use]
+    pub fn producer(&self) -> Producer<'_> {
+        Producer::from_fields(
+            self.self_projects.as_ref(),
+            self.resolver_coverage.as_ref(),
+            self.fingerprint_version,
+        )
+    }
+
     /// Clearance from the self-projects the producer recorded on the
     /// wire. `None` when the producer predates the field; the caller
     /// then passes its own set to `clearance`.
     #[must_use]
     pub fn clearance_self_inferred(&self) -> Option<RoundClearance> {
-        self.self_projects
-            .as_ref()
-            .map(|projects| self.clearance(projects))
+        match self.producer() {
+            Producer::Current { self_projects, .. } => Some(self.clearance(self_projects)),
+            Producer::BeforeV12 => None,
+        }
     }
 }
 

@@ -15,50 +15,25 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::names::vocabulary;
 use crate::model::symbol::SymbolKind;
 
-/// A class of symbol whose presence a backport can dangle on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum ResolverClass {
-    Macro,
-    Include,
-    Behaviour,
-    QualifiedCall,
-    Record,
-    LocalCall,
-    Type,
-    IndirectCall,
-}
+vocabulary!(
+    /// A class of symbol whose presence a backport can dangle on.
+    #[derive(Hash, PartialOrd, Ord)]
+    pub enum ResolverClass: "resolver class" {
+        Macro => "macro",
+        Include => "include",
+        Behaviour => "behaviour",
+        QualifiedCall => "qualified_call",
+        Record => "record",
+        LocalCall => "local_call",
+        Type => "type",
+        IndirectCall => "indirect_call",
+    }
+);
 
 impl ResolverClass {
-    /// Stable label matching the serde spelling, for text roll-ups.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ResolverClass::Macro => "macro",
-            ResolverClass::Include => "include",
-            ResolverClass::Behaviour => "behaviour",
-            ResolverClass::QualifiedCall => "qualified_call",
-            ResolverClass::Record => "record",
-            ResolverClass::LocalCall => "local_call",
-            ResolverClass::Type => "type",
-            ResolverClass::IndirectCall => "indirect_call",
-        }
-    }
-
-    pub const ALL: [ResolverClass; 8] = [
-        ResolverClass::Macro,
-        ResolverClass::Include,
-        ResolverClass::Behaviour,
-        ResolverClass::QualifiedCall,
-        ResolverClass::Record,
-        ResolverClass::LocalCall,
-        ResolverClass::Type,
-        ResolverClass::IndirectCall,
-    ];
-
     /// Whether the analyzer resolves this class. Macro, include,
     /// behaviour, record, local call, and indirect call resolve on the
     /// target tree; qualified call and type resolve through the
@@ -111,7 +86,8 @@ impl ResolverCoverage {
     pub fn current() -> Self {
         Self {
             checked: ResolverClass::ALL
-                .into_iter()
+                .iter()
+                .copied()
                 .filter(|c| c.is_covered())
                 .collect(),
         }
@@ -127,7 +103,8 @@ impl ResolverCoverage {
     /// toward candidates touching one.
     pub fn unchecked(&self) -> impl Iterator<Item = ResolverClass> + '_ {
         ResolverClass::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|c| !self.checked.contains(c))
     }
 }

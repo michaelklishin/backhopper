@@ -21,7 +21,7 @@ fn self_pin(override_path: Option<PathBuf>) -> PinSpec {
 fn override_wins_over_cli_fallback() {
     let spec = self_pin(Some(PathBuf::from("/tmp/override.git")));
     let fallback = PathBuf::from("/tmp/fallback.git");
-    let resolved = effective_self_repo(&spec, Some(&fallback)).unwrap();
+    let resolved = effective_self_repo(spec.as_self_pin().unwrap(), Some(&fallback)).unwrap();
     assert_eq!(resolved, Path::new("/tmp/override.git"));
 }
 
@@ -29,14 +29,14 @@ fn override_wins_over_cli_fallback() {
 fn fallback_used_when_override_absent() {
     let spec = self_pin(None);
     let fallback = PathBuf::from("/tmp/fallback.git");
-    let resolved = effective_self_repo(&spec, Some(&fallback)).unwrap();
+    let resolved = effective_self_repo(spec.as_self_pin().unwrap(), Some(&fallback)).unwrap();
     assert_eq!(resolved, Path::new("/tmp/fallback.git"));
 }
 
 #[test]
 fn both_unset_yields_invalid_input_error() {
     let spec = self_pin(None);
-    let err = effective_self_repo(&spec, None).unwrap_err();
+    let err = effective_self_repo(spec.as_self_pin().unwrap(), None).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("repo_dir_path"), "got: {msg}");
     assert!(msg.contains("--repo-dir-path"), "got: {msg}");
@@ -45,6 +45,6 @@ fn both_unset_yields_invalid_input_error() {
 #[test]
 fn override_unused_when_set_even_if_fallback_also_set() {
     let spec = self_pin(Some(PathBuf::from("/tmp/override.git")));
-    let resolved = effective_self_repo(&spec, None).unwrap();
+    let resolved = effective_self_repo(spec.as_self_pin().unwrap(), None).unwrap();
     assert_eq!(resolved, Path::new("/tmp/override.git"));
 }

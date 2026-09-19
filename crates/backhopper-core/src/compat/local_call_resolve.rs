@@ -25,7 +25,6 @@
 //! still exports is clean, one it lacks is flagged.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::qualified_call_resolve::{
@@ -84,7 +83,7 @@ pub fn analyse_local_calls(
         let mut shape_seen = BTreeSet::new();
         caches.begin_subject();
         for call in sigs.iter().filter(|s| !s.is_definition) {
-            if is_auto_imported_bif(&call.name) {
+            if is_auto_imported_bif(call.name.as_str()) {
                 continue;
             }
             let Some(key) = signature_key(call) else {
@@ -217,14 +216,11 @@ fn defined_set(sigs: &[FunctionSignature]) -> BTreeSet<(FunctionName, Arity)> {
         .collect()
 }
 
-/// The typed `(name, arity)` key for a signature, `None` when either
-/// part fails to validate: an unvalidatable call can never be flagged,
-/// so it drops out of every set.
+/// The typed `(name, arity)` key for a signature, `None` when the arity
+/// fails to validate: an unvalidatable call can never be flagged, so it
+/// drops out of every set.
 fn signature_key(sig: &FunctionSignature) -> Option<(FunctionName, Arity)> {
-    Some((
-        FunctionName::from_str(&sig.name).ok()?,
-        Arity::try_from(sig.arity).ok()?,
-    ))
+    Some((sig.name.clone(), Arity::try_from(sig.arity).ok()?))
 }
 
 /// Functions Erlang auto-imports from `erlang`, callable unqualified.

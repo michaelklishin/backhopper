@@ -11,18 +11,21 @@ pub use path_translation::{
 };
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::errors::{ConfigError, NameError};
-use crate::model::names::{ApplicationName, GitRef, ProjectName, SeriesName, TagGlob, TagName};
+use crate::model::names::{
+    ApplicationName, BehaviourName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
+    SeriesName, TagGlob, TagName, vocabulary,
+};
 use crate::model::pin::{self, Pin, PinSelect, PinSpec};
-use crate::store::SnapshotStore;
+use crate::store::{SnapshotStore, StoreMode};
 use crate::suites::rules::validate_template_placeholders;
 use crate::suites::{ExtraRule, ExtraRuleTrigger, LineMatch};
 
@@ -150,7 +153,7 @@ pub struct CacheRaw {
 /// Expiration policy for the workspace's on-disk caches. Time-based
 /// expiry is the whole policy: no LRU, no size caps. Expiration is
 /// hygiene, never correctness: the cache key components own correctness.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CacheSettings {
     /// Entries older than this many days expire. `0` disables expiry
     /// (`cache prune` and `cache clear` still work). The default is
@@ -192,153 +195,166 @@ pub struct ProjectRaw {
     pub exclude_tag_markers: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectKind {
-    /// Snapshots come from cloning `git_url` and reading its tags. The default.
-    External,
-    /// Snapshots are produced from the working repo at `--repo-dir-path`, at
-    /// a `git_ref` resolved per pin. There can be at most one self-project.
-    SelfRepo,
-}
-
-impl ProjectKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::External => "external",
-            Self::SelfRepo => "self",
-        }
+vocabulary!(
+    pub enum ProjectKind: "project kind" {
+        /// Snapshots come from cloning `git_url` and reading its tags. The default.
+        External => "external",
+        /// Snapshots are produced from the working repo at `--repo-dir-path`, at
+        /// a `git_ref` resolved per pin. There can be at most one self-project.
+        SelfRepo => "self",
     }
-}
+);
 
-impl FromStr for ProjectKind {
-    type Err = ConfigError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "external" => Ok(Self::External),
-            "self" => Ok(Self::SelfRepo),
-            other => Err(ConfigError::UnknownProjectKind(other.to_owned())),
-        }
+vocabulary!(
+    /// Which family-specific detectors run on top of the generic surface
+    /// checks. Declared per-project as `family = "ra"`. Orthogonal to
+    /// `ProjectKind` and `ProjectLayout`.
+    #[derive(Default)]
+    pub enum ProjectFamily: "project family" {
+        /// No specialization. The default.
+        #[default]
+        Generic => "generic",
+        /// OTP itself.
+        ErlangOtp => "erlang_otp",
+        /// `rabbitmq/ra`: Raft consensus. Wire-bearing version macros in
+        /// `ra_log_segment`, `ra_log_wal`, `ra_log_snapshot`, `ra_snapshot`.
+        Ra => "ra",
+        /// `rabbitmq/osiris`: streaming log. Version constants in the
+        /// segment and index file headers.
+        Osiris => "osiris",
+        /// `rabbitmq/khepri`: metadata store. Node payload version constants.
+        Khepri => "khepri",
+        /// `rabbitmq/rabbitmq-server`: implements `ra_machine` via
+        /// `rabbit_fifo` and `rabbit_stream_coordinator`; carries `.schema`
+        /// files; uses `?LOG_*`, `rabbit_log:*`, and `rabbit_khepri`.
+        Rabbitmq => "rabbitmq",
     }
-}
-
-/// Which family-specific detectors run on top of the generic surface
-/// checks. Declared per-project as `family = "ra"`. Orthogonal to
-/// `ProjectKind` and `ProjectLayout`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectFamily {
-    /// No specialization. The default.
-    #[default]
-    Generic,
-    /// OTP itself.
-    ErlangOtp,
-    /// `rabbitmq/ra`: Raft consensus. Wire-bearing version macros in
-    /// `ra_log_segment`, `ra_log_wal`, `ra_log_snapshot`, `ra_snapshot`.
-    Ra,
-    /// `rabbitmq/osiris`: streaming log. Version constants in the
-    /// segment and index file headers.
-    Osiris,
-    /// `rabbitmq/khepri`: metadata store. Node payload version constants.
-    Khepri,
-    /// `rabbitmq/rabbitmq-server`: implements `ra_machine` via
-    /// `rabbit_fifo` and `rabbit_stream_coordinator`; carries `.schema`
-    /// files; uses `?LOG_*`, `rabbit_log:*`, and `rabbit_khepri`.
-    Rabbitmq,
-}
-
-impl ProjectFamily {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Generic => "generic",
-            Self::ErlangOtp => "erlang_otp",
-            Self::Ra => "ra",
-            Self::Osiris => "osiris",
-            Self::Khepri => "khepri",
-            Self::Rabbitmq => "rabbitmq",
-        }
-    }
-}
-
-impl FromStr for ProjectFamily {
-    type Err = ConfigError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "generic" => Ok(Self::Generic),
-            "erlang_otp" => Ok(Self::ErlangOtp),
-            "ra" => Ok(Self::Ra),
-            "osiris" => Ok(Self::Osiris),
-            "khepri" => Ok(Self::Khepri),
-            "rabbitmq" => Ok(Self::Rabbitmq),
-            other => Err(ConfigError::UnknownProjectFamily(other.to_owned())),
-        }
-    }
-}
+);
 
 impl ProjectFamily {
     /// Wire-bearing macros, versioned-machine behaviours, and versioned-machine
     /// implementer modules this family declares.
     pub fn defaults(self) -> FamilyDefaults {
         match self {
-            Self::Generic => FamilyDefaults::default(),
-            Self::ErlangOtp => FamilyDefaults::default(),
-            Self::Ra => FamilyDefaults {
-                wire_constants: vec![
-                    WireConstantDecl::new("ra_log_segment", &["VERSION", "MAGIC"]),
-                    WireConstantDecl::new("ra_log_wal", &["CURRENT_VERSION", "MAGIC"]),
-                    WireConstantDecl::new("ra_log_snapshot", &["VERSION", "MAGIC"]),
-                    WireConstantDecl::new("ra_snapshot", &["IDX_VERSION", "IDX_MAGIC"]),
-                    WireConstantDecl::new("ra", &["RA_PROTO_VERSION"]),
-                ],
-                versioned_machines: vec![VersionedMachineDecl {
-                    behaviour: "ra_machine".into(),
-                }],
-                versioned_machine_impls: Vec::new(),
-                test_helper_search_paths: Vec::new(),
-            },
-            Self::Osiris => FamilyDefaults {
-                wire_constants: vec![WireConstantDecl::new(
-                    "osiris",
-                    &[
-                        "MAGIC",
-                        "VERSION",
-                        "IDX_VERSION",
-                        "LOG_VERSION",
-                        "IDX_HEADER",
-                        "LOG_HEADER",
-                    ],
-                )],
-                ..Default::default()
-            },
-            Self::Khepri => FamilyDefaults {
-                wire_constants: vec![WireConstantDecl::new(
-                    "khepri_node",
-                    &["INIT_DATA_VERSION", "INIT_CHILD_LIST_VERSION"],
-                )],
-                ..Default::default()
-            },
-            Self::Rabbitmq => FamilyDefaults {
-                wire_constants: Vec::new(),
-                versioned_machines: Vec::new(),
-                versioned_machine_impls: vec![
-                    VersionedMachineImplDecl {
-                        module: "rabbit_fifo".into(),
-                        version_function: "version".into(),
-                        allow_state_flag_gating: true,
-                    },
-                    VersionedMachineImplDecl {
-                        module: "rabbit_stream_coordinator".into(),
-                        version_function: "version".into(),
-                        allow_state_flag_gating: false,
-                    },
-                ],
-                test_helper_search_paths: rabbitmq_default_test_helper_search_paths(),
-            },
+            Self::Generic | Self::ErlangOtp => FamilyDefaults::default(),
+            Self::Ra => RA_DEFAULTS.clone(),
+            Self::Osiris => OSIRIS_DEFAULTS.clone(),
+            Self::Khepri => KHEPRI_DEFAULTS.clone(),
+            Self::Rabbitmq => RABBITMQ_DEFAULTS.clone(),
         }
     }
 }
+
+const RA_WIRE_CONSTANTS: &[(&str, &[&str])] = &[
+    ("ra_log_segment", &["VERSION", "MAGIC"]),
+    ("ra_log_wal", &["CURRENT_VERSION", "MAGIC"]),
+    ("ra_log_snapshot", &["VERSION", "MAGIC"]),
+    ("ra_snapshot", &["IDX_VERSION", "IDX_MAGIC"]),
+    ("ra", &["RA_PROTO_VERSION"]),
+];
+const RA_VERSIONED_MACHINES: &[&str] = &["ra_machine"];
+
+const OSIRIS_WIRE_CONSTANTS: &[(&str, &[&str])] = &[(
+    "osiris",
+    &[
+        "MAGIC",
+        "VERSION",
+        "IDX_VERSION",
+        "LOG_VERSION",
+        "IDX_HEADER",
+        "LOG_HEADER",
+    ],
+)];
+
+const KHEPRI_WIRE_CONSTANTS: &[(&str, &[&str])] = &[(
+    "khepri_node",
+    &["INIT_DATA_VERSION", "INIT_CHILD_LIST_VERSION"],
+)];
+
+const RABBITMQ_VERSIONED_MACHINE_IMPLS: &[(&str, &str, bool)] = &[
+    ("rabbit_fifo", "version", true),
+    ("rabbit_stream_coordinator", "version", false),
+];
+
+fn build_wire_constants(rows: &[(&str, &[&str])]) -> Result<Vec<WireConstantDecl>, NameError> {
+    rows.iter()
+        .map(|(module, macros)| {
+            Ok(WireConstantDecl {
+                module: ModuleName::from_str(module)?,
+                macros: macros
+                    .iter()
+                    .map(|m| MacroName::from_str(m))
+                    .collect::<Result<_, _>>()?,
+            })
+        })
+        .collect()
+}
+
+fn build_versioned_machines(behaviours: &[&str]) -> Result<Vec<VersionedMachineDecl>, NameError> {
+    behaviours
+        .iter()
+        .map(|b| {
+            Ok(VersionedMachineDecl {
+                behaviour: BehaviourName::from_str(b)?,
+            })
+        })
+        .collect()
+}
+
+fn build_versioned_machine_impls(
+    rows: &[(&str, &str, bool)],
+) -> Result<Vec<VersionedMachineImplDecl>, NameError> {
+    rows.iter()
+        .map(|(module, version_function, allow_state_flag_gating)| {
+            Ok(VersionedMachineImplDecl {
+                module: ModuleName::from_str(module)?,
+                version_function: FunctionName::from_str(version_function)?,
+                allow_state_flag_gating: *allow_state_flag_gating,
+            })
+        })
+        .collect()
+}
+
+fn build_ra_defaults() -> Result<FamilyDefaults, NameError> {
+    Ok(FamilyDefaults {
+        wire_constants: build_wire_constants(RA_WIRE_CONSTANTS)?,
+        versioned_machines: build_versioned_machines(RA_VERSIONED_MACHINES)?,
+        versioned_machine_impls: Vec::new(),
+        test_helper_search_paths: Vec::new(),
+    })
+}
+
+fn build_osiris_defaults() -> Result<FamilyDefaults, NameError> {
+    Ok(FamilyDefaults {
+        wire_constants: build_wire_constants(OSIRIS_WIRE_CONSTANTS)?,
+        ..Default::default()
+    })
+}
+
+fn build_khepri_defaults() -> Result<FamilyDefaults, NameError> {
+    Ok(FamilyDefaults {
+        wire_constants: build_wire_constants(KHEPRI_WIRE_CONSTANTS)?,
+        ..Default::default()
+    })
+}
+
+fn build_rabbitmq_defaults() -> Result<FamilyDefaults, NameError> {
+    Ok(FamilyDefaults {
+        wire_constants: Vec::new(),
+        versioned_machines: Vec::new(),
+        versioned_machine_impls: build_versioned_machine_impls(RABBITMQ_VERSIONED_MACHINE_IMPLS)?,
+        test_helper_search_paths: rabbitmq_default_test_helper_search_paths(),
+    })
+}
+
+static RA_DEFAULTS: LazyLock<FamilyDefaults> =
+    LazyLock::new(|| build_ra_defaults().expect("ra family default is valid"));
+static OSIRIS_DEFAULTS: LazyLock<FamilyDefaults> =
+    LazyLock::new(|| build_osiris_defaults().expect("osiris family default is valid"));
+static KHEPRI_DEFAULTS: LazyLock<FamilyDefaults> =
+    LazyLock::new(|| build_khepri_defaults().expect("khepri family default is valid"));
+static RABBITMQ_DEFAULTS: LazyLock<FamilyDefaults> =
+    LazyLock::new(|| build_rabbitmq_defaults().expect("rabbitmq family default is valid"));
 
 /// Per-family relative-path globs the test-module resolver scans when
 /// looking up `helper_module:f/n` references in `_SUITE.erl` files.
@@ -367,28 +383,19 @@ pub struct FamilyDefaults {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireConstantDecl {
-    pub module: String,
-    pub macros: Vec<String>,
-}
-
-impl WireConstantDecl {
-    pub fn new(module: &str, macros: &[&str]) -> Self {
-        Self {
-            module: module.to_owned(),
-            macros: macros.iter().map(|m| (*m).to_owned()).collect(),
-        }
-    }
+    pub module: ModuleName,
+    pub macros: Vec<MacroName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionedMachineDecl {
-    pub behaviour: String,
+    pub behaviour: BehaviourName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionedMachineImplDecl {
-    pub module: String,
-    pub version_function: String,
+    pub module: ModuleName,
+    pub version_function: FunctionName,
     pub allow_state_flag_gating: bool,
 }
 
@@ -441,68 +448,29 @@ pub enum PinRaw {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct Defaults {
     pub snapshot_dir: PathBuf,
     pub fallback_branch: String,
     pub scan_paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Language {
-    Erlang,
-    Elixir,
-}
-
-impl Language {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Erlang => "erlang",
-            Self::Elixir => "elixir",
-        }
+vocabulary!(
+    pub enum Language: "language" {
+        Erlang => "erlang",
+        Elixir => "elixir",
     }
-}
+);
 
-impl fmt::Display for Language {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+vocabulary!(
+    pub enum ProjectLayout: "project layout" {
+        SingleApp => "single_app",
+        MultiApp => "multi_app",
+        ErlangOtp => "erlang_otp",
     }
-}
-
-impl FromStr for Language {
-    type Err = ConfigError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "erlang" => Ok(Self::Erlang),
-            "elixir" => Ok(Self::Elixir),
-            other => Err(ConfigError::Name(NameError::PatternMismatch {
-                kind: "language",
-                value: other.to_owned(),
-                pattern: "erlang|elixir",
-            })),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectLayout {
-    SingleApp,
-    MultiApp,
-    ErlangOtp,
-}
+);
 
 impl ProjectLayout {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::SingleApp => "single_app",
-            Self::MultiApp => "multi_app",
-            Self::ErlangOtp => "erlang_otp",
-        }
-    }
-
     pub fn defaults(self) -> LayoutDefaults {
         match self {
             Self::SingleApp | Self::MultiApp => LayoutDefaults::default(),
@@ -527,19 +495,6 @@ impl ProjectLayout {
     }
 }
 
-impl FromStr for ProjectLayout {
-    type Err = ConfigError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "single_app" => Ok(Self::SingleApp),
-            "multi_app" => Ok(Self::MultiApp),
-            "erlang_otp" => Ok(Self::ErlangOtp),
-            other => Err(ConfigError::UnknownProjectLayout(other.to_owned())),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LayoutDefaults {
     pub app_roots: Vec<String>,
@@ -550,17 +505,49 @@ pub struct LayoutDefaults {
     pub min_tag: Option<TagName>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A project's snapshots come from cloning `git_url`, or from the working
+/// repo at runtime's `--repo-dir-path`: never both, never neither.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectSource {
+    External {
+        git_url: PathBuf,
+    },
+    #[serde(rename = "self")]
+    SelfRepo,
+}
+
+impl ProjectSource {
+    /// The raw TOML vocabulary this arm was parsed from, for the surfaces
+    /// that print a project's kind as a label.
+    #[must_use]
+    pub fn kind(&self) -> ProjectKind {
+        match self {
+            Self::External { .. } => ProjectKind::External,
+            Self::SelfRepo => ProjectKind::SelfRepo,
+        }
+    }
+
+    /// The clone URL of an external project; a self-project has none.
+    #[must_use]
+    pub fn git_url(&self) -> Option<&Path> {
+        match self {
+            Self::External { git_url } => Some(git_url),
+            Self::SelfRepo => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Project {
     pub name: ProjectName,
-    /// `None` for self-projects; the repo is the runtime `--repo-dir-path`.
-    pub git_url: Option<PathBuf>,
-    pub kind: ProjectKind,
+    #[serde(flatten)]
+    pub source: ProjectSource,
     pub family: ProjectFamily,
     pub language: Language,
     pub tag_prefix: String,
-    pub public_modules: Vec<String>,
-    pub internal_modules: Vec<String>,
+    pub public_modules: Vec<ModuleName>,
+    pub internal_modules: Vec<ModuleName>,
     pub layout: ProjectLayout,
     pub scan_paths: Vec<String>,
     pub app_roots: Vec<String>,
@@ -580,16 +567,8 @@ impl Project {
             .any(|marker| tag.as_str().contains(marker))
     }
 
-    /// `git_url` is only present for external projects. Returns a clear
-    /// error when callers ask for it on a self-project.
-    pub fn require_git_url(&self) -> Result<&Path, ConfigError> {
-        self.git_url
-            .as_deref()
-            .ok_or_else(|| ConfigError::SelfProjectHasNoGitUrl(self.name.to_string()))
-    }
-
     pub fn is_self(&self) -> bool {
-        matches!(self.kind, ProjectKind::SelfRepo)
+        matches!(self.source, ProjectSource::SelfRepo)
     }
 
     /// Prefix-matches `path` against `scan_paths` and `app_roots`,
@@ -630,7 +609,7 @@ fn glob_directory_prefix(pattern: &str) -> &str {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Series {
     pub name: SeriesName,
     pub pins: Vec<PinSpec>,
@@ -647,12 +626,15 @@ pub struct Series {
 
 impl Series {
     /// Resolve every pin spec against `store`, returning concrete `Pin`s.
-    pub fn resolve_pins<M>(&self, store: &SnapshotStore<M>) -> Result<Vec<Pin>, ConfigError> {
+    pub fn resolve_pins<M: StoreMode>(
+        &self,
+        store: &SnapshotStore<M>,
+    ) -> Result<Vec<Pin>, ConfigError> {
         pin::resolve_all(&self.pins, store)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct Config {
     pub config_path: PathBuf,
     pub defaults: Defaults,
@@ -665,6 +647,12 @@ pub struct Config {
 }
 
 impl Config {
+    /// The one project whose snapshots come from the working repo, if any.
+    /// `from_raw` refuses a config with more than one.
+    pub fn self_project(&self) -> Option<&Project> {
+        self.projects.iter().find(|p| p.is_self())
+    }
+
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         if !path.exists() {
             return Err(ConfigError::NotFound(path.to_path_buf()));
@@ -702,7 +690,7 @@ impl Config {
         }
         let self_projects: Vec<String> = projects
             .iter()
-            .filter(|p| p.kind == ProjectKind::SelfRepo)
+            .filter(|p| p.is_self())
             .map(|p| p.name.to_string())
             .collect();
         if self_projects.len() > 1 {
@@ -710,20 +698,20 @@ impl Config {
                 projects: self_projects,
             });
         }
-        let project_kinds: BTreeMap<&ProjectName, ProjectKind> =
-            projects.iter().map(|p| (&p.name, p.kind)).collect();
+        let project_is_self: BTreeMap<&ProjectName, bool> =
+            projects.iter().map(|p| (&p.name, p.is_self())).collect();
         let mut series = Vec::with_capacity(raw.series.len());
         for s in raw.series {
             let mut pins = Vec::with_capacity(s.pins.len());
             for pin in s.pins {
                 let spec = parse_pin(pin)?;
-                let Some(kind) = project_kinds.get(spec.project()).copied() else {
+                let Some(is_self) = project_is_self.get(spec.project()).copied() else {
                     return Err(ConfigError::SeriesPinsUnknownProject {
                         series: s.name.clone(),
                         project: spec.project().to_string(),
                     });
                 };
-                if spec.is_self() && kind != ProjectKind::SelfRepo {
+                if spec.is_self() && !is_self {
                     return Err(ConfigError::SelfPinReferencesExternalProject {
                         project: spec.project().to_string(),
                     });
@@ -733,7 +721,7 @@ impl Config {
             let mut untracked_projects = Vec::with_capacity(s.untracked_projects.len());
             for name in s.untracked_projects {
                 let project = ProjectName::new(name).map_err(ConfigError::Name)?;
-                if !project_kinds.contains_key(&project) {
+                if !project_is_self.contains_key(&project) {
                     return Err(ConfigError::SeriesPinsUnknownProject {
                         series: s.name.clone(),
                         project: project.to_string(),
@@ -906,6 +894,13 @@ fn parse_suite_rule(idx: usize, raw: SuiteRuleRaw) -> Result<ExtraRule, ConfigEr
     })
 }
 
+fn module_names(raw: Option<Vec<String>>) -> Result<Vec<ModuleName>, ConfigError> {
+    raw.unwrap_or_default()
+        .into_iter()
+        .map(|m| ModuleName::new(m).map_err(ConfigError::Name))
+        .collect()
+}
+
 fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigError> {
     let layout = p
         .layout
@@ -957,7 +952,7 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
     {
         return Err(ConfigError::LayoutWithoutAppRoots {
             project: name.to_string(),
-            layout: layout.as_str().to_owned(),
+            layout: layout.label().to_owned(),
         });
     }
     let kind = p
@@ -972,25 +967,26 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         .map(ProjectFamily::from_str)
         .transpose()?
         .unwrap_or_default();
-    let git_url = match (kind, p.git_url) {
-        (ProjectKind::External, Some(g)) => Some(PathBuf::from(g)),
+    let source = match (kind, p.git_url) {
+        (ProjectKind::External, Some(g)) => ProjectSource::External {
+            git_url: PathBuf::from(g),
+        },
         (ProjectKind::External, None) => {
             return Err(ConfigError::ExternalProjectMissingGitUrl(name.to_string()));
         }
-        (ProjectKind::SelfRepo, None) => None,
+        (ProjectKind::SelfRepo, None) => ProjectSource::SelfRepo,
         (ProjectKind::SelfRepo, Some(_)) => {
             return Err(ConfigError::SelfProjectHasGitUrl(name.to_string()));
         }
     };
     Ok(Project {
         name,
-        git_url,
-        kind,
+        source,
         family,
         language,
         tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
-        public_modules: p.public_modules.unwrap_or_default(),
-        internal_modules: p.internal_modules.unwrap_or_default(),
+        public_modules: module_names(p.public_modules)?,
+        internal_modules: module_names(p.internal_modules)?,
         layout,
         scan_paths,
         app_roots,

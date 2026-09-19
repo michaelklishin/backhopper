@@ -34,7 +34,10 @@ pins = [{{ project = \"host\", branch = \"v4.1.x\", repo_dir_path = \"/tmp/v4.1.
     );
     let cfg = parse(&body).unwrap();
     let pin = &cfg.series[0].pins[0];
-    let path = pin.self_repo_override().expect("override present");
+    let path = pin
+        .as_self_pin()
+        .and_then(|p| p.repo_dir_path)
+        .expect("override present");
     assert_eq!(path, Path::new("/tmp/v4.1.x.git"));
 }
 
@@ -47,7 +50,12 @@ name = \"v4_1\"\n\
 pins = [{{ project = \"host\", branch = \"v4.1.x\" }}]\n"
     );
     let cfg = parse(&body).unwrap();
-    assert!(cfg.series[0].pins[0].self_repo_override().is_none());
+    assert!(
+        cfg.series[0].pins[0]
+            .as_self_pin()
+            .and_then(|p| p.repo_dir_path)
+            .is_none()
+    );
 }
 
 #[test]
@@ -60,7 +68,8 @@ pins = [{{ project = \"host\", sha = \"abcdef0123456789abcdef0123456789abcdef01\
     );
     let cfg = parse(&body).unwrap();
     let path = cfg.series[0].pins[0]
-        .self_repo_override()
+        .as_self_pin()
+        .and_then(|p| p.repo_dir_path)
         .expect("override on sha-form pin");
     assert_eq!(path, Path::new("/tmp/locked.git"));
 }
@@ -82,7 +91,12 @@ name = "stable"
 pins = [{ project = "ra", tag = "v2.0.0" }]
 "#;
     let cfg = parse(body).unwrap();
-    assert!(cfg.series[0].pins[0].self_repo_override().is_none());
+    assert!(
+        cfg.series[0].pins[0]
+            .as_self_pin()
+            .and_then(|p| p.repo_dir_path)
+            .is_none()
+    );
 }
 
 #[test]
@@ -94,7 +108,10 @@ name = \"v3_13\"\n\
 pins = [{{ project = \"host\", branch = \"v3.13.x\", repo_dir_path = \"/Users/antares/Development/RabbitMQ/paid_oss_backports_v3.13.x.git\" }}]\n"
     );
     let cfg = parse(&body).unwrap();
-    let path = cfg.series[0].pins[0].self_repo_override().unwrap();
+    let path = cfg.series[0].pins[0]
+        .as_self_pin()
+        .and_then(|p| p.repo_dir_path)
+        .unwrap();
     assert!(
         path.to_string_lossy()
             .contains("paid_oss_backports_v3.13.x.git")
@@ -121,8 +138,14 @@ pins = [
 ]
 "#;
     let cfg = parse(body).unwrap();
-    let p0 = cfg.series[0].pins[0].self_repo_override().unwrap();
-    let p1 = cfg.series[0].pins[1].self_repo_override().unwrap();
+    let p0 = cfg.series[0].pins[0]
+        .as_self_pin()
+        .and_then(|p| p.repo_dir_path)
+        .unwrap();
+    let p1 = cfg.series[0].pins[1]
+        .as_self_pin()
+        .and_then(|p| p.repo_dir_path)
+        .unwrap();
     assert_ne!(p0, p1);
     assert!(p0.to_string_lossy().contains("v4.2.x.git"));
     assert!(p1.to_string_lossy().contains("v4.1.x.git"));
@@ -136,7 +159,7 @@ fn self_repo_override_on_pinspec_constructed_in_code() {
         repo_dir_path: Some(PathBuf::from("/tmp/branch.git")),
     };
     assert_eq!(
-        spec.self_repo_override(),
+        spec.as_self_pin().and_then(|p| p.repo_dir_path),
         Some(Path::new("/tmp/branch.git"))
     );
 }

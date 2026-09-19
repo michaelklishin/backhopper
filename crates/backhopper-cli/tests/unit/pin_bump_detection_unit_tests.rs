@@ -22,7 +22,7 @@ fn one_file_patch(path: &str, body: &str) -> String {
 fn bumps_in(path: &str, body: &str) -> Vec<PinBump> {
     let text = one_file_patch(path, body);
     let patch = Patch::parse(text.as_bytes()).expect("patch parses");
-    detect_pin_bumps(&patch.files)
+    detect_pin_bumps(patch.files())
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn other_files_in_the_same_patch_do_not_contribute() {
     let erl = one_file_patch("src/rabbit.erl", "+%% dep_ra = hex 9.9.9\n");
     let text = format!("{mk}{erl}");
     let patch = Patch::parse(text.as_bytes()).expect("patch parses");
-    let bumps = detect_pin_bumps(&patch.files);
+    let bumps = detect_pin_bumps(patch.files());
     assert_eq!(bumps.len(), 1);
     assert_eq!(bumps[0].dep.as_str(), "cowlib");
 }
@@ -125,7 +125,7 @@ fn newly_created_manifest_detects_introduced_pins() {
                 @@ -0,0 +1,1 @@\n\
                 +dep_ra = hex 3.1.6\n";
     let patch = Patch::parse(text.as_bytes()).expect("patch parses");
-    let bumps = detect_pin_bumps(&patch.files);
+    let bumps = detect_pin_bumps(patch.files());
     assert_eq!(bumps.len(), 1);
     assert_eq!(bumps[0].from, None);
 }
@@ -138,5 +138,5 @@ fn deleted_manifest_yields_nothing() {
                 @@ -1,1 +0,0 @@\n\
                 -dep_ra = hex 3.1.6\n";
     let patch = Patch::parse(text.as_bytes()).expect("patch parses");
-    assert!(detect_pin_bumps(&patch.files).is_empty());
+    assert!(detect_pin_bumps(patch.files()).is_empty());
 }

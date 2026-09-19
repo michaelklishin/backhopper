@@ -111,6 +111,48 @@ pub enum SymbolKind {
     },
 }
 
+/// The three `SymbolKind` arms an `-export` or `-export_type` list can
+/// answer for: `Behaviour`, `Callback`, `Macro`, and `Record` resolve some
+/// other way and have no exported form to ask about.
+#[derive(Debug, Clone, Copy)]
+pub enum ExportedSymbol<'a> {
+    Function(&'a Mfa),
+    FunctionAnyArity {
+        module: &'a ModuleName,
+        function: &'a FunctionName,
+    },
+    Type {
+        module: &'a ModuleName,
+        name: &'a TypeName,
+        arity: Arity,
+    },
+}
+
+impl SymbolKind {
+    #[must_use]
+    pub fn as_exported(&self) -> Option<ExportedSymbol<'_>> {
+        match self {
+            Self::Function { mfa } => Some(ExportedSymbol::Function(mfa)),
+            Self::FunctionAnyArity { module, function } => {
+                Some(ExportedSymbol::FunctionAnyArity { module, function })
+            }
+            Self::Type {
+                module,
+                name,
+                arity,
+            } => Some(ExportedSymbol::Type {
+                module,
+                name,
+                arity: *arity,
+            }),
+            Self::Behaviour { .. }
+            | Self::Callback { .. }
+            | Self::Macro { .. }
+            | Self::Record { .. } => None,
+        }
+    }
+}
+
 /// Which side of the hunk a reference was extracted from. `Added`
 /// lines are requirements the patch introduces; `Context` lines are
 /// pre-existing facts about the target and never drive verdicts.

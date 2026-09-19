@@ -200,6 +200,6 @@ fn every_resolver_class_is_reachable_from_some_reason() {
     ];
     let reached: BTreeSet<ResolverClass> =
         reasons.iter().filter_map(Reason::resolver_class).collect();
-    let all: BTreeSet<ResolverClass> = ResolverClass::ALL.into_iter().collect();
+    let all: BTreeSet<ResolverClass> = ResolverClass::ALL.iter().copied().collect();
     assert_eq!(reached, all);
 }

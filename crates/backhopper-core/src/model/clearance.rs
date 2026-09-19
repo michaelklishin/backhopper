@@ -210,7 +210,7 @@ impl RoundClearance {
                     match outcome {
                         PathApplyOutcome::Conflict { kind } => {
                             conflicted_paths.insert(path.clone());
-                            *apply.by_kind.entry(kind.as_str()).or_insert(0) += 1;
+                            *apply.by_kind.entry(kind.label()).or_insert(0) += 1;
                         }
                         PathApplyOutcome::Unassessed { .. } => apply.unassessed_paths += 1,
                         PathApplyOutcome::CleanExact | PathApplyOutcome::CleanDrifted { .. } => {}

@@ -5,6 +5,7 @@
 //! Newtypes for every domain primitive: `String` should never represent a
 //! project name, tag, module, function, or commit SHA.
 
+use std::borrow::Borrow;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -267,6 +268,26 @@ macro_rules! string_newtype {
             }
         }
 
+        impl PartialEq<str> for $name {
+            fn eq(&self, other: &str) -> bool {
+                &*self.0 == other
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                &*self.0 == *other
+            }
+        }
+
+        // lets a `BTreeSet<$name>` answer `contains` for a scanned `&str`
+        // without allocating a candidate first
+        impl Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                &self.0
+            }
+        }
+
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(&self.0)
@@ -282,6 +303,56 @@ macro_rules! string_newtype {
         }
     };
 }
+
+macro_rules! vocabulary {
+    (
+        $(#[$enum_meta:meta])*
+        $vis:vis enum $name:ident : $noun:literal {
+            $($(#[$variant_meta:meta])* $variant:ident => $label:literal),+ $(,)?
+        }
+    ) => {
+        $(#[$enum_meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+        $vis enum $name {
+            $($(#[$variant_meta])* #[serde(rename = $label)] $variant),+
+        }
+
+        impl $name {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            #[must_use]
+            pub const fn label(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $label),+
+                }
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.label())
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = crate::errors::UnknownLabel;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $($label => Ok(Self::$variant),)+
+                    other => Err(crate::errors::UnknownLabel::new(
+                        $noun,
+                        other,
+                        Self::ALL.iter().map(|v| v.label()),
+                    )),
+                }
+            }
+        }
+    };
+}
+
+pub(crate) use vocabulary;
 
 string_newtype!(ProjectName, |v: &str| {
     validate_simple_name(

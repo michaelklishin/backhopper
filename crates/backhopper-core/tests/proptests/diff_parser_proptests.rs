@@ -41,8 +41,8 @@ proptest! {
         ));
         diff.push_str(&format!(" {body}\n"));
         let patch = Patch::parse(diff.as_bytes()).expect("well-formed diff should parse");
-        prop_assert_eq!(patch.files.len(), 1);
-        let f = &patch.files[0];
+        prop_assert_eq!(patch.files().len(), 1);
+        let f = &patch.files()[0];
         prop_assert_eq!(f.hunks.len(), 1);
         prop_assert_eq!(f.hunks[0].old_start, old_start);
         prop_assert_eq!(f.hunks[0].new_start, new_start);
@@ -51,7 +51,7 @@ proptest! {
     #[test]
     fn empty_input_parses_to_zero_files(noise in "[ \t\n]{0,32}") {
         let patch = Patch::parse(noise.as_bytes()).expect("blank input is valid");
-        prop_assert!(patch.files.is_empty());
+        prop_assert!(patch.files().is_empty());
     }
 
     #[test]
@@ -62,7 +62,7 @@ proptest! {
         diff.push_str(&format!("+++ b/{path}\n"));
         diff.push_str("Binary files differ\n");
         let patch = Patch::parse(diff.as_bytes()).unwrap();
-        prop_assert_eq!(patch.files.len(), 1);
-        prop_assert!(patch.files[0].binary);
+        prop_assert_eq!(patch.files().len(), 1);
+        prop_assert!(patch.files()[0].binary);
     }
 }

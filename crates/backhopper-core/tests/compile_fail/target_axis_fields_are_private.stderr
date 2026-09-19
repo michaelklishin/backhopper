@@ -1,0 +1,5 @@
+error[E0616]: field `apply` of struct `TargetAxisSlot` is private
+ --> tests/compile_fail/target_axis_fields_are_private.rs:5:10
+  |
+5 |     slot.apply = Some(forecast);
+  |          ^^^^^ private field

@@ -30,17 +30,29 @@ use crate::model::snapshot::{Snapshot, state};
 use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     AlreadyPresent, ContentPresence, Diagnostics, IndirectCallTally, MacroValueTally, PinVerdict,
-    SeriesEvaluation, SeriesVerdict, ShapeCheckTally, Unanalyzed,
+    SeriesEvaluation, SeriesVerdict, ShapeCheckTally, TargetAxisSlot, Unanalyzed,
 };
 
 pub use crate::compat::diff::PATCH_SIZE_LIMIT;
 
 pub mod patch_state {
+    mod private {
+        pub trait Sealed {}
+    }
+
+    /// Sealed so a foreign marker cannot stand in for `Raw` or `Analyzed`.
+    pub trait PatchState: private::Sealed {}
+
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
     pub struct Raw;
 
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
     pub struct Analyzed;
+
+    impl private::Sealed for Raw {}
+    impl private::Sealed for Analyzed {}
+    impl PatchState for Raw {}
+    impl PatchState for Analyzed {}
 }
 
 pub use patch_state::{Analyzed, Raw};
@@ -122,14 +134,20 @@ impl HunkLine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Patch<S = Raw> {
-    pub files: Vec<PatchedFile>,
+pub struct Patch<S: patch_state::PatchState = Raw> {
+    files: Vec<PatchedFile>,
     referenced: Vec<SymbolRef>,
     defined: Vec<SymbolRef>,
     dynamic_calls: Vec<DynamicCall>,
     unsupported_files: Vec<PathBuf>,
     call_args: Vec<(Mfa, Vec<ArgShape>)>,
     _state: PhantomData<S>,
+}
+
+impl<S: patch_state::PatchState> Patch<S> {
+    pub fn files(&self) -> &[PatchedFile] {
+        &self.files
+    }
 }
 
 impl Patch<Raw> {
@@ -580,8 +598,7 @@ impl Patch<Analyzed> {
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),
             pr_commits: None,
-            apply: None,
-            target_findings: None,
+            target: TargetAxisSlot::absent(),
         }
     }
 }

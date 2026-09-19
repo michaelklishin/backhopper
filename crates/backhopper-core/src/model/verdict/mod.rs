@@ -337,6 +337,87 @@ impl AvailabilityQuery {
     }
 }
 
+/// The apply forecast and symbol-axis findings that a target context
+/// produces together: a check with no target evaluates neither.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetAxis {
+    pub apply: ApplyForecast,
+    pub findings: TargetFindings,
+}
+
+/// Borrowed view of a present [`TargetAxis`], returned by
+/// [`TargetAxisSlot::get`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetAxisRef<'a> {
+    pub apply: &'a ApplyForecast,
+    pub findings: &'a TargetFindings,
+}
+
+/// The wire shape `apply` and `target_findings` have always had:
+/// `None` together when no target context was supplied, `Some`
+/// together otherwise. `present` is the only writer of a `Some`, so
+/// the pair cannot travel apart in-process. Flattened into
+/// `SeriesEvaluation`, so the two keys keep their top-level names and
+/// their `skip_serializing_if`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct TargetAxisSlot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    apply: Option<ApplyForecast>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    target_findings: Option<TargetFindings>,
+}
+
+impl TargetAxisSlot {
+    #[must_use]
+    pub fn absent() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn present(axis: TargetAxis) -> Self {
+        Self {
+            apply: Some(axis.apply),
+            target_findings: Some(axis.findings),
+        }
+    }
+
+    #[must_use]
+    pub fn get(&self) -> Option<TargetAxisRef<'_>> {
+        match (&self.apply, &self.target_findings) {
+            (Some(apply), Some(findings)) => Some(TargetAxisRef { apply, findings }),
+            _ => None,
+        }
+    }
+
+    /// `get` by value, for a caller that owns the evaluation and moves
+    /// the axis into an output struct.
+    #[must_use]
+    pub fn into_axis(self) -> Option<TargetAxis> {
+        match (self.apply, self.target_findings) {
+            (Some(apply), Some(findings)) => Some(TargetAxis { apply, findings }),
+            _ => None,
+        }
+    }
+
+    /// Rebuilds a slot from a wire pair that already carries the same
+    /// "both or neither" fact, such as `BatchResult`'s flat fields. A
+    /// partial pair (only ever possible from a pre-v14 envelope) reads
+    /// as absent, the reading that withholds most.
+    pub(crate) fn from_wire_pair(
+        apply: Option<ApplyForecast>,
+        target_findings: Option<TargetFindings>,
+    ) -> Self {
+        match (apply, target_findings) {
+            (Some(apply), Some(target_findings)) => Self {
+                apply: Some(apply),
+                target_findings: Some(target_findings),
+            },
+            _ => Self::absent(),
+        }
+    }
+}
+
 /// The output of `Patch::evaluate_series`: verdicts plus diagnostics plus
 /// `PatchFacts` (source classifiers that drive downstream policy without
 /// being verdict reasons).
@@ -361,19 +442,13 @@ pub struct SeriesEvaluation {
     #[serde(default)]
     pub pr_commits: Option<Vec<PrCommit>>,
 
-    /// Apply-axis prediction for this evaluation. `None` means no
-    /// target context was supplied, so the axis was not evaluated:
-    /// never "clean". A producer with a target context always emits
-    /// `Some`, even when the patch touched zero files.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub apply: Option<ApplyForecast>,
-
-    /// Symbol-axis target findings for this evaluation. `None` means
-    /// no target context was supplied, so the axis was not evaluated:
-    /// never "clean". A producer with a target context always emits
-    /// `Some`, even when no check produced a finding.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target_findings: Option<TargetFindings>,
+    /// Apply-axis prediction and symbol-axis target findings, together:
+    /// absent means no target context was supplied, so the axis was
+    /// not evaluated, never "clean". A producer with a target context
+    /// always fills both, even when the patch touched zero files or no
+    /// check produced a finding.
+    #[serde(flatten)]
+    pub target: TargetAxisSlot,
 }
 
 impl SeriesEvaluation {
@@ -382,9 +457,10 @@ impl SeriesEvaluation {
     /// Findings gate on non-empty, not blocking: the same reasons on
     /// an applicable pin read at least requires-adaptation.
     pub fn worst_exit_code(&self) -> i32 {
+        let target = self.target.get();
         if self.verdict.summary.is_blocking()
-            || self.apply.as_ref().is_some_and(ApplyForecast::has_conflict)
-            || self.target_findings.as_ref().is_some_and(|t| !t.is_empty())
+            || target.is_some_and(|t| t.apply.has_conflict())
+            || target.is_some_and(|t| !t.findings.is_empty())
         {
             exit::NEEDS_ATTENTION
         } else {

@@ -2,14 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use backhopper_core::config::{Config, ConfigFile, ProjectKind};
+use backhopper_core::config::{Config, ConfigFile, ProjectKind, ProjectSource};
 use backhopper_core::model::pin::PinSpec;
 
 fn parse(body: &str) -> Result<Config, backhopper_core::errors::ConfigError> {
     let raw: ConfigFile = toml::from_str(body).unwrap();
     Config::from_raw(PathBuf::from("/tmp/backhopper.toml"), raw)
+}
+
+#[test]
+fn an_external_project_needs_a_git_url() {
+    let body = r#"
+config_version = 1
+[defaults]
+fallback_branch = "main"
+[[project]]
+name = "ra"
+"#;
+    let err = parse(body).unwrap_err();
+    assert!(format!("{err}").contains("requires git_url"), "got: {err}");
 }
 
 #[test]
@@ -23,25 +36,14 @@ name    = "ra"
 git_url = "/tmp/ra.git"
 "#;
     let cfg = parse(body).unwrap();
-    assert_eq!(cfg.projects[0].kind, ProjectKind::External);
-    assert!(cfg.projects[0].git_url.is_some());
+    assert!(matches!(
+        cfg.projects[0].source,
+        ProjectSource::External { .. }
+    ));
 }
 
 #[test]
-fn external_project_without_git_url_is_rejected() {
-    let body = r#"
-config_version = 1
-[defaults]
-fallback_branch = "main"
-[[project]]
-name = "ra"
-"#;
-    let err = parse(body).unwrap_err();
-    assert!(format!("{err}").contains("requires git_url"), "got: {err}");
-}
-
-#[test]
-fn self_project_must_not_set_git_url() {
+fn a_self_project_cannot_carry_a_git_url() {
     let body = r#"
 config_version = 1
 [defaults]
@@ -66,8 +68,53 @@ name = "host"
 kind = "self"
 "#;
     let cfg = parse(body).unwrap();
-    assert_eq!(cfg.projects[0].kind, ProjectKind::SelfRepo);
-    assert!(cfg.projects[0].git_url.is_none());
+    assert_eq!(cfg.projects[0].source, ProjectSource::SelfRepo);
+}
+
+#[test]
+fn config_show_json_spells_a_self_project_self() {
+    let body = r#"
+config_version = 1
+[defaults]
+fallback_branch = "main"
+[[project]]
+name = "host"
+kind = "self"
+"#;
+    let cfg = parse(body).unwrap();
+    let json = serde_json::to_value(&cfg.projects[0]).unwrap();
+    assert_eq!(json.get("kind").and_then(|v| v.as_str()), Some("self"));
+}
+
+#[test]
+fn self_project_is_none_when_every_project_is_external() {
+    let body = r#"
+config_version = 1
+[defaults]
+fallback_branch = "main"
+[[project]]
+name    = "ra"
+git_url = "/tmp/ra.git"
+"#;
+    let cfg = parse(body).unwrap();
+    assert!(cfg.self_project().is_none());
+}
+
+#[test]
+fn self_project_names_the_one_self_project() {
+    let body = r#"
+config_version = 1
+[defaults]
+fallback_branch = "main"
+[[project]]
+name = "host"
+kind = "self"
+[[project]]
+name    = "ra"
+git_url = "/tmp/ra.git"
+"#;
+    let cfg = parse(body).unwrap();
+    assert_eq!(cfg.self_project().unwrap().name.as_str(), "host");
 }
 
 #[test]
@@ -173,4 +220,23 @@ pins = [{ project = "host", sha = "deadbeef" }]
         }
         other => panic!("expected SelfRef, got {other:?}"),
     }
+}
+
+#[test]
+fn project_source_projects_back_to_its_raw_kind() {
+    let external = ProjectSource::External {
+        git_url: PathBuf::from("/tmp/ra.git"),
+    };
+    assert_eq!(external.kind(), ProjectKind::External);
+    assert_eq!(ProjectSource::SelfRepo.kind(), ProjectKind::SelfRepo);
+    assert_eq!(ProjectSource::SelfRepo.kind().label(), "self");
+}
+
+#[test]
+fn only_an_external_project_source_has_a_git_url() {
+    let external = ProjectSource::External {
+        git_url: PathBuf::from("/tmp/ra.git"),
+    };
+    assert_eq!(external.git_url(), Some(Path::new("/tmp/ra.git")));
+    assert_eq!(ProjectSource::SelfRepo.git_url(), None);
 }

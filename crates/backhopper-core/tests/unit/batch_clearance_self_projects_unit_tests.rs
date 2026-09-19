@@ -12,6 +12,7 @@ use backhopper_core::model::batch::{BatchPayload, BatchResult};
 use backhopper_core::model::clearance::RoundClearance;
 use backhopper_core::model::names::{CommitSha, DependencyName, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
+use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::verdict::{
     BumpStatus, Diagnostics, PatchFacts, PinBump, PinVerdict, SeriesVerdict, Verdict,
 };
@@ -60,16 +61,24 @@ fn row_with_bumps(
     }
 }
 
+// A real producer sets `self_projects` alongside `resolver_coverage`
+// and `fingerprint_version`; the three entered the envelope together
+// at schema v12, so this helper fills all three or none.
 fn payload(
     results: Vec<BatchResult>,
     self_projects: Option<BTreeSet<ProjectName>>,
 ) -> BatchPayload {
+    let (resolver_coverage, fingerprint_version) = if self_projects.is_some() {
+        (Some(ResolverCoverage::current()), Some(1))
+    } else {
+        (None, None)
+    };
     BatchPayload {
         queried_against: Vec::new(),
         results,
         self_projects,
-        resolver_coverage: None,
-        fingerprint_version: None,
+        resolver_coverage,
+        fingerprint_version,
     }
 }
 

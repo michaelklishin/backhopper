@@ -98,7 +98,7 @@ proptest! {
     fn detection_recovers_exactly_the_edit_set((base, edits, additions) in scenario()) {
         let text = render_patch(&base, &edits, &additions);
         let patch = Patch::parse(text.as_bytes()).expect("synthesized patch parses");
-        let bumps = detect_pin_bumps(&patch.files);
+        let bumps = detect_pin_bumps(patch.files());
 
         // expected: every Bump whose target version differs, plus every addition
         let mut expected: BTreeMap<String, (Option<String>, String)> = BTreeMap::new();

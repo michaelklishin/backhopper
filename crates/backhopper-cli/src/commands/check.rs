@@ -30,7 +30,7 @@ use backhopper_core::compat::patch::{
 use backhopper_core::compat::routing::{
     PathRouting, RoutedPinVerdict, classify_paths_for_pin, project_owns_path, route_pin_verdict,
 };
-use backhopper_core::compat::scope::{PinScope, parse_module_names};
+use backhopper_core::compat::scope::PinScope;
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
@@ -45,9 +45,9 @@ use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::fingerprint::FINGERPRINT_VERSION;
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
-    SeriesName, TagName,
+    SeriesName,
 };
-use backhopper_core::model::pin::{self, Pin, PinSpec};
+use backhopper_core::model::pin::{self, Pin, PinSelector, PinSpec};
 use backhopper_core::model::pr_commit::PrCommit;
 use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::snapshot::{Snapshot, state};
@@ -56,7 +56,8 @@ use backhopper_core::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
     AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, IndirectCallTally,
     MacroValueTally, PinBump, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, ShapeCheckTally,
-    TargetMatch, TargetMatchKind, TouchedKinds, Verdict, non_self_tracked,
+    TargetAxis, TargetAxisSlot, TargetMatch, TargetMatchKind, TouchedKinds, Verdict,
+    non_self_tracked,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
@@ -68,7 +69,7 @@ use backhopper_git::{
 };
 
 use crate::cli::check::{DEFAULT_TARGET_REF, DEFAULT_TARGET_WALK_LIMIT, TargetRepoArgs};
-use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, PinSelectorArgs, SourcePinArgs};
+use crate::cli::{CheckCmd, CheckFlags, Formatter, GlobalArgs, SourcePinArgs};
 use crate::commands::auto_generate::{
     coverage_report, ensure_pin_snapshots_present, warn_on_stale_extractors,
 };
@@ -189,13 +190,14 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
             diagnostics,
             patch_file_path,
         } => {
+            let selector = PinSelector::try_from(selector)?;
             let bytes = read_patch_input(patch_file_path)?;
             run_check_patch(
                 args,
                 &cfg,
                 &bytes,
                 &selector,
-                Some(&repo_dir_path),
+                &repo_dir_path,
                 SourceFilesInput::Eager(FileMap::new()),
                 &source,
                 &target,
@@ -211,6 +213,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
             diagnostics,
             commit,
         } => {
+            let selector = PinSelector::try_from(selector)?;
             let repo_dir_path = repo.repo_dir_path;
             let resolved = resolve_commit_input(
                 &repo_dir_path,
@@ -223,7 +226,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
                 &cfg,
                 &resolved.bytes,
                 &selector,
-                Some(&repo_dir_path),
+                &repo_dir_path,
                 SourceFilesInput::AtDiffBase {
                     repo_dir: &repo_dir_path,
                     diff_base: resolved.provenance.diff_base.clone(),
@@ -243,6 +246,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
             target,
             diagnostics,
         } => {
+            let selector = PinSelector::try_from(selector)?;
             let repo_dir_path = repo.repo_dir_path;
             if let Some(prefix) = merge_commit {
                 let resolved = resolve_commit_input(
@@ -256,7 +260,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
                     &cfg,
                     &resolved.bytes,
                     &selector,
-                    Some(&repo_dir_path),
+                    &repo_dir_path,
                     SourceFilesInput::AtDiffBase {
                         repo_dir: &repo_dir_path,
                         diff_base: resolved.provenance.diff_base.clone(),
@@ -274,7 +278,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
                     &cfg,
                     &bytes,
                     &selector,
-                    Some(&repo_dir_path),
+                    &repo_dir_path,
                     SourceFilesInput::Eager(source_files),
                     &source,
                     &target,
@@ -291,6 +295,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
             diagnostics,
             merge_sha,
         } => {
+            let selector = PinSelector::try_from(selector)?;
             let repo_dir_path = repo.repo_dir_path;
             let resolved = resolve_commit_input(
                 &repo_dir_path,
@@ -303,7 +308,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
                 &cfg,
                 &resolved.bytes,
                 &selector,
-                Some(&repo_dir_path),
+                &repo_dir_path,
                 SourceFilesInput::AtDiffBase {
                     repo_dir: &repo_dir_path,
                     diff_base: resolved.provenance.diff_base.clone(),
@@ -322,6 +327,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
             diagnostics,
             pr_url,
         } => {
+            let selector = PinSelector::try_from(selector)?;
             let repo_dir_path = repo.repo_dir_path;
             let bytes = pr_patch_bytes(&pr_url)?;
             run_check_patch(
@@ -329,7 +335,7 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
                 &cfg,
                 &bytes,
                 &selector,
-                Some(&repo_dir_path),
+                &repo_dir_path,
                 SourceFilesInput::Eager(FileMap::new()),
                 &source,
                 &target,
@@ -378,13 +384,13 @@ pub fn handle(args: &GlobalArgs, cmd: CheckCmd) -> CliResult<CommandOutcome> {
 /// used. Multi-series `check batch` deliberately does not default.
 fn effective_target_args(
     cfg: &Config,
-    selector: &PinSelectorArgs,
+    selector: &PinSelector,
     target: &TargetRepoArgs,
 ) -> TargetRepoArgs {
     if target.target_repo_dir_path.is_some() {
         return target.clone();
     }
-    let Some(series_name) = &selector.series else {
+    let Some(series_name) = selector.series_name() else {
         return target.clone();
     };
     let Ok(series) = cfg.series_by_name(series_name) else {
@@ -561,12 +567,12 @@ pub(crate) fn build_pin_scope(
     project: &Project,
     snapshot: &Snapshot<state::Canonical>,
 ) -> PinScope {
-    let extra: Vec<_> = parse_module_names(
-        project
-            .public_modules
-            .iter()
-            .chain(project.internal_modules.iter()),
-    );
+    let extra: Vec<_> = project
+        .public_modules
+        .iter()
+        .chain(project.internal_modules.iter())
+        .cloned()
+        .collect();
     PinScope::from_snapshot(project.name.clone(), snapshot, extra)
 }
 
@@ -722,7 +728,7 @@ fn commit_macro_env(repo_dir: &Path, diff_base: &CommitSha, bytes: &[u8]) -> Cli
     let patch = Patch::parse(bytes)?;
     let repo = GitRepo::open(repo_dir.to_path_buf())?;
     Ok(
-        match macro_environment_hash(&repo, diff_base, &patch.files) {
+        match macro_environment_hash(&repo, diff_base, patch.files()) {
             Some(hash) => MacroEnv::Resolved(hash),
             None => MacroEnv::Unresolvable,
         },
@@ -739,7 +745,7 @@ fn apply_target_context(
 ) -> CliResult<()> {
     let parsed = Patch::parse(bytes)?;
     let touched: Vec<target_repo::TouchedPath<'_>> = parsed
-        .files
+        .files()
         .iter()
         .filter_map(|f| {
             let path = f.new_path.as_deref().or(f.old_path.as_deref())?;
@@ -756,7 +762,7 @@ fn apply_target_context(
     );
     let search_globs = target_repo::collect_search_path_globs(cfg);
     let findings =
-        target_repo::collect_added_file_findings(&parsed.files, &target_ctx.index, &search_globs);
+        target_repo::collect_added_file_findings(parsed.files(), &target_ctx.index, &search_globs);
     target_repo::merge_added_file_findings_into_evaluation(findings, evaluation);
     // the row-level copy of each symbol-axis stream: the pin merge drops reasons on inapplicable pins, this field keeps them
     let mut target_findings = TargetFindings::default();
@@ -768,37 +774,39 @@ fn apply_target_context(
             target_repo::merge_reasons_into_evaluation(reasons, evaluation);
         };
         // built once: both include-walking axes consult the same map
-        let patch_added = target_repo::patch_added_file_map(&parsed.files);
-        let define_reasons = session.define_symbol_findings(&parsed.files, &patch_added);
+        let patch_added = target_repo::patch_added_file_map(parsed.files());
+        let define_reasons = session.define_symbol_findings(parsed.files(), &patch_added);
         merge_symbol_reasons(define_reasons, evaluation);
-        let exported_types = session.exported_type_findings(&parsed.files, &patch_added);
+        let exported_types = session.exported_type_findings(parsed.files(), &patch_added);
         merge_symbol_reasons(exported_types, evaluation);
-        let local_calls = session.local_call_findings(&parsed.files, covered_modules);
+        let local_calls = session.local_call_findings(parsed.files(), covered_modules);
         merge_symbol_reasons(local_calls.reasons, evaluation);
         evaluation.diagnostics.local_call_shape_checks = local_calls.shape_checks;
-        let macro_values = session.macro_value_findings(&parsed.files);
+        let macro_values = session.macro_value_findings(parsed.files());
         merge_symbol_reasons(macro_values.reasons, evaluation);
         evaluation.diagnostics.macro_value_checks = macro_values.checks;
         let behaviour_callbacks =
-            session.behaviour_callback_findings(&parsed.files, covered_modules);
+            session.behaviour_callback_findings(parsed.files(), covered_modules);
         merge_symbol_reasons(behaviour_callbacks, evaluation);
-        let qualified_calls = session.qualified_call_findings(&parsed.files, covered_modules);
+        let qualified_calls = session.qualified_call_findings(parsed.files(), covered_modules);
         merge_symbol_reasons(qualified_calls.reasons, evaluation);
         evaluation.diagnostics.qualified_call_shape_checks = qualified_calls.shape_checks;
         evaluation.diagnostics.indirect_call_checks = qualified_calls.indirect_checks;
-        let indirect_elixir = session.indirect_elixir_findings(&parsed.files, covered_modules);
+        let indirect_elixir = session.indirect_elixir_findings(parsed.files(), covered_modules);
         merge_symbol_reasons(indirect_elixir.reasons, evaluation);
         evaluation
             .diagnostics
             .indirect_call_checks
             .merge(indirect_elixir.tally);
         // the apply axis has its own row-level record: not collected here
-        let apply_analysis = session.target_apply_analysis(&parsed.files);
+        let apply_analysis = session.target_apply_analysis(parsed.files());
         target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
         apply_forecast = apply_analysis.forecast;
     }
-    evaluation.apply = Some(apply_forecast);
-    evaluation.target_findings = Some(target_findings);
+    evaluation.target = TargetAxisSlot::present(TargetAxis {
+        apply: apply_forecast,
+        findings: target_findings,
+    });
     Ok(())
 }
 
@@ -1105,45 +1113,29 @@ fn run_check_patch(
     args: &GlobalArgs,
     cfg: &Config,
     bytes: &[u8],
-    selector: &PinSelectorArgs,
-    repo_dir_path: Option<&Path>,
+    selector: &PinSelector,
+    repo_dir_path: &Path,
     source_files: SourceFilesInput<'_>,
     source: &SourcePinArgs,
     target: &TargetRepoArgs,
     diagnostics: CheckFlags,
     provenance: Option<PatchProvenance>,
 ) -> CliResult<CommandOutcome> {
-    debug_assert!(
-        provenance.is_none() || repo_dir_path.is_some(),
-        "commit-shaped inputs always carry a repo path"
-    );
     let store = open_store_read(args, cfg)?;
-    let pin_specs: Vec<PinSpec> = match (&selector.project, &selector.tag, &selector.series) {
-        (Some(p), Some(t), None) => vec![PinSpec::literal(p.clone(), t.clone())],
-        (None, None, Some(s)) => {
+    let pin_specs: Vec<PinSpec> = match selector {
+        PinSelector::Pin { project, tag } => vec![PinSpec::literal(project.clone(), tag.clone())],
+        PinSelector::Series(s) => {
             let s = cfg.series_by_name_with_coverage_check(s)?;
             s.pins.clone()
         }
-        _ => {
-            return Err(CliError::InvalidInput(
-                "specify either --project + --tag, or --series".into(),
-            ));
-        }
     };
-    let pins: Vec<Pin> = resolve_all_pin_specs(args, cfg, &store, &pin_specs, repo_dir_path)?;
+    let pins: Vec<Pin> = resolve_all_pin_specs(args, cfg, &store, &pin_specs, Some(repo_dir_path))?;
     warn_on_stale_extractors(&coverage_report(cfg, &store, &pins));
     ensure_pin_snapshots_present(args, cfg, &store, &pins, diagnostics.auto_generate)?;
-    let source_pins = resolve_source_pins(
-        cfg,
-        &store,
-        &pins,
-        selector.project.as_ref(),
-        selector.tag.as_ref(),
-        selector.series.as_ref(),
-        source,
-    )?;
+    let source_pins = resolve_source_pins(cfg, &store, &pins, selector, source)?;
     let target = effective_target_args(cfg, selector, target);
-    let target_ctx = target_repo::build_context(&target, &cfg.path_translations, repo_dir_path)?;
+    let target_ctx =
+        target_repo::build_context(&target, &cfg.path_translations, Some(repo_dir_path))?;
     // patch, pr, and range inputs have no stable content address: the two flags rescan state outside the cache key
     let cache_bypass = provenance.is_none()
         || diagnostics.resolve_untracked_modules
@@ -1154,7 +1146,7 @@ fn run_check_patch(
             cfg,
             &store,
             &p.sha,
-            selector.series.as_ref(),
+            selector.series_name(),
             &pins,
             &pin_specs,
             &source_pins,
@@ -1175,15 +1167,10 @@ fn run_check_patch(
             &pin_specs,
             &source_pins,
             &files,
-            repo_dir_path,
+            Some(repo_dir_path),
         )?;
         if diagnostics.resolve_untracked_modules {
-            let repo = repo_dir_path.ok_or_else(|| {
-                CliError::InvalidInput(
-                    "--resolve-untracked-modules requires --repo-dir-path".into(),
-                )
-            })?;
-            resolve_untracked_modules_against_tree(&mut evaluation, repo)?;
+            resolve_untracked_modules_against_tree(&mut evaluation, repo_dir_path)?;
         }
         if let Some(p) = &provenance {
             evaluation.pr_commits.clone_from(&p.pr_commits);
@@ -1195,17 +1182,18 @@ fn run_check_patch(
                 target_ctx,
                 bytes,
                 &covered,
-                repo_dir_path,
+                Some(repo_dir_path),
                 &mut evaluation,
             )?;
             // Patch-shaped inputs have no commit identity to probe.
             if let Some(p) = &provenance {
                 if let Some(probe) =
-                    AlreadyPresentProbe::maybe_open(Some(target_ctx), repo_dir_path)
+                    AlreadyPresentProbe::maybe_open(Some(target_ctx), Some(repo_dir_path))
                 {
                     probe.apply(&p.sha, bytes, &mut evaluation);
                 }
-                if let Some(probe) = DepPinProbe::maybe_open(Some(target_ctx), repo_dir_path) {
+                if let Some(probe) = DepPinProbe::maybe_open(Some(target_ctx), Some(repo_dir_path))
+                {
                     probe.apply(&p.sha, &mut evaluation);
                 }
             }
@@ -1220,8 +1208,7 @@ fn run_check_patch(
             let p = provenance
                 .as_ref()
                 .expect("cache keys are derived from provenance");
-            let repo_dir = repo_dir_path.expect("commit-shaped inputs always carry a repo path");
-            let macro_env = commit_macro_env(repo_dir, &p.diff_base, bytes)?;
+            let macro_env = commit_macro_env(repo_dir_path, &p.diff_base, bytes)?;
             match session.consult_content(*miss, patch_hash_for_key(bytes), &macro_env) {
                 CacheLookupOutcome::Hit(cached) => *cached.evaluation,
                 CacheLookupOutcome::Miss(slot) => {
@@ -1245,19 +1232,18 @@ fn run_check_patch(
         &mut evaluation,
         cfg,
         &pin_specs,
-        repo_dir_path,
+        Some(repo_dir_path),
         diagnostics.suggest_prereqs,
     );
-    let queried = match (&selector.project, &selector.tag, &selector.series) {
-        (Some(p), Some(t), None) => QueriedAgainst::Pin {
-            project: p.clone(),
-            tag: t.clone(),
+    let queried = match selector {
+        PinSelector::Pin { project, tag } => QueriedAgainst::Pin {
+            project: project.clone(),
+            tag: tag.clone(),
         },
-        (None, None, Some(s)) => QueriedAgainst::Series {
-            name: s.clone(),
+        PinSelector::Series(name) => QueriedAgainst::Series {
+            name: name.clone(),
             pins: pins.iter().map(PinPayload::from).collect(),
         },
-        _ => unreachable!("clap enforces either (--project + --tag) or --series"),
     };
     let known_projects: Vec<ProjectName> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     let project_suggestions = if diagnostics.suggest_projects {
@@ -1278,8 +1264,8 @@ fn run_check_patch(
         verdict_fingerprint,
         resolver_coverage: Some(ResolverCoverage::current()),
         fingerprint_version: Some(FINGERPRINT_VERSION),
-        apply: evaluation.apply.clone(),
-        target_findings: evaluation.target_findings.clone(),
+        apply: evaluation.target.get().map(|t| t.apply.clone()),
+        target_findings: evaluation.target.get().map(|t| t.findings.clone()),
     };
     let ctx = OutputContext::new(args.formatter, "check patch");
     let exit = CommandOutcome::from_success(evaluation.worst_exit_code() == 0);
@@ -1290,7 +1276,7 @@ fn run_check_patch(
         let (sha, subject) = match &provenance {
             Some(p) => (
                 p.sha.clone(),
-                SubjectCache::open(repo_dir_path).subject(&p.sha),
+                SubjectCache::open(Some(repo_dir_path)).subject(&p.sha),
             ),
             None => (placeholder_zero_sha(), String::new()),
         };
@@ -1299,7 +1285,7 @@ fn run_check_patch(
             &self_project_names(cfg),
             sha,
             subject,
-            selector.series.clone(),
+            selector.series_name().cloned(),
             provenance.as_ref().map(|p| p.parent_count),
         );
         emit_rows(summary_fmt, &[row])?;
@@ -1327,11 +1313,11 @@ fn run_check_patch(
 /// inapplicable. Clean and absent forecasts stay silent here; the
 /// batch clearance is the roll-up surface.
 fn render_apply_forecast(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
-    let Some(forecast) = &evaluation.apply else {
+    let Some(target) = evaluation.target.get() else {
         return Ok(());
     };
-    for (path, kind) in forecast.conflicts() {
-        writeln!(w, "apply conflict: {} ({})", path.as_str(), kind.as_str())?;
+    for (path, kind) in target.apply.conflicts() {
+        writeln!(w, "apply conflict: {} ({})", path.as_str(), kind.label())?;
     }
     Ok(())
 }
@@ -1340,9 +1326,8 @@ fn render_apply_forecast(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> Cl
 /// shape the exit code even when every verdict is inapplicable, so
 /// text output must state them.
 fn render_target_findings(w: &mut dyn Write, evaluation: &SeriesEvaluation) -> CliResult<()> {
-    for reason in
-        findings_the_pins_do_not_show(&evaluation.verdict, evaluation.target_findings.as_ref())
-    {
+    let findings = evaluation.target.get().map(|t| t.findings);
+    for reason in findings_the_pins_do_not_show(&evaluation.verdict, findings) {
         writeln!(w, "target finding: {}", reason_detail(reason))?;
     }
     Ok(())
@@ -1386,14 +1371,15 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
     if !evaluation.diagnostics.pin_bumps.is_empty() {
         writeln!(w)?;
     }
-    if let Some(forecast) = &evaluation.apply {
+    let target = evaluation.target.get();
+    if let Some(target) = target {
         let mut any = false;
-        for (path, kind) in forecast.conflicts() {
+        for (path, kind) in target.apply.conflicts() {
             writeln!(
                 w,
                 "**Apply conflict:** `{}` ({})",
                 path.as_str(),
-                kind.as_str()
+                kind.label()
             )?;
             any = true;
         }
@@ -1402,7 +1388,7 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
         }
     }
     let row_findings =
-        findings_the_pins_do_not_show(&evaluation.verdict, evaluation.target_findings.as_ref());
+        findings_the_pins_do_not_show(&evaluation.verdict, target.map(|t| t.findings));
     for reason in row_findings {
         writeln!(w, "**Target finding:** {}", reason_detail(reason))?;
     }
@@ -1444,7 +1430,7 @@ pub fn render_markdown_triage(w: &mut dyn Write, evaluation: &SeriesEvaluation) 
 fn render_terse(evaluation: &SeriesEvaluation, exit: CommandOutcome) -> CliResult<CommandOutcome> {
     let summary_label = SeriesEvaluationView::new(&evaluation.verdict, &evaluation.diagnostics)
         .worst_verdict()
-        .as_str();
+        .label();
     let pins = evaluation.verdict.results.len();
     let scope = dominant_scope(&evaluation.verdict.results);
     let line = serde_json::json!({
@@ -1969,9 +1955,9 @@ fn evaluate_one(
 ) -> CliResult<SeriesEvaluation> {
     let patch = Patch::parse(bytes)?;
     // patch-pure, so it may join the cached evaluation; assessed post-cache
-    let pin_bumps = detect_pin_bumps(&patch.files);
+    let pin_bumps = detect_pin_bumps(patch.files());
     let touched_paths: Vec<PathBuf> = patch
-        .files
+        .files()
         .iter()
         .filter_map(|f| f.new_path.clone().or_else(|| f.old_path.clone()))
         .collect();
@@ -1981,7 +1967,7 @@ fn evaluate_one(
             macros_by_path.insert(path.clone(), build_macro_table(body, path, source_files));
         }
     }
-    let schema_refs = cuttlefish_references(&patch.files, source_files);
+    let schema_refs = cuttlefish_references(patch.files(), source_files);
     let analyzed = patch
         .analyze_with_macros(&macros_by_path)
         .with_extra_references(schema_refs);
@@ -1999,7 +1985,10 @@ fn evaluate_one(
         ));
         let snap_arc = cache.get(&pin.project, &pin.tag)?;
         let scope = build_pin_scope(project, &snap_arc);
-        let pin_self_override = pin_specs.get(idx).and_then(PinSpec::self_repo_override);
+        let pin_self_override = pin_specs
+            .get(idx)
+            .and_then(PinSpec::as_self_pin)
+            .and_then(|p| p.repo_dir_path);
         let files = build_pin_files(
             project,
             pin,
@@ -2164,10 +2153,10 @@ fn resolve_all_pin_specs(
 ) -> CliResult<Vec<Pin>> {
     let mut pins = Vec::with_capacity(specs.len());
     for spec in specs {
-        if spec.is_self() {
-            let pin = resolve_self_pin(self_repo, spec)?;
+        if let Some(self_pin) = spec.as_self_pin() {
+            let pin = resolve_self_pin(self_repo, self_pin)?;
             let project = cfg.project(spec.project())?;
-            ensure_self_snapshot_present(args, cfg, store, project, spec, self_repo, &pin)?;
+            ensure_self_snapshot_present(args, cfg, store, project, self_pin, self_repo, &pin)?;
             pins.push(pin);
         } else {
             pins.push(spec.resolve(store)?);
@@ -2180,9 +2169,7 @@ fn resolve_source_pins(
     cfg: &Config,
     store: &SnapshotStore<ReadOnly>,
     target_pins: &[Pin],
-    target_project: Option<&ProjectName>,
-    target_tag: Option<&TagName>,
-    target_series: Option<&SeriesName>,
+    target: &PinSelector,
     source: &SourcePinArgs,
 ) -> CliResult<Vec<Option<Pin>>> {
     if source.source_tag.is_none() && source.source_series.is_none() {
@@ -2193,17 +2180,11 @@ fn resolve_source_pins(
             "specify either --source-tag or --source-series, not both".into(),
         ));
     }
-    match (
-        target_project,
-        target_tag,
-        target_series,
-        &source.source_tag,
-        &source.source_series,
-    ) {
-        (Some(p), Some(_), None, Some(src_tag), None) => {
-            Ok(vec![Some(Pin::new(p.clone(), src_tag.clone()))])
+    match (target, &source.source_tag, &source.source_series) {
+        (PinSelector::Pin { project, .. }, Some(src_tag), None) => {
+            Ok(vec![Some(Pin::new(project.clone(), src_tag.clone()))])
         }
-        (None, None, Some(_), None, Some(src_series_name)) => {
+        (PinSelector::Series(_), None, Some(src_series_name)) => {
             let src_series = cfg.series_by_name(src_series_name)?;
             let src_pins = pin::resolve_all(&src_series.pins, store)?;
             let mut queues: BTreeMap<ProjectName, VecDeque<Pin>> = BTreeMap::new();
@@ -2329,9 +2310,7 @@ fn evaluate_batch(
             cfg,
             store,
             &series.pins,
-            None,
-            None,
-            Some(&series.name),
+            &PinSelector::Series(series.name.clone()),
             source,
         )?);
     }
@@ -2448,6 +2427,11 @@ fn evaluate_batch(
             current += 1;
             reporter.progress(current, pair_count, &item_label);
             worst_exit = worst_exit.max(evaluation.worst_exit_code());
+            let (apply, target_findings) = evaluation
+                .target
+                .into_axis()
+                .map(|axis| (axis.apply, axis.findings))
+                .unzip();
             results.push(BatchResult {
                 commit: planned.sha.clone(),
                 series: series.name.clone(),
@@ -2458,8 +2442,8 @@ fn evaluate_batch(
                 touched_paths: evaluation.touched_paths,
                 parent_count: NonZeroU32::new(planned.parents.len() as u32),
                 verdict_fingerprint,
-                apply: evaluation.apply,
-                target_findings: evaluation.target_findings,
+                apply,
+                target_findings,
             });
         }
     }
@@ -2689,7 +2673,7 @@ fn summary_cell(verdict: AggregateVerdict) -> &'static str {
     // an empty batch row reads as inapplicable in the ledger
     match verdict {
         AggregateVerdict::Empty => "inapplicable",
-        other => other.as_str(),
+        other => other.label(),
     }
 }
 
@@ -2823,7 +2807,7 @@ pub fn render_batch_text(
         if let Some(forecast) = &r.apply {
             let conflicts: Vec<String> = forecast
                 .conflicts()
-                .map(|(path, kind)| format!("{} ({})", path.as_str(), kind.as_str()))
+                .map(|(path, kind)| format!("{} ({})", path.as_str(), kind.label()))
                 .collect();
             if !conflicts.is_empty() {
                 writeln!(w, "  apply conflicts: {}", conflicts.join(", "))?;
@@ -3003,7 +2987,7 @@ fn render_target_rollup_line(w: &mut dyn Write, target: &TargetFindingsRollup) -
     let mut by_class: Vec<String> = target
         .by_class
         .iter()
-        .map(|(class, n)| format!("{}={n}", class.as_str()))
+        .map(|(class, n)| format!("{}={n}", class.label()))
         .collect();
     if target.unclassified > 0 {
         by_class.push(format!("unclassified={}", target.unclassified));

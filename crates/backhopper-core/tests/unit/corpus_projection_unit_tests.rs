@@ -23,7 +23,7 @@ fn pin() -> Pin {
     )
 }
 
-fn row(verdict: Verdict, fingerprint: Option<&str>) -> BatchResult {
+fn row(verdict: Verdict, fingerprint: Option<[u8; 16]>) -> BatchResult {
     BatchResult {
         commit: CommitSha::new("a".repeat(40)).unwrap(),
         series: SeriesName::new("v4.1.x").unwrap(),
@@ -33,13 +33,13 @@ fn row(verdict: Verdict, fingerprint: Option<&str>) -> BatchResult {
         touched_paths: Vec::new(),
         pr_commits: None,
         parent_count: None,
-        verdict_fingerprint: fingerprint.map(VerdictFingerprint::new),
+        verdict_fingerprint: fingerprint.map(VerdictFingerprint::from_digest),
         apply: None,
         target_findings: None,
     }
 }
 
-fn empty_row(fingerprint: Option<&str>) -> BatchResult {
+fn empty_row(fingerprint: Option<[u8; 16]>) -> BatchResult {
     let mut r = row(Verdict::Compatible, fingerprint);
     r.verdict = SeriesVerdict::from_results(Vec::new());
     r
@@ -59,7 +59,7 @@ fn to_corpus_entry_records_the_observed_break_class_not_the_predicted() {
     let verdict = Verdict::RequiresAdaptation {
         reasons: vec![macro_undefined()],
     };
-    let entry = row(verdict, Some("fp1"))
+    let entry = row(verdict, Some([1; 16]))
         .to_corpus_entry(
             BuildOutcome::CompilationFailed {
                 class: Some(ResolverClass::LocalCall),
@@ -69,7 +69,7 @@ fn to_corpus_entry_records_the_observed_break_class_not_the_predicted() {
         .expect("a fingerprinted, non-empty row is measurable");
     assert_eq!(entry.outcome.break_class(), Some(ResolverClass::LocalCall));
     assert_eq!(entry.verdict, AggregateVerdict::RequiresAdaptation);
-    assert_eq!(entry.fingerprint, VerdictFingerprint::new("fp1"));
+    assert_eq!(entry.fingerprint, VerdictFingerprint::from_digest([1; 16]));
 }
 
 #[test]
@@ -81,14 +81,14 @@ fn to_corpus_entry_is_none_without_a_fingerprint() {
 // An empty verdict predicted nothing: not a measurable row even with a fingerprint.
 #[test]
 fn to_corpus_entry_is_none_for_an_empty_verdict() {
-    let entry = empty_row(Some("fp1")).to_corpus_entry(BuildOutcome::BuiltClean, None);
+    let entry = empty_row(Some([1; 16])).to_corpus_entry(BuildOutcome::BuiltClean, None);
     assert!(entry.is_none());
 }
 
 #[test]
 fn to_corpus_entry_threads_the_round_coverage() {
     let cov = ResolverCoverage::current();
-    let entry = row(Verdict::Compatible, Some("fp1"))
+    let entry = row(Verdict::Compatible, Some([1; 16]))
         .to_corpus_entry(BuildOutcome::BuiltClean, Some(&cov))
         .expect("measurable");
     assert_eq!(entry.coverage, Some(cov));

@@ -5,6 +5,7 @@
 use backhopper_cli::commands::series::{
     PinPayload, SyncOutput, merge_sync_into_config_text, replace_series_block, unified_diff,
 };
+use backhopper_core::model::names::ProjectName;
 
 const STARTING_CONFIG: &str = r#"config_version = 1
 
@@ -26,7 +27,7 @@ fn payload(name: &str, pins: &[(&str, &str)]) -> SyncOutput {
         pins: pins
             .iter()
             .map(|(p, t)| PinPayload {
-                project: (*p).into(),
+                project: ProjectName::new(*p).unwrap(),
                 tag: (*t).into(),
             })
             .collect(),

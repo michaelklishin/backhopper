@@ -7,7 +7,7 @@
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{FieldName, ModuleName, ProjectName, RecordName};
+use backhopper_core::model::names::{FieldName, ModuleName, ProjectName, RecordName, RelativePath};
 use backhopper_core::model::snapshot::{HrlFile, Module, RecordDecl, RecordField, Snapshot, state};
 use backhopper_core::model::verdict::Reason;
 use backhopper_test_support::{canonical_snapshot, pin, snapshot_header};
@@ -17,7 +17,7 @@ fn snapshot_with_record_fields(
     record_name: &str,
     fields: Vec<&str>,
 ) -> Snapshot<state::Canonical> {
-    let mut hrl = HrlFile::new(format!("include/{project}.hrl"));
+    let mut hrl = HrlFile::new(RelativePath::new(format!("include/{project}.hrl")).unwrap());
     hrl.records.push(RecordDecl {
         name: RecordName::new(record_name).unwrap(),
         fields: fields

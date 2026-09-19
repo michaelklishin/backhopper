@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{ProjectName, TagName};
+use backhopper_core::model::names::{ProjectName, RelativePath, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::verdict::{ContentPresence, Reason, SeriesEvaluation};
@@ -63,7 +63,7 @@ fn modification_already_on_target_counts_as_applied() {
     assert_eq!(p.hunks_ambiguous, 0);
     assert!(p.fully_present());
     assert_eq!(p.pin.as_str(), "demo");
-    let file_tally = &p.per_file[&"src/demo.erl".parse().unwrap()];
+    let file_tally = &p.per_file[&"src/demo.erl".parse::<RelativePath>().unwrap()];
     assert_eq!(file_tally.applied, 1);
 }
 

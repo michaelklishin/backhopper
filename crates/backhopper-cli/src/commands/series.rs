@@ -41,7 +41,10 @@ struct SeriesShow {
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct PinPayload {
-    pub project: String,
+    pub project: ProjectName,
+    /// A real tag for a literal pin, a synthesized label such as
+    /// `2.1 (latest)` for a pattern pin, or `master (self)` for a
+    /// self-ref pin: not always a valid `TagName`.
     pub tag: String,
 }
 
@@ -173,7 +176,7 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
         let widest = payload
             .pins
             .iter()
-            .map(|p| p.project.len())
+            .map(|p| p.project.as_str().len())
             .max()
             .unwrap_or(0);
         for p in &payload.pins {
@@ -183,7 +186,7 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
                 p.project,
                 "",
                 p.tag,
-                gap = widest - p.project.len(),
+                gap = widest - p.project.as_str().len(),
             )?;
         }
         writeln!(w, "]")?;
@@ -207,16 +210,21 @@ pub fn render_sync_text_with_options<W: Write + ?Sized>(
 }
 
 pub fn handle(args: &GlobalArgs, cmd: SeriesCmd) -> CliResult<CommandOutcome> {
-    // pins is a pure repo read: it must work without a config.
-    if let SeriesCmd::Pins(pins_args) = &cmd {
-        return pins(args, pins_args);
-    }
-    let cfg = load_config(args)?;
     match cmd {
-        SeriesCmd::List => list(args, &cfg),
-        SeriesCmd::Show { series } => show(args, &cfg, series),
-        SeriesCmd::Pins(_) => unreachable!("handled above"),
-        SeriesCmd::Sync(sync) => sync_dispatch(args, &cfg, sync),
+        SeriesCmd::List => {
+            let cfg = load_config(args)?;
+            list(args, &cfg)
+        }
+        SeriesCmd::Show { series } => {
+            let cfg = load_config(args)?;
+            show(args, &cfg, series)
+        }
+        // a pure repo read: it must work without a config.
+        SeriesCmd::Pins(pins_args) => pins(args, &pins_args),
+        SeriesCmd::Sync(sync) => {
+            let cfg = load_config(args)?;
+            sync_dispatch(args, &cfg, sync)
+        }
     }
 }
 
@@ -690,15 +698,13 @@ pub fn merge_sync_into_config_text(
     for pin in &payload.pins {
         match existing_by_project.get(pin.project.as_str()) {
             None if all_existing_projects.contains(pin.project.as_str()) => {
-                outcome
-                    .skipped_non_literal
-                    .push(ProjectName::new(pin.project.clone())?);
+                outcome.skipped_non_literal.push(pin.project.clone());
             }
             None => outcome.added.push(pin.clone()),
             Some(t) if *t == pin.tag.as_str() => outcome.unchanged.push(pin.clone()),
             Some(t) => {
                 let conflict = MergeConflict {
-                    project: ProjectName::new(pin.project.clone())?,
+                    project: pin.project.clone(),
                     existing_tag: TagName::new((*t).to_owned())?,
                     inferred_tag: TagName::new(pin.tag.clone())?,
                 };
@@ -815,8 +821,11 @@ fn read_pins(table: &Table) -> Vec<PinPayload> {
         let project = inline.get("project").and_then(|v| v.as_str());
         let tag = inline.get("tag").and_then(|v| v.as_str());
         if let (Some(project), Some(tag)) = (project, tag) {
+            let Ok(project) = ProjectName::new(project.to_owned()) else {
+                continue;
+            };
             out.push(PinPayload {
-                project: project.to_owned(),
+                project,
                 tag: tag.to_owned(),
             });
         }
@@ -958,7 +967,7 @@ fn render_diff_report_text<W: Write + ?Sized>(
 fn pin_spec_to_payload(spec: &PinSpec) -> PinPayload {
     match spec {
         PinSpec::Literal { project, tag } => PinPayload {
-            project: project.to_string(),
+            project: project.clone(),
             tag: tag.to_string(),
         },
         PinSpec::Pattern {
@@ -971,14 +980,14 @@ fn pin_spec_to_payload(spec: &PinSpec) -> PinPayload {
                 PinSelect::Oldest => "oldest",
             };
             PinPayload {
-                project: project.to_string(),
+                project: project.clone(),
                 tag: format!("{pattern} ({select_label})"),
             }
         }
         PinSpec::SelfRef {
             project, git_ref, ..
         } => PinPayload {
-            project: project.to_string(),
+            project: project.clone(),
             tag: format!("{git_ref} (self)"),
         },
     }
@@ -989,7 +998,7 @@ fn pin_payload_for(pin: &DepPin, project: &Project) -> Result<PinPayload, String
     let tag = TagName::new(raw_tag.clone())
         .map_err(|e| format!("tag {raw_tag:?} not a valid tag name: {e}"))?;
     Ok(PinPayload {
-        project: project.name.to_string(),
+        project: project.name.clone(),
         tag: tag.to_string(),
     })
 }

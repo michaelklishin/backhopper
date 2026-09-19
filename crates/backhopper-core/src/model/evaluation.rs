@@ -17,32 +17,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::batch::BatchResult;
 use crate::model::eval::{BuildOutcome, CorpusEntry, PredictedConflict};
-use crate::model::names::{MacroName, ModuleName, ProjectName, RelativePath};
+use crate::model::names::{MacroName, ModuleName, ProjectName, RelativePath, vocabulary};
 use crate::model::pin::Pin;
 use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::summary::VerdictKind;
 use crate::model::verdict::{
     ApplyConflictKind, Diagnostics, IncludeDirective, PinVerdict, Reason, SeriesEvaluation,
-    SeriesVerdict, SnapshotSide, TestCallSite, Verdict, non_self_tracked,
+    SeriesVerdict, SnapshotSide, TargetAxisSlot, TestCallSite, Verdict, non_self_tracked,
 };
 
-/// Aggregate verdict across the pins of a series.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum AggregateVerdict {
-    /// At least one pin compatible, none worse.
-    Compatible,
-    /// Some pin requires adaptation, none incompatible.
-    RequiresAdaptation,
-    /// At least one pin incompatible.
-    Incompatible,
-    /// All pins inapplicable.
-    Inapplicable,
-    /// The series has no pins.
-    Empty,
-}
+vocabulary!(
+    /// Aggregate verdict across the pins of a series.
+    #[non_exhaustive]
+    #[derive(Hash)]
+    pub enum AggregateVerdict: "aggregate verdict" {
+        /// At least one pin compatible, none worse.
+        Compatible => "compatible",
+        /// Some pin requires adaptation, none incompatible.
+        RequiresAdaptation => "requires_adaptation",
+        /// At least one pin incompatible.
+        Incompatible => "incompatible",
+        /// All pins inapplicable.
+        Inapplicable => "inapplicable",
+        /// The series has no pins.
+        Empty => "empty",
+    }
+);
 
 impl AggregateVerdict {
     /// True when the verdict told the operator to adapt or stop. The
@@ -50,18 +50,6 @@ impl AggregateVerdict {
     #[must_use]
     pub fn flagged(self) -> bool {
         matches!(self, Self::Incompatible | Self::RequiresAdaptation)
-    }
-
-    /// Snake-case wire form, matching the `#[serde(rename_all)]` projection.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Compatible => "compatible",
-            Self::RequiresAdaptation => "requires_adaptation",
-            Self::Incompatible => "incompatible",
-            Self::Inapplicable => "inapplicable",
-            Self::Empty => "empty",
-        }
     }
 }
 
@@ -279,8 +267,7 @@ impl From<BatchResult> for SeriesEvaluation {
             patch_facts: row.patch_facts,
             touched_paths: row.touched_paths,
             pr_commits: row.pr_commits,
-            apply: row.apply,
-            target_findings: row.target_findings,
+            target: TargetAxisSlot::from_wire_pair(row.apply, row.target_findings),
         }
     }
 }

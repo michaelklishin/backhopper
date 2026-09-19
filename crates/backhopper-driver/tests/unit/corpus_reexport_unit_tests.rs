@@ -24,7 +24,7 @@ fn measurement_types_reach_the_consumer_through_the_facade() {
     );
 
     let entry = CorpusEntry {
-        fingerprint: VerdictFingerprint::new("fp"),
+        fingerprint: VerdictFingerprint::from_digest([1; 16]),
         verdict: AggregateVerdict::Compatible,
         outcome: BuildOutcome::CompilationFailed {
             class: Some(ResolverClass::Macro),

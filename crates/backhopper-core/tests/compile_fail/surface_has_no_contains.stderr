@@ -1,0 +1,5 @@
+error[E0599]: no method named `contains` found for reference `&Surface<u32>` in the current scope
+ --> tests/compile_fail/surface_has_no_contains.rs:6:13
+  |
+6 |     surface.contains(&1)
+  |             ^^^^^^^^ method not found in `&Surface<u32>`

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectFamily, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectLayout, ProjectSource};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::{
@@ -15,8 +15,9 @@ use backhopper_cli::commands::series::{
 fn project(name: &str, tag_prefix: &str) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: Some(PathBuf::from(format!("/tmp/{name}.git"))),
-        kind: ProjectKind::External,
+        source: ProjectSource::External {
+            git_url: PathBuf::from(format!("/tmp/{name}.git")),
+        },
         family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: tag_prefix.into(),
@@ -52,7 +53,7 @@ fn hex_dep_takes_project_tag_prefix() {
     assert_eq!(
         out.pins,
         vec![PinPayload {
-            project: "ra".into(),
+            project: ProjectName::new("ra").unwrap(),
             tag: "v2.16.13".into()
         }]
     );
@@ -66,7 +67,7 @@ fn git_dep_uses_version_verbatim_as_tag() {
     assert_eq!(
         out.pins,
         vec![PinPayload {
-            project: "osiris".into(),
+            project: ProjectName::new("osiris").unwrap(),
             tag: "v1.8.8".into()
         }]
     );
@@ -80,7 +81,7 @@ fn git_rmq_dep_uses_version_verbatim_as_tag() {
     assert_eq!(
         out.pins,
         vec![PinPayload {
-            project: "cowboy".into(),
+            project: ProjectName::new("cowboy").unwrap(),
             tag: "2.13.0".into()
         }]
     );
@@ -92,7 +93,7 @@ fn deps_with_no_configured_project_go_to_dropped() {
     let projects = vec![project("ra", "v")];
     let out = build_sync_output(mk, &series("rabbitmq-4.1"), &projects);
     assert_eq!(out.pins.len(), 1);
-    assert_eq!(out.pins[0].project, "ra");
+    assert_eq!(out.pins[0].project.as_str(), "ra");
     assert_eq!(out.dropped_unconfigured, vec!["jose", "unknown"]);
 }
 
@@ -130,10 +131,10 @@ dep_jose = hex 1.11.12
         project("seshat", "v"),
     ];
     let out = build_sync_output(mk, &series("rabbitmq-4.2"), &projects);
-    let by_project: BTreeMap<_, _> = out
+    let by_project: BTreeMap<&str, &str> = out
         .pins
         .iter()
-        .map(|p| (p.project.clone(), p.tag.clone()))
+        .map(|p| (p.project.as_str(), p.tag.as_str()))
         .collect();
     assert_eq!(by_project["ra"], "v2.17.3");
     assert_eq!(by_project["osiris"], "v1.10.3");
@@ -158,11 +159,11 @@ fn text_renders_toml_stanza_with_aligned_tags() {
         branch: None,
         pins: vec![
             PinPayload {
-                project: "ra".into(),
+                project: ProjectName::new("ra").unwrap(),
                 tag: "v2.16.13".into(),
             },
             PinPayload {
-                project: "khepri".into(),
+                project: ProjectName::new("khepri").unwrap(),
                 tag: "v0.16.0".into(),
             },
         ],
@@ -201,7 +202,7 @@ fn text_omits_dropped_block_when_no_drops() {
         name: "x".into(),
         branch: None,
         pins: vec![PinPayload {
-            project: "a".into(),
+            project: ProjectName::new("a").unwrap(),
             tag: "v1.0.0".into(),
         }],
         dropped_unconfigured: Vec::new(),

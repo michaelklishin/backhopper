@@ -7,7 +7,7 @@
 //! from `Some(vec![])`.
 
 use backhopper_core::model::verdict::{
-    Diagnostics, PatchFacts, SeriesEvaluation, SeriesSummary, SeriesVerdict,
+    Diagnostics, PatchFacts, SeriesEvaluation, SeriesSummary, SeriesVerdict, TargetAxisSlot,
 };
 
 #[test]
@@ -21,8 +21,7 @@ fn touched_paths_emits_as_empty_array_when_no_paths_seen() {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let json = serde_json::to_value(&eval).unwrap();
     assert!(

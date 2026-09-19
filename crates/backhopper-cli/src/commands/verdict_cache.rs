@@ -15,7 +15,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use backhopper_cache::{
     CacheKeyInputs, CacheMode, CachedVerdict, ContentOutcome, EvaluationShape, InputMissToken,
@@ -310,8 +310,8 @@ impl CacheSession {
         let resolved = cfg
             .project(&pin.project)
             .ok()
-            .and_then(|p| p.require_git_url().ok().map(Path::to_path_buf))
-            .and_then(|url| GitRepo::open(url).ok())
+            .and_then(|p| p.source.git_url())
+            .and_then(|url| GitRepo::open(url.to_path_buf()).ok())
             .and_then(|repo| repo.resolve_tag(&pin.tag).ok());
         self.resolved_tags
             .borrow_mut()

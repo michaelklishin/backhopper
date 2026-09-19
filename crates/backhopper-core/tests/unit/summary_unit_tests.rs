@@ -37,14 +37,14 @@ fn verdict_kind_serialises_as_snake_case() {
 }
 
 #[test]
-fn verdict_kind_as_str_matches_serde_rename() {
-    assert_eq!(VerdictKind::Compatible.as_str(), "compatible");
+fn verdict_kind_label_matches_serde_rename() {
+    assert_eq!(VerdictKind::Compatible.label(), "compatible");
     assert_eq!(
-        VerdictKind::RequiresAdaptation.as_str(),
+        VerdictKind::RequiresAdaptation.label(),
         "requires_adaptation"
     );
-    assert_eq!(VerdictKind::Incompatible.as_str(), "incompatible");
-    assert_eq!(VerdictKind::Inapplicable.as_str(), "inapplicable");
+    assert_eq!(VerdictKind::Incompatible.label(), "incompatible");
+    assert_eq!(VerdictKind::Inapplicable.label(), "inapplicable");
 }
 
 #[test]

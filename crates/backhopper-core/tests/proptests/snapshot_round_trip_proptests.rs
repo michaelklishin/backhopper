@@ -6,8 +6,8 @@ use proptest::prelude::*;
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
-    TypeName,
+    Arity, CommitSha, FieldName, FunctionName, ModuleName, ProjectName, RecordName, RelativePath,
+    TagName, TypeName,
 };
 use backhopper_core::model::snapshot::{
     CallbackSig, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot, SnapshotHeader,
@@ -151,7 +151,7 @@ fn arb_hrl() -> impl Strategy<Value = HrlFile> {
         prop::collection::vec(arb_record_decl(), 0..3),
     )
         .prop_map(|(path, types, opaques, records)| HrlFile {
-            path,
+            path: RelativePath::new(path).unwrap(),
             types,
             opaques,
             records,
@@ -210,7 +210,7 @@ proptest! {
         alternatives in prop::collection::vec("[a-z][a-z0-9_]*\\(\\)", 2..5),
     ) {
         let multi = alternatives.join(" |\n      ");
-        let mut hrl = HrlFile::new("include/x.hrl");
+        let mut hrl = HrlFile::new(RelativePath::new("include/x.hrl").unwrap());
         hrl.records.push(RecordDecl {
             name: RecordName::new("r").unwrap(),
             fields: vec![RecordField {

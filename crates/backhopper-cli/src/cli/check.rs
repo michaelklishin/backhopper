@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use backhopper_core::model::names::{CommitShaPrefix, ProjectName, SeriesName, TagName};
+use backhopper_core::model::pin::PinSelector;
 
 use crate::cli::RepoDirPathArg;
+use crate::errors::CliError;
 
 #[derive(Debug, Args, Clone, Copy, Default)]
 pub struct CheckFlags {
@@ -126,6 +128,20 @@ pub struct PinSelectorArgs {
     pub tag: Option<TagName>,
     #[arg(long)]
     pub series: Option<SeriesName>,
+}
+
+impl TryFrom<PinSelectorArgs> for PinSelector {
+    type Error = CliError;
+
+    fn try_from(args: PinSelectorArgs) -> Result<Self, Self::Error> {
+        match (args.project, args.tag, args.series) {
+            (Some(project), Some(tag), None) => Ok(Self::Pin { project, tag }),
+            (None, None, Some(series)) => Ok(Self::Series(series)),
+            _ => Err(CliError::InvalidInput(
+                "specify either --project + --tag, or --series".into(),
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]

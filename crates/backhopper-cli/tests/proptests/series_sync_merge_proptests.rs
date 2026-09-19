@@ -13,13 +13,17 @@ use std::collections::BTreeSet;
 use proptest::prelude::*;
 
 use backhopper_cli::commands::series::{PinPayload, SyncOutput, merge_sync_into_config_text};
+use backhopper_core::model::names::ProjectName;
 
 fn pin_payload() -> impl Strategy<Value = PinPayload> {
     (
         "[a-z][a-z0-9_]{0,12}",
         "v[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",
     )
-        .prop_map(|(project, tag)| PinPayload { project, tag })
+        .prop_map(|(project, tag)| PinPayload {
+            project: ProjectName::new(project).unwrap(),
+            tag,
+        })
 }
 
 fn dedup_by_project(pins: Vec<PinPayload>) -> Vec<PinPayload> {

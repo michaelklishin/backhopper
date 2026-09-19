@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use backhopper_core::config::Config;
+use backhopper_core::config::{Config, ProjectFamily};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 const SAMPLE: &str = r#"
@@ -245,4 +245,19 @@ target_repo_path = "/typo/field/name"
     let tmp = TempDir::new().unwrap();
     let path = write_config(&tmp, body);
     assert!(Config::load(&path).is_err());
+}
+
+#[test]
+fn every_family_default_constructs_from_valid_names() {
+    for family in ProjectFamily::ALL {
+        let defaults = family.defaults();
+        for decl in &defaults.wire_constants {
+            assert!(!decl.module.as_str().is_empty());
+            assert!(!decl.macros.is_empty());
+        }
+        for decl in &defaults.versioned_machine_impls {
+            assert!(!decl.module.as_str().is_empty());
+            assert!(!decl.version_function.as_str().is_empty());
+        }
+    }
 }

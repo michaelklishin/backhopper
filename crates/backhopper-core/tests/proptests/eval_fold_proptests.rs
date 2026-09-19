@@ -6,7 +6,7 @@
 
 use proptest::prelude::*;
 
-use backhopper_core::model::eval::{BuildOutcome, CorpusEntry, evaluate_corpus};
+use backhopper_core::model::eval::{BreakAttribution, BuildOutcome, CorpusEntry, evaluate_corpus};
 use backhopper_core::model::evaluation::AggregateVerdict;
 use backhopper_core::model::fingerprint::VerdictFingerprint;
 use backhopper_core::model::resolver_coverage::{ResolverClass, ResolverCoverage};
@@ -58,7 +58,11 @@ fn coverage() -> impl Strategy<Value = Option<ResolverCoverage>> {
 fn entry() -> impl Strategy<Value = CorpusEntry> {
     (any::<u16>(), verdict(), outcome(), coverage()).prop_map(|(n, verdict, outcome, coverage)| {
         CorpusEntry {
-            fingerprint: VerdictFingerprint::new(format!("fp{n}")),
+            fingerprint: {
+                let mut digest = [0u8; 16];
+                digest[..2].copy_from_slice(&n.to_be_bytes());
+                VerdictFingerprint::from_digest(digest)
+            },
             verdict,
             outcome,
             coverage,
@@ -70,16 +74,16 @@ proptest! {
     #[test]
     fn rates_never_exceed_their_totals(rows in proptest::collection::vec(entry(), 0..24)) {
         let r = evaluate_corpus(&rows);
-        prop_assert!(r.vacuous_trust.hits <= r.vacuous_trust.total);
-        prop_assert!(r.recall.hits <= r.recall.total);
-        prop_assert!(r.precision.hits <= r.precision.total);
+        prop_assert!(r.vacuous_trust.hits() <= r.vacuous_trust.total());
+        prop_assert!(r.recall.hits() <= r.recall.total());
+        prop_assert!(r.precision.hits() <= r.precision.total());
         prop_assert_eq!(r.rows, rows.len());
     }
 
     #[test]
     fn recall_total_is_the_broken_row_count(rows in proptest::collection::vec(entry(), 0..24)) {
         let broken = rows.iter().filter(|e| e.outcome.is_break()).count();
-        prop_assert_eq!(evaluate_corpus(&rows).recall.total, broken);
+        prop_assert_eq!(evaluate_corpus(&rows).recall.total(), broken);
     }
 
     // Missed breaks are exactly the unflagged breaks; a bug-vs-gap verdict needs both a class and row coverage.
@@ -92,7 +96,7 @@ proptest! {
         let r = evaluate_corpus(&rows);
         prop_assert_eq!(r.missed_breaks.len(), expected);
         for m in &r.missed_breaks {
-            if m.is_resolver_bug.is_some() {
+            if m.attribution != BreakAttribution::Unknown {
                 prop_assert!(m.break_class.is_some());
             }
             prop_assert_eq!(m.break_class, m.outcome.break_class());

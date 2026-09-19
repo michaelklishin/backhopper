@@ -28,6 +28,9 @@ struct NamesEveryReexport<'a> {
     j: &'a SourceDelta,
 }
 
+// `self_projects`, `resolver_coverage`, and `fingerprint_version`
+// entered the envelope together at schema v12: a fixture producer sets
+// all three or none, matching what any released binary could write.
 fn batch_payload(self_projects: serde_json::Value) -> BatchPayload {
     let mut value = json!({
         "queried_against": [],
@@ -54,10 +57,10 @@ fn batch_payload(self_projects: serde_json::Value) -> BatchPayload {
         ]
     });
     if !self_projects.is_null() {
-        value
-            .as_object_mut()
-            .unwrap()
-            .insert("self_projects".into(), self_projects);
+        let object = value.as_object_mut().unwrap();
+        object.insert("self_projects".into(), self_projects);
+        object.insert("resolver_coverage".into(), json!({ "checked": [] }));
+        object.insert("fingerprint_version".into(), json!(1));
     }
     serde_json::from_value(value).expect("BatchPayload deserializes")
 }
@@ -103,10 +106,10 @@ fn series_evaluation(self_projects: serde_json::Value) -> CheckPayload {
         "diagnostics": {}
     });
     if !self_projects.is_null() {
-        value
-            .as_object_mut()
-            .unwrap()
-            .insert("self_projects".into(), self_projects);
+        let object = value.as_object_mut().unwrap();
+        object.insert("self_projects".into(), self_projects);
+        object.insert("resolver_coverage".into(), json!({ "checked": [] }));
+        object.insert("fingerprint_version".into(), json!(1));
     }
     serde_json::from_value(value).expect("CheckPayload deserializes")
 }

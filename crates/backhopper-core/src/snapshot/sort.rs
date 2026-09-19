@@ -47,6 +47,30 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
     }
 }
 
+/// True when `next` does not sort strictly after `prev`: the parser's
+/// incremental check and [`out_of_order`]'s whole-list check share this.
+pub fn breaks_order<K: Ord>(prev: Option<&K>, next: &K) -> bool {
+    prev.is_some_and(|p| next <= p)
+}
+
+/// Walks a complete module and header list pairwise, the same comparison
+/// the streaming parser makes as it reads each entry, and names the first
+/// entry out of place. For readers (such as JSON deserialization) that
+/// have no source line to report.
+pub fn out_of_order(modules: &[Module], headers: &[HrlFile]) -> Option<String> {
+    for pair in modules.windows(2) {
+        if breaks_order(Some(&pair[0].name), &pair[1].name) {
+            return Some(format!("modules out of order at {}", pair[1].name));
+        }
+    }
+    for pair in headers.windows(2) {
+        if breaks_order(Some(&pair[0].path), &pair[1].path) {
+            return Some(format!("headers out of order at {}", pair[1].path));
+        }
+    }
+    None
+}
+
 fn arity_match_cmp(a: &Deprecation, b: &Deprecation) -> Ordering {
     match (&a.arity_match, &b.arity_match) {
         (ArityMatch::Any, ArityMatch::Any) => Ordering::Equal,

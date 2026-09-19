@@ -34,7 +34,7 @@ use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::define_resolve::collect_target_defines;
 use crate::compat::qualified_call_resolve::TreeReader;
 use crate::compat::source_attributes::{
-    declares_parse_transform, extract_defined_types, extract_exported_types,
+    ExportedTypes, declares_parse_transform, extract_defined_types, extract_exported_types,
 };
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::model::names::RelativePath;
@@ -51,8 +51,10 @@ pub fn analyse_exported_types(
 ) -> Vec<Reason> {
     let mut reasons = Vec::new();
     for subject in subjects {
-        let added = extract_exported_types(subject.added_text);
-        if added.types.is_empty() || !added.complete {
+        let ExportedTypes::Listed(added_types) = extract_exported_types(subject.added_text) else {
+            continue;
+        };
+        if added_types.is_empty() {
             continue;
         }
         let Some(text) = read_target(subject.source_path) else {
@@ -64,13 +66,13 @@ pub fn analyse_exported_types(
         }
         let defines = collect_target_defines(subject, patch_added, target, read_target);
         // An unread first-party header or a macro-expanded attribute form may hold the declaration.
-        if !defines.complete || defines.macro_attributes {
+        if defines.coverage.hides_types() || defines.macro_attributes {
             continue;
         }
         let mut defined = defines.types;
         defined.extend(extract_defined_types(subject.added_text));
         let mut flagged = BTreeSet::new();
-        for exported in added.types {
+        for exported in added_types {
             let key = (exported.name, exported.arity);
             if defined.contains(&key) || !flagged.insert(key.clone()) {
                 continue;

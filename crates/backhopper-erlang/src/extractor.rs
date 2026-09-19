@@ -10,7 +10,9 @@ use std::str::{self, FromStr};
 pub use backhopper_core::extract::{ExtractError, ExtractedSource};
 
 use backhopper_core::extract::classify_visibility;
-use backhopper_core::model::names::{Arity, FieldName, FunctionName, RecordName, TypeName};
+use backhopper_core::model::names::{
+    Arity, FieldName, FunctionName, ModuleName, RecordName, RelativePath, TypeName,
+};
 use backhopper_core::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl,
     RecordField, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl, VariantCBlock,
@@ -27,12 +29,12 @@ use crate::visibility::detect_visibility_hints;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ErlangExtractor {
-    pub public_modules: Vec<String>,
-    pub internal_modules: Vec<String>,
+    pub public_modules: Vec<ModuleName>,
+    pub internal_modules: Vec<ModuleName>,
 }
 
 impl ErlangExtractor {
-    pub fn new(public_modules: Vec<String>, internal_modules: Vec<String>) -> Self {
+    pub fn new(public_modules: Vec<ModuleName>, internal_modules: Vec<ModuleName>) -> Self {
         Self {
             public_modules,
             internal_modules,
@@ -53,8 +55,9 @@ impl ErlangExtractor {
             let ext = path.extension().and_then(|e| e.to_str());
             match ext {
                 Some("hrl") => {
-                    let path_str = path.to_string_lossy();
-                    headers.push(self.extract_header_file(&path_str, text));
+                    let relative = RelativePath::new(path.to_string_lossy().into_owned())
+                        .map_err(|source| ExtractError::InvalidPath { path, source })?;
+                    headers.push(self.extract_header_file(relative, text));
                 }
                 Some("erl") => {
                     if let Some(m) = self.extract_module(text) {
@@ -177,7 +180,7 @@ impl ErlangExtractor {
         Some(m)
     }
 
-    pub fn extract_header_file(&self, path: &str, source: &str) -> HrlFile {
+    pub fn extract_header_file(&self, path: RelativePath, source: &str) -> HrlFile {
         let blocks = iterate_attributes(source);
         let mut hrl = HrlFile::new(path);
         for block in &blocks {

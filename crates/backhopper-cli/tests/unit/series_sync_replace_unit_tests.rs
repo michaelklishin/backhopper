@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use backhopper_cli::commands::series::{PinPayload, SyncOutput, replace_series_block};
+use backhopper_core::model::names::ProjectName;
 
 const STARTING_CONFIG: &str = r#"# top-of-file comment
 config_version = 1
@@ -34,7 +35,7 @@ fn payload(name: &str, pins: &[(&str, &str)]) -> SyncOutput {
         pins: pins
             .iter()
             .map(|(p, t)| PinPayload {
-                project: (*p).into(),
+                project: ProjectName::new(*p).unwrap(),
                 tag: (*t).into(),
             })
             .collect(),

@@ -1,0 +1,5 @@
+error[E0599]: no method named `as_str` found for enum `ProjectKind` in the current scope
+ --> tests/compile_fail/vocabulary_has_no_second_spelling.rs:4:10
+  |
+4 |     kind.as_str()
+  |          ^^^^^^ method not found in `ProjectKind`

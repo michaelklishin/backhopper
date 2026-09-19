@@ -1,0 +1,23 @@
+error[E0277]: the trait bound `backhopper_core::Snapshot: serde::Deserialize<'de>` is not satisfied
+ --> tests/compile_fail/unsorted_snapshot_has_no_deserialize.rs:4:5
+  |
+4 |     serde_json::from_str(input).unwrap()
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `serde_core::de::Deserialize<'_>` is not implemented for `backhopper_core::Snapshot`
+  |
+  = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `backhopper_core::Snapshot` type
+  = note: for types from other crates check whether the crate offers a `serde` feature flag
+help: the trait `serde_core::de::Deserialize<'_>` is not implemented for `backhopper_core::Snapshot<Unsorted>`
+      but it is implemented for `backhopper_core::Snapshot<Canonical>`
+ --> src/model/snapshot.rs
+  |
+  | impl<'de> Deserialize<'de> for Snapshot<state::Canonical> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: for that trait implementation, expected `Canonical`, found `Unsorted`
+note: required by a bound in `serde_json::from_str`
+ --> $CARGO/serde_json-$VERSION/src/de.rs
+  |
+  | pub fn from_str<'a, T>(s: &'a str) -> Result<T>
+  |        -------- required by a bound in this function
+  | where
+  |     T: de::Deserialize<'a>,
+  |        ^^^^^^^^^^^^^^^^^^^ required by this bound in `from_str`

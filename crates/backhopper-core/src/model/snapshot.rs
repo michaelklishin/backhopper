@@ -10,24 +10,41 @@
 //!    non-canonical input
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::marker::PhantomData;
+use std::str::FromStr;
 
+use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::compat::arg_shape::ArgShape;
+use crate::errors::{NameError, SnapshotError};
 use crate::model::names::{
     ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
-    MacroName, ModuleName, ProjectName, RecordName, TagName, TypeName,
+    MacroName, ModuleName, ProjectName, RecordName, RelativePath, TagName, TypeName,
 };
-use crate::snapshot::sort::canonicalize;
+use crate::snapshot::sort::{canonicalize, out_of_order};
 
 pub mod state {
+    mod private {
+        pub trait Sealed {}
+    }
+
+    /// Sealed so a foreign marker cannot stand in for `Unsorted` or
+    /// `Canonical` and skip the canonicalization the two states pin.
+    pub trait SnapshotState: private::Sealed {}
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct Unsorted;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct Canonical;
+
+    impl private::Sealed for Unsorted {}
+    impl private::Sealed for Canonical {}
+    impl SnapshotState for Unsorted {}
+    impl SnapshotState for Canonical {}
 }
 
 pub const FORMAT_VERSION: u32 = 4;
@@ -107,12 +124,16 @@ pub struct Module {
     /// Per-export clause-head patterns: the disjunction of clauses that
     /// define this function. Used by the analyzer to flag calls whose
     /// argument shape doesn't satisfy any clause head at the pin.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        with = "crate::model::serde_util::fun_arity_keyed_map"
+    )]
     pub clause_heads: BTreeMap<FunArity, Vec<Vec<ArgShape>>>,
     /// Source path relative to the project root. `None` on format
     /// version 1 snapshots; populated on v2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
+    pub path: Option<RelativePath>,
     /// Application this module belongs to. `None` on v1 and for
     /// single-app projects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -395,16 +416,16 @@ impl Module {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HrlFile {
-    pub path: String,
+    pub path: RelativePath,
     pub types: Vec<TypeDecl>,
     pub opaques: Vec<TypeArity>,
     pub records: Vec<RecordDecl>,
 }
 
 impl HrlFile {
-    pub fn new(path: impl Into<String>) -> Self {
+    pub fn new(path: RelativePath) -> Self {
         Self {
-            path: path.into(),
+            path,
             types: Vec::new(),
             opaques: Vec::new(),
             records: Vec::new(),
@@ -418,10 +439,59 @@ pub struct FunArity {
     pub arity: Arity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl fmt::Display for FunArity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.name, self.arity)
+    }
+}
+
+impl FromStr for FunArity {
+    type Err = NameError;
+
+    fn from_str(s: &str) -> Result<Self, NameError> {
+        let (name, arity) = split_name_arity("fun_arity", s)?;
+        Ok(Self {
+            name: name.parse()?,
+            arity,
+        })
+    }
+}
+
+/// The `name/arity` split `FunArity` and `TypeArity` share; the name half
+/// is returned unparsed because the two kinds validate it differently.
+fn split_name_arity<'a>(kind: &'static str, s: &'a str) -> Result<(&'a str, Arity), NameError> {
+    let invalid = || NameError::Invalid {
+        kind,
+        value: s.to_owned(),
+        reason: "expected 'name/arity'",
+    };
+    let (name, arity) = s.rsplit_once('/').ok_or_else(invalid)?;
+    let arity = arity.parse().map_err(|_| invalid())?;
+    Ok((name, arity))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TypeArity {
     pub name: TypeName,
     pub arity: Arity,
+}
+
+impl fmt::Display for TypeArity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.name, self.arity)
+    }
+}
+
+impl FromStr for TypeArity {
+    type Err = NameError;
+
+    fn from_str(s: &str) -> Result<Self, NameError> {
+        let (name, arity) = split_name_arity("type_arity", s)?;
+        Ok(Self {
+            name: name.parse()?,
+            arity,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -480,14 +550,50 @@ pub struct DeprecationReplacement {
     pub arity: Arity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(bound = "")]
-pub struct Snapshot<S = state::Unsorted> {
-    pub header: SnapshotHeader,
-    pub modules: Vec<Module>,
-    pub headers: Vec<HrlFile>,
+pub struct Snapshot<S: state::SnapshotState = state::Unsorted> {
+    header: SnapshotHeader,
+    modules: Vec<Module>,
+    headers: Vec<HrlFile>,
     #[serde(skip)]
     _state: PhantomData<S>,
+}
+
+/// The three fields of [`Snapshot`], with no state attached: the shape
+/// `serde` deserializes before [`Snapshot<Canonical>`]'s `TryFrom` checks
+/// canonical order.
+#[derive(Deserialize)]
+struct SnapshotParts {
+    header: SnapshotHeader,
+    modules: Vec<Module>,
+    headers: Vec<HrlFile>,
+}
+
+impl TryFrom<SnapshotParts> for Snapshot<state::Canonical> {
+    type Error = SnapshotError;
+
+    fn try_from(parts: SnapshotParts) -> Result<Self, SnapshotError> {
+        if let Some(detail) = out_of_order(&parts.modules, &parts.headers) {
+            return Err(SnapshotError::NotCanonicalValue { detail });
+        }
+        Ok(Self {
+            header: parts.header,
+            modules: parts.modules,
+            headers: parts.headers,
+            _state: PhantomData,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Snapshot<state::Canonical> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let parts = SnapshotParts::deserialize(deserializer)?;
+        Snapshot::try_from(parts).map_err(D::Error::custom)
+    }
 }
 
 impl Snapshot<state::Unsorted> {
@@ -520,7 +626,7 @@ impl Snapshot<state::Unsorted> {
     }
 }
 
-impl<S> Snapshot<S> {
+impl<S: state::SnapshotState> Snapshot<S> {
     pub fn header(&self) -> &SnapshotHeader {
         &self.header
     }

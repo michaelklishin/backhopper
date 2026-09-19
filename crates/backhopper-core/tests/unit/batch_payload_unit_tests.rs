@@ -263,6 +263,53 @@ fn batch_result_converts_into_series_evaluation() {
     assert_eq!(eval.verdict, row.verdict);
     assert_eq!(eval.touched_paths, vec![path]);
     assert_eq!(eval.pr_commits, Some(Vec::new()));
-    assert_eq!(eval.apply, None);
-    assert_eq!(eval.target_findings, None);
+    assert!(eval.target.get().is_none());
+}
+
+#[test]
+fn producer_is_current_when_every_field_is_set() {
+    let payload = BatchPayload {
+        queried_against: vec![],
+        results: vec![],
+        self_projects: Some(BTreeSet::from([ProjectName::new("rabbit").unwrap()])),
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
+    };
+    assert!(matches!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::Current { .. }
+    ));
+}
+
+#[test]
+fn producer_is_before_v12_when_none_are_set() {
+    let payload = BatchPayload {
+        queried_against: vec![],
+        results: vec![],
+        self_projects: None,
+        resolver_coverage: None,
+        fingerprint_version: None,
+    };
+    assert_eq!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::BeforeV12
+    );
+}
+
+// A partial triple cannot have been written by any released binary; the
+// reading that withholds most is the honest one.
+#[test]
+fn producer_withholds_on_a_partial_triple() {
+    let payload = BatchPayload {
+        queried_against: vec![],
+        results: vec![],
+        self_projects: None,
+        resolver_coverage: Some(ResolverCoverage::current()),
+        fingerprint_version: Some(FINGERPRINT_VERSION),
+    };
+    assert_eq!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::BeforeV12
+    );
+    assert_eq!(payload.clearance_self_inferred(), None);
 }

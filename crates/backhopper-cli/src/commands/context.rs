@@ -9,7 +9,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
-use backhopper_core::config::{Config, Project};
+use backhopper_core::config::{Config, Project, ProjectSource};
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
 use backhopper_git::GitRepo;
 
@@ -17,7 +17,13 @@ use crate::cli::GlobalArgs;
 use crate::errors::{CliError, CliResult};
 
 pub fn open_project_repo(project: &Project) -> CliResult<GitRepo> {
-    Ok(GitRepo::open(project.require_git_url()?.to_path_buf())?)
+    let ProjectSource::External { git_url } = &project.source else {
+        return Err(CliError::InvalidInput(format!(
+            "project {} is a self-project, not an external repo",
+            project.name
+        )));
+    };
+    Ok(GitRepo::open(git_url.clone())?)
 }
 
 /// Read a path's text, or stdin when the path is `-`.

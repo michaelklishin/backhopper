@@ -1,0 +1,27 @@
+error[E0277]: the trait bound `Foreign: patch_state::private::Sealed` is not satisfied
+ --> tests/compile_fail/patch_state_is_sealed.rs:5:21
+  |
+5 | impl PatchState for Foreign {}
+  |                     ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `patch_state::private::Sealed` is not implemented for `Foreign`
+ --> tests/compile_fail/patch_state_is_sealed.rs:3:1
+  |
+3 | struct Foreign;
+  | ^^^^^^^^^^^^^^
+help: the following other types implement trait `patch_state::private::Sealed`
+ --> src/compat/patch.rs
+  |
+  |     impl private::Sealed for Raw {}
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `backhopper_core::compat::Raw`
+  |     impl private::Sealed for Analyzed {}
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Analyzed`
+note: required by a bound in `PatchState`
+ --> src/compat/patch.rs
+  |
+  |     pub trait PatchState: private::Sealed {}
+  |                           ^^^^^^^^^^^^^^^ required by this bound in `PatchState`
+  = note: `PatchState` is a "sealed trait", because to implement it you also need to implement `backhopper_core::compat::patch_state::private::Sealed`, which is not accessible; this is usually done to force you to use one of the provided types that already implement it
+  = help: the following types implement the trait:
+            backhopper_core::compat::Raw
+            backhopper_core::compat::Analyzed

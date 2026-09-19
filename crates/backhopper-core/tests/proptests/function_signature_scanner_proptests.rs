@@ -44,7 +44,7 @@ proptest! {
     fn a_body_call_is_still_found(name in "myf_[a-z0-9_]{1,8}") {
         let src = format!("g() -> {name}().\n");
         let sigs = extract_function_signatures(&src);
-        prop_assert!(sigs.iter().any(|s| s.name == name && !s.is_definition));
+        prop_assert!(sigs.iter().any(|s| s.name.as_str() == name && !s.is_definition));
     }
 
     // After the attribute's closing dot, a call on the next line is still found.
@@ -52,6 +52,6 @@ proptest! {
     fn an_attribute_does_not_swallow_the_next_call(name in "myf_[a-z0-9_]{1,8}") {
         let src = format!("-spec g() -> ok.\ng() -> {name}().\n");
         let sigs = extract_function_signatures(&src);
-        prop_assert!(sigs.iter().any(|s| s.name == name && !s.is_definition));
+        prop_assert!(sigs.iter().any(|s| s.name.as_str() == name && !s.is_definition));
     }
 }

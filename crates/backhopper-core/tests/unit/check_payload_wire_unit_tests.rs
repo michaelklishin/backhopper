@@ -58,3 +58,66 @@ fn check_payload_round_trips_and_keeps_the_skip_rules() {
         json!({ "kind": "pin", "project": "ra", "tag": "v3.1.6" })
     );
 }
+
+#[test]
+fn producer_is_current_when_every_field_is_set() {
+    let mut wire = json!({
+        "queried_against": { "kind": "pin", "project": "ra", "tag": "v3.1.6" },
+        "results": {
+            "results": [],
+            "summary": { "compatible": 0, "requires_adaptation": 0, "incompatible": 0 }
+        },
+        "pr_commits": null,
+        "self_projects": ["ra"],
+        "fingerprint_version": 7
+    });
+    wire["resolver_coverage"] = serde_json::to_value(
+        backhopper_core::model::resolver_coverage::ResolverCoverage::current(),
+    )
+    .unwrap();
+    let payload: CheckPayload = serde_json::from_value(wire).expect("deserializes");
+    assert!(matches!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::Current { .. }
+    ));
+}
+
+#[test]
+fn producer_is_before_v12_when_none_are_set() {
+    let wire = json!({
+        "queried_against": { "kind": "pin", "project": "ra", "tag": "v3.1.6" },
+        "results": {
+            "results": [],
+            "summary": { "compatible": 0, "requires_adaptation": 0, "incompatible": 0 }
+        },
+    });
+    let payload: CheckPayload = serde_json::from_value(wire).expect("deserializes");
+    assert_eq!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::BeforeV12
+    );
+    assert_eq!(payload.tracked_refs(), None);
+}
+
+// A payload with resolver_coverage but no self_projects cannot have been
+// written by any released binary; the reading that withholds most wins.
+#[test]
+fn producer_withholds_on_a_partial_triple() {
+    let mut wire = json!({
+        "queried_against": { "kind": "pin", "project": "ra", "tag": "v3.1.6" },
+        "results": {
+            "results": [],
+            "summary": { "compatible": 0, "requires_adaptation": 0, "incompatible": 0 }
+        },
+        "fingerprint_version": 7
+    });
+    wire["resolver_coverage"] = serde_json::to_value(
+        backhopper_core::model::resolver_coverage::ResolverCoverage::current(),
+    )
+    .unwrap();
+    let payload: CheckPayload = serde_json::from_value(wire).expect("deserializes");
+    assert_eq!(
+        payload.producer(),
+        backhopper_core::model::producer::Producer::BeforeV12
+    );
+}

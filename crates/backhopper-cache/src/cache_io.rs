@@ -31,6 +31,9 @@ pub const ENTRY_FORMAT_VERSION: u32 = 1;
 /// 128 bits, far beyond collision concerns for a per-workspace cache.
 const KEY_HASH_LEN: usize = 32;
 
+/// The digest bytes behind those hex characters.
+const DIGEST_LEN: usize = KEY_HASH_LEN / 2;
+
 /// Canonical JSON bytes for `value`: object keys sorted, no
 /// insignificant whitespace. Stable across runs, so equal keys
 /// always hash equal and unequal keys do not.
@@ -45,6 +48,17 @@ pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, CacheError> {
 pub fn content_hash<T: Serialize>(value: &T) -> Result<String, CacheError> {
     let bytes = canonical_json(value)?;
     Ok(truncated_hex(blake3::hash(&bytes)))
+}
+
+/// The same BLAKE3 digest as `content_hash`, as the raw bytes
+/// `VerdictFingerprint::from_digest` formats: the seam that keeps
+/// `backhopper-core` free of a `blake3` dependency.
+pub fn content_digest<T: Serialize>(value: &T) -> Result<[u8; DIGEST_LEN], CacheError> {
+    let bytes = canonical_json(value)?;
+    let hash = blake3::hash(&bytes);
+    let mut digest = [0u8; DIGEST_LEN];
+    digest.copy_from_slice(&hash.as_bytes()[..DIGEST_LEN]);
+    Ok(digest)
 }
 
 /// BLAKE3 hex digest of raw bytes, same truncation as `content_hash`.

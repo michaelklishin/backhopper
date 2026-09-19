@@ -14,7 +14,7 @@ use backhopper_cli::commands::target_repo::{
 };
 use backhopper_core::compat::patch::{Hunk, HunkLine, PatchedFile, SourceKind};
 use backhopper_core::config::{
-    Config, Language as ConfigLanguage, Project, ProjectFamily, ProjectKind, ProjectLayout,
+    Config, Language as ConfigLanguage, Project, ProjectFamily, ProjectLayout, ProjectSource,
 };
 use backhopper_core::model::names::ProjectName;
 
@@ -98,8 +98,9 @@ fn added_lines_only_returns_none_when_hunk_carries_no_addition() {
 fn project(name: &str, family: ProjectFamily) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: Some(PathBuf::from("/tmp/p.git")),
-        kind: ProjectKind::External,
+        source: ProjectSource::External {
+            git_url: PathBuf::from("/tmp/p.git"),
+        },
         family,
         language: ConfigLanguage::Erlang,
         tag_prefix: "v".into(),

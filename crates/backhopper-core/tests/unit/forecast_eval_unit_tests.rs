@@ -11,6 +11,17 @@ use backhopper_core::model::eval::{
 use backhopper_core::model::names::{CommitSha, RelativePath};
 use backhopper_core::model::verdict::ApplyConflictKind;
 
+fn ratio(hits: usize, total: usize) -> Ratio {
+    let mut r = Ratio::zero();
+    for _ in 0..hits {
+        r.hit();
+    }
+    for _ in 0..(total - hits) {
+        r.miss();
+    }
+    r
+}
+
 fn sha(hex_char: char) -> CommitSha {
     CommitSha::new(hex_char.to_string().repeat(40)).unwrap()
 }
@@ -52,9 +63,9 @@ fn entry(
 fn an_empty_set_of_entries_yields_zero_rates() {
     let report = evaluate_forecasts(&[]);
     assert_eq!(report.entries, 0);
-    assert_eq!(report.precision, Ratio { hits: 0, total: 0 });
-    assert_eq!(report.recall, Ratio { hits: 0, total: 0 });
-    assert_eq!(report.path_overlap, Ratio { hits: 0, total: 0 });
+    assert_eq!(report.precision, ratio(0, 0));
+    assert_eq!(report.recall, ratio(0, 0));
+    assert_eq!(report.path_overlap, ratio(0, 0));
     assert!(report.false_negatives.is_empty());
 }
 
@@ -76,8 +87,8 @@ fn precision_and_recall_count_entries_not_paths() {
     ];
     let report = evaluate_forecasts(&rows);
     assert_eq!(report.entries, 4);
-    assert_eq!(report.precision, Ratio { hits: 1, total: 2 });
-    assert_eq!(report.recall, Ratio { hits: 1, total: 2 });
+    assert_eq!(report.precision, ratio(1, 2));
+    assert_eq!(report.recall, ratio(1, 2));
 }
 
 #[test]
@@ -97,8 +108,8 @@ fn out_of_band_entries_are_excluded_from_both_denominators_and_counted() {
     ];
     let report = evaluate_forecasts(&rows);
     assert_eq!(report.out_of_band, 2);
-    assert_eq!(report.precision, Ratio { hits: 1, total: 1 });
-    assert_eq!(report.recall, Ratio { hits: 1, total: 1 });
+    assert_eq!(report.precision, ratio(1, 1));
+    assert_eq!(report.recall, ratio(1, 1));
 }
 
 // the entry is a rate hit, yet the unpredicted path must reach the worklist
@@ -113,8 +124,8 @@ fn a_true_positive_with_an_extra_observed_path_yields_a_partial_miss() {
         ]),
     )];
     let report = evaluate_forecasts(&rows);
-    assert_eq!(report.precision, Ratio { hits: 1, total: 1 });
-    assert_eq!(report.recall, Ratio { hits: 1, total: 1 });
+    assert_eq!(report.precision, ratio(1, 1));
+    assert_eq!(report.recall, ratio(1, 1));
     assert_eq!(report.false_negatives.len(), 1);
     let miss = &report.false_negatives[0];
     assert_eq!(
@@ -144,7 +155,7 @@ fn a_conflict_with_no_normalized_paths_still_counts_toward_recall() {
         unconvertible_paths: 2,
     }];
     let report = evaluate_forecasts(&rows);
-    assert_eq!(report.recall, Ratio { hits: 0, total: 1 });
+    assert_eq!(report.recall, ratio(0, 1));
     assert_eq!(report.unconvertible_paths, 2);
     // no normalized paths, so no worklist row
     assert!(report.false_negatives.is_empty());
@@ -186,7 +197,7 @@ fn path_overlap_counts_matched_predicted_paths_on_true_positives_only() {
         ),
     ];
     let report = evaluate_forecasts(&rows);
-    assert_eq!(report.path_overlap, Ratio { hits: 1, total: 2 });
+    assert_eq!(report.path_overlap, ratio(1, 2));
 }
 
 #[test]

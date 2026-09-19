@@ -177,7 +177,7 @@ fn missing_trailer_origin_is_skipped_not_an_error() {
 }
 
 #[test]
-fn walk_limit_truncates_and_reports_it() {
+fn walk_limit_truncates_the_index() {
     let fake = GitRepoFixture::new();
     fake.write_file("src/a.erl", "0\n");
     fake.commit("base");
@@ -189,7 +189,6 @@ fn walk_limit_truncates_and_reports_it() {
     let tip = fake.head_sha();
     let repo = open(&fake);
     let index = TargetWalkIndex::build(&repo, &sha(&tip), &sha(&base), 2).unwrap();
-    assert!(index.truncated);
     assert_eq!(index.len(), 2);
 }
 

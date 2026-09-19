@@ -21,6 +21,7 @@ mod partial_absence_reasons_unit_tests;
 mod partial_success_exit_codes_unit_tests;
 mod pin_bump_detection_unit_tests;
 mod pin_coverage_unit_tests;
+mod pin_selector_unit_tests;
 mod rabbitmq_components_unit_tests;
 mod self_repo_override_unit_tests;
 mod series_sync_diff_unit_tests;

@@ -299,7 +299,7 @@ fn project_family_round_trips_through_str() {
         ProjectFamily::Rabbitmq,
     ];
     for f in cases {
-        let s = f.as_str();
+        let s = f.label();
         let parsed = ProjectFamily::from_str(s).expect("known family parses");
         assert_eq!(f, parsed);
     }

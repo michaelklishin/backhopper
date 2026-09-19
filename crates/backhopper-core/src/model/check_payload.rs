@@ -22,6 +22,7 @@ use crate::model::fingerprint::VerdictFingerprint;
 use crate::model::names::{ModuleName, ProjectName, RelativePath, SeriesName, TagName};
 use crate::model::pin::Pin;
 use crate::model::pr_commit::PrCommit;
+use crate::model::producer::Producer;
 use crate::model::resolver_coverage::ResolverCoverage;
 use crate::model::summary::VerdictKind;
 use crate::model::verdict::{Diagnostics, PinVerdict, Reason, SeriesVerdict};
@@ -103,13 +104,27 @@ impl CheckPayload {
         SeriesEvaluationView::new(&self.results, &self.diagnostics)
     }
 
+    /// The producer generation that wrote `self_projects`,
+    /// `resolver_coverage`, and `fingerprint_version`.
+    #[must_use]
+    pub fn producer(&self) -> Producer<'_> {
+        Producer::from_fields(
+            self.self_projects.as_ref(),
+            self.resolver_coverage.as_ref(),
+            self.fingerprint_version,
+        )
+    }
+
     /// Self-excluded tracked-dependency count from the wire-recorded
     /// self-projects. `None` when the producer predates the field.
     #[must_use]
     pub fn tracked_refs(&self) -> Option<u32> {
-        self.self_projects
-            .as_ref()
-            .map(|projects| self.view().tracked_refs(projects))
+        match self.producer() {
+            Producer::Current { self_projects, .. } => {
+                Some(self.view().tracked_refs(self_projects))
+            }
+            Producer::BeforeV12 => None,
+        }
     }
 
     /// See [`SeriesEvaluationView::worst_verdict`].

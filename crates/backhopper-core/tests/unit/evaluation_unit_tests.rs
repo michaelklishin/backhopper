@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
-use backhopper_core::model::names::{FieldName, ModuleName, ProjectName, RecordName};
+use backhopper_core::model::names::{
+    Arity, FieldName, FunctionName, ModuleName, ProjectName, RecordName, RelativePath,
+};
 use backhopper_core::model::snapshot::{HrlFile, RecordDecl, RecordField, Snapshot, state};
 use backhopper_core::model::verdict::{Reason, Verdict};
 use backhopper_test_support::{module_with, pin, snapshot_header};
@@ -19,7 +21,7 @@ use backhopper_test_support::{module_with, pin, snapshot_header};
 use crate::evaluation_support::{make_context, snapshot};
 
 fn snapshot_with_record(project: &str, record: &str) -> Snapshot<state::Canonical> {
-    let mut hrl = HrlFile::new(format!("include/{project}.hrl"));
+    let mut hrl = HrlFile::new(RelativePath::new(format!("include/{project}.hrl")).unwrap());
     hrl.records.push(RecordDecl {
         name: RecordName::new(record).unwrap(),
         fields: vec![RecordField {
@@ -367,4 +369,40 @@ diff --git a/Makefile b/Makefile
         "non-source build files must be silent-skipped, got: {:?}",
         pin_verdict.verdict
     );
+}
+
+#[test]
+fn as_exported_is_none_for_macro_record_behaviour_callback() {
+    use backhopper_core::model::symbol::SymbolKind;
+
+    let non_exported = [
+        SymbolKind::Macro { name: "LOG".into() },
+        SymbolKind::Record {
+            name: RecordName::new("state").unwrap(),
+        },
+        SymbolKind::Behaviour {
+            module: ModuleName::new("gen_server").unwrap(),
+        },
+        SymbolKind::Callback {
+            module: ModuleName::new("gen_server").unwrap(),
+            function: FunctionName::new("init").unwrap(),
+            arity: Arity::new(1),
+        },
+    ];
+    for kind in non_exported {
+        assert!(
+            kind.as_exported().is_none(),
+            "{kind:?} should have no exported form"
+        );
+    }
+
+    use backhopper_core::model::names::Mfa;
+    let exported = SymbolKind::Function {
+        mfa: Mfa::new(
+            ModuleName::new("ra").unwrap(),
+            FunctionName::new("start_link").unwrap(),
+            Arity::new(1),
+        ),
+    };
+    assert!(exported.as_exported().is_some());
 }

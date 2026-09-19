@@ -18,7 +18,7 @@ use time::format_description::well_known::Rfc3339;
 use crate::errors::{NameError, SnapshotError};
 use crate::model::names::{
     ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
-    MacroName, ModuleName, ProjectName, RecordName, TagName, TypeName,
+    MacroName, ModuleName, ProjectName, RecordName, RelativePath, TagName, TypeName,
 };
 use crate::model::snapshot::{
     ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
@@ -28,6 +28,7 @@ use crate::model::snapshot::{
     VersionedMachineVersion, Visibility, WireConstantBinding, WireValue, state,
 };
 use crate::snapshot::SNAPSHOT_SIZE_LIMIT;
+use crate::snapshot::sort::breaks_order;
 
 pub fn parse(input: &str) -> Result<Snapshot<state::Canonical>, SnapshotError> {
     if input.len() > SNAPSHOT_SIZE_LIMIT {
@@ -70,9 +71,7 @@ impl<'a> Parser<'a> {
                 }
                 self.advance();
                 let name = ModuleName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
-                if let Some(prev) = modules.last()
-                    && name <= prev.name
-                {
+                if breaks_order(modules.last().map(|m| &m.name), &name) {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
                         detail: format!("modules out of order at {name}"),
@@ -83,10 +82,8 @@ impl<'a> Parser<'a> {
             } else if let Some(rest) = line.strip_prefix("header ") {
                 headers_started = true;
                 self.advance();
-                let path = rest.trim().to_owned();
-                if let Some(prev) = headers.last()
-                    && path.as_str() <= prev.path.as_str()
-                {
+                let path = RelativePath::from_str(rest.trim()).map_err(SnapshotError::Name)?;
+                if breaks_order(headers.last().map(|h| &h.path), &path) {
                     return Err(SnapshotError::NotCanonical {
                         line: lineno,
                         detail: format!("headers out of order at {path}"),
@@ -243,7 +240,8 @@ impl<'a> Parser<'a> {
                     })?;
             } else if let Some(rest) = trimmed.strip_prefix("path ") {
                 state.advance(EntryClass::Path, lineno)?;
-                module.path = Some(rest.trim().to_owned());
+                module.path =
+                    Some(RelativePath::from_str(rest.trim()).map_err(SnapshotError::Name)?);
             } else if let Some(rest) = trimmed.strip_prefix("app ") {
                 state.advance(EntryClass::App, lineno)?;
                 let app = ApplicationName::from_str(rest.trim()).map_err(SnapshotError::Name)?;
@@ -400,7 +398,7 @@ impl<'a> Parser<'a> {
         Ok(module)
     }
 
-    fn parse_header_body(&mut self, path: String) -> Result<HrlFile, SnapshotError> {
+    fn parse_header_body(&mut self, path: RelativePath) -> Result<HrlFile, SnapshotError> {
         let mut hrl = HrlFile::new(path);
         let mut state = ClassOrder::new("hrl-entry-class order");
         loop {

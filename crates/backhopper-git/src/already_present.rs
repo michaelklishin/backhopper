@@ -103,8 +103,6 @@ impl IndexRow {
 #[derive(Debug)]
 pub struct TargetWalkIndex {
     rows: Vec<IndexRow>,
-    /// True when `walk_limit` cut the window short of `since`.
-    pub truncated: bool,
 }
 
 impl TargetWalkIndex {
@@ -115,7 +113,6 @@ impl TargetWalkIndex {
         walk_limit: usize,
     ) -> Result<Self, GitError> {
         let mut walked = first_parent_walk_since(repo, tip, since)?;
-        let truncated = walked.len() > walk_limit;
         walked.truncate(walk_limit);
         let rows = walked
             .into_iter()
@@ -126,7 +123,7 @@ impl TargetWalkIndex {
                 patch: OnceCell::new(),
             })
             .collect();
-        Ok(Self { rows, truncated })
+        Ok(Self { rows })
     }
 
     pub fn len(&self) -> usize {

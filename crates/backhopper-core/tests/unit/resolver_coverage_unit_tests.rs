@@ -16,7 +16,8 @@ fn module(s: &str) -> ModuleName {
 fn every_class_is_covered() {
     assert!(
         ResolverClass::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .all(ResolverClass::is_covered)
     );
 }
@@ -89,7 +90,12 @@ fn of_symbol_kind_maps_each_kind() {
 #[test]
 fn current_coverage_checks_every_class_and_leaves_none_unchecked() {
     let cov = ResolverCoverage::current();
-    assert!(ResolverClass::ALL.into_iter().all(|c| cov.is_checked(c)));
+    assert!(
+        ResolverClass::ALL
+            .iter()
+            .copied()
+            .all(|c| cov.is_checked(c))
+    );
     assert_eq!(cov.unchecked().count(), 0);
 }
 

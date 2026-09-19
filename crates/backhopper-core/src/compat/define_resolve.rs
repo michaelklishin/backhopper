@@ -22,7 +22,7 @@ use crate::compat::source_attributes::{
     has_macro_expanded_attribute, is_predefined_macro, resolve_include,
 };
 use crate::compat::target_tree_index::TargetTreeIndex;
-use crate::model::names::{Arity, RecordName, RelativePath, TypeName};
+use crate::model::names::{Arity, MacroName, RecordName, RelativePath, TypeName};
 use crate::model::verdict::{MacroValueTally, Reason};
 
 /// `-include` follow depth bound: real header chains are a handful deep.
@@ -46,7 +46,7 @@ pub fn analyse_define_symbols(
         }
         let defs = collect_target_defines(subject, patch_added, target, read_target);
         // Incomplete define set: the symbol could be in an unreadable header, so suppress rather than risk a false positive.
-        if !defs.defines_complete() {
+        if defs.coverage.hides_macros_or_records() {
             continue;
         }
         let patch_macros = extract_defined_macros(subject.added_text);
@@ -54,9 +54,13 @@ pub fn analyse_define_symbols(
         for u in macro_uses {
             if is_predefined_macro(&u.name)
                 || patch_macros.contains(&u.name)
-                || defs.macros.contains(&u.name)
+                || defs.macros.contains(u.name.as_str())
                 || !flagged.insert(u.name.clone())
             {
+                continue;
+            }
+            // a name `MacroName` refuses could not have entered `defs.macros`, so its absence there says nothing
+            if MacroName::from_str(&u.name).is_err() {
                 continue;
             }
             reasons.push(Reason::MacroUndefinedOnTarget {
@@ -69,7 +73,7 @@ pub fn analyse_define_symbols(
         let mut flagged = BTreeSet::new();
         for u in record_uses {
             if patch_records.contains(&u.name)
-                || defs.records.contains(&u.name)
+                || defs.records.contains(u.name.as_str())
                 || !flagged.insert(u.name.clone())
             {
                 continue;
@@ -87,51 +91,58 @@ pub fn analyse_define_symbols(
     reasons
 }
 
+/// Whether the `-include` closure was read in full, and which side of
+/// it a skipped header falls on. A first-party header can hide a
+/// macro, a record, or a type; a skipped stdlib header can only hide a
+/// macro or a record, since a module can only export a type declared
+/// in its own text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IncludeCoverage {
+    #[default]
+    Complete,
+    FirstPartyUnread,
+    StdlibUnread,
+    BothUnread,
+}
+
+impl IncludeCoverage {
+    fn from_flags(first_party_unread: bool, stdlib_unread: bool) -> Self {
+        match (first_party_unread, stdlib_unread) {
+            (false, false) => Self::Complete,
+            (true, false) => Self::FirstPartyUnread,
+            (false, true) => Self::StdlibUnread,
+            (true, true) => Self::BothUnread,
+        }
+    }
+
+    /// True for every arm but `Complete`: an unread header of either
+    /// kind can hide a macro or a record.
+    #[must_use]
+    pub fn hides_macros_or_records(self) -> bool {
+        !matches!(self, Self::Complete)
+    }
+
+    /// True only when a first-party header went unread: a skipped
+    /// stdlib header cannot hide a type a first-party module re-exports.
+    #[must_use]
+    pub fn hides_types(self) -> bool {
+        matches!(self, Self::FirstPartyUnread | Self::BothUnread)
+    }
+}
+
 /// Macros, records, and types defined in the target version of the
 /// subject's file or a header it transitively includes, with the
 /// include set taken from the target text and the patch's added text
-/// alike. `complete` is
-/// false when a first-party include could not be resolved or read: a
-/// definition might hide in the header we missed. A skipped stdlib
-/// header is tracked separately, since which sets it can hide differs
-/// by axis.
-#[derive(Debug)]
+/// alike.
+#[derive(Debug, Default)]
 pub struct TargetDefines {
-    pub macros: BTreeSet<String>,
-    pub records: BTreeSet<String>,
+    pub macros: BTreeSet<MacroName>,
+    pub records: BTreeSet<RecordName>,
     pub types: BTreeSet<(TypeName, Arity)>,
-    pub complete: bool,
-    /// A stdlib `include_lib` was skipped: it is outside the repo, so
-    /// it cannot be read. It can hide a macro or a record, so those
-    /// axes must treat it as incomplete. It cannot practically hide a
-    /// type a first-party module then re-exports, since a module can
-    /// only export a type declared in its own text.
-    pub stdlib_unread: bool,
+    pub coverage: IncludeCoverage,
     /// A macro-expanded attribute form in the closure: any
     /// attribute-derived set here may be missing what it expands to.
     pub macro_attributes: bool,
-}
-
-impl TargetDefines {
-    /// Macros and records can hide in any unread header, stdlib or not.
-    #[must_use]
-    pub fn defines_complete(&self) -> bool {
-        self.complete && !self.stdlib_unread
-    }
-}
-
-/// The empty closure is complete: nothing was reached, nothing was missed.
-impl Default for TargetDefines {
-    fn default() -> Self {
-        Self {
-            macros: BTreeSet::new(),
-            records: BTreeSet::new(),
-            types: BTreeSet::new(),
-            complete: true,
-            stdlib_unread: false,
-            macro_attributes: false,
-        }
-    }
 }
 
 /// Which side of the pick a header's text comes from.
@@ -141,7 +152,12 @@ enum HeaderSource {
 }
 
 struct IncludeWalk<'a> {
-    out: TargetDefines,
+    macros: BTreeSet<MacroName>,
+    records: BTreeSet<RecordName>,
+    types: BTreeSet<(TypeName, Arity)>,
+    macro_attributes: bool,
+    first_party_unread: bool,
+    stdlib_unread: bool,
     visited: BTreeSet<RelativePath>,
     stack: Vec<(RelativePath, usize, HeaderSource)>,
     patch_added: &'a BTreeMap<RelativePath, String>,
@@ -150,16 +166,24 @@ struct IncludeWalk<'a> {
 
 impl IncludeWalk<'_> {
     fn absorb(&mut self, content: &str) {
-        self.out.macros.extend(extract_defined_macros(content));
-        self.out.records.extend(extract_defined_records(content));
-        self.out.types.extend(extract_defined_types(content));
-        self.out.macro_attributes |= has_macro_expanded_attribute(content);
+        self.macros.extend(
+            extract_defined_macros(content)
+                .into_iter()
+                .filter_map(|m| MacroName::new(m).ok()),
+        );
+        self.records.extend(
+            extract_defined_records(content)
+                .into_iter()
+                .filter_map(|r| RecordName::new(r).ok()),
+        );
+        self.types.extend(extract_defined_types(content));
+        self.macro_attributes |= has_macro_expanded_attribute(content);
     }
 
     fn follow_includes(&mut self, content: &str, from: &RelativePath, depth: usize) {
         for inc in extract_includes(content) {
             if is_stdlib_include_lib(&inc.directive) {
-                self.out.stdlib_unread = true;
+                self.stdlib_unread = true;
                 continue;
             }
             // Target-first: a path present on both sides reads the target text.
@@ -171,7 +195,7 @@ impl IncludeWalk<'_> {
                         .find(|c| self.patch_added.contains_key(c));
                     match patch_hit {
                         Some(path) => self.push(path, depth, HeaderSource::PatchAdded),
-                        None => self.out.complete = false,
+                        None => self.first_party_unread = true,
                     }
                 }
             }
@@ -183,10 +207,20 @@ impl IncludeWalk<'_> {
             return;
         }
         if depth > MAX_INCLUDE_DEPTH {
-            self.out.complete = false;
+            self.first_party_unread = true;
             return;
         }
         self.stack.push((path, depth, source));
+    }
+
+    fn finish(self) -> TargetDefines {
+        TargetDefines {
+            macros: self.macros,
+            records: self.records,
+            types: self.types,
+            coverage: IncludeCoverage::from_flags(self.first_party_unread, self.stdlib_unread),
+            macro_attributes: self.macro_attributes,
+        }
     }
 }
 
@@ -200,7 +234,12 @@ pub fn collect_target_defines(
     read_target: &dyn Fn(&RelativePath) -> Option<String>,
 ) -> TargetDefines {
     let mut walk = IncludeWalk {
-        out: TargetDefines::default(),
+        macros: BTreeSet::new(),
+        records: BTreeSet::new(),
+        types: BTreeSet::new(),
+        macro_attributes: false,
+        first_party_unread: false,
+        stdlib_unread: false,
         visited: BTreeSet::new(),
         stack: Vec::new(),
         patch_added,
@@ -219,13 +258,13 @@ pub fn collect_target_defines(
             HeaderSource::PatchAdded => walk.patch_added.get(&path).cloned(),
         };
         let Some(content) = content else {
-            walk.out.complete = false;
+            walk.first_party_unread = true;
             continue;
         };
         walk.absorb(&content);
         walk.follow_includes(&content, &path, depth + 1);
     }
-    walk.out
+    walk.finish()
 }
 
 /// What the macro-value check produced: the drift reasons plus the

@@ -1,0 +1,5 @@
+error[E0599]: no method named `modules` found for reference `&CallGraph<Functions, Building>` in the current scope
+ --> tests/compile_fail/call_graph_needs_built_for_modules.rs:4:19
+  |
+4 |     let _ = graph.modules();
+  |                   ^^^^^^^ private field, not a method

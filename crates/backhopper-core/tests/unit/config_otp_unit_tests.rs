@@ -114,10 +114,10 @@ layout = "umbrella"
 "#,
     )
     .unwrap_err();
-    match err {
-        ConfigError::UnknownProjectLayout(value) => assert_eq!(value, "umbrella"),
-        other => panic!("expected UnknownProjectLayout, got {other:?}"),
-    }
+    assert!(
+        err.to_string()
+            .contains("unknown project layout \"umbrella\"")
+    );
 }
 
 #[test]

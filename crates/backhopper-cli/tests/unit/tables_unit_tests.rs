@@ -18,7 +18,7 @@ use backhopper_core::model::snapshot::{
 };
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
-    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, Verdict,
+    Diagnostics, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, TargetAxisSlot, Verdict,
 };
 use time::OffsetDateTime;
 
@@ -145,8 +145,7 @@ fn table_handles_synthetic_record_fields_changed_reason() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("RecordFields"), "table: {text}");
@@ -237,8 +236,7 @@ fn clause_mismatch_reason_renders_call_args_and_pin_clauses() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("ClauseMismatch"), "table: {text}");
@@ -263,8 +261,7 @@ fn untracked_module_missing_reason_renders_in_table() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UntrackedModuleMissing"), "table: {text}");
@@ -286,8 +283,7 @@ fn unsupported_file_type_reason_renders_in_table() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("UnsupportedFileType"), "table: {text}");
@@ -313,8 +309,7 @@ fn target_path_absent_reason_renders_in_table() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(text.contains("TargetPathAbsent"), "table: {text}");
@@ -381,8 +376,7 @@ fn table_renders_the_bump_first_remedy_for_both_reason_families() {
         patch_facts: Default::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     };
     let text = render_evaluation_table(&eval, TableStyle::Modern);
     assert!(

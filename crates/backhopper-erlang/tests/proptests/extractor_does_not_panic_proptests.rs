@@ -4,6 +4,7 @@
 
 use proptest::prelude::*;
 
+use backhopper_core::model::names::RelativePath;
 use backhopper_erlang::ErlangExtractor;
 
 proptest! {
@@ -16,6 +17,6 @@ proptest! {
     #[test]
     fn extract_header_does_not_panic_on_garbage(s in "[\\PC]{0,2048}") {
         let ex = ErlangExtractor::default();
-        let _ = ex.extract_header_file("/tmp/garbage.hrl", &s);
+        let _ = ex.extract_header_file(RelativePath::new("garbage.hrl").unwrap(), &s);
     }
 }

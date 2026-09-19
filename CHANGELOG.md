@@ -1,8 +1,21 @@
 # Changelog
 
-## v0.33.0 (in development)
+## v0.34.0 (in development)
+
+### Enhancements
+
+ * Assorted domain types improvements, see `docs/types.md`
 
 ### Bug Fixes
+
+ * `Module.clause_heads` is a `BTreeMap<FunArity, ...>`; serialising a
+   module with a populated map failed with `key must be a string`,
+   because `serde_json` refuses a non-string map key. The map now
+   serialises its key through `FunArity`'s `Display`
+
+ * `config show --formatter json` spelled a self-project's `kind` as
+   `self_repo`; every other surface already said `self`. It now says
+   `self` everywhere
 
  * A record field's `::` type annotation (`vhost :: rabbit_types:vhost()`)
    is now read as a type reference and not as a call. Field defaults
@@ -13,6 +26,18 @@
    as a `mod:fun(...)` call. Previously such a tuple was never
    extracted at all, so a callee it named could be undefined on the
    target with no finding
+ * A patch that adds `-compile(export_all)` to a module without also
+   touching its `-export` list in the same diff no longer flags calls
+   into that module as undefined on target: the export surface may
+   cover the callee in a way the diff itself does not show, so the
+   axis withholds instead of guessing from the small explicit list
+
+### Removals
+
+ * `TargetWalkIndex.truncated` is removed; it had no reader
+ * `WireConstantDecl::new` is removed; the family defaults are built
+   from one `const` table per family, and the struct literal is the
+   door for a test
 
 ## v0.32.0 (August 13, 2026)
 

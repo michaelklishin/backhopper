@@ -20,14 +20,14 @@ use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ElixirExtractor {
-    pub public_modules: Vec<String>,
-    pub internal_modules: Vec<String>,
+    pub public_modules: Vec<ModuleName>,
+    pub internal_modules: Vec<ModuleName>,
 }
 
 const ELIXIR_FILE_EXTS: &[&str] = &[".ex", ".exs"];
 
 impl ElixirExtractor {
-    pub fn new(public_modules: Vec<String>, internal_modules: Vec<String>) -> Self {
+    pub fn new(public_modules: Vec<ModuleName>, internal_modules: Vec<ModuleName>) -> Self {
         Self {
             public_modules,
             internal_modules,

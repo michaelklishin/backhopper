@@ -33,15 +33,15 @@ diff --git a/test/snippets/definitions.snippets b/test/snippets/definitions.snip
 #[test]
 fn schema_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(SCHEMA_DIFF.as_bytes()).unwrap();
-    assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
+    assert_eq!(p.files().len(), 1);
+    assert_eq!(p.files()[0].language, SourceKind::CuttlefishSchema);
 }
 
 #[test]
 fn snippets_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(SNIPPETS_DIFF.as_bytes()).unwrap();
-    assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
+    assert_eq!(p.files().len(), 1);
+    assert_eq!(p.files()[0].language, SourceKind::CuttlefishSchema);
 }
 
 const PARTIAL_DIFF: &str = "\
@@ -57,8 +57,8 @@ diff --git a/deps/rabbit/priv/schema/ssl_options.partial b/deps/rabbit/priv/sche
 #[test]
 fn partial_files_are_tagged_as_cuttlefish() {
     let p = Patch::parse(PARTIAL_DIFF.as_bytes()).unwrap();
-    assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, SourceKind::CuttlefishSchema);
+    assert_eq!(p.files().len(), 1);
+    assert_eq!(p.files()[0].language, SourceKind::CuttlefishSchema);
 }
 
 // Core no longer parses .schema fragments: that needs the whole file and the

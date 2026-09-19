@@ -4,4 +4,4 @@
 
 pub mod fs;
 
-pub use fs::{Mutable, ReadOnly, SnapshotStore};
+pub use fs::{Mutable, ReadOnly, SnapshotStore, StoreMode};

@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-use backhopper_cache::{canonical_json, content_hash};
+use backhopper_cache::{canonical_json, content_digest, content_hash};
 
 #[derive(Serialize)]
 struct AlphaFirst {
@@ -58,4 +58,17 @@ fn hash_is_lowercase_hex_of_fixed_length() {
         h.chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase())
     );
+}
+
+// content_digest is content_hash's bytes, before hex formatting.
+#[test]
+fn content_digest_hex_encodes_to_content_hash() {
+    let digest = content_digest(&"anything").unwrap();
+    let hash = content_hash(&"anything").unwrap();
+    let hex: String = digest.iter().fold(String::new(), |mut acc, b| {
+        use std::fmt::Write;
+        write!(acc, "{b:02x}").unwrap();
+        acc
+    });
+    assert_eq!(hex, hash);
 }

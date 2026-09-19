@@ -9,7 +9,7 @@ use std::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::names::{CommitSha, SeriesName};
+use crate::model::names::{CommitSha, SeriesName, vocabulary};
 use crate::model::verdict::{TouchedKinds, Verdict};
 
 /// One row in the summary output: a compact projection of a single
@@ -46,17 +46,16 @@ pub struct SummaryRow {
     pub target_findings: u32,
 }
 
-/// Kind-only projection of `Verdict`: drops the variant payloads so a
-/// summary row stays single-line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum VerdictKind {
-    Compatible,
-    RequiresAdaptation,
-    Incompatible,
-    Inapplicable,
-}
+vocabulary!(
+    /// Kind-only projection of `Verdict`: drops the variant payloads so a
+    /// summary row stays single-line.
+    pub enum VerdictKind: "verdict kind" {
+        Compatible => "compatible",
+        RequiresAdaptation => "requires_adaptation",
+        Incompatible => "incompatible",
+        Inapplicable => "inapplicable",
+    }
+);
 
 impl From<&Verdict> for VerdictKind {
     fn from(v: &Verdict) -> Self {
@@ -65,19 +64,6 @@ impl From<&Verdict> for VerdictKind {
             Verdict::RequiresAdaptation { .. } => Self::RequiresAdaptation,
             Verdict::Incompatible { .. } => Self::Incompatible,
             Verdict::Inapplicable { .. } => Self::Inapplicable,
-        }
-    }
-}
-
-impl VerdictKind {
-    /// Snake-case wire form. Matches the `#[serde(rename_all)]` projection.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Compatible => "compatible",
-            Self::RequiresAdaptation => "requires_adaptation",
-            Self::Incompatible => "incompatible",
-            Self::Inapplicable => "inapplicable",
         }
     }
 }

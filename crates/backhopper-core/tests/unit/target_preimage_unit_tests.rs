@@ -31,7 +31,7 @@ diff --git a/src/x.erl b/src/x.erl
 
 fn reasons_against(patch: &str, target: &str) -> Vec<Reason> {
     let parsed = Patch::parse(patch.as_bytes()).unwrap();
-    let file = &parsed.files[0];
+    let file = &parsed.files()[0];
     let path = file.new_path.as_deref().unwrap();
     classify_hunks_against_target(path, &file.hunks, target)
 }

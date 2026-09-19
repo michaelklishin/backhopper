@@ -25,7 +25,7 @@ use crate::model::snapshot::{
 };
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
-use crate::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
+use crate::model::symbol::{ExportedSymbol, RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
     ArtifactKind, ConflictMarker, HunkTally, Reason, SnapshotSide, SourceDelta, Verdict,
 };
@@ -197,35 +197,32 @@ fn tally_context_miss(
     scope: Option<&PinScope>,
     out: &mut BTreeMap<ModuleName, usize>,
 ) {
-    let module = match &r.kind {
-        SymbolKind::Function { mfa } => &mfa.module,
-        SymbolKind::FunctionAnyArity { module, .. } | SymbolKind::Type { module, .. } => module,
-        SymbolKind::Behaviour { .. }
-        | SymbolKind::Callback { .. }
-        | SymbolKind::Macro { .. }
-        | SymbolKind::Record { .. } => return,
+    let Some(symbol) = r.kind.as_exported() else {
+        return;
+    };
+    let module = match &symbol {
+        ExportedSymbol::Function(mfa) => &mfa.module,
+        ExportedSymbol::FunctionAnyArity { module, .. } | ExportedSymbol::Type { module, .. } => {
+            module
+        }
     };
     if let Some(s) = scope
         && !s.contains_module(module)
     {
         return;
     }
-    let resolved = match &r.kind {
-        SymbolKind::Function { mfa } => {
+    let resolved = match symbol {
+        ExportedSymbol::Function(mfa) => {
             function_exported(snapshot, &mfa.module, &mfa.function, mfa.arity)
         }
-        SymbolKind::FunctionAnyArity { module, function } => {
+        ExportedSymbol::FunctionAnyArity { module, function } => {
             function_exported_any_arity(snapshot, module, function)
         }
-        SymbolKind::Type {
+        ExportedSymbol::Type {
             module,
             name,
             arity,
-        } => type_exported(snapshot, module, name, *arity),
-        SymbolKind::Behaviour { .. }
-        | SymbolKind::Callback { .. }
-        | SymbolKind::Macro { .. }
-        | SymbolKind::Record { .. } => unreachable!("filtered above"),
+        } => type_exported(snapshot, module, name, arity),
     };
     if !resolved {
         *out.entry(module.clone()).or_insert(0) += 1;
@@ -443,9 +440,7 @@ fn check_versioned_machine_data(
 ) {
     let touched = touched_module_set(files);
     for impl_decl in &defaults.versioned_machine_impls {
-        let Ok(module) = ModuleName::new(&impl_decl.module) else {
-            continue;
-        };
+        let module = impl_decl.module.clone();
         if !touched.contains(&module) {
             continue;
         }
@@ -470,9 +465,7 @@ fn check_versioned_machine_data(
         }
     }
     for wc_decl in &defaults.wire_constants {
-        let Ok(module) = ModuleName::new(&wc_decl.module) else {
-            continue;
-        };
+        let module = wc_decl.module.clone();
         if !touched.contains(&module) {
             continue;
         }
@@ -481,7 +474,7 @@ fn check_versioned_machine_data(
             .macros
             .iter()
             .filter(|m| !target_present.contains(m.as_str()))
-            .filter_map(|m| MacroName::new(m).ok())
+            .cloned()
             .collect();
         let Some(src) = source else {
             if !missing_target.is_empty() {
@@ -500,7 +493,7 @@ fn check_versioned_machine_data(
             .macros
             .iter()
             .filter(|m| !source_present.contains(m.as_str()))
-            .filter_map(|m| MacroName::new(m).ok())
+            .cloned()
             .collect();
         match (missing_source.is_empty(), missing_target.is_empty()) {
             (true, true) => {}

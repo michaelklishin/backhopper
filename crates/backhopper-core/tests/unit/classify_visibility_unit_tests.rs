@@ -18,7 +18,7 @@ fn plain_module_is_public() {
 
 #[test]
 fn internal_listed_module_is_hidden() {
-    let internal = vec!["ra_log_segment".to_owned()];
+    let internal = vec![module("ra_log_segment")];
     let v = classify_visibility(&module("ra_log_segment"), false, false, &[], &internal);
     assert_eq!(v, Visibility::Hidden);
 }
@@ -31,7 +31,7 @@ fn hidden_hint_marks_module_hidden() {
 
 #[test]
 fn public_listing_overrides_hidden_hint() {
-    let public = vec!["khepri_machine".to_owned()];
+    let public = vec![module("khepri_machine")];
     let v = classify_visibility(&module("khepri_machine"), true, false, &public, &[]);
     assert_eq!(v, Visibility::Public);
 }
@@ -44,7 +44,7 @@ fn test_only_exports_make_module_test_only() {
 
 #[test]
 fn internal_listing_wins_over_test_only() {
-    let internal = vec!["ra_test_internal".to_owned()];
+    let internal = vec![module("ra_test_internal")];
     let v = classify_visibility(&module("ra_test_internal"), false, true, &[], &internal);
     assert_eq!(v, Visibility::Hidden);
 }

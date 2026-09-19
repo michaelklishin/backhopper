@@ -159,7 +159,7 @@ fn run_list(
             .iter()
             .map(|r| ListRow {
                 key: r.key.chars().take(12).collect(),
-                level: r.level.as_str(),
+                level: r.level.dir_name(),
                 commit: r
                     .commit
                     .as_deref()
@@ -237,7 +237,7 @@ fn render_show_text(
         },
         FieldRow {
             field: "level",
-            value: payload.level.as_str().to_owned(),
+            value: payload.level.dir_name().to_owned(),
         },
         FieldRow {
             field: "created_at",

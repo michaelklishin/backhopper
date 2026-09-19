@@ -30,10 +30,9 @@ use crate::output::emit_jsonl;
 /// would make every self-heavy commit read as harness-verified.
 #[must_use]
 pub fn self_project_names(cfg: &Config) -> BTreeSet<ProjectName> {
-    cfg.projects
-        .iter()
-        .filter(|p| p.is_self())
+    cfg.self_project()
         .map(|p| p.name.clone())
+        .into_iter()
         .collect()
 }
 
@@ -48,12 +47,13 @@ pub fn to_summary_row(
     series: Option<SeriesName>,
     parent_count: Option<NonZeroU32>,
 ) -> SummaryRow {
+    let target = eval.target.get();
     summary_row(
         &eval.verdict,
         RowAxes {
             diagnostics: &eval.diagnostics,
-            apply: eval.apply.as_ref(),
-            target_findings: eval.target_findings.as_ref(),
+            apply: target.map(|t| t.apply),
+            target_findings: target.map(|t| t.findings),
         },
         self_projects,
         sha,
@@ -180,7 +180,7 @@ fn emit_text(w: &mut dyn Write, rows: &[SummaryRow]) -> CliResult<()> {
             w,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.sha.abbreviated(),
-            row.verdict.as_str(),
+            row.verdict.label(),
             touched,
             row.tracked,
             series,

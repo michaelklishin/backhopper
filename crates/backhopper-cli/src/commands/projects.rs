@@ -3,9 +3,11 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use crate::outcome::CommandOutcome;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+
+use backhopper_core::config::Project;
 
 use crate::cli::{GlobalArgs, ProjectsCmd};
 use crate::commands::context::{load_config, open_store_read};
@@ -33,6 +35,13 @@ struct ProjectShow {
     captured_tags: Vec<String>,
 }
 
+fn git_url_and_kind(p: &Project) -> (Option<PathBuf>, String) {
+    (
+        p.source.git_url().map(Path::to_path_buf),
+        p.source.kind().label().to_owned(),
+    )
+}
+
 pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<CommandOutcome> {
     let cfg = load_config(args)?;
     match cmd {
@@ -40,11 +49,14 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<CommandOutcome> 
             let entries: Vec<_> = cfg
                 .projects
                 .iter()
-                .map(|p| ProjectListEntry {
-                    name: p.name.to_string(),
-                    git_url: p.git_url.clone(),
-                    kind: p.kind.as_str().to_owned(),
-                    language: p.language.to_string(),
+                .map(|p| {
+                    let (git_url, kind) = git_url_and_kind(p);
+                    ProjectListEntry {
+                        name: p.name.to_string(),
+                        git_url,
+                        kind,
+                        language: p.language.to_string(),
+                    }
                 })
                 .collect();
             let ctx = OutputContext::new(args.formatter, "projects list");
@@ -65,13 +77,14 @@ pub fn handle(args: &GlobalArgs, cmd: ProjectsCmd) -> CliResult<CommandOutcome> 
             let p = cfg.project(&project)?;
             let store = open_store_read(args, &cfg)?;
             let tags = store.list_tags(&project)?;
+            let (git_url, kind) = git_url_and_kind(p);
             let payload = ProjectShow {
                 name: p.name.to_string(),
-                git_url: p.git_url.clone(),
-                kind: p.kind.as_str().to_owned(),
+                git_url,
+                kind,
                 language: p.language.to_string(),
                 tag_prefix: p.tag_prefix.clone(),
-                public_modules: p.public_modules.clone(),
+                public_modules: p.public_modules.iter().map(ToString::to_string).collect(),
                 captured_tags: tags.iter().map(|s| s.to_string()).collect(),
             };
             let ctx = OutputContext::new(args.formatter, "projects show");

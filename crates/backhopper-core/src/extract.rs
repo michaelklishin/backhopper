@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::errors::NameError;
 use crate::model::names::ModuleName;
 use crate::model::snapshot::{HrlFile, Module, Visibility};
 
@@ -26,6 +27,9 @@ pub struct ExtractedSource {
 pub enum ExtractError {
     #[error("invalid utf-8 in {path:?} at byte offset {offset}")]
     InvalidUtf8 { path: PathBuf, offset: usize },
+
+    #[error("{path:?} is not a repo-relative path: {source}")]
+    InvalidPath { path: PathBuf, source: NameError },
 }
 
 /// Resolves a module's [`Visibility`] from its name, the config's public and
@@ -37,13 +41,13 @@ pub fn classify_visibility(
     module: &ModuleName,
     hidden: bool,
     test_only: bool,
-    public_modules: &[String],
-    internal_modules: &[String],
+    public_modules: &[ModuleName],
+    internal_modules: &[ModuleName],
 ) -> Visibility {
-    if internal_modules.iter().any(|n| n == module.as_str()) {
+    if internal_modules.contains(module) {
         return Visibility::Hidden;
     }
-    if hidden && !public_modules.iter().any(|n| n == module.as_str()) {
+    if hidden && !public_modules.contains(module) {
         return Visibility::Hidden;
     }
     if test_only {

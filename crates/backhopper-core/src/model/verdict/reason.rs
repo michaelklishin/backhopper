@@ -12,7 +12,7 @@ use super::InapplicableReason;
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
     Arity, CommitSha, FieldName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
-    RecordName, RelativePath, TagName, TypeName,
+    RecordName, RelativePath, TagName, TypeName, vocabulary,
 };
 use crate::model::resolver_coverage::ResolverClass;
 use crate::model::symbol::SymbolRef;
@@ -557,29 +557,17 @@ impl ConflictMarker {
     }
 }
 
-/// The apply outcomes a divergence predictor consumes, ordered by
-/// severity: a higher variant outranks a lower one on the same path, so
-/// dedup to one conflict per path is a `max`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum ApplyConflictKind {
-    PostimageCollision,
-    PreimageMissing,
-    FileAbsent,
-}
-
-impl ApplyConflictKind {
-    /// Stable label used in clearance roll-ups and text output.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::PostimageCollision => "postimage_collision",
-            Self::PreimageMissing => "preimage_missing",
-            Self::FileAbsent => "file_absent",
-        }
+vocabulary!(
+    /// The apply outcomes a divergence predictor consumes, ordered by
+    /// severity: a higher variant outranks a lower one on the same path, so
+    /// dedup to one conflict per path is a `max`.
+    #[derive(PartialOrd, Ord)]
+    pub enum ApplyConflictKind: "apply conflict kind" {
+        PostimageCollision => "postimage_collision",
+        PreimageMissing => "preimage_missing",
+        FileAbsent => "file_absent",
     }
-}
+);
 
 /// Which recognized call form carried an indirect MFA reference. Names
 /// the innermost form: a meck expectation reached through an rpc helper

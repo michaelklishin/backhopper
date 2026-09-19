@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::config::{Language, Project, ProjectFamily, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectLayout, ProjectSource};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::{
@@ -15,8 +15,9 @@ use backhopper_cli::commands::series::{
 fn project(name: &str, tag_prefix: &str) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: Some(PathBuf::from(format!("/tmp/{name}.git"))),
-        kind: ProjectKind::External,
+        source: ProjectSource::External {
+            git_url: PathBuf::from(format!("/tmp/{name}.git")),
+        },
         family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: tag_prefix.into(),

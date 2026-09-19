@@ -81,9 +81,9 @@ proptest! {
     #[test]
     fn ratios_never_exceed_their_denominators(rows in entries()) {
         let report = evaluate_forecasts(&rows);
-        prop_assert!(report.precision.hits <= report.precision.total);
-        prop_assert!(report.recall.hits <= report.recall.total);
-        prop_assert!(report.path_overlap.hits <= report.path_overlap.total);
+        prop_assert!(report.precision.hits() <= report.precision.total());
+        prop_assert!(report.recall.hits() <= report.recall.total());
+        prop_assert!(report.path_overlap.hits() <= report.path_overlap.total());
     }
 
     // every non-out-of-band entry lands in the rate cells for its variant and prediction
@@ -99,9 +99,9 @@ proptest! {
             .iter()
             .filter(|e| matches!(e.observed, ObservedApply::Conflicted { .. }))
             .count();
-        prop_assert_eq!(report.precision.total, predicted);
-        prop_assert_eq!(report.recall.total, conflicted);
-        prop_assert_eq!(report.precision.hits, report.recall.hits);
+        prop_assert_eq!(report.precision.total(), predicted);
+        prop_assert_eq!(report.recall.total(), conflicted);
+        prop_assert_eq!(report.precision.hits(), report.recall.hits());
         prop_assert_eq!(report.out_of_band, rows.len() - graded.len());
         prop_assert_eq!(report.entries, rows.len());
     }

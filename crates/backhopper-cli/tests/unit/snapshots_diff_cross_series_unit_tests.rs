@@ -19,7 +19,7 @@ fn payload(project: &str, from: &str, to: &str, removed: &[(&str, &str)]) -> Dif
             .iter()
             .map(|(m, fa)| QualifiedFunArity {
                 module: ModuleName::new(*m).unwrap(),
-                fun_arity: (*fa).into(),
+                fun_arity: fa.parse().unwrap(),
             })
             .collect(),
         types_added: Vec::new(),

@@ -9,14 +9,15 @@ use std::path::{Path, PathBuf};
 use proptest::prelude::*;
 
 use backhopper_core::compat::routing::{classify_paths_for_pin, project_owns_path};
-use backhopper_core::config::{Project, ProjectFamily, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Project, ProjectFamily, ProjectLayout, ProjectSource};
 use backhopper_core::model::names::ProjectName;
 
 fn project(name: &str, scan_paths: Vec<String>, app_roots: Vec<String>) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: Some(PathBuf::from("/tmp/x.git")),
-        kind: ProjectKind::External,
+        source: ProjectSource::External {
+            git_url: PathBuf::from("/tmp/x.git"),
+        },
         family: ProjectFamily::Generic,
         language: backhopper_core::config::Language::Erlang,
         tag_prefix: String::new(),

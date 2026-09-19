@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::model::names::{ApplicationName, FieldName, ModuleName, RecordName};
+use backhopper_core::model::names::{
+    ApplicationName, FieldName, ModuleName, RecordName, RelativePath,
+};
 use backhopper_core::model::snapshot::{
     FORMAT_VERSION, Module, RecordDecl, RecordField, SUPPORTED_FORMAT_VERSIONS,
 };
@@ -49,7 +51,10 @@ fn parser_accepts_v2_format() {
     let alpha = parsed
         .module_named(&ModuleName::new("alpha").unwrap())
         .unwrap();
-    assert_eq!(alpha.path.as_deref(), Some("src/alpha.erl"));
+    assert_eq!(
+        alpha.path.as_ref().map(RelativePath::as_str),
+        Some("src/alpha.erl")
+    );
     assert_eq!(alpha.app.as_ref().map(|a| a.as_str()), Some("rabbit"));
 }
 
@@ -73,7 +78,7 @@ fn writer_emits_current_format_header() {
 #[test]
 fn module_path_and_app_round_trip_through_format() {
     let mut m = Module::new(ModuleName::new("alpha").unwrap());
-    m.path = Some("deps/rabbit/src/alpha.erl".into());
+    m.path = Some(RelativePath::new("deps/rabbit/src/alpha.erl").unwrap());
     m.app = Some(ApplicationName::new("rabbit").unwrap());
     let snap = canonical_snapshot(snapshot_header("p", "v1"), vec![m]);
     let text = format::to_string(&snap).expect("write");
@@ -81,7 +86,10 @@ fn module_path_and_app_round_trip_through_format() {
     let alpha = reparsed
         .module_named(&ModuleName::new("alpha").unwrap())
         .unwrap();
-    assert_eq!(alpha.path.as_deref(), Some("deps/rabbit/src/alpha.erl"));
+    assert_eq!(
+        alpha.path.as_ref().map(RelativePath::as_str),
+        Some("deps/rabbit/src/alpha.erl")
+    );
     assert_eq!(alpha.app.as_ref().map(|a| a.as_str()), Some("rabbit"));
 }
 

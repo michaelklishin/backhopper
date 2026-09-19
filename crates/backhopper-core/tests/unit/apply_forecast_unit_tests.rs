@@ -174,12 +174,12 @@ fn wire_tags_are_snake_case_and_round_trip() {
 #[test]
 fn conflict_kind_labels_are_stable() {
     assert_eq!(
-        ApplyConflictKind::PreimageMissing.as_str(),
+        ApplyConflictKind::PreimageMissing.label(),
         "preimage_missing"
     );
-    assert_eq!(ApplyConflictKind::FileAbsent.as_str(), "file_absent");
+    assert_eq!(ApplyConflictKind::FileAbsent.label(), "file_absent");
     assert_eq!(
-        ApplyConflictKind::PostimageCollision.as_str(),
+        ApplyConflictKind::PostimageCollision.label(),
         "postimage_collision"
     );
 }

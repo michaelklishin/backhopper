@@ -229,6 +229,78 @@ fn snapshots_show_pretty_prints_canonical_text() {
     assert!(stdout.contains("module demo_mod"));
 }
 
+// The JSON envelope's `data` is `Snapshot<Canonical>` serialized directly:
+// reading it back through `Deserialize` must reproduce the same value the
+// text format parses, since the JSON reader checks canonical order too.
+#[test]
+fn snapshots_show_json_round_trips_to_the_same_snapshot_as_text() {
+    let (repo, work) = build_demo_repo();
+    let snap = work.path().join("snapshots");
+    let cfg = write_config(work.path(), repo.dir.path(), &snap);
+    Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "generate",
+            "--project",
+            "demo",
+        ])
+        .assert()
+        .success();
+
+    let text_args = [
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "snapshots",
+        "show",
+        "--project",
+        "demo",
+        "--tag",
+        "v1.0.0",
+        "--formatter",
+        "text",
+    ];
+    let text_out = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args(text_args)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let from_text =
+        backhopper_core::snapshot::parser::parse(&String::from_utf8(text_out.stdout).unwrap())
+            .unwrap();
+
+    let json_args = [
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "snapshots",
+        "show",
+        "--project",
+        "demo",
+        "--tag",
+        "v1.0.0",
+        "--formatter",
+        "json",
+    ];
+    let json_out = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args(json_args)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&json_out.stdout).expect("valid json envelope");
+    let from_json: backhopper_core::model::snapshot::Snapshot<
+        backhopper_core::model::snapshot::state::Canonical,
+    > = serde_json::from_value(envelope["data"].clone()).expect("data deserializes canonically");
+
+    assert_eq!(from_text, from_json);
+}
+
 #[test]
 fn snapshots_verify_passes_on_unchanged_repo() {
     let (repo, work) = build_demo_repo();

@@ -8,21 +8,18 @@
 use std::path::{Path, PathBuf};
 
 use backhopper_core::compat::routing::{PathRouting, classify_paths_for_pin, project_owns_path};
-use backhopper_core::config::{Project, ProjectFamily, ProjectKind, ProjectLayout};
+use backhopper_core::config::{Project, ProjectFamily, ProjectLayout, ProjectSource};
 use backhopper_core::model::names::ProjectName;
 
 fn project(name: &str, is_self: bool, scan_paths: &[&str], app_roots: &[&str]) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: if is_self {
-            None
+        source: if is_self {
+            ProjectSource::SelfRepo
         } else {
-            Some(PathBuf::from("/tmp/x.git"))
-        },
-        kind: if is_self {
-            ProjectKind::SelfRepo
-        } else {
-            ProjectKind::External
+            ProjectSource::External {
+                git_url: PathBuf::from("/tmp/x.git"),
+            }
         },
         family: ProjectFamily::Generic,
         language: backhopper_core::config::Language::Erlang,

@@ -18,7 +18,8 @@ pub mod sweep;
 pub mod verdict;
 
 pub use cache_io::{
-    ENTRY_FORMAT_VERSION, canonical_json, content_hash, hash_bytes, hash_file, is_entry_file_name,
+    ENTRY_FORMAT_VERSION, canonical_json, content_digest, content_hash, hash_bytes, hash_file,
+    is_entry_file_name,
 };
 pub use errors::CacheError;
 pub use inspect::{

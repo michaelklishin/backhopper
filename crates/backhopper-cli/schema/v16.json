@@ -3293,7 +3293,7 @@
         ]
       },
       "VerdictFingerprint": {
-        "description": "A verdict's stable identity for measurement: equal fingerprints\nmean the same patch against the same target and pins, whatever\nbackhopper version produced either side.",
+        "description": "A verdict's stable identity for measurement: equal fingerprints\nmean the same patch against the same target and pins, whatever\nbackhopper version produced either side. Thirty-two lowercase hex\ncharacters: a truncated BLAKE3 digest, formatted here so\n`backhopper-core` takes no dependency on `blake3`.",
         "type": "string"
       }
     },
@@ -6903,7 +6903,7 @@
         ]
       },
       "VerdictFingerprint": {
-        "description": "A verdict's stable identity for measurement: equal fingerprints\nmean the same patch against the same target and pins, whatever\nbackhopper version produced either side.",
+        "description": "A verdict's stable identity for measurement: equal fingerprints\nmean the same patch against the same target and pins, whatever\nbackhopper version produced either side. Thirty-two lowercase hex\ncharacters: a truncated BLAKE3 digest, formatted here so\n`backhopper-core` takes no dependency on `blake3`.",
         "type": "string"
       }
     },

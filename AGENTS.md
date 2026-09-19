@@ -142,7 +142,7 @@ Config (`src/config/`):
 Compatibility pipeline (`src/compat/`):
 
  * `patch.rs`: unified-diff parser, `Patch<S>` type-state pipeline
-   (`Raw` → `Analyzed` → `Verdicted`)
+   (`Raw` → `Analyzed`)
  * `evaluate.rs`: the analysis core that produces verdicts from analyzed
    patches and snapshots
  * `call_sites.rs`: extractor for `mod:fun(...)`, `fun mod:fun/N`,
@@ -434,7 +434,12 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
    module-level `use` if there is no ambiguity in the scope
  * Reduce macro use where possible; prefer reducing duplication via
    the type system (generics, traits, type-state). Some duplication is
-   acceptable when the alternative is forced indirection
+   acceptable when the alternative is forced indirection.
+   `string_newtype!` and `vocabulary!` (`model/names.rs`) are the two
+   macros the tree admits: a table of string literals has no type-level
+   expression, so plumbing a validated name or a closed vocabulary's
+   `Display`, `FromStr`, and `serde` spelling into its impls from one
+   declaration is the exception, not the rule
  * Add unit, integration, and property tests under
    `tests/{unit,integration,proptests}/`, never inline in
    implementation files
@@ -445,49 +450,57 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
  * At the end of each task, run `RUSTFLAGS="-D warnings" cargo nextest
    run --workspace --all-features` and ensure it is clean
 
-## Domain Primitives Are Newtypes
+## Types Over Comments
 
-Never let a `String` represent a project name, tag, module name,
-function name, commit SHA, or anything else with a domain meaning.
-Use the newtypes in `backhopper_core::model::names`. Each implements
-`FromStr`, `Display`, and `serde(transparent)`. This means:
+A rule this codebase keeps is a rule the compiler holds, not one
+restated in a comment, checked after construction, or written once
+per call site. Constitution article `0003` is the argument;
+`docs/types.md` catalogues the shapes already here. Before writing a
+check or a comment for a new rule, ask whether the wrong shape can
+be made unconstructible: `TagName` (no `/`, no control characters),
+`Snapshot<Canonical>` (no write of an unsorted snapshot),
+`CheckPatchBuilder<WithTarget, WithInput>` (no run without a target) and
+`ProjectSource` (no self-project with a `git_url`) are the precedents.
 
- * Clap parses `--mfa cowboy_req:set_resp_header/3` directly into
-   `Mfa`, with validation at the CLI boundary instead of three call
-   sites down
- * Path-traversal and similar injection bugs are foreclosed at
-   newtype construction (e.g. `TagName` rejects `/`, `\`, NUL, control
-   characters)
- * Test failures point at the right type, not "expected String got String"
+What stays a check: anything that needs another pin's snapshot, the
+target tree, a git object, a `rabbitmq-components.mk`, or the
+wire's frozen history. What does not get generalized: values that
+agree on shape and disagree on meaning, such as `TagName` and
+`GitRef`, which share a charset and must never be substituted for
+each other.
 
-If a new domain primitive is needed, add it as a newtype, not a
-`String` alias.
+The JSON envelope and the verdict cache key are frozen boundaries.
+A wire struct keeps its flat `Option` fields; the type that cannot
+disagree with itself lives one layer in and is derived once on read
+or set once through the only door.
 
-## Type-State Pattern
+A `.expect("… is valid …")` on a constant whose text is in the
+source is a run-time proof of a compile-time fact. Give the type a
+`const` where its representation allows one; where it does not
+(`Arc<str>`), say so in `docs/types.md`'s ledger rather than adding
+a second site.
 
-Four invariants are lifted into the type system. Honor them; don't
-work around them with helper functions that erase the state.
+Two invariants that predate this section remain in force:
 
- 1. Only `Snapshot<state::Canonical>` may be written or parsed. The
-    only way to obtain `Canonical` is `Snapshot::<Unsorted>::into_canonical`
-    or `Snapshot::parse`. The reader rejects non-canonical input
- 2. `Patch<patch_state::{Raw|Analyzed|Verdicted}>` is a one-way
-    pipeline. `verdict` exists only on `Verdicted`. Do not add
-    methods that bypass the pipeline
- 3. `SnapshotStore<ReadOnly>` has no `write` method. Query commands
-    take the read-only handle. Do not introduce a `write_unchecked` or
-    similar escape hatch
- 4. `PinSpec` (`Literal`, `Pattern`, or `SelfRef`) lives in the config
-    layer; the compatibility pipeline only sees the resolved `Pin`. The
-    only way to obtain a `Pin` from a `PinSpec::Pattern` is
-    `PinSpec::resolve(&store)`; for `PinSpec::SelfRef` the CLI resolves
-    against `--repo-dir-path` (`PinSpec::resolve` returns
-    `ConfigError::SelfPinNeedsRepoDirPath`). Do not introduce a method
-    that returns a `Pin` from a pattern or self-ref spec without
-    consulting the store or working repo
-
-If a future change needs to relax one of these, propose it in a PR
-description, not by adding an `.unwrap_state` method.
+ * Never let a `String` represent a project name, tag, module name,
+   function name, commit SHA, or anything else with a domain meaning.
+   Use the newtypes in `backhopper_core::model::names`. Each implements
+   `FromStr`, `Display`, and `serde(transparent)`. This means clap
+   parses `--mfa cowboy_req:set_resp_header/3` directly into `Mfa`,
+   path-traversal and similar injection bugs are foreclosed at newtype
+   construction (`TagName` rejects `/`, `\`, NUL, control characters),
+   and test failures point at the right type. If a new domain
+   primitive is needed, add it as a newtype, not a `String` alias
+ * `Snapshot<state::Canonical>` may only be written or parsed through
+   `Snapshot::<Unsorted>::into_canonical` or `Snapshot::parse`;
+   `Patch<patch_state::{Raw|Analyzed}>` is a one-way pipeline;
+   `SnapshotStore<ReadOnly>` has no `write` method; `PinSpec::resolve`
+   is the only way to turn a `Pattern` or `SelfRef` spec into a `Pin`
+   (`Pin::new` builds a literal pin directly, since a literal needs no
+   resolution). Don't work around any of these with a helper function
+   that erases the state. If a future change needs to relax one of
+   them, propose it in a PR description, not by adding an
+   `.unwrap_state` method
 
 ## Project Layouts
 
@@ -619,7 +632,10 @@ your changes. In every iteration, look for meaningful improvements
 that were missed, gaps in test coverage, deviations from the
 instructions in this file, places where a `String` should be a
 newtype, or places where a runtime check should be a type-state
-constraint.
+constraint. Also look for a doc comment that states a rule no type
+holds, a check that runs after `serde` or a constructor already
+accepted the value, and a match on an enum a previous match already
+narrowed.
 
 If no meaningful improvements are found for three iterations in a
 row, report it and stop iterating.

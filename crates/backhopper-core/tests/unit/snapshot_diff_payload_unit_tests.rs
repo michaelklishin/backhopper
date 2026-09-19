@@ -45,12 +45,12 @@ fn breaking_removal_count_sums_only_removed_axes() {
     d.modules_removed.push(ModuleName::new("ra_gone").unwrap());
     d.exports_removed.push(QualifiedFunArity {
         module: ModuleName::new("ra_server").unwrap(),
-        fun_arity: "start/1".into(),
+        fun_arity: "start/1".parse().unwrap(),
     });
     // an added export is not a breaking removal
     d.exports_added.push(QualifiedFunArity {
         module: ModuleName::new("ra_server").unwrap(),
-        fun_arity: "start/2".into(),
+        fun_arity: "start/2".parse().unwrap(),
     });
     assert_eq!(d.breaking_removal_count(), 2);
 }

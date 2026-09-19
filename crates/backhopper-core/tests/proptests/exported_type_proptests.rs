@@ -13,7 +13,9 @@ use proptest::prelude::*;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
 use backhopper_core::compat::exported_type_resolve::analyse_exported_types;
-use backhopper_core::compat::source_attributes::{extract_defined_types, extract_exported_types};
+use backhopper_core::compat::source_attributes::{
+    ExportedTypes, extract_defined_types, extract_exported_types,
+};
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::model::names::{Arity, CommitSha, GitRef, RelativePath, TypeName};
 use backhopper_core::model::verdict::Reason;
@@ -120,11 +122,10 @@ proptest! {
     ) {
         let added = export_list(&exported);
         let target = format!("-module(rabbit_net).\n{}", declarations(&target_defined));
-        let added_exports: BTreeSet<_> = extract_exported_types(&added)
-            .types
-            .into_iter()
-            .map(|t| (t.name, t.arity))
-            .collect();
+        let ExportedTypes::Listed(types) = extract_exported_types(&added) else {
+            panic!("generated export list is always readable");
+        };
+        let added_exports: BTreeSet<_> = types.into_iter().map(|t| (t.name, t.arity)).collect();
         for key in flagged(&run(&added, &target)) {
             prop_assert!(added_exports.contains(&key), "flagged an unexported type: {key:?}");
         }

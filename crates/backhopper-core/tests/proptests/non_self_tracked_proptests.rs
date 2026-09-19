@@ -13,6 +13,7 @@ use proptest::prelude::*;
 use backhopper_core::model::batch::{BatchPayload, BatchResult};
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::Pin;
+use backhopper_core::model::resolver_coverage::ResolverCoverage;
 use backhopper_core::model::verdict::{
     Diagnostics, PatchFacts, PinVerdict, SeriesVerdict, Verdict, non_self_tracked,
 };
@@ -95,8 +96,8 @@ proptest! {
             queried_against: Vec::new(),
             results: rows,
             self_projects: Some(self_projects.clone()),
-            resolver_coverage: None,
-            fingerprint_version: None,
+            resolver_coverage: Some(ResolverCoverage::current()),
+            fingerprint_version: Some(1),
         };
         prop_assert_eq!(
             payload.clearance_self_inferred(),
@@ -113,8 +114,8 @@ proptest! {
             queried_against: Vec::new(),
             results: rows,
             self_projects: Some(self_projects),
-            resolver_coverage: None,
-            fingerprint_version: None,
+            resolver_coverage: Some(ResolverCoverage::current()),
+            fingerprint_version: Some(1),
         };
         let json = serde_json::to_string(&payload).unwrap();
         let back: BatchPayload = serde_json::from_str(&json).unwrap();

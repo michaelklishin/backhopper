@@ -59,6 +59,9 @@ pub enum NameError {
     #[error("invalid commit sha {value:?}: must be exactly 40 lowercase hex characters")]
     InvalidCommitSha { value: String },
 
+    #[error("invalid verdict fingerprint {value:?}: must be exactly 32 lowercase hex characters")]
+    InvalidVerdictFingerprint { value: String },
+
     #[error("commit sha prefix is empty")]
     EmptyCommitShaPrefix,
 
@@ -112,6 +115,11 @@ pub enum SnapshotError {
     #[error("non-canonical input at line {line}: {detail}")]
     NotCanonical { line: usize, detail: String },
 
+    /// The JSON reader's twin of `NotCanonical`: a deserialized value has
+    /// no source line to point at.
+    #[error("non-canonical snapshot: {detail}")]
+    NotCanonicalValue { detail: String },
+
     #[error("invalid utf-8 at byte offset {offset}")]
     InvalidUtf8 { offset: usize },
 
@@ -144,6 +152,31 @@ pub enum StoreError {
 
     #[error("i/o error: {0}")]
     Io(#[from] io::Error),
+}
+
+/// A `vocabulary!` enum's `FromStr` refusal: the noun names which
+/// vocabulary, `rejected` is the text `FromStr` was given, and `accepted`
+/// lists every label the vocabulary admits.
+#[derive(Debug, Error)]
+#[error("unknown {noun} {rejected:?}; expected one of {accepted}")]
+pub struct UnknownLabel {
+    noun: &'static str,
+    rejected: String,
+    accepted: String,
+}
+
+impl UnknownLabel {
+    pub fn new(
+        noun: &'static str,
+        rejected: &str,
+        labels: impl IntoIterator<Item = &'static str>,
+    ) -> Self {
+        Self {
+            noun,
+            rejected: rejected.to_owned(),
+            accepted: labels.into_iter().collect::<Vec<_>>().join(", "),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -189,16 +222,8 @@ pub enum ConfigError {
     #[error("pin `select` must be \"latest\" or \"oldest\", got {0:?}")]
     PinUnknownSelect(String),
 
-    #[error("unknown project layout {0:?}: expected single_app, multi_app, or erlang_otp")]
-    UnknownProjectLayout(String),
-
-    #[error("unknown project kind {0:?}: expected external or self")]
-    UnknownProjectKind(String),
-
-    #[error(
-        "unknown project family {0:?}: expected generic, erlang_otp, ra, osiris, khepri, or rabbitmq"
-    )]
-    UnknownProjectFamily(String),
+    #[error("{0}")]
+    UnknownLabel(#[from] UnknownLabel),
 
     #[error("project {0:?} has kind=\"self\" but also specifies git_url; remove one")]
     SelfProjectHasGitUrl(String),
@@ -216,9 +241,6 @@ pub enum ConfigError {
         "series pins {project} as a self-pin (branch/sha form) but {project} is configured as kind=\"external\""
     )]
     SelfPinReferencesExternalProject { project: String },
-
-    #[error("self-project {0:?} has no git_url; operations needing one must use `--repo-dir-path`")]
-    SelfProjectHasNoGitUrl(String),
 
     #[error("project {project:?} has layout {layout:?} but no `app_roots` defaulted or set")]
     LayoutWithoutAppRoots { project: String, layout: String },

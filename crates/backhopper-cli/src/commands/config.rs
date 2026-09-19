@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+use backhopper_core::config::ProjectSource;
+
 use crate::cli::{ConfigCmd, GlobalArgs};
 use crate::commands::context::{load_config, resolve_config_path};
 use crate::errors::CliResult;
@@ -40,11 +42,10 @@ pub fn handle(args: &GlobalArgs, cmd: ConfigCmd) -> CliResult<CommandOutcome> {
                 writeln!(w, "fallback_branch {}", cfg.defaults.fallback_branch)?;
                 writeln!(w, "scan_paths      {:?}", cfg.defaults.scan_paths)?;
                 for p in &cfg.projects {
-                    let url = p
-                        .git_url
-                        .as_ref()
-                        .map(|g| g.display().to_string())
-                        .unwrap_or_else(|| format!("self: {}", p.kind.as_str()));
+                    let url = match &p.source {
+                        ProjectSource::External { git_url } => git_url.display().to_string(),
+                        ProjectSource::SelfRepo => p.source.kind().label().to_owned(),
+                    };
                     writeln!(w, "project   {} ({})", p.name, url)?;
                 }
                 for s in &cfg.series {

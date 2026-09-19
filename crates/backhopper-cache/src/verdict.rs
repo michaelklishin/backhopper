@@ -34,7 +34,7 @@ use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprin
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::verdict::SeriesEvaluation;
 
-use crate::cache_io::{content_hash, entry_file_name, is_older_than, write_atomic};
+use crate::cache_io::{content_digest, content_hash, entry_file_name, is_older_than, write_atomic};
 use crate::sweep::maybe_daily_sweep;
 
 pub const VERDICT_CACHE_DIR_NAME: &str = ".verdict_cache";
@@ -181,7 +181,9 @@ impl ContentKeyInputs {
             config_blake3: &self.config_blake3,
             patch_blake3: &self.patch_blake3,
         };
-        content_hash(&inputs).ok().map(VerdictFingerprint::new)
+        content_digest(&inputs)
+            .ok()
+            .map(VerdictFingerprint::from_digest)
     }
 }
 
@@ -305,7 +307,9 @@ impl VerdictCache {
         let path = self.by_input.join(entry_file_name(&hash));
         if let Some(entry) = self.read_entry(&path) {
             return InputOutcome::Hit(CachedVerdict {
-                fingerprint: entry.verdict_fingerprint.map(VerdictFingerprint::new),
+                fingerprint: entry
+                    .verdict_fingerprint
+                    .and_then(|hex| VerdictFingerprint::try_from(hex).ok()),
                 evaluation: Box::new(entry.evaluation),
             });
         }

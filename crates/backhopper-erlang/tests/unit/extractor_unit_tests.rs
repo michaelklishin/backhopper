@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use backhopper_core::model::names::RelativePath;
 use backhopper_core::model::snapshot::{ArityMatch, Visibility};
 use backhopper_erlang::ErlangExtractor;
 
@@ -87,7 +88,7 @@ helper() -> ok.
 #[test]
 fn header_extraction_yields_records_and_types() {
     let ex = ErlangExtractor::default();
-    let h = ex.extract_header_file("include/ra.hrl", HEADER);
+    let h = ex.extract_header_file(RelativePath::new("include/ra.hrl").unwrap(), HEADER);
     assert_eq!(h.types.len(), 1);
     assert_eq!(h.records.len(), 1);
     assert_eq!(h.records[0].name.as_str(), "cfg");
@@ -207,7 +208,7 @@ fn extracts_module_with_if_conditional_block() {
 #[test]
 fn extract_header_file_collects_opaque_and_record() {
     let h = ErlangExtractor::default().extract_header_file(
-        "include/ra.hrl",
+        RelativePath::new("include/ra.hrl").unwrap(),
         "-opaque ra_idxterm() :: term().\n-record(cfg, {id :: ra_server_id()}).\n",
     );
     assert_eq!(h.opaques.len(), 1);

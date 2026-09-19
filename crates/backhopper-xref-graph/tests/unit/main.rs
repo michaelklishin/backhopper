@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod call_unit_tests;
+mod compile_fail_tests;
 mod graph_unit_tests;
 mod loc_unit_tests;
 mod relation_unit_tests;

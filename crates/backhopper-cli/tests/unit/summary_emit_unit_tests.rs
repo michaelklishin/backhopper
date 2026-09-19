@@ -16,7 +16,7 @@ use backhopper_core::model::pin::Pin;
 use backhopper_core::model::summary::{SummaryRow, VerdictKind};
 use backhopper_core::model::verdict::{
     Diagnostics, InapplicableReason, PatchFacts, PinVerdict, SeriesEvaluation, SeriesVerdict,
-    TouchedKinds, Verdict,
+    TargetAxisSlot, TouchedKinds, Verdict,
 };
 
 fn series_eval_with(pins: Vec<PinVerdict>) -> SeriesEvaluation {
@@ -26,8 +26,7 @@ fn series_eval_with(pins: Vec<PinVerdict>) -> SeriesEvaluation {
         patch_facts: PatchFacts::default(),
         touched_paths: Vec::new(),
         pr_commits: None,
-        apply: None,
-        target_findings: None,
+        target: TargetAxisSlot::absent(),
     }
 }
 

@@ -292,7 +292,7 @@ fn scan_uses(
 /// `when`, a call otherwise. Arity is the top-level argument count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
-    pub name: String,
+    pub name: FunctionName,
     pub arity: usize,
     pub line: u32,
     pub is_definition: bool,
@@ -381,12 +381,15 @@ fn signatures_with_line_context(src: &str, ctx: Option<&[LineClass]>) -> Vec<Fun
                             // its arrow or guard sits on a line the input lacks
                             let is_definition = followed_by_clause_arrow(bytes, close + 1)
                                 || starts_line(bytes, start);
-                            out.push(FunctionSignature {
-                                name: String::from_utf8_lossy(name).into_owned(),
-                                arity,
-                                line,
-                                is_definition,
-                            });
+                            if let Ok(name) = FunctionName::from_str(&String::from_utf8_lossy(name))
+                            {
+                                out.push(FunctionSignature {
+                                    name,
+                                    arity,
+                                    line,
+                                    is_definition,
+                                });
+                            }
                         }
                         line += count_newlines(&bytes[start..=close]);
                         i = close + 1;
@@ -478,27 +481,125 @@ pub fn declares_parse_transform(src: &str) -> bool {
         .any(|hit| hit.body.contains("parse_transform"))
 }
 
-/// A module's exported `f/a` set, with `complete = false` when the true
-/// export surface cannot be read from source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExportSet {
-    pub exports: BTreeSet<(FunctionName, Arity)>,
-    pub complete: bool,
+/// Why an export surface cannot be fully read from source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unreadable {
+    /// `-compile(export_all)` (or `nowarn_export_all`): every listed
+    /// entry is still exported, but the list under-reports.
+    ExportAll,
+    /// A declared `parse_transform`, which can inject exports or types
+    /// the scanner cannot see. Every key is unknowable, listed or not.
+    ParseTransform,
+    /// An export entry names a macro the scanner cannot expand.
+    MacroInExportList,
 }
 
-/// Functions a module exports via `-export([f/a, ...])`. `complete` is
-/// false when the export surface is not fully knowable from source:
-/// `-compile(export_all)` (or `nowarn_export_all`), a declared
-/// `parse_transform` (which can inject exports), or an `-export` entry
-/// naming a macro the scanner cannot expand. A `complete = false` set
-/// means the caller must withhold rather than treat an unlisted `f/a`
-/// as undefined.
-pub fn extract_exports(src: &str) -> ExportSet {
+impl Unreadable {
+    /// `ParseTransform` makes every key unknowable, so it replaces a
+    /// ground that still answers for a listed key. Between the other
+    /// two, the ground already held is kept.
+    fn record(held: &mut Option<Self>, found: Self) {
+        if held.is_none() || matches!(found, Self::ParseTransform) {
+            *held = Some(found);
+        }
+    }
+}
+
+/// Whether a key is in a `Surface`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presence {
+    Present,
+    Absent,
+    /// The surface cannot answer for this key: withhold rather than
+    /// treat it as absent.
+    Unknowable(Unreadable),
+}
+
+/// A set of keys the source lists, together with whether the list is
+/// the whole truth. `lookup` is the only way to ask about a key: there
+/// is no `contains`, `iter`, or `Deref` to the listed set, so a reader
+/// cannot take a plain `bool` from an incomplete surface by accident.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Surface<T> {
+    listed: BTreeSet<T>,
+    unreadable: Option<Unreadable>,
+}
+
+/// An empty, fully readable surface: nothing listed, nothing hidden.
+impl<T> Default for Surface<T> {
+    fn default() -> Self {
+        Self {
+            listed: BTreeSet::new(),
+            unreadable: None,
+        }
+    }
+}
+
+impl<T: Ord> Surface<T> {
+    #[must_use]
+    pub fn new(listed: BTreeSet<T>, unreadable: Option<Unreadable>) -> Self {
+        Self { listed, unreadable }
+    }
+
+    /// With no ground, `Present` or `Absent`. With `ParseTransform`,
+    /// `Unknowable` for every key. With `ExportAll` or
+    /// `MacroInExportList`, `Present` for a listed key and `Unknowable`
+    /// otherwise: the list under-reports, it does not lie.
+    #[must_use]
+    pub fn lookup(&self, key: &T) -> Presence {
+        let listed = self.listed.contains(key);
+        match self.unreadable {
+            None => {
+                if listed {
+                    Presence::Present
+                } else {
+                    Presence::Absent
+                }
+            }
+            Some(Unreadable::ParseTransform) => Presence::Unknowable(Unreadable::ParseTransform),
+            Some(ground) => {
+                if listed {
+                    Presence::Present
+                } else {
+                    Presence::Unknowable(ground)
+                }
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.unreadable.is_none()
+    }
+
+    /// Combine two surfaces of the same module, as `patch_provided`
+    /// does for a cross-file add: a merge with an unreadable side is
+    /// unreadable on that side's ground. When both sides are
+    /// unreadable, `ParseTransform` wins and otherwise the ground
+    /// already held is kept.
+    pub fn merge(&mut self, other: Self) {
+        self.listed.extend(other.listed);
+        if let Some(found) = other.unreadable {
+            Unreadable::record(&mut self.unreadable, found);
+        }
+    }
+}
+
+/// A module's exported `f/a` surface.
+pub type ExportSurface = Surface<(FunctionName, Arity)>;
+
+/// Functions a module exports via `-export([f/a, ...])`. The surface is
+/// unreadable under `-compile(export_all)` (or `nowarn_export_all`), a
+/// declared `parse_transform` (which can inject exports), or an
+/// `-export` entry naming a macro the scanner cannot expand.
+pub fn extract_exports(src: &str) -> ExportSurface {
     let mut exports = BTreeSet::new();
-    let mut complete = true;
+    let mut ground = None;
     for hit in iter_attribute_bodies(src, &["compile"]) {
-        if hit.body.contains("export_all") || hit.body.contains("parse_transform") {
-            complete = false;
+        if hit.body.contains("parse_transform") {
+            Unreadable::record(&mut ground, Unreadable::ParseTransform);
+        } else if hit.body.contains("export_all") {
+            Unreadable::record(&mut ground, Unreadable::ExportAll);
         }
     }
     for hit in iter_attribute_bodies(src, &["export"]) {
@@ -515,7 +616,7 @@ pub fn extract_exports(src: &str) -> ExportSet {
             }
             // A macro in the export list hides which f/a it names.
             if entry.contains('?') {
-                complete = false;
+                Unreadable::record(&mut ground, Unreadable::MacroInExportList);
                 continue;
             }
             if let Some((name, arity)) = parse_fun_arity(entry)
@@ -526,7 +627,7 @@ pub fn extract_exports(src: &str) -> ExportSet {
             }
         }
     }
-    ExportSet { exports, complete }
+    Surface::new(exports, ground)
 }
 
 /// A type a module exports, and the line its entry sits on.
@@ -537,23 +638,32 @@ pub struct ExportedType {
     pub line: u32,
 }
 
-/// A module's `-export_type([t/a, ...])` set. `complete` is false when
-/// the surface cannot be read from source: a declared `parse_transform`,
-/// or an entry naming a macro the scanner cannot expand.
-/// `-compile(export_all)` exports functions, not types, so it does not
-/// make this set incomplete.
+/// Why an exported-type list cannot be read from source. `-compile(export_all)`
+/// exports functions, not types, so it has no arm here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypesUnreadable {
+    ParseTransform,
+    MacroInExportList,
+}
+
+/// A module's `-export_type([t/a, ...])` list, either readable in full
+/// or not: nothing looks a type up in it, the axis walks it, so the
+/// list is read as a whole rather than key by key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExportedTypeSet {
-    pub types: Vec<ExportedType>,
-    pub complete: bool,
+pub enum ExportedTypes {
+    Listed(Vec<ExportedType>),
+    Unreadable(TypesUnreadable),
 }
 
 /// The types a module exports. An entry whose name fails newtype
 /// validation is dropped: it would not compile, so nothing resolves
 /// against it.
-pub fn extract_exported_types(src: &str) -> ExportedTypeSet {
+pub fn extract_exported_types(src: &str) -> ExportedTypes {
+    if declares_parse_transform(src) {
+        return ExportedTypes::Unreadable(TypesUnreadable::ParseTransform);
+    }
     let mut types = Vec::new();
-    let mut complete = !declares_parse_transform(src);
+    let mut macro_in_list = false;
     for hit in iter_attribute_bodies(src, &["export_type"]) {
         let Some(open) = hit.body.find('[') else {
             continue;
@@ -568,7 +678,7 @@ pub fn extract_exported_types(src: &str) -> ExportedTypeSet {
             }
             // A macro in the export list hides which type it names.
             if entry.contains('?') {
-                complete = false;
+                macro_in_list = true;
                 continue;
             }
             if let Some((name, arity)) = parse_fun_arity(entry)
@@ -582,7 +692,11 @@ pub fn extract_exported_types(src: &str) -> ExportedTypeSet {
             }
         }
     }
-    ExportedTypeSet { types, complete }
+    if macro_in_list {
+        ExportedTypes::Unreadable(TypesUnreadable::MacroInExportList)
+    } else {
+        ExportedTypes::Listed(types)
+    }
 }
 
 /// True when the source declares a macro-expanded attribute form

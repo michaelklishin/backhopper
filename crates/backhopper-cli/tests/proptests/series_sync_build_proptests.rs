@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use proptest::prelude::*;
 
-use backhopper_core::config::{Language, Project, ProjectFamily, ProjectLayout};
+use backhopper_core::config::{Language, Project, ProjectFamily, ProjectLayout, ProjectSource};
 use backhopper_core::model::names::{ProjectName, SeriesName};
 
 use backhopper_cli::commands::series::build_sync_output;
@@ -21,8 +21,9 @@ use backhopper_cli::commands::series::build_sync_output;
 fn project(name: &str) -> Project {
     Project {
         name: ProjectName::new(name).unwrap(),
-        git_url: Some(PathBuf::from("/tmp/x.git")),
-        kind: backhopper_core::config::ProjectKind::External,
+        source: ProjectSource::External {
+            git_url: PathBuf::from("/tmp/x.git"),
+        },
         family: ProjectFamily::Generic,
         language: Language::Erlang,
         tag_prefix: "v".into(),
@@ -89,7 +90,7 @@ proptest! {
             );
         }
         for n in &configured {
-            let in_pins = out.pins.iter().any(|p| p.project == *n);
+            let in_pins = out.pins.iter().any(|p| p.project.as_str() == n);
             let in_skipped = out.skipped.iter().any(|s| s.name == *n);
             prop_assert!(
                 in_pins || in_skipped,

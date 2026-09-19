@@ -9,7 +9,7 @@
 
 use backhopper_core::model::names::ProjectName;
 use backhopper_core::model::pin::{Pin, PinSpec};
-use backhopper_core::store::SnapshotStore;
+use backhopper_core::store::{SnapshotStore, StoreMode};
 
 /// How one `PinSpec` lands against the snapshot store.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum PinCoverage {
 /// Resolve `spec` against `store` and report its coverage. `SelfRef`
 /// pins short-circuit: they need the working repo this layer does not
 /// see.
-pub fn classify_pin<M>(spec: &PinSpec, store: &SnapshotStore<M>) -> PinCoverage {
+pub fn classify_pin<M: StoreMode>(spec: &PinSpec, store: &SnapshotStore<M>) -> PinCoverage {
     if spec.is_self() {
         return PinCoverage::SelfPin;
     }

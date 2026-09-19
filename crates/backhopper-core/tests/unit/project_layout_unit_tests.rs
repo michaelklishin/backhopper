@@ -80,13 +80,13 @@ fn from_str_rejects_unknown_value() {
 }
 
 #[test]
-fn as_str_round_trips_through_from_str() {
+fn label_round_trips_through_from_str() {
     for layout in [
         ProjectLayout::SingleApp,
         ProjectLayout::MultiApp,
         ProjectLayout::ErlangOtp,
     ] {
-        let s = layout.as_str();
+        let s = layout.label();
         assert_eq!(ProjectLayout::from_str(s).unwrap(), layout);
     }
 }

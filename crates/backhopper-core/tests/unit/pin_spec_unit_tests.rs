@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::path::{Path, PathBuf};
+
 use time::OffsetDateTime;
 
 use backhopper_core::errors::ConfigError;
-use backhopper_core::model::names::{CommitSha, ProjectName, TagGlob, TagName};
-use backhopper_core::model::pin::{self, PinSelect, PinSpec};
+use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagGlob, TagName};
+use backhopper_core::model::pin::{self, PinSelect, PinSelector, PinSpec};
 use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 use tempfile::TempDir;
@@ -167,6 +169,43 @@ fn resolve_all_returns_one_pin_per_spec_in_order() {
 }
 
 #[test]
+fn as_self_pin_is_none_for_literal_and_pattern() {
+    let p = project();
+    let lit = PinSpec::literal(p.clone(), TagName::new("v1.0").unwrap());
+    let pat = PinSpec::pattern(p.clone(), TagGlob::new("v1.*").unwrap(), PinSelect::Latest);
+    assert!(lit.as_self_pin().is_none());
+    assert!(pat.as_self_pin().is_none());
+}
+
+#[test]
+fn as_self_pin_carries_the_override_path() {
+    use backhopper_core::model::names::GitRef;
+
+    let p = project();
+    let with_override = PinSpec::SelfRef {
+        project: p.clone(),
+        git_ref: GitRef::new("main").unwrap(),
+        repo_dir_path: Some(PathBuf::from("/srv/host.git")),
+    };
+    let self_pin = with_override.as_self_pin().unwrap();
+    assert_eq!(self_pin.project, &p);
+    assert_eq!(self_pin.repo_dir_path, Some(Path::new("/srv/host.git")));
+
+    let without_override = PinSpec::SelfRef {
+        project: p.clone(),
+        git_ref: GitRef::new("main").unwrap(),
+        repo_dir_path: None,
+    };
+    assert!(
+        without_override
+            .as_self_pin()
+            .unwrap()
+            .repo_dir_path
+            .is_none()
+    );
+}
+
+#[test]
 fn resolve_all_short_circuits_on_first_failure() {
     let p = project();
     let (_tmp, store) = store_with_tags(&p, &["OTP-26.0"]);
@@ -183,4 +222,15 @@ fn resolve_all_short_circuits_on_first_failure() {
         ),
     ];
     assert!(pin::resolve_all(&specs, &store).is_err());
+}
+
+#[test]
+fn series_name_is_the_series_arm_alone() {
+    let series = SeriesName::new("v4.1.x").unwrap();
+    assert_eq!(
+        PinSelector::Series(series.clone()).series_name(),
+        Some(&series)
+    );
+    let pin = PinSelector::pin(project(), TagName::new("v2.16.0").unwrap());
+    assert_eq!(pin.series_name(), None);
 }

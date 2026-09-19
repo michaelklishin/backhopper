@@ -24,7 +24,7 @@ fn pin_constructor_yields_pin_variant() {
             assert_eq!(p, project);
             assert_eq!(t, tag);
         }
-        other => panic!("expected Pin, got {other:?}"),
+        other @ PinSelector::Series(_) => panic!("expected Pin, got {other:?}"),
     }
 }
 

@@ -122,7 +122,7 @@ fn run_commit(
     let mut first_incompatible_tag: Option<String> = None;
     let mut first_requires_adaptation_tag: Option<String> = None;
     for (tag, verdict) in tags.iter().zip(verdicts.iter()) {
-        let verdict_str = VerdictKind::from(verdict).as_str();
+        let verdict_str = VerdictKind::from(verdict).label();
         match verdict {
             Verdict::Compatible => {
                 last_compatible_tag = Some(tag.to_string());

@@ -17,7 +17,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::str::FromStr;
 
 use crate::compat::added_lines::{AddedLinesSubject, file_line};
 use crate::compat::call_sites::extract_qualified_calls_with_context;
@@ -25,7 +24,8 @@ use crate::compat::indirect_calls::{
     IndirectExtraction, extract_indirect_calls_elixir, extract_indirect_calls_with_context,
 };
 use crate::compat::source_attributes::{
-    ExportSet, SpecTable, extract_exports, extract_function_signatures, extract_specs,
+    ExportSurface, Presence, SpecTable, Surface, extract_exports, extract_function_signatures,
+    extract_specs,
 };
 use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use crate::model::spec_ast::SpecType;
@@ -51,15 +51,32 @@ pub struct ContextAwareSubject<'a> {
 }
 
 /// What the patch's added lines themselves provide per module. A
-/// qualified call to an added function is not flagged, since the patch
-/// introduces it (often in a different file than the call). A resolved
-/// call whose `-spec` the patch rewrites is not shape-compared:
-/// post-apply, both trees carry the patch's version, so there is no
-/// pre-existing drift to find.
+/// qualified call to an added or newly exported function is not
+/// flagged, since the patch introduces or covers it (often in a
+/// different file than the call). Where the module's own export
+/// surface is unreadable (`-compile(export_all)` and the like), a call
+/// to any of its functions withholds rather than flags: the patch may
+/// cover the callee in a way the scanner cannot see. A resolved call
+/// whose `-spec` the patch rewrites is not shape-compared: post-apply,
+/// both trees carry the patch's version, so there is no pre-existing
+/// drift to find.
 #[derive(Debug, Default)]
 pub struct PatchProvided {
-    pub functions: PerModuleFunctionSet,
+    pub functions: BTreeMap<ModuleName, ExportSurface>,
     pub specs: PerModuleFunctionSet,
+}
+
+/// Whether a patch-provided surface covers a key: present because the
+/// patch defines or exports it, or unknowable because the module's own
+/// export surface cannot be read in full.
+fn patch_covers(
+    functions: &BTreeMap<ModuleName, ExportSurface>,
+    module: &ModuleName,
+    key: &(FunctionName, Arity),
+) -> bool {
+    functions
+        .get(module)
+        .is_some_and(|surface| !matches!(surface.lookup(key), Presence::Absent))
 }
 
 /// Reads one module file's text by tree-relative path: a git blob for
@@ -134,60 +151,60 @@ pub fn resolve_qualified_reference(
     let Some(surface) = surface.as_ref() else {
         return;
     };
-    let is_exported = surface.exports.exports.contains(key);
+    let presence = surface.exports.lookup(key);
     let path = surface.path.clone();
-    // a callee the patch introduces has no pre-existing shape on either tree
-    if ctx
-        .patch_added
-        .functions
-        .get(module)
-        .is_some_and(|s| s.contains(key))
-    {
+    // a callee the patch introduces or exports has no pre-existing shape to compare
+    if patch_covers(&ctx.patch_added.functions, module, key) {
         return;
     }
-    if is_exported {
-        // a spec the patch rewrites has no pre-existing drift to compare
-        if ctx
-            .patch_added
-            .specs
-            .get(module)
-            .is_some_and(|s| s.contains(key))
-        {
-            return;
+    match presence {
+        Presence::Present => {
+            // a spec the patch rewrites has no pre-existing drift to compare
+            if ctx
+                .patch_added
+                .specs
+                .get(module)
+                .is_some_and(|s| s.contains(key))
+            {
+                return;
+            }
+            if !caches
+                .shape_seen
+                .insert((module.clone(), key.0.clone(), key.1))
+            {
+                return;
+            }
+            check_return_shape(
+                subject,
+                module,
+                &path,
+                key,
+                call_line,
+                ctx.read_target,
+                ctx.read_source,
+                &mut caches.specs,
+                reasons,
+                shape_checks,
+            );
         }
-        if !caches
-            .shape_seen
-            .insert((module.clone(), key.0.clone(), key.1))
-        {
-            return;
+        // the export surface cannot rule the key in or out: withhold
+        Presence::Unknowable(_) => {}
+        Presence::Absent => {
+            if !caches
+                .flagged
+                .insert((module.clone(), key.0.clone(), key.1))
+            {
+                return;
+            }
+            reasons.push(Reason::QualifiedCallUndefinedOnTarget {
+                source_path: subject.source_path.clone(),
+                module: module.clone(),
+                function: key.0.clone(),
+                arity: key.1,
+                line: file_line(subject.line_map, call_line),
+            });
         }
-        check_return_shape(
-            subject,
-            module,
-            &path,
-            key,
-            call_line,
-            ctx.read_target,
-            ctx.read_source,
-            &mut caches.specs,
-            reasons,
-            shape_checks,
-        );
-        return;
     }
-    if !caches
-        .flagged
-        .insert((module.clone(), key.0.clone(), key.1))
-    {
-        return;
-    }
-    reasons.push(Reason::QualifiedCallUndefinedOnTarget {
-        source_path: subject.source_path.clone(),
-        module: module.clone(),
-        function: key.0.clone(),
-        arity: key.1,
-        line: file_line(subject.line_map, call_line),
-    });
 }
 
 /// How a called module is classified for this axis. Only `FirstParty`
@@ -229,19 +246,18 @@ pub fn classify_module(
 pub fn patch_provided(per_file: &[(ModuleName, &str)]) -> PatchProvided {
     let mut out = PatchProvided::default();
     for (module, added_text) in per_file {
-        let functions = out.functions.entry(module.clone()).or_default();
+        let mut defined = BTreeSet::new();
         for sig in extract_function_signatures(added_text) {
             if !sig.is_definition {
                 continue;
             }
-            if let (Ok(function), Ok(arity)) = (
-                FunctionName::from_str(&sig.name),
-                Arity::try_from(sig.arity),
-            ) {
-                functions.insert((function, arity));
+            if let Ok(arity) = Arity::try_from(sig.arity) {
+                defined.insert((sig.name.clone(), arity));
             }
         }
-        functions.extend(extract_exports(added_text).exports);
+        let surface = out.functions.entry(module.clone()).or_default();
+        surface.merge(Surface::new(defined, None));
+        surface.merge(extract_exports(added_text));
         let specs = extract_specs(added_text);
         if !specs.is_empty() {
             out.specs
@@ -268,7 +284,7 @@ pub struct QualifiedCallAnalysis {
 /// where a meck expectation on an unexported function is legitimate.
 #[derive(Debug)]
 struct TargetModuleSurface {
-    exports: ExportSet,
+    exports: ExportSurface,
     defined: BTreeSet<(FunctionName, Arity)>,
     path: RelativePath,
 }
@@ -332,8 +348,10 @@ pub fn analyse_qualified_calls(
 }
 
 /// Classify a module and read its export and definition surface once.
-/// `None` caches every withheld case: covered, absent, or an
-/// incompletely readable export surface.
+/// `None` caches the withheld cases at the module level: covered or
+/// absent. An unreadable export surface is cached too, and withheld
+/// per key by `lookup` rather than for the whole module: a listed
+/// export under `-compile(export_all)` still resolves.
 fn target_module_surface(
     module: &ModuleName,
     covered_modules: &BTreeSet<ModuleName>,
@@ -344,21 +362,10 @@ fn target_module_surface(
         ModuleProvenance::FirstParty { path } => {
             let text = read_target(&path)?;
             let exports = extract_exports(&text);
-            if !exports.complete {
-                return None;
-            }
             let defined = extract_function_signatures(&text)
                 .into_iter()
                 .filter(|sig| sig.is_definition)
-                .filter_map(|sig| {
-                    match (
-                        FunctionName::from_str(&sig.name),
-                        Arity::try_from(sig.arity),
-                    ) {
-                        (Ok(function), Ok(arity)) => Some((function, arity)),
-                        _ => None,
-                    }
-                })
+                .filter_map(|sig| Some((sig.name, Arity::try_from(sig.arity).ok()?)))
                 .collect();
             Some(TargetModuleSurface {
                 exports,
@@ -466,13 +473,9 @@ fn resolve_extraction(
         }
         tally.checked += 1;
         let key = (function.clone(), arity);
-        if surface.exports.exports.contains(&key)
+        if matches!(surface.exports.lookup(&key), Presence::Present)
             || surface.defined.contains(&key)
-            || ctx
-                .patch_added
-                .functions
-                .get(module)
-                .is_some_and(|s| s.contains(&key))
+            || patch_covers(&ctx.patch_added.functions, module, &key)
         {
             continue;
         }

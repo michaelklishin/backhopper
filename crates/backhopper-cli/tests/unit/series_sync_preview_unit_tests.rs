@@ -7,13 +7,14 @@ use backhopper_cli::commands::rabbitmq_components::series_name_for_branch;
 use backhopper_cli::commands::series::{
     PinPayload, PreviewOutput, SkippedPin, SyncOutput, render_preview_text,
 };
+use backhopper_core::model::names::ProjectName;
 
 fn stanza(name: &str, branch: &str, pin: (&str, &str)) -> SyncOutput {
     SyncOutput {
         name: name.into(),
         branch: Some(branch.into()),
         pins: vec![PinPayload {
-            project: pin.0.into(),
+            project: ProjectName::new(pin.0).unwrap(),
             tag: pin.1.into(),
         }],
         dropped_unconfigured: Vec::new(),

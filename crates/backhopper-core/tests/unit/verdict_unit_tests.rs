@@ -6,14 +6,16 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use backhopper_core::SymbolRef;
+use backhopper_core::model::apply::ApplyForecast;
+use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::names::{
     Arity, CommitSha, DependencyName, FunctionName, ModuleName, ProjectName, RecordName, TagName,
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{
     AlreadyPresent, AlreadyPresentSkipped, BumpStatus, ContentPresence, DepPinDivergence,
-    Diagnostics, HunkTally, PinBump, PinVerdict, Reason, SeriesVerdict, TargetMatch,
-    TargetMatchKind, Verdict, exit,
+    Diagnostics, HunkTally, PinBump, PinVerdict, Reason, SeriesVerdict, TargetAxis, TargetAxisSlot,
+    TargetMatch, TargetMatchKind, Verdict, exit,
 };
 
 #[test]
@@ -250,4 +252,55 @@ fn diagnostics_with_only_dep_pin_divergence_is_not_empty() {
         ..Default::default()
     };
     assert!(!d.is_empty());
+}
+
+#[test]
+fn present_fills_both_fields() {
+    let slot = TargetAxisSlot::present(TargetAxis {
+        apply: ApplyForecast::default(),
+        findings: TargetFindings::default(),
+    });
+    let target = slot.get().expect("both fields present");
+    assert_eq!(*target.apply, ApplyForecast::default());
+    assert_eq!(*target.findings, TargetFindings::default());
+}
+
+#[test]
+fn get_is_none_on_an_absent_slot() {
+    assert!(TargetAxisSlot::absent().get().is_none());
+}
+
+#[test]
+fn into_axis_gives_back_what_present_took() {
+    let axis = TargetAxis {
+        apply: ApplyForecast::default(),
+        findings: TargetFindings::default(),
+    };
+    assert_eq!(
+        TargetAxisSlot::present(axis.clone()).into_axis(),
+        Some(axis)
+    );
+    assert_eq!(TargetAxisSlot::absent().into_axis(), None);
+}
+
+// The flatten must not move the wire bytes: an axis still serialises as
+// the same two top-level keys `apply` and `target_findings` did before
+// `TargetAxisSlot` existed.
+#[test]
+fn target_axis_slot_flattens_to_the_original_two_keys() {
+    let slot = TargetAxisSlot::present(TargetAxis {
+        apply: ApplyForecast::default(),
+        findings: TargetFindings::default(),
+    });
+    let value = serde_json::to_value(&slot).unwrap();
+    let object = value.as_object().unwrap();
+    assert_eq!(object.len(), 2);
+    assert!(object.contains_key("apply"));
+    assert!(object.contains_key("target_findings"));
+}
+
+#[test]
+fn an_absent_target_axis_slot_serializes_to_no_keys() {
+    let value = serde_json::to_value(TargetAxisSlot::absent()).unwrap();
+    assert_eq!(value, serde_json::json!({}));
 }

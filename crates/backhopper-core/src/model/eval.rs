@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::evaluation::AggregateVerdict;
 use crate::model::fingerprint::VerdictFingerprint;
-use crate::model::names::{CommitSha, RelativePath};
+use crate::model::names::{CommitSha, RelativePath, vocabulary};
 use crate::model::resolver_coverage::{ResolverClass, ResolverCoverage};
 use crate::model::verdict::ApplyConflictKind;
 
@@ -72,13 +72,70 @@ pub struct PredictedConflict {
 }
 
 /// A measured rate kept as `hit/total` so the sample size is never lost
-/// behind a bare percentage.
+/// behind a bare percentage. `hits <= total` always: every mutator
+/// grows `total` by at least as much as `hits` in the same step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Ratio {
-    pub hits: usize,
-    pub total: usize,
+    hits: usize,
+    total: usize,
 }
+
+impl Ratio {
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self { hits: 0, total: 0 }
+    }
+
+    pub fn hit(&mut self) {
+        self.hits += 1;
+        self.total += 1;
+    }
+
+    pub fn miss(&mut self) {
+        self.total += 1;
+    }
+
+    #[must_use]
+    pub fn hits(&self) -> usize {
+        self.hits
+    }
+
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.total
+    }
+
+    #[must_use]
+    pub fn rate(&self) -> Option<f64> {
+        if self.total == 0 {
+            None
+        } else {
+            Some(self.hits as f64 / self.total as f64)
+        }
+    }
+
+    /// Count `hits` matches out of `total` candidates in one step, for
+    /// a fold over a whole slice. Private: `hit` and `miss` are the only
+    /// public way to grow a ratio.
+    fn extend(&mut self, hits: usize, total: usize) {
+        debug_assert!(hits <= total, "a ratio's hits cannot exceed its total");
+        self.hits += hits;
+        self.total += total;
+    }
+}
+
+vocabulary!(
+    /// Who is responsible for a break the verdict did not flag: the
+    /// resolver (it checked the class and still missed it), a coverage gap
+    /// (it never checked the class), or unknown (the row recorded no
+    /// coverage, or the break carried no class).
+    pub enum BreakAttribution: "break attribution" {
+        ResolverBug => "resolver_bug",
+        CoverageGap => "coverage_gap",
+        Unknown => "unknown",
+    }
+);
 
 /// A break the verdict did not flag.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,10 +144,7 @@ pub struct MissedBreak {
     pub fingerprint: VerdictFingerprint,
     pub break_class: Option<ResolverClass>,
     pub outcome: BuildOutcome,
-    /// `Some(true)` a resolver bug (the producer checked the class),
-    /// `Some(false)` a coverage gap, `None` when unknown: the row recorded
-    /// no coverage, or the break carried no class.
-    pub is_resolver_bug: Option<bool>,
+    pub attribution: BreakAttribution,
 }
 
 /// The fold's output.
@@ -114,9 +168,9 @@ pub struct EvalReport {
 /// Fold the paired corpus into accuracy rates and a missed-break list.
 #[must_use]
 pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
-    let mut vacuous_trust = Ratio { hits: 0, total: 0 };
-    let mut recall = Ratio { hits: 0, total: 0 };
-    let mut precision = Ratio { hits: 0, total: 0 };
+    let mut vacuous_trust = Ratio::zero();
+    let mut recall = Ratio::zero();
+    let mut precision = Ratio::zero();
     let mut by_class: BTreeMap<ResolverClass, usize> = BTreeMap::new();
     let mut missed = Vec::new();
 
@@ -124,15 +178,17 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
         let broke = e.outcome.is_break();
         let flagged = e.verdict.flagged();
         if !flagged {
-            vacuous_trust.total += 1;
-            if !broke {
-                vacuous_trust.hits += 1;
+            if broke {
+                vacuous_trust.miss();
+            } else {
+                vacuous_trust.hit();
             }
         }
         if broke {
-            recall.total += 1;
             if flagged {
-                recall.hits += 1;
+                recall.hit();
+            } else {
+                recall.miss();
             }
             let break_class = e.outcome.break_class();
             if let Some(class) = break_class {
@@ -143,14 +199,15 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
                     fingerprint: e.fingerprint.clone(),
                     break_class,
                     outcome: e.outcome,
-                    is_resolver_bug: resolver_bug(break_class, e.coverage.as_ref()),
+                    attribution: break_attribution(break_class, e.coverage.as_ref()),
                 });
             }
         }
         if flagged {
-            precision.total += 1;
             if broke {
-                precision.hits += 1;
+                precision.hit();
+            } else {
+                precision.miss();
             }
         }
     }
@@ -167,10 +224,16 @@ pub fn evaluate_corpus(entries: &[CorpusEntry]) -> EvalReport {
 
 /// Bug-vs-gap against the row's own coverage: unknown when the class or
 /// the coverage is absent.
-fn resolver_bug(class: Option<ResolverClass>, coverage: Option<&ResolverCoverage>) -> Option<bool> {
+fn break_attribution(
+    class: Option<ResolverClass>,
+    coverage: Option<&ResolverCoverage>,
+) -> BreakAttribution {
     match (class, coverage) {
-        (Some(class), Some(coverage)) => Some(coverage.is_checked(class)),
-        _ => None,
+        (Some(class), Some(coverage)) if coverage.is_checked(class) => {
+            BreakAttribution::ResolverBug
+        }
+        (Some(_), Some(_)) => BreakAttribution::CoverageGap,
+        _ => BreakAttribution::Unknown,
     }
 }
 
@@ -259,9 +322,9 @@ pub struct ForecastReport {
 /// worklist.
 #[must_use]
 pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
-    let mut precision = Ratio { hits: 0, total: 0 };
-    let mut recall = Ratio { hits: 0, total: 0 };
-    let mut path_overlap = Ratio { hits: 0, total: 0 };
+    let mut precision = Ratio::zero();
+    let mut recall = Ratio::zero();
+    let mut path_overlap = Ratio::zero();
     let mut out_of_band = 0;
     let mut unconvertible_paths = 0;
     let mut false_negatives = Vec::new();
@@ -280,15 +343,17 @@ pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
         // the variant decides, not the path count: an all-unconvertible conflict still counts
         let observed = observed_paths.is_some();
         if predicted {
-            precision.total += 1;
             if observed {
-                precision.hits += 1;
+                precision.hit();
+            } else {
+                precision.miss();
             }
         }
         if observed {
-            recall.total += 1;
             if predicted {
-                recall.hits += 1;
+                recall.hit();
+            } else {
+                recall.miss();
             }
         }
         let Some(paths) = observed_paths else {
@@ -300,8 +365,7 @@ pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
                 .any(|p| paths_match(p.path.as_str(), o.as_str()))
         };
         if predicted {
-            path_overlap.total += e.predicted.len();
-            path_overlap.hits += e
+            let matched = e
                 .predicted
                 .iter()
                 .filter(|p| {
@@ -310,6 +374,7 @@ pub fn evaluate_forecasts(entries: &[ForecastEntry]) -> ForecastReport {
                         .any(|o| paths_match(p.path.as_str(), o.as_str()))
                 })
                 .count();
+            path_overlap.extend(matched, e.predicted.len());
         }
         let missed: BTreeSet<RelativePath> = paths
             .iter()

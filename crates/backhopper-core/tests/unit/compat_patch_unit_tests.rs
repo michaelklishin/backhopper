@@ -19,9 +19,9 @@ diff --git a/src/ra_server.erl b/src/ra_server.erl
 #[test]
 fn parses_a_minimal_unified_diff() {
     let p = Patch::parse(SIMPLE_DIFF.as_bytes()).unwrap();
-    assert_eq!(p.files.len(), 1);
-    assert_eq!(p.files[0].language, SourceKind::Erlang);
-    assert_eq!(p.files[0].hunks.len(), 1);
+    assert_eq!(p.files().len(), 1);
+    assert_eq!(p.files()[0].language, SourceKind::Erlang);
+    assert_eq!(p.files()[0].hunks.len(), 1);
 }
 
 #[test]
@@ -45,7 +45,7 @@ diff --git a/x.bin b/x.bin
 Binary files a/x.bin and b/x.bin differ
 ";
     let p = Patch::parse(body.as_bytes()).unwrap();
-    assert!(p.files[0].binary);
+    assert!(p.files()[0].binary);
 }
 
 #[test]
@@ -82,7 +82,7 @@ diff --git a/src/ra_log.erl b/src/ra_log.erl
 +    R = A ++ B,
 ";
     let p = Patch::parse(body.as_bytes()).unwrap();
-    let lines = &p.files[0].hunks[0].lines;
+    let lines = &p.files()[0].hunks[0].lines;
     let removed: Vec<&str> = lines
         .iter()
         .filter_map(|l| match l {
@@ -111,9 +111,9 @@ diff --git a/src/new.erl b/src/new.erl
 +new_fun() -> ok.
 ";
     let p = Patch::parse(body.as_bytes()).unwrap();
-    assert_eq!(p.files[0].old_path, None);
+    assert_eq!(p.files()[0].old_path, None);
     assert_eq!(
-        p.files[0].new_path.as_deref(),
+        p.files()[0].new_path.as_deref(),
         Some(std::path::Path::new("src/new.erl"))
     );
 }

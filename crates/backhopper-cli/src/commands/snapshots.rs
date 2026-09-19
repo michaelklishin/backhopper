@@ -17,18 +17,19 @@ use time::OffsetDateTime;
 use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project, ProjectLayout};
 use backhopper_core::model::names::{
-    ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, SeriesName, TagName,
+    ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, RecordName, RelativePath, SeriesName,
+    TagName,
 };
 use backhopper_core::model::pin::PinSpec;
 use backhopper_core::model::snapshot::{
-    FunArity, Module, SnapshotHeader, Visibility, WireConstantBinding, WireValue, state,
+    FunArity, Module, SnapshotHeader, TypeArity, Visibility, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::model::snapshot_diff::{
     CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,
     VersionedMachineVersionChange, WireConstantChange,
 };
 use backhopper_core::snapshot::format;
-use backhopper_core::store::{Mutable, SnapshotStore};
+use backhopper_core::store::{Mutable, SnapshotStore, StoreMode};
 use backhopper_core::versions::version_cmp;
 use backhopper_elixir::ElixirExtractor;
 use backhopper_erlang::ErlangExtractor;
@@ -1149,7 +1150,8 @@ pub struct TimelineEntry {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct IntroducedRow {
-    pub mfa: String,
+    #[serde(with = "backhopper_core::model::serde_util::display_from_str")]
+    pub mfa: Mfa,
     pub first_tag: Option<TagName>,
     pub first_commit: Option<CommitSha>,
     pub last_tag: Option<TagName>,
@@ -1187,7 +1189,7 @@ fn introduced(
     })
 }
 
-fn walk_project_snapshots<M>(
+fn walk_project_snapshots<M: StoreMode>(
     store: &SnapshotStore<M>,
     project: &ProjectName,
     mfas: &[Mfa],
@@ -1263,7 +1265,7 @@ pub fn compute_introduced_rows(
                     .collect()
             });
             IntroducedRow {
-                mfa: mfa.to_string(),
+                mfa: mfa.clone(),
                 first_tag,
                 first_commit,
                 last_tag,
@@ -1332,7 +1334,11 @@ fn modules(
         project: project.to_string(),
         tag: tag.to_string(),
         modules: Vec::new(),
-        headers: snapshot.headers().iter().map(|h| h.path.clone()).collect(),
+        headers: snapshot
+            .headers()
+            .iter()
+            .map(|h| h.path.to_string())
+            .collect(),
     };
     for m in snapshot.modules() {
         if !include_hidden && m.visibility != Visibility::Public {
@@ -1598,26 +1604,26 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
             },
         );
     }
-    let a_headers: BTreeSet<&str> = a.headers().iter().map(|h| h.path.as_str()).collect();
-    let b_headers: BTreeSet<&str> = b.headers().iter().map(|h| h.path.as_str()).collect();
+    let a_headers: BTreeSet<&RelativePath> = a.headers().iter().map(|h| &h.path).collect();
+    let b_headers: BTreeSet<&RelativePath> = b.headers().iter().map(|h| &h.path).collect();
     let headers_added: Vec<String> = b_headers
         .difference(&a_headers)
-        .map(|s| (*s).to_owned())
+        .map(|p| p.to_string())
         .collect();
     let headers_removed: Vec<String> = a_headers
         .difference(&b_headers)
-        .map(|s| (*s).to_owned())
+        .map(|p| p.to_string())
         .collect();
     let mut records_added = Vec::new();
     let mut records_removed = Vec::new();
-    for path in a_headers.union(&b_headers) {
+    for header in a_headers.union(&b_headers) {
         diff_named_set(
-            hrl_records(a, path),
-            hrl_records(b, path),
+            hrl_records(a, header),
+            hrl_records(b, header),
             &mut records_added,
             &mut records_removed,
             |record| QualifiedRecord {
-                header: (*path).to_owned(),
+                header: (*header).clone(),
                 record,
             },
         );
@@ -1751,14 +1757,15 @@ fn wire_value_text(v: &WireValue) -> String {
     }
 }
 
-fn diff_named_set<T, F>(
-    a: BTreeSet<String>,
-    b: BTreeSet<String>,
-    added: &mut Vec<T>,
-    removed: &mut Vec<T>,
+fn diff_named_set<T, U, F>(
+    a: BTreeSet<T>,
+    b: BTreeSet<T>,
+    added: &mut Vec<U>,
+    removed: &mut Vec<U>,
     qualify: F,
 ) where
-    F: Fn(String) -> T,
+    T: Ord + Clone,
+    F: Fn(T) -> U,
 {
     for s in b.difference(&a) {
         added.push(qualify(s.clone()));
@@ -1768,49 +1775,46 @@ fn diff_named_set<T, F>(
     }
 }
 
-fn module_exports(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+fn module_exports(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<FunArity> {
     s.module_named(name)
-        .map(|m| {
-            m.exports
-                .iter()
-                .map(|fa| format!("{}/{}", fa.name, fa.arity))
-                .collect()
-        })
+        .map(|m| m.exports.iter().cloned().collect())
         .unwrap_or_default()
 }
 
-fn module_callbacks(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+fn module_callbacks(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<FunArity> {
     s.module_named(name)
         .map(|m| {
             m.callbacks
                 .iter()
-                .map(|cb| format!("{}/{}", cb.name, cb.arity))
+                .map(|cb| FunArity {
+                    name: cb.name.clone(),
+                    arity: cb.arity,
+                })
                 .collect()
         })
         .unwrap_or_default()
 }
 
-fn module_types(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<String> {
+fn module_types(s: &Snapshot<state::Canonical>, name: &ModuleName) -> BTreeSet<TypeArity> {
     s.module_named(name)
         .map(|m| {
             m.types
                 .iter()
-                .map(|t| format!("{}/{}", t.name, t.arity))
-                .chain(
-                    m.export_types
-                        .iter()
-                        .map(|t| format!("{}/{}", t.name, t.arity)),
-                )
-                .chain(m.opaques.iter().map(|t| format!("{}/{}", t.name, t.arity)))
+                .map(|t| TypeArity {
+                    name: t.name.clone(),
+                    arity: t.arity,
+                })
+                .chain(m.export_types.iter().cloned())
+                .chain(m.opaques.iter().cloned())
                 .collect()
         })
         .unwrap_or_default()
 }
 
-fn hrl_records(s: &Snapshot<state::Canonical>, path: &str) -> BTreeSet<String> {
+fn hrl_records(s: &Snapshot<state::Canonical>, path: &RelativePath) -> BTreeSet<RecordName> {
     s.headers()
         .iter()
-        .find(|h| h.path == path)
-        .map(|h| h.records.iter().map(|r| r.name.to_string()).collect())
+        .find(|h| h.path == *path)
+        .map(|h| h.records.iter().map(|r| r.name.clone()).collect())
         .unwrap_or_default()
 }

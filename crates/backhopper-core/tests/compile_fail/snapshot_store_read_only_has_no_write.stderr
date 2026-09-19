@@ -1,0 +1,5 @@
+error[E0599]: no method named `write` found for reference `&SnapshotStore<ReadOnly>` in the current scope
+ --> tests/compile_fail/snapshot_store_read_only_has_no_write.rs:5:19
+  |
+5 |     let _ = store.write(snapshot);
+  |                   ^^^^^ method not found in `&SnapshotStore<ReadOnly>`

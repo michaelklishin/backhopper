@@ -1,0 +1,5 @@
+error[E0599]: no method named `missing_modules` found for reference `&TestSuiteFile<Parsed>` in the current scope
+ --> tests/compile_fail/test_suite_file_needs_resolved_for_missing_modules.rs:5:19
+  |
+5 |     let _ = suite.missing_modules();
+  |                   ^^^^^^^^^^^^^^^ method not found in `&TestSuiteFile<Parsed>`

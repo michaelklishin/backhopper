@@ -14,10 +14,12 @@ use std::path::PathBuf;
 use proptest::prelude::*;
 
 use backhopper_core::compat::added_lines::AddedLinesSubject;
-use backhopper_core::compat::define_resolve::{analyse_define_symbols, collect_target_defines};
+use backhopper_core::compat::define_resolve::{
+    IncludeCoverage, analyse_define_symbols, collect_target_defines,
+};
 use backhopper_core::compat::source_attributes::extract_defined_macros;
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
-use backhopper_core::model::names::{CommitSha, GitRef, RelativePath};
+use backhopper_core::model::names::{CommitSha, GitRef, MacroName, RelativePath};
 use backhopper_core::model::verdict::Reason;
 
 const ERL: &str = "deps/app/src/mod.erl";
@@ -192,13 +194,15 @@ proptest! {
         let read_target = |p: &RelativePath| files.get(p.as_str()).cloned();
         let defs = collect_target_defines(&subject, &patch_added_map(&case), &index, &read_target);
         // the target-only closure: the generated target file has no includes of its own
-        let expected: BTreeSet<String> = files
+        let expected: BTreeSet<MacroName> = files
             .get(ERL)
             .map(|t| extract_defined_macros(t))
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|m| MacroName::new(m).ok())
+            .collect();
         prop_assert_eq!(defs.macros, expected);
-        prop_assert!(defs.complete);
-        prop_assert!(!defs.stdlib_unread);
+        prop_assert_eq!(defs.coverage, IncludeCoverage::Complete);
     }
 
     // A name defined in any header the added-text includes reach, target-side or patch-added, is never flagged.

@@ -16,6 +16,7 @@ use backhopper_core::compat::qualified_call_resolve::{
     ContextAwareSubject, PatchProvided, QualifiedCallAnalysis, analyse_qualified_calls,
     patch_provided,
 };
+use backhopper_core::compat::source_attributes::{Presence, Surface};
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, RelativePath};
 use backhopper_core::model::verdict::{Reason, ShapeCheckTally};
 
@@ -166,6 +167,27 @@ fn a_qualified_call_exported_on_target_is_clean() {
     assert!(reasons.is_empty(), "unexpected: {reasons:?}");
 }
 
+// A patch that declares -compile(export_all) on a module (without touching its
+// -export list in the diff) cannot tell which of that module's calls the
+// attribute will newly cover once applied: every call into it withholds
+// rather than flags, since the target-tree export list predates the patch.
+#[test]
+fn a_patch_added_module_with_export_all_withholds() {
+    let patch_added = patch_provided(&[(module("m"), "-compile(export_all).\n")]);
+    let reasons = analyse_with(
+        "f() -> m:private_helper().\n",
+        &[],
+        &[],
+        &patch_added,
+        &[(
+            "m",
+            "deps/some-app/src/m.erl",
+            "-module(m).\n-export([f/0]).\nf() -> ok.\nprivate_helper() -> ok.\n",
+        )],
+    );
+    assert!(reasons.is_empty(), "unexpected: {reasons:?}");
+}
+
 // Resolution is against exports, not defined functions: unexported means runtime undef, so flagged.
 #[test]
 fn a_defined_but_unexported_function_is_flagged() {
@@ -252,7 +274,10 @@ fn a_function_the_patch_adds_cross_file_is_not_flagged() {
     let mut patch_added = PatchProvided::default();
     patch_added.functions.insert(
         module("other"),
-        BTreeSet::from([(FunctionName::from_str("new_fn").unwrap(), Arity::new(1))]),
+        Surface::new(
+            BTreeSet::from([(FunctionName::from_str("new_fn").unwrap(), Arity::new(1))]),
+            None,
+        ),
     );
     let reasons = analyse_with(
         "f(X) -> other:new_fn(X).\n",
@@ -369,8 +394,14 @@ fn patch_provided_gathers_definitions_exports_and_specs() {
     let per_file = [(module("m"), added_a), (module("m"), added_b)];
     let provided = patch_provided(&per_file);
     let functions = provided.functions.get(&module("m")).unwrap();
-    assert!(functions.contains(&(FunctionName::from_str("exported").unwrap(), Arity::new(1))));
-    assert!(functions.contains(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))));
+    assert_eq!(
+        functions.lookup(&(FunctionName::from_str("exported").unwrap(), Arity::new(1))),
+        Presence::Present
+    );
+    assert_eq!(
+        functions.lookup(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))),
+        Presence::Present
+    );
     let specs = provided.specs.get(&module("m")).unwrap();
     assert!(specs.contains(&(FunctionName::from_str("defined").unwrap(), Arity::new(2))));
 }
@@ -578,7 +609,10 @@ fn a_patch_added_callee_gets_no_shape_check() {
     let mut patch_added = PatchProvided::default();
     patch_added.functions.insert(
         module("rabbit_classic_queue_index_v2"),
-        BTreeSet::from([(FunctionName::from_str("info").unwrap(), Arity::new(1))]),
+        Surface::new(
+            BTreeSet::from([(FunctionName::from_str("info").unwrap(), Arity::new(1))]),
+            None,
+        ),
     );
     let target_rows = idx_target("-spec info(state()) -> binary().\n");
     let target: Vec<(&str, &str, &str)> = target_rows
@@ -904,10 +938,13 @@ fn an_mfa_tuple_to_a_patch_added_function_is_not_flagged() {
     let mut patch_added = PatchProvided::default();
     patch_added.functions.insert(
         module("rabbit_logger_exchange_h"),
-        BTreeSet::from([(
-            FunctionName::from_str("declare_exchange").unwrap(),
-            Arity::new(0),
-        )]),
+        Surface::new(
+            BTreeSet::from([(
+                FunctionName::from_str("declare_exchange").unwrap(),
+                Arity::new(0),
+            )]),
+            None,
+        ),
     );
     let reasons = analyse_with(
         "-rabbit_boot_step({logger_exchange,\n    [{mfa, {rabbit_logger_exchange_h, declare_exchange, []}}]}).\n",

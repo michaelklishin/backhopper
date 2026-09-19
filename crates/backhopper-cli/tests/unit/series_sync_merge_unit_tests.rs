@@ -32,7 +32,7 @@ fn payload(name: &str, pins: &[(&str, &str)]) -> SyncOutput {
         pins: pins
             .iter()
             .map(|(p, t)| PinPayload {
-                project: (*p).into(),
+                project: ProjectName::new(*p).unwrap(),
                 tag: (*t).into(),
             })
             .collect(),

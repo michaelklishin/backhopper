@@ -7,13 +7,15 @@
 //! Modeled here so the CLI emits and the driver parses one definition.
 //! The name-bearing fields carry the same serde-transparent newtypes the
 //! rest of core uses, so the serialized form is unchanged and a consumer
-//! stops re-validating identifiers it round-trips. The composite
-//! (`fun_arity`, `type_arity`), path (`header`), and value fields stay
-//! `String`: no name newtype fits them.
+//! stops re-validating identifiers it round-trips. `fun_arity` and
+//! `type_arity` travel through `FunArity` and `TypeArity`'s `Display`
+//! form (`serde_util::display_from_str`), so the wire still spells them
+//! `f/2`.
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::names::{ModuleName, ProjectName, SeriesName, TagName};
+use crate::model::names::{ModuleName, ProjectName, RecordName, RelativePath, SeriesName, TagName};
+use crate::model::snapshot::{FunArity, TypeArity};
 
 /// API delta between two tags of one project, oriented `from -> to`:
 /// `*_added` are present at `to` and absent at `from`; `*_removed` are
@@ -111,21 +113,23 @@ pub enum WireConstantChange {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QualifiedFunArity {
     pub module: ModuleName,
-    pub fun_arity: String,
+    #[serde(with = "crate::model::serde_util::display_from_str")]
+    pub fun_arity: FunArity,
 }
 
 /// A type named `module:type/arity`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QualifiedTypeArity {
     pub module: ModuleName,
-    pub type_arity: String,
+    #[serde(with = "crate::model::serde_util::display_from_str")]
+    pub type_arity: TypeArity,
 }
 
 /// A record declared in a header.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QualifiedRecord {
-    pub header: String,
-    pub record: String,
+    pub header: RelativePath,
+    pub record: RecordName,
 }
 
 /// Per-project diffs between the pins of two series, each oriented
