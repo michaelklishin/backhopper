@@ -1,19 +1,16 @@
 # Changelog
 
-## v0.35.0 (in development)
+## v0.36.0 (in development)
 
 ### Enhancements
 
  * Assorted domain types improvements, see `docs/types.md`
  * `snapshots generate` gains `--refresh-stale`, which rebuilds a tag
-   whose snapshot is already on disk but is stale or carries no
-   recorded extractor version. Without the flag, a tag with a
-   snapshot is still always skipped
+   whose snapshot happens to already be on disk but stale or missing the extractor version
  * `doctor` and `snapshots verify --all` now treat a snapshot with no
-   `extractor-version` header (written before `0.31.0`) as maximally
-   stale rather than as a pass. `doctor` reports it as `Unversioned`
-   alongside the `format-version` it did record, and `verify --all`
-   counts it separately from a genuinely stale extractor mismatch
+   `extractor-version` header (written before `0.31.0`) as stale rather than passing.
+   `doctor` reports it as `Unversioned`, and `verify --all`
+   then counts such ocurrences separately
 
 ### Bug Fixes
 
