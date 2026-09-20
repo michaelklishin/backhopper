@@ -75,6 +75,75 @@ fn generic_family_has_no_defaults() {
     assert!(d.wire_constants.is_empty());
     assert!(d.versioned_machines.is_empty());
     assert!(d.versioned_machine_impls.is_empty());
+    assert!(d.dep_behaviours.is_empty());
+    assert!(d.option_types.is_empty());
+    assert!(d.suite_registration.is_none());
+}
+
+// C4: the `ra` module's wire_constants entry carries the twenty
+// `C_RA_LOG_*` counter macros, replacing the earlier lone
+// `RA_PROTO_VERSION` declaration. Pinned as a round-trip test so an
+// accidental future addition of an expression-bodied `C_RA_SRV_*`
+// macro is a reviewed decision, not a silent drift-blind entry.
+#[test]
+fn ra_family_declares_counter_index_macros_on_module_ra() {
+    let d = ProjectFamily::Ra.defaults();
+    let ra = d
+        .wire_constants
+        .iter()
+        .find(|c| c.module == "ra")
+        .expect("module ra declared");
+    assert!(ra.macros.iter().any(|m| m == "RA_PROTO_VERSION"));
+    assert!(ra.macros.iter().any(|m| m == "C_RA_LOG_WRITE_OPS"));
+    assert!(ra.macros.iter().any(|m| m == "C_RA_LOG_RESERVED"));
+    // Twenty `C_RA_LOG_*` counters plus `RA_PROTO_VERSION`.
+    assert_eq!(ra.macros.len(), 21);
+}
+
+#[test]
+fn ra_family_omits_c_ra_srv_macros() {
+    let d = ProjectFamily::Ra.defaults();
+    let ra = d.wire_constants.iter().find(|c| c.module == "ra").unwrap();
+    assert!(
+        !ra.macros
+            .iter()
+            .any(|m| m.as_str().starts_with("C_RA_SRV_"))
+    );
+}
+
+#[test]
+fn ra_family_declares_dep_behaviours() {
+    let d = ProjectFamily::Ra.defaults();
+    assert!(d.dep_behaviours.iter().any(|b| b == "ra_machine"));
+    assert!(d.dep_behaviours.iter().any(|b| b == "ra_snapshot"));
+}
+
+#[test]
+fn ra_family_declares_option_types() {
+    let d = ProjectFamily::Ra.defaults();
+    assert!(
+        d.option_types
+            .iter()
+            .any(|t| t.module == "ra_system" && t.type_name == "config")
+    );
+}
+
+#[test]
+fn cowboy_family_declares_option_types_and_no_dep_behaviours() {
+    let d = ProjectFamily::Cowboy.defaults();
+    assert!(
+        d.option_types
+            .iter()
+            .any(|t| t.module == "cowboy_websocket" && t.type_name == "opts")
+    );
+    assert!(d.dep_behaviours.is_empty());
+}
+
+#[test]
+fn rabbitmq_family_declares_parallel_ct_suite_registration_marker() {
+    let d = ProjectFamily::Rabbitmq.defaults();
+    let reg = d.suite_registration.expect("suite registration declared");
+    assert_eq!(reg.marker, "PARALLEL_CT");
 }
 
 #[test]

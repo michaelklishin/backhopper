@@ -60,6 +60,12 @@ const SCHEMA_V14_FROZEN: &str = include_str!("schema_v14_snapshot.json");
 /// `siblings_doctor_payload` document, `CacheLevel::Siblings`, and
 /// `CacheStatsPayload.siblings` left the live types.
 const SCHEMA_V15_FROZEN: &str = include_str!("schema_v15_snapshot.json");
+/// v16 froze when v17 (doc 025) added six new `Reason` variants
+/// (`BehaviourCallbackUnknownOnPin`, `BehaviourCallbackMissingOnPin`,
+/// `OptionKeyUnknownOnPin`, `SuiteNotRegisteredForCt`,
+/// `SchemaFeatureUnsupportedOnPin`, `SchemaKeyReaderMissing`) and
+/// `Diagnostics.dormant_detectors` to the live types.
+const SCHEMA_V16_FROZEN: &str = include_str!("schema_v16_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -104,7 +110,8 @@ const EMBEDDED: &[(u32, Embedded)] = &[
     (13, Embedded::Frozen(SCHEMA_V13_FROZEN)),
     (14, Embedded::Frozen(SCHEMA_V14_FROZEN)),
     (15, Embedded::Frozen(SCHEMA_V15_FROZEN)),
-    (16, Embedded::Derived(combined_v16)),
+    (16, Embedded::Frozen(SCHEMA_V16_FROZEN)),
+    (17, Embedded::Derived(combined_v17)),
 ];
 
 const _: () = {
@@ -180,13 +187,14 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v16() -> Value {
+fn combined_v17() -> Value {
     combined_live(
-        16,
-        "v16 removes the `siblings doctor` verb and its wire surface: the \
-         `siblings_doctor_payload` document is gone, `CacheLevel` no longer has a \
-         `siblings` value, and `CacheStatsPayload` no longer carries a `siblings` \
-         level.",
+        17,
+        "v17 (doc 025, the six family specializations): six new `Reason` variants \
+         (`BehaviourCallbackUnknownOnPin`, `BehaviourCallbackMissingOnPin`, \
+         `OptionKeyUnknownOnPin`, `SuiteNotRegisteredForCt`, \
+         `SchemaFeatureUnsupportedOnPin`, `SchemaKeyReaderMissing`), the \
+         `DriftEvidence` enum one of them carries, and `Diagnostics.dormant_detectors`.",
     )
 }
 

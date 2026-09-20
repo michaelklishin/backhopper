@@ -11,7 +11,9 @@ use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::state::Canonical;
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{
+    FORMAT_VERSION, FunArity, Module, Snapshot, SnapshotHeader,
+};
 
 use backhopper_cli::commands::snapshots::compute_diff;
 
@@ -26,6 +28,7 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "proptest".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }

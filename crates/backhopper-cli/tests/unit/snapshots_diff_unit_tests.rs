@@ -10,8 +10,9 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
-    CallbackSig, FunArity, HrlFile, Module, Provenance, RecordDecl, RecordField, Snapshot,
-    SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding, WireValue,
+    CallbackSig, FORMAT_VERSION, FunArity, HrlFile, Module, Provenance, RecordDecl, RecordField,
+    Snapshot, SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding,
+    WireValue,
 };
 
 use backhopper_cli::commands::snapshots::{compute_diff, render_diff_text};
@@ -30,6 +31,7 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }
@@ -400,7 +402,7 @@ fn wire_constant_missing_groups_by_side_and_sorts_macros() {
     assert_eq!(missing.len(), 1);
     assert_eq!(missing[0].0.as_str(), "ra_log_segment");
     assert_eq!(missing[0].1, "to");
-    assert_eq!(missing[0].2, vec!["MAGIC".to_owned()]);
+    assert_eq!(missing[0].2, vec![MacroName::new("MAGIC").unwrap()]);
 }
 
 #[test]

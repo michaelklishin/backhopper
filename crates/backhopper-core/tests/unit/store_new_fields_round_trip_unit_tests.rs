@@ -12,7 +12,7 @@ use backhopper_core::model::names::{
     ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::{
-    Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
+    FORMAT_VERSION, Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
     VersionedMachineVersion, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::store::SnapshotStore;
@@ -28,6 +28,7 @@ fn header_with_dep_pins() -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: vec![
             VendoredDep {
                 name: DependencyName::new("ra").unwrap(),

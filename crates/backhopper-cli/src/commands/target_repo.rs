@@ -28,6 +28,7 @@ use backhopper_core::compat::qualified_call_resolve::{
     ContextAwareSubject, IndirectCallAnalysis, QualifiedCallAnalysis, ReferenceCaches,
     ReferenceContext, analyse_indirect_elixir_calls, analyse_qualified_calls, patch_provided,
 };
+use backhopper_core::compat::suite_registration::analyse_suite_registration;
 use backhopper_core::compat::target_tree_index::TargetTreeIndex;
 use backhopper_core::compat::{
     TargetPathClassification, TouchedPathQuery, classify_path, normalise,
@@ -300,6 +301,20 @@ pub fn collect_search_path_globs(cfg: &Config) -> Vec<String> {
     for project in &cfg.projects {
         for glob in project.family.defaults().test_helper_search_paths {
             seen.insert(glob);
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Every distinct C5 suite-registration marker declared by a
+/// configured project's family. Usually one (`PARALLEL_CT` for
+/// `Rabbitmq`); a workspace mixing families runs the check once per
+/// distinct marker.
+pub fn collect_suite_registration_markers(cfg: &Config) -> Vec<String> {
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for project in &cfg.projects {
+        if let Some(decl) = project.family.defaults().suite_registration {
+            seen.insert(decl.marker);
         }
     }
     seen.into_iter().collect()
@@ -643,6 +658,31 @@ impl<'a> TargetResolveSession<'a> {
         )
     }
 
+    /// Resolve C5: added test suites in an app whose target Makefile
+    /// dispatches by explicit registration, against that Makefile.
+    pub(crate) fn suite_registration_findings(
+        &self,
+        files: &[PatchedFile],
+        marker: &str,
+    ) -> Vec<Reason> {
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        analyse_suite_registration(files, marker, &read_target)
+    }
+
+    /// Resolve C6.3: introduced schema mappings whose target env key
+    /// nothing in the target tree's `.erl` sources reads.
+    pub(crate) fn schema_key_reader_findings(
+        &self,
+        mappings: &[backhopper_core::compat::cuttlefish_features::IntroducedMapping],
+    ) -> Vec<Reason> {
+        let read_target = |path: &RelativePath| self.read_target_text(path);
+        backhopper_core::compat::cuttlefish_features::check_schema_key_reader_missing(
+            mappings,
+            &self.ctx.index,
+            &read_target,
+        )
+    }
+
     /// Compare same-file `-define` values for macros the patch uses
     /// between the two trees. `.erl` and `.hrl` alike: a define can
     /// appear in either.
@@ -822,6 +862,31 @@ pub fn merge_added_file_findings_into_evaluation(
 /// becomes `RequiresAdaptation`, an existing reason vector grows,
 /// `Inapplicable` is left alone.
 pub fn merge_reasons_into_evaluation(reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation) {
+    merge_reasons(reasons, evaluation, false);
+}
+
+/// Append non-blocking reasons to every pin, **overriding** an
+/// `Inapplicable` verdict instead of skipping it: for C5 and C6 the
+/// prime case is a patch already promoted to `OnlyTestFixturesTouched`
+/// or `OnlySchemaTouched`, and the skip arm `merge_reasons_into_evaluation`
+/// uses would swallow exactly the finding these detectors exist to
+/// surface (doc 025 §7.2a). Same override rule `merge_into_series_verdict`
+/// already applies to `PathRename`.
+pub fn merge_reasons_overriding_inapplicable(
+    reasons: Vec<Reason>,
+    evaluation: &mut SeriesEvaluation,
+) {
+    merge_reasons(reasons, evaluation, true);
+}
+
+/// Shared merge behind `merge_reasons_into_evaluation` and
+/// `merge_reasons_overriding_inapplicable`: the two differ only in
+/// whether an `Inapplicable` pin is left alone or promoted.
+fn merge_reasons(
+    reasons: Vec<Reason>,
+    evaluation: &mut SeriesEvaluation,
+    override_inapplicable: bool,
+) {
     if reasons.is_empty() {
         return;
     }
@@ -829,10 +894,13 @@ pub fn merge_reasons_into_evaluation(reasons: Vec<Reason>, evaluation: &mut Seri
         let mut to_add = reasons.clone();
         match &mut pin.verdict {
             Verdict::Compatible => pin.verdict = Verdict::from_reasons(to_add),
+            Verdict::Inapplicable { .. } if override_inapplicable => {
+                pin.verdict = Verdict::from_reasons(to_add);
+            }
+            Verdict::Inapplicable { .. } => {}
             Verdict::RequiresAdaptation { reasons } | Verdict::Incompatible { reasons } => {
                 reasons.append(&mut to_add);
             }
-            Verdict::Inapplicable { .. } => {}
         }
     }
     evaluation.verdict.summary = recount_summary(&evaluation.verdict.results);

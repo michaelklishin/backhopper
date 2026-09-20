@@ -22,7 +22,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::errors::{ConfigError, NameError};
 use crate::model::names::{
     ApplicationName, BehaviourName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
-    SeriesName, TagGlob, TagName, vocabulary,
+    SeriesName, TagGlob, TagName, TypeName, vocabulary,
 };
 use crate::model::pin::{self, Pin, PinSelect, PinSpec};
 use crate::store::{SnapshotStore, StoreMode};
@@ -228,6 +228,9 @@ vocabulary!(
         /// `rabbit_fifo` and `rabbit_stream_coordinator`; carries `.schema`
         /// files; uses `?LOG_*`, `rabbit_log:*`, and `rabbit_khepri`.
         Rabbitmq => "rabbitmq",
+        /// `ninenines/cowboy`: HTTP server. Option-map key accretion in
+        /// `cowboy_http`, `cowboy_http2`, and `cowboy_websocket`.
+        Cowboy => "cowboy",
     }
 );
 
@@ -241,6 +244,7 @@ impl ProjectFamily {
             Self::Osiris => OSIRIS_DEFAULTS.clone(),
             Self::Khepri => KHEPRI_DEFAULTS.clone(),
             Self::Rabbitmq => RABBITMQ_DEFAULTS.clone(),
+            Self::Cowboy => COWBOY_DEFAULTS.clone(),
         }
     }
 }
@@ -250,9 +254,42 @@ const RA_WIRE_CONSTANTS: &[(&str, &[&str])] = &[
     ("ra_log_wal", &["CURRENT_VERSION", "MAGIC"]),
     ("ra_log_snapshot", &["VERSION", "MAGIC"]),
     ("ra_snapshot", &["IDX_VERSION", "IDX_MAGIC"]),
-    ("ra", &["RA_PROTO_VERSION"]),
+    // Replaces the earlier lone `RA_PROTO_VERSION` entry: the
+    // `C_RA_LOG_*` counter indexes renumbered three times across the
+    // pinned range and a positional counter reader silently misreads
+    // across a backport. `C_RA_SRV_*` macros are deliberately omitted:
+    // their bodies are `?C_RA_LOG_RESERVED + n`, an expression the 019
+    // value normalization stores as opaque text that never changes
+    // when the base moves.
+    (
+        "ra",
+        &[
+            "RA_PROTO_VERSION",
+            "C_RA_LOG_WRITE_OPS",
+            "C_RA_LOG_WRITE_RESENDS",
+            "C_RA_LOG_READ_OPS",
+            "C_RA_LOG_READ_CACHE",
+            "C_RA_LOG_READ_MEM_TBL",
+            "C_RA_LOG_READ_CLOSED_MEM_TBL",
+            "C_RA_LOG_READ_SEGMENT",
+            "C_RA_LOG_FETCH_TERM",
+            "C_RA_LOG_SNAPSHOTS_WRITTEN",
+            "C_RA_LOG_SNAPSHOTS_INSTALLED",
+            "C_RA_LOG_SNAPSHOT_BYTES_WRITTEN",
+            "C_RA_LOG_OPEN_SEGMENTS",
+            "C_RA_LOG_CHECKPOINTS_WRITTEN",
+            "C_RA_LOG_CHECKPOINT_BYTES_WRITTEN",
+            "C_RA_LOG_CHECKPOINTS_PROMOTED",
+            "C_RA_LOG_COMPACTIONS_MINOR_COUNT",
+            "C_RA_LOG_COMPACTIONS_MAJOR_COUNT",
+            "C_RA_LOG_COMPACTIONS_SEGMENTS_WRITTEN",
+            "C_RA_LOG_COMPACTIONS_SEGMENTS_COMPACTED",
+            "C_RA_LOG_RESERVED",
+        ],
+    ),
 ];
 const RA_VERSIONED_MACHINES: &[&str] = &["ra_machine"];
+const RA_DEP_BEHAVIOURS: &[&str] = &["ra_machine", "ra_snapshot"];
 
 const OSIRIS_WIRE_CONSTANTS: &[(&str, &[&str])] = &[(
     "osiris",
@@ -315,12 +352,32 @@ fn build_versioned_machine_impls(
         .collect()
 }
 
+const RA_OPTION_TYPES: &[(&str, &str)] =
+    &[("ra_system", "config"), ("ra_server", "ra_server_config")];
+
+const COWBOY_OPTION_TYPES: &[(&str, &str)] = &[
+    ("cowboy_http", "opts"),
+    ("cowboy_http2", "opts"),
+    ("cowboy_websocket", "opts"),
+];
+
+const RABBITMQ_SUITE_REGISTRATION_MARKER: &str = "PARALLEL_CT";
+
+fn build_option_types(rows: &[(&str, &str)]) -> Result<Vec<OptionTypeDecl>, NameError> {
+    rows.iter()
+        .map(|(module, type_name)| OptionTypeDecl::new(module, type_name))
+        .collect()
+}
+
 fn build_ra_defaults() -> Result<FamilyDefaults, NameError> {
     Ok(FamilyDefaults {
         wire_constants: build_wire_constants(RA_WIRE_CONSTANTS)?,
         versioned_machines: build_versioned_machines(RA_VERSIONED_MACHINES)?,
         versioned_machine_impls: Vec::new(),
         test_helper_search_paths: Vec::new(),
+        dep_behaviours: RA_DEP_BEHAVIOURS.iter().map(|s| (*s).to_owned()).collect(),
+        option_types: build_option_types(RA_OPTION_TYPES)?,
+        suite_registration: None,
     })
 }
 
@@ -344,6 +401,21 @@ fn build_rabbitmq_defaults() -> Result<FamilyDefaults, NameError> {
         versioned_machines: Vec::new(),
         versioned_machine_impls: build_versioned_machine_impls(RABBITMQ_VERSIONED_MACHINE_IMPLS)?,
         test_helper_search_paths: rabbitmq_default_test_helper_search_paths(),
+        dep_behaviours: Vec::new(),
+        option_types: Vec::new(),
+        suite_registration: Some(SuiteRegistrationDecl {
+            marker: RABBITMQ_SUITE_REGISTRATION_MARKER.to_owned(),
+        }),
+    })
+}
+
+// `dep_behaviours` deliberately stays empty for Cowboy in v1:
+// `cowboy_websocket` and `cowboy_handler` callbacks have been stable
+// across the pinned range, and C1's evidence is Ra-shaped.
+fn build_cowboy_defaults() -> Result<FamilyDefaults, NameError> {
+    Ok(FamilyDefaults {
+        option_types: build_option_types(COWBOY_OPTION_TYPES)?,
+        ..Default::default()
     })
 }
 
@@ -355,6 +427,8 @@ static KHEPRI_DEFAULTS: LazyLock<FamilyDefaults> =
     LazyLock::new(|| build_khepri_defaults().expect("khepri family default is valid"));
 static RABBITMQ_DEFAULTS: LazyLock<FamilyDefaults> =
     LazyLock::new(|| build_rabbitmq_defaults().expect("rabbitmq family default is valid"));
+static COWBOY_DEFAULTS: LazyLock<FamilyDefaults> =
+    LazyLock::new(|| build_cowboy_defaults().expect("cowboy family default is valid"));
 
 /// Per-family relative-path globs the test-module resolver scans when
 /// looking up `helper_module:f/n` references in `_SUITE.erl` files.
@@ -379,6 +453,41 @@ pub struct FamilyDefaults {
     /// See `rabbitmq_default_test_helper_search_paths` for the
     /// `ProjectFamily::Rabbitmq` default and the glob convention.
     pub test_helper_search_paths: Vec<String>,
+    /// Behaviour modules owned by this family whose implementers in
+    /// *other* projects should be checked against this project's
+    /// pinned callback surface (C1). Empty for every family but `Ra`:
+    /// entries land when a real drift case bites, not on speculation.
+    pub dep_behaviours: Vec<String>,
+    /// Exported map types whose top-level keys form a recognized
+    /// option vocabulary for this family (C2).
+    pub option_types: Vec<OptionTypeDecl>,
+    /// When set, added test suites in an app whose Makefile matches
+    /// the marker must be referenced from that Makefile (C5).
+    pub suite_registration: Option<SuiteRegistrationDecl>,
+}
+
+/// One exported map type declared as a family's recognized option
+/// vocabulary: `module:type_name/0`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionTypeDecl {
+    pub module: ModuleName,
+    pub type_name: TypeName,
+}
+
+impl OptionTypeDecl {
+    pub fn new(module: &str, type_name: &str) -> Result<Self, NameError> {
+        Ok(Self {
+            module: ModuleName::from_str(module)?,
+            type_name: TypeName::from_str(type_name)?,
+        })
+    }
+}
+
+/// Gates C5's suite-registration check: apps whose Makefile carries
+/// `marker` dispatch suites by explicit registration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuiteRegistrationDecl {
+    pub marker: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

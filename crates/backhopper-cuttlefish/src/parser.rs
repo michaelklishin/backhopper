@@ -67,7 +67,7 @@ pub fn parse_schema(
                     && let Some(open) = top_open.take()
                 {
                     let span = &source[open..i];
-                    if let Some(frag) = classify_top_level(span, open, source, source_path) {
+                    if let Some(frag) = classify_top_level(span, open, i - 1, source, source_path) {
                         fragments.push(frag);
                     }
                 }
@@ -86,6 +86,7 @@ pub fn parse_schema(
 fn classify_top_level(
     span: &str,
     open_byte: usize,
+    end_byte: usize,
     full_source: &str,
     source_path: &Path,
 ) -> Option<CuttlefishFragment> {
@@ -98,6 +99,7 @@ fn classify_top_level(
     };
     let key = leading_string_after_atom(span);
     let start_line = line_of_byte(full_source, open_byte);
+    let end_line = line_of_byte(full_source, end_byte);
     let (erlang_body, body_start_line) = match kind {
         FragmentKind::Mapping => (None, start_line),
         FragmentKind::Translation | FragmentKind::Validator => match locate_fun_body(span) {
@@ -108,6 +110,10 @@ fn classify_top_level(
             None => (None, start_line),
         },
     };
+    let (mapping_target, attr_names) = match kind {
+        FragmentKind::Mapping => mapping_target_and_attrs(span),
+        FragmentKind::Translation | FragmentKind::Validator => (None, Vec::new()),
+    };
     Some(CuttlefishFragment {
         kind,
         source_path: source_path.to_path_buf(),
@@ -115,7 +121,104 @@ fn classify_top_level(
         erlang_body,
         body_start_line,
         key,
+        mapping_target,
+        attr_names,
+        end_line,
     })
+}
+
+/// A mapping tuple's third element (the target Erlang key, when a
+/// string literal) and the attribute names in its fourth element
+/// (a list of `{name, ...}` tuples).
+fn mapping_target_and_attrs(span: &str) -> (Option<String>, Vec<String>) {
+    let Some(open) = span.find('{') else {
+        return (None, Vec::new());
+    };
+    let Some(close) = span.rfind('}') else {
+        return (None, Vec::new());
+    };
+    if close <= open {
+        return (None, Vec::new());
+    }
+    let elements = split_top_level(&span[open + 1..close]);
+    let mapping_target = elements.get(2).and_then(|e| string_literal(e));
+    let attr_names = elements
+        .get(3)
+        .map(|e| list_of_tuple_head_atoms(e))
+        .unwrap_or_default();
+    (mapping_target, attr_names)
+}
+
+/// Split `s` on commas at bracket depth zero, with comments, strings,
+/// atoms, and char literals skipped so a comma inside any of those
+/// never splits. `s` is the content strictly between one pair of
+/// enclosing delimiters (already stripped by the caller).
+fn split_top_level(s: &str) -> Vec<String> {
+    let bytes = s.as_bytes();
+    let mut elements = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'"' | b'~' => {
+                i += string_span(bytes, i).unwrap_or(1);
+                continue;
+            }
+            b'\'' => {
+                i += quoted_atom_span(bytes, i).unwrap_or(1);
+                continue;
+            }
+            b'$' => {
+                i += skip_char_literal_span(bytes, i);
+                continue;
+            }
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => depth -= 1,
+            b',' if depth == 0 => {
+                elements.push(s[start..i].to_owned());
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    elements.push(s[start..].to_owned());
+    elements
+}
+
+/// A top-level string literal, or `None` when the trimmed element
+/// does not open with `"`.
+fn string_literal(elem: &str) -> Option<String> {
+    let t = elem.trim();
+    let rest = t.strip_prefix('"')?;
+    let end = find_unescaped(rest, b'"')?;
+    Some(rest[..end].to_owned())
+}
+
+/// The leading atom of every top-level `{name, ...}` tuple in a list
+/// literal (`elem` is the fourth mapping element, `[{alias, ...}, ...]`).
+fn list_of_tuple_head_atoms(elem: &str) -> Vec<String> {
+    let t = elem.trim();
+    let Some(open) = t.find('[') else {
+        return Vec::new();
+    };
+    let Some(close) = t.rfind(']') else {
+        return Vec::new();
+    };
+    if close <= open {
+        return Vec::new();
+    }
+    split_top_level(&t[open + 1..close])
+        .into_iter()
+        .filter_map(|e| leading_atom(e.trim()))
+        .collect()
 }
 
 fn leading_atom(span: &str) -> Option<String> {

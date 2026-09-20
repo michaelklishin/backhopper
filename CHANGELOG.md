@@ -5,8 +5,23 @@
 ### Enhancements
 
  * Assorted domain types improvements, see `docs/types.md`
+ * `snapshots generate` gains `--refresh-stale`, which rebuilds a tag
+   whose snapshot is already on disk but is stale or carries no
+   recorded extractor version. Without the flag, a tag with a
+   snapshot is still always skipped
+ * `doctor` and `snapshots verify --all` now treat a snapshot with no
+   `extractor-version` header (written before `0.31.0`) as maximally
+   stale rather than as a pass. `doctor` reports it as `Unversioned`
+   alongside the `format-version` it did record, and `verify --all`
+   counts it separately from a genuinely stale extractor mismatch
 
 ### Bug Fixes
+
+ * A snapshot written before extractor versioning existed had no
+   `extractor-version` header, and the staleness check read that
+   empty value as current instead of as the most suspect file in the
+   store. This let a stale pre-`0.31.0` snapshot pass `doctor` and
+   produce an incorrect `Incompatible` verdict on a correct pick
 
  * `Module.clause_heads` is a `BTreeMap<FunArity, ...>`; serialising a
    module with a populated map failed with `key must be a string`,

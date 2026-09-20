@@ -112,6 +112,7 @@ impl<'a> Parser<'a> {
         let mut generated_at: Option<OffsetDateTime> = None;
         let mut extractor_version: String = String::new();
         let mut dep_pins: Vec<VendoredDep> = Vec::new();
+        let mut format_version: u32 = 0;
         let mut format_version_seen = false;
         loop {
             let Some((lineno, line)) = self.peek() else {
@@ -144,6 +145,7 @@ impl<'a> Parser<'a> {
                             expected: FORMAT_VERSION,
                         });
                     }
+                    format_version = parsed;
                     format_version_seen = true;
                 }
                 "project" => {
@@ -214,6 +216,7 @@ impl<'a> Parser<'a> {
                 key: "generated-at",
             })?,
             extractor_version,
+            format_version,
             dep_pins,
         })
     }

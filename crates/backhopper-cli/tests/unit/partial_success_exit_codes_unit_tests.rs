@@ -54,9 +54,18 @@ fn doctor_returns_partial_success_when_any_pin_stale() {
 }
 
 #[test]
+fn doctor_returns_partial_success_when_any_pin_unversioned() {
+    let totals = Totals {
+        unversioned_extractor: 1,
+        ..Totals::default()
+    };
+    assert_eq!(doctor_exit_code(&totals), CommandOutcome::PartialSuccess);
+}
+
+#[test]
 fn verify_all_returns_zero_when_all_clean() {
     assert_eq!(
-        verify_all_exit_code(10, 0, 0).unwrap(),
+        verify_all_exit_code(10, 0, 0, 0).unwrap(),
         CommandOutcome::Success
     );
 }
@@ -64,7 +73,7 @@ fn verify_all_returns_zero_when_all_clean() {
 #[test]
 fn verify_all_returns_zero_for_empty_store() {
     assert_eq!(
-        verify_all_exit_code(0, 0, 0).unwrap(),
+        verify_all_exit_code(0, 0, 0, 0).unwrap(),
         CommandOutcome::Success
     );
 }
@@ -72,7 +81,7 @@ fn verify_all_returns_zero_for_empty_store() {
 #[test]
 fn verify_all_returns_partial_success_for_stale_extractor_only() {
     assert_eq!(
-        verify_all_exit_code(10, 0, 3).unwrap(),
+        verify_all_exit_code(10, 0, 3, 0).unwrap(),
         CommandOutcome::PartialSuccess
     );
 }
@@ -81,7 +90,15 @@ fn verify_all_returns_partial_success_for_stale_extractor_only() {
 fn verify_all_returns_partial_success_for_stale_with_zero_verified() {
     // only stale snapshots is still PartialSuccess, not Failure: every load succeeded
     assert_eq!(
-        verify_all_exit_code(0, 0, 5).unwrap(),
+        verify_all_exit_code(0, 0, 5, 0).unwrap(),
+        CommandOutcome::PartialSuccess
+    );
+}
+
+#[test]
+fn verify_all_returns_partial_success_for_unversioned_extractor_only() {
+    assert_eq!(
+        verify_all_exit_code(10, 0, 0, 4).unwrap(),
         CommandOutcome::PartialSuccess
     );
 }
@@ -89,14 +106,14 @@ fn verify_all_returns_partial_success_for_stale_with_zero_verified() {
 #[test]
 fn verify_all_returns_partial_success_when_some_failed_some_loaded() {
     assert_eq!(
-        verify_all_exit_code(8, 2, 0).unwrap(),
+        verify_all_exit_code(8, 2, 0, 0).unwrap(),
         CommandOutcome::PartialSuccess
     );
 }
 
 #[test]
 fn verify_all_returns_error_when_every_snapshot_failed() {
-    let err = verify_all_exit_code(0, 5, 0).unwrap_err();
+    let err = verify_all_exit_code(0, 5, 0, 0).unwrap_err();
     assert!(
         err.to_string().contains("every snapshot failed"),
         "unexpected error message: {err}"

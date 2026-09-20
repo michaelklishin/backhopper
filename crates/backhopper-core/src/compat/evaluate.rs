@@ -9,25 +9,29 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 
+use crate::compat::added_lines::{added_lines_with_context, added_lines_with_offsets};
 use crate::compat::arg_shape::{ArgShape, satisfies_any};
+use crate::compat::option_keys::{OptionKeySetCache, drifted_key_sets, scan_added_map_keys};
 use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile, SourceKind};
 use crate::compat::preimage::{
     PreimageMatch, classify_preimage, leading_added_run, postimage_lines, preimage_lines,
     preimage_offset, tally_postimage, trailing_added_run,
 };
 use crate::compat::scope::PinScope;
+use crate::compat::source_attributes::{ExportSurface, extract_behaviours, extract_exports};
 use crate::config::FamilyDefaults;
 use crate::model::names::{
-    Arity, FieldName, FunctionName, MacroName, Mfa, ModuleName, RecordName, TypeName,
+    Arity, FieldName, FunctionName, MacroName, MapKey, Mfa, ModuleName, RecordName, TypeName,
 };
 use crate::model::snapshot::{
-    ArityMatch, Deprecation, FunArity, Module, Snapshot, Visibility, state,
+    ArityMatch, CallbackSig, Deprecation, FunArity, Module, Snapshot, Visibility, state,
 };
 use crate::model::spec_ast::SpecType;
 use crate::model::spec_parser::parse_signature_return;
 use crate::model::symbol::{ExportedSymbol, RefOrigin, SymbolKind, SymbolRef};
 use crate::model::verdict::{
-    ArtifactKind, ConflictMarker, HunkTally, Reason, SnapshotSide, SourceDelta, Verdict,
+    ArtifactKind, ConflictMarker, DriftEvidence, HunkTally, Reason, SnapshotSide, SourceDelta,
+    Verdict,
 };
 
 /// The analyzed-patch slices `evaluate_pin` reads, grouped so the fixed
@@ -80,6 +84,15 @@ pub(crate) fn evaluate_pin(
     }
     if let Some(fd) = family_defaults {
         check_versioned_machine_data(files, snapshot, source_snapshot, fd, &mut reasons);
+        check_dep_behaviour_conformance(
+            files,
+            defined,
+            snapshot,
+            source_snapshot,
+            fd,
+            &mut reasons,
+        );
+        check_option_key_drift(files, snapshot, source_snapshot, fd, &mut reasons);
     }
     let defined_index: HashSet<&SymbolKind> = defined.iter().map(|d| &d.kind).collect();
     let mut tracked_refs: Vec<SymbolRef> = Vec::new();
@@ -538,6 +551,370 @@ fn check_versioned_machine_data(
                     module,
                     macros: tgt_macros,
                     side: SnapshotSide::Target,
+                });
+            }
+        }
+    }
+}
+
+/// Callback names OTP behaviours declare, curated and versioned with
+/// backhopper rather than sniffed: the behaviour-side twin of the 018
+/// OTP header inventory. Suppresses a dual-behaviour implementer's
+/// legitimate callback names (`init/1` on a `gen_server` that also
+/// implements a family-declared dependency behaviour) from firing on
+/// tier 2's name anchor.
+const OTP_BEHAVIOUR_CALLBACKS: &[(&str, &[(&str, u8)])] = &[
+    (
+        "gen_server",
+        &[
+            ("init", 1),
+            ("handle_call", 3),
+            ("handle_cast", 2),
+            ("handle_info", 2),
+            ("terminate", 2),
+            ("code_change", 3),
+            ("format_status", 1),
+            ("format_status", 2),
+            ("handle_continue", 2),
+        ],
+    ),
+    (
+        "gen_statem",
+        &[
+            ("init", 1),
+            ("callback_mode", 0),
+            ("handle_event", 4),
+            ("terminate", 3),
+            ("code_change", 4),
+        ],
+    ),
+    (
+        "gen_event",
+        &[
+            ("init", 1),
+            ("handle_event", 2),
+            ("handle_call", 2),
+            ("handle_info", 2),
+            ("terminate", 2),
+            ("code_change", 3),
+        ],
+    ),
+    ("supervisor", &[("init", 1)]),
+    (
+        "application",
+        &[("start", 2), ("stop", 1), ("config_change", 3)],
+    ),
+];
+
+/// Added and context lines joined, removed lines dropped: the
+/// patch-visible content of a modified file. A `-behaviour` attribute
+/// outside every hunk is invisible here (an honest gap), but one
+/// sitting in a hunk's context (the common shape: the patch adds a
+/// callback beside an unchanged `-behaviour` line) is not lost the way
+/// scanning added lines alone would lose it.
+fn patch_visible_text(hunks: &[Hunk]) -> String {
+    let mut text = String::new();
+    for hunk in hunks {
+        for line in &hunk.lines {
+            match line {
+                HunkLine::Added(s) | HunkLine::Context(s) => {
+                    text.push_str(s);
+                    text.push('\n');
+                }
+                HunkLine::Removed(_) => {}
+            }
+        }
+    }
+    text
+}
+
+fn otp_behaviour_conforms(behaviour: &str, function: &FunctionName, arity: Arity) -> bool {
+    OTP_BEHAVIOUR_CALLBACKS
+        .iter()
+        .find(|(name, _)| *name == behaviour)
+        .is_some_and(|(_, callbacks)| {
+            callbacks
+                .iter()
+                .any(|(n, a)| *n == function.as_str() && Arity::new(*a) == arity)
+        })
+}
+
+/// Whether `key` conforms to some behaviour `implementer` declares
+/// other than `exclude`, resolved against tracked pin snapshots when
+/// available and against `OTP_BEHAVIOUR_CALLBACKS` otherwise. A
+/// dual-behaviour implementer legitimately exports a callback name
+/// that collides with a family-declared dependency behaviour's.
+fn conforms_to_sibling_behaviour(
+    declared: &BTreeSet<ModuleName>,
+    exclude: &ModuleName,
+    key: &FunArity,
+    target: &Snapshot<state::Canonical>,
+    source: Option<&Snapshot<state::Canonical>>,
+) -> bool {
+    for other in declared {
+        if other == exclude {
+            continue;
+        }
+        if otp_behaviour_conforms(other.as_str(), &key.name, key.arity) {
+            return true;
+        }
+        let conforms_at = |snap: &Snapshot<state::Canonical>| {
+            snap.module_named(other).is_some_and(|m| {
+                m.callbacks
+                    .iter()
+                    .any(|c| c.name == key.name && c.arity == key.arity)
+                    || m.optional_callbacks
+                        .iter()
+                        .any(|c| c.name == key.name && c.arity == key.arity)
+            })
+        };
+        if conforms_at(target) || source.is_some_and(conforms_at) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The `(name, arity)` pairs an export list or a callback declaration
+/// carries, reduced to `FunArity`. Shared by every place in this
+/// module that needs that reduction: `complete_export_set`, the
+/// patch-introduced set, and a pin's own declared callbacks.
+fn listed_to_fun_arities<'a>(
+    listed: impl IntoIterator<Item = (&'a FunctionName, &'a Arity)>,
+) -> BTreeSet<FunArity> {
+    listed
+        .into_iter()
+        .map(|(name, arity)| FunArity {
+            name: name.clone(),
+            arity: *arity,
+        })
+        .collect()
+}
+
+/// A module's declared callbacks, reduced to `FunArity`.
+fn callbacks_to_fun_arities(callbacks: &[CallbackSig]) -> BTreeSet<FunArity> {
+    listed_to_fun_arities(callbacks.iter().map(|c| (&c.name, &c.arity)))
+}
+
+/// The exported `f/a` set when the surface is fully readable: `None`
+/// under `-compile(export_all)`, a `parse_transform`, or a macro in
+/// the export list, so a required-callback floor check never guesses.
+fn complete_export_set(exports: &ExportSurface) -> Option<BTreeSet<FunArity>> {
+    if !exports.is_complete() {
+        return None;
+    }
+    Some(listed_to_fun_arities(
+        exports.listed().iter().map(|(name, arity)| (name, arity)),
+    ))
+}
+
+/// C1: the inverse of `check_behaviour_conformance`. Checks a touched
+/// implementer's patch-introduced callbacks against the **pinned
+/// dependency's** behaviour (`FamilyDefaults.dep_behaviours`), so an
+/// implementer written against a newer source pin that exports a
+/// callback the older target pin's behaviour does not declare is
+/// flagged, instead of compiling clean and never being invoked.
+fn check_dep_behaviour_conformance(
+    files: &[PatchedFile],
+    defined: &[SymbolRef],
+    target: &Snapshot<state::Canonical>,
+    source: Option<&Snapshot<state::Canonical>>,
+    defaults: &FamilyDefaults,
+    reasons: &mut Vec<Reason>,
+) {
+    if defaults.dep_behaviours.is_empty() {
+        return;
+    }
+    for file in files {
+        let Some(path) = file.primary_path() else {
+            continue;
+        };
+        if path.extension().and_then(|s| s.to_str()) != Some("erl") {
+            continue;
+        }
+        let Some(implementer) = file_to_module_name(path) else {
+            continue;
+        };
+        let (added, _) = added_lines_with_offsets(&file.hunks);
+        if added.is_empty() {
+            continue;
+        }
+        let visible = patch_visible_text(&file.hunks);
+        let declared_here: BTreeSet<ModuleName> = extract_behaviours(&visible)
+            .into_iter()
+            .map(|b| b.behaviour)
+            .collect();
+        let matched: Vec<&String> = defaults
+            .dep_behaviours
+            .iter()
+            .filter(|b| declared_here.iter().any(|d| d.as_str() == b.as_str()))
+            .collect();
+        if matched.is_empty() {
+            continue;
+        }
+        let exports = extract_exports(&added);
+        let mut introduced: BTreeSet<FunArity> =
+            listed_to_fun_arities(exports.listed().iter().map(|(name, arity)| (name, arity)));
+        for r in defined {
+            if let SymbolKind::Function { mfa } = &r.kind
+                && mfa.module == implementer
+            {
+                introduced.insert(FunArity {
+                    name: mfa.function.clone(),
+                    arity: mfa.arity,
+                });
+            }
+        }
+        for behaviour_name in matched {
+            let Ok(behaviour_mod) = ModuleName::from_str(behaviour_name.as_str()) else {
+                continue;
+            };
+            // Absent pin snapshot: already covered by an in-scope
+            // MissingSymbol condition if referenced; inventing a parallel
+            // missing-data variant here would duplicate 020's shape
+            // without 020's evidence.
+            let Some(pin_b) = target.module_named(&behaviour_mod) else {
+                continue;
+            };
+            let pin_callbacks = callbacks_to_fun_arities(&pin_b.callbacks);
+            let pin_optional: BTreeSet<FunArity> =
+                pin_b.optional_callbacks.iter().cloned().collect();
+            let source_callbacks: Option<BTreeSet<FunArity>> = source
+                .and_then(|s| s.module_named(&behaviour_mod))
+                .map(|m| callbacks_to_fun_arities(&m.callbacks));
+            for key in &introduced {
+                if pin_callbacks.contains(key) || pin_optional.contains(key) {
+                    continue;
+                }
+                if let Some(source_callbacks) = &source_callbacks {
+                    // Tier 1: source side available, exact set difference.
+                    if source_callbacks.contains(key) {
+                        let pin_arities = arities_named(&pin_callbacks, &pin_optional, &key.name);
+                        reasons.push(Reason::BehaviourCallbackUnknownOnPin {
+                            behaviour: behaviour_mod.clone(),
+                            callback: key.name.clone(),
+                            arity: key.arity,
+                            pin_arities,
+                            implementer: implementer.clone(),
+                            evidence: DriftEvidence::SourceSideSetDifference,
+                        });
+                    }
+                    continue;
+                }
+                // Tier 2: no source side, name-anchored.
+                let pin_arities = arities_named(&pin_callbacks, &pin_optional, &key.name);
+                if pin_arities.is_empty() {
+                    // No name anchor at all: an honest false-negative gap.
+                    continue;
+                }
+                if conforms_to_sibling_behaviour(
+                    &declared_here,
+                    &behaviour_mod,
+                    key,
+                    target,
+                    source,
+                ) {
+                    continue;
+                }
+                reasons.push(Reason::BehaviourCallbackUnknownOnPin {
+                    behaviour: behaviour_mod.clone(),
+                    callback: key.name.clone(),
+                    arity: key.arity,
+                    pin_arities,
+                    implementer: implementer.clone(),
+                    evidence: DriftEvidence::NameAnchored,
+                });
+            }
+            if file.old_path.is_none()
+                && let Some(export_set) = complete_export_set(&exports)
+            {
+                for cb in &pin_b.callbacks {
+                    let key = FunArity {
+                        name: cb.name.clone(),
+                        arity: cb.arity,
+                    };
+                    if pin_optional.contains(&key) || export_set.contains(&key) {
+                        continue;
+                    }
+                    reasons.push(Reason::BehaviourCallbackMissingOnPin {
+                        behaviour: behaviour_mod.clone(),
+                        callback: key.name,
+                        arity: key.arity,
+                        implementer: implementer.clone(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Every arity the pin declares `name` at, required or optional,
+/// sorted: the `pin_arities` field on a name-anchored finding.
+fn arities_named(
+    callbacks: &BTreeSet<FunArity>,
+    optional: &BTreeSet<FunArity>,
+    name: &FunctionName,
+) -> Vec<Arity> {
+    let mut arities: Vec<Arity> = callbacks
+        .iter()
+        .chain(optional.iter())
+        .filter(|c| &c.name == name)
+        .map(|c| c.arity)
+        .collect();
+    arities.sort_unstable();
+    arities.dedup();
+    arities
+}
+
+/// C2: diffs the family-declared option-type key universe between the
+/// source and target pins, then flags an added-line map key that is
+/// new relative to the target pin in a recognized vocabulary. Fires
+/// only with a source pin in play: without one there is no membership
+/// test, and the honest trade is silence.
+fn check_option_key_drift(
+    files: &[PatchedFile],
+    target: &Snapshot<state::Canonical>,
+    source: Option<&Snapshot<state::Canonical>>,
+    defaults: &FamilyDefaults,
+    reasons: &mut Vec<Reason>,
+) {
+    if defaults.option_types.is_empty() {
+        return;
+    }
+    let Some(source) = source else {
+        return;
+    };
+    let mut cache = OptionKeySetCache::new();
+    let drifted = drifted_key_sets(defaults, target, source, &mut cache);
+    if drifted.is_empty() {
+        return;
+    }
+    let project = target.header().project.clone();
+    let pin_tag = target.header().tag.clone();
+    let mut fired_pairs: BTreeSet<(TypeName, MapKey)> = BTreeSet::new();
+    for file in files {
+        let Some(path) = file.primary_path() else {
+            continue;
+        };
+        if path.extension().and_then(|s| s.to_str()) != Some("erl") {
+            continue;
+        }
+        let (added, _line_map, ctx) = added_lines_with_context(&file.hunks);
+        if added.is_empty() {
+            continue;
+        }
+        let used_keys = scan_added_map_keys(&added, &ctx);
+        for (module, type_name, drift_set) in &drifted {
+            for key in used_keys.intersection(drift_set) {
+                if !fired_pairs.insert((type_name.clone(), key.clone())) {
+                    continue;
+                }
+                reasons.push(Reason::OptionKeyUnknownOnPin {
+                    project: project.clone(),
+                    module: module.clone(),
+                    type_name: type_name.clone(),
+                    key: key.clone(),
+                    pin_tag: pin_tag.clone(),
                 });
             }
         }

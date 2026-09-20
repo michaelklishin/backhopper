@@ -5,7 +5,7 @@
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, Visibility};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, Visibility};
 use backhopper_core::snapshot::{format, parser};
 use backhopper_erlang::ErlangExtractor;
 
@@ -96,6 +96,7 @@ fn snapshot_round_trip_for_realistic_module() {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     };
     // the text format does not round-trip clause_heads; clear both sides before comparing

@@ -17,7 +17,7 @@ use time::OffsetDateTime;
 use backhopper_core::config::Config;
 use backhopper_core::model::names::{CommitSha, GitRef, ProjectName, TagGlob, TagName};
 use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, state};
 use backhopper_core::store::SnapshotStore;
 
 use backhopper_cli::CommandOutcome;
@@ -51,6 +51,7 @@ fn write_snapshot_with_version(store_root: &Path, project: &str, tag_name: &str,
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: version.to_owned(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     };
     let snap = Snapshot::<state::Unsorted>::from_extracted(header, Vec::new(), Vec::new())
@@ -203,6 +204,31 @@ fn present_current_pin_reports_ok_and_zero_exit() {
     assert_eq!(totals.present, 1);
     assert_eq!(totals.stale_extractor, 0);
     assert_eq!(doctor_exit_code(&totals), CommandOutcome::Success);
+}
+
+#[test]
+fn unversioned_pin_is_flagged_with_remedy_and_nonzero_exit() {
+    let tmp = TempDir::new().unwrap();
+    let store_root = tmp.path().join("snapshots");
+    write_snapshot_with_version(&store_root, "gen_batch_server", "v0.8.8", "");
+    let cfg = load_cfg(tmp.path());
+    let store = SnapshotStore::open(&store_root).unwrap();
+    let spec = PinSpec::literal(project("gen_batch_server"), tag("v0.8.8"));
+    let row = build_pin_row(&cfg, &store, &spec, false, &mut BTreeMap::new()).unwrap();
+    assert!(
+        matches!(row.snapshot(), SnapshotStatus::Unversioned { .. }),
+        "snapshot status: {:?}",
+        row.snapshot()
+    );
+    assert_eq!(snapshot_cell(row.snapshot()), "UNVERSIONED");
+    let note = row.note().expect("unversioned pin carries a note");
+    assert!(note.contains("no extractor version recorded"), "{note}");
+    assert!(note.contains("--refresh-stale"), "{note}");
+    let mut totals = Totals::default();
+    totals.record(row.snapshot());
+    assert_eq!(totals.present, 1);
+    assert_eq!(totals.unversioned_extractor, 1);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 
 #[test]

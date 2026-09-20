@@ -17,12 +17,13 @@ use time::OffsetDateTime;
 use backhopper_core::Snapshot;
 use backhopper_core::config::{Config, Language, Project, ProjectLayout};
 use backhopper_core::model::names::{
-    ApplicationName, CommitSha, Mfa, ModuleName, ProjectName, RecordName, RelativePath, SeriesName,
-    TagName,
+    ApplicationName, CommitSha, MacroName, Mfa, ModuleName, ProjectName, RecordName, RelativePath,
+    SeriesName, TagName,
 };
 use backhopper_core::model::pin::PinSpec;
 use backhopper_core::model::snapshot::{
-    FunArity, Module, SnapshotHeader, TypeArity, Visibility, WireConstantBinding, WireValue, state,
+    FORMAT_VERSION, FunArity, Module, SnapshotHeader, TypeArity, Visibility, WireConstantBinding,
+    WireValue, state,
 };
 use backhopper_core::model::snapshot_diff::{
     CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,
@@ -36,7 +37,11 @@ use backhopper_erlang::ErlangExtractor;
 use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
-use crate::commands::auto_generate::expected_extractor_version;
+use crate::commands::auto_generate::{
+    ExtractorFreshness, WriteKind, expected_extractor_version,
+    expected_extractor_version_for_project, extractor_freshness, generate_action,
+    snapshot_refresh_command,
+};
 use crate::commands::context::{load_config, open_project_repo, open_store_mut, open_store_read};
 use crate::commands::pin_coverage::{PinCoverage, classify_pin};
 use crate::errors::{CliError, CliResult};
@@ -47,6 +52,7 @@ struct DiscoverPayload {
     project: String,
     captured: usize,
     skipped: usize,
+    refreshed: usize,
     failed: Vec<DiscoverFailure>,
     tags: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -59,6 +65,7 @@ impl DiscoverPayload {
             project: project.to_string(),
             captured: 0,
             skipped: 1,
+            refreshed: 0,
             failed: Vec::new(),
             tags: Vec::new(),
             ignored_non_tag_refs: Vec::new(),
@@ -70,6 +77,19 @@ impl DiscoverPayload {
             project: project.to_string(),
             captured: 1,
             skipped: 0,
+            refreshed: 0,
+            failed: Vec::new(),
+            tags: vec![tag.to_string()],
+            ignored_non_tag_refs: Vec::new(),
+        }
+    }
+
+    fn refreshed_one(project: &ProjectName, tag: &TagName) -> Self {
+        Self {
+            project: project.to_string(),
+            captured: 0,
+            skipped: 0,
+            refreshed: 1,
             failed: Vec::new(),
             tags: vec![tag.to_string()],
             ignored_non_tag_refs: Vec::new(),
@@ -81,6 +101,7 @@ impl DiscoverPayload {
             project: project.to_string(),
             captured: 0,
             skipped: 0,
+            refreshed: 0,
             failed: vec![DiscoverFailure {
                 tag: tag.to_string(),
                 reason,
@@ -151,7 +172,8 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<CommandOutcome>
             dry_run,
             since,
             series,
-        } => generate(args, &cfg, project, dry_run, since, series),
+            refresh_stale,
+        } => generate(args, &cfg, project, dry_run, since, series, refresh_stale),
         SnapshotsCmd::List { project } => list(args, &cfg, project),
         SnapshotsCmd::Show { pt, module } => show(args, &cfg, pt.project, pt.tag, module),
         SnapshotsCmd::Verify {
@@ -246,9 +268,10 @@ fn generate(
     dry_run: bool,
     since: Option<TagName>,
     series: Option<SeriesName>,
+    refresh_stale: bool,
 ) -> CliResult<CommandOutcome> {
     if let Some(name) = series {
-        return generate_series(args, cfg, &name, dry_run);
+        return generate_series(args, cfg, &name, dry_run, refresh_stale);
     }
     let store = open_store_mut(args, cfg)?;
     let projects: Vec<&Project> = match project {
@@ -257,16 +280,23 @@ fn generate(
     };
     let mut payloads = Vec::new();
     for p in projects {
-        payloads.push(generate_one(p, &store, dry_run, since.as_ref())?);
+        payloads.push(generate_one(
+            p,
+            &store,
+            dry_run,
+            since.as_ref(),
+            refresh_stale,
+        )?);
     }
     let ctx = OutputContext::new(args.formatter, "snapshots generate");
     render(&ctx, &payloads, |w| {
         for p in &payloads {
             writeln!(
                 w,
-                "{}: captured {}, skipped {}, failed {}",
+                "{}: captured {}, refreshed {}, skipped {}, failed {}",
                 p.project,
                 p.captured,
+                p.refreshed,
                 p.skipped,
                 p.failed.len()
             )?;
@@ -288,27 +318,58 @@ fn generate(
     Ok(CommandOutcome::Success)
 }
 
+/// The freshness of a tag's on-disk snapshot, or `None` when the store
+/// holds nothing for it yet. A read failure on an existing file is
+/// treated as unknown freshness rather than as `Current`, so it is
+/// still a `Refresh` candidate rather than silently kept forever.
+fn present_freshness(
+    store: &SnapshotStore<Mutable>,
+    project: &ProjectName,
+    tag: &TagName,
+    expected: &str,
+) -> Option<ExtractorFreshness> {
+    if !store.has(project, tag) {
+        return None;
+    }
+    Some(
+        store
+            .read(project, tag)
+            .ok()
+            .map(|snap| extractor_freshness(snap.header(), expected))
+            .unwrap_or(ExtractorFreshness::Stale {
+                stored: String::new(),
+            }),
+    )
+}
+
 fn generate_one(
     p: &Project,
     store: &SnapshotStore<Mutable>,
     dry_run: bool,
     since: Option<&TagName>,
+    refresh_stale: bool,
 ) -> CliResult<DiscoverPayload> {
     let repo = open_project_repo(p)?;
     let listing = repo.list_tag_refs()?;
     let tags = filter_tags_for_project(listing.tags, p, since);
+    let expected = expected_extractor_version_for_project(p);
     let mut captured = 0usize;
+    let mut refreshed = 0usize;
     let mut skipped = 0usize;
     let mut failed: Vec<DiscoverFailure> = Vec::new();
     let mut captured_tags = Vec::new();
     for tag in tags {
-        if store.has(&p.name, &tag) {
+        let present = present_freshness(store, &p.name, &tag, expected);
+        let Some(write_kind) = generate_action(present.as_ref(), refresh_stale).as_write() else {
             skipped += 1;
             continue;
-        }
+        };
         match build_snapshot(p, &repo, &tag) {
             Ok(snapshot) => {
                 if !dry_run {
+                    if write_kind == WriteKind::Refresh {
+                        let _ = store.delete(&p.name, &tag);
+                    }
                     if let Err(e) = store.write(&snapshot) {
                         failed.push(DiscoverFailure {
                             tag: tag.to_string(),
@@ -317,7 +378,10 @@ fn generate_one(
                         continue;
                     }
                 }
-                captured += 1;
+                match write_kind {
+                    WriteKind::Build => captured += 1,
+                    WriteKind::Refresh => refreshed += 1,
+                }
                 captured_tags.push(tag.to_string());
             }
             Err(e) => {
@@ -332,6 +396,7 @@ fn generate_one(
         project: p.name.to_string(),
         captured,
         skipped,
+        refreshed,
         failed,
         tags: captured_tags,
         ignored_non_tag_refs: listing.skipped,
@@ -357,6 +422,7 @@ struct SelfPinSkip {
 #[derive(Debug, Serialize, Default)]
 struct GenerateSeriesSummary {
     discovered: usize,
+    refreshed: usize,
     skipped: usize,
     failed: usize,
 }
@@ -366,6 +432,7 @@ fn generate_series(
     cfg: &Config,
     name: &SeriesName,
     dry_run: bool,
+    refresh_stale: bool,
 ) -> CliResult<CommandOutcome> {
     let series = cfg.series_by_name(name)?;
     let store = open_store_mut(args, cfg)?;
@@ -385,14 +452,15 @@ fn generate_series(
             }
             PinSpec::Literal { project, tag } => {
                 let p = cfg.project(project)?;
-                let payload = generate_pinned_tag(p, tag, &store, dry_run)?;
+                let payload = generate_pinned_tag(p, tag, &store, dry_run, refresh_stale)?;
                 accumulate_summary(&mut summary, &payload);
                 payloads.push(payload);
             }
             PinSpec::Pattern { project, .. } => {
                 let p = cfg.project(project)?;
                 let resolved = spec.resolve(&store)?;
-                let payload = generate_pinned_tag(p, &resolved.tag, &store, dry_run)?;
+                let payload =
+                    generate_pinned_tag(p, &resolved.tag, &store, dry_run, refresh_stale)?;
                 accumulate_summary(&mut summary, &payload);
                 payloads.push(payload);
             }
@@ -409,18 +477,20 @@ fn generate_series(
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
             w,
-            "series {}: discovered {}, skipped {}, failed {}",
+            "series {}: discovered {}, refreshed {}, skipped {}, failed {}",
             payload.series,
             payload.summary.discovered,
+            payload.summary.refreshed,
             payload.summary.skipped,
             payload.summary.failed
         )?;
         for p in &payload.projects {
             writeln!(
                 w,
-                "  {}: captured {}, skipped {}, failed {}",
+                "  {}: captured {}, refreshed {}, skipped {}, failed {}",
                 p.project,
                 p.captured,
+                p.refreshed,
                 p.skipped,
                 p.failed.len()
             )?;
@@ -435,6 +505,7 @@ fn generate_series(
 
 fn accumulate_summary(summary: &mut GenerateSeriesSummary, payload: &DiscoverPayload) {
     summary.discovered += payload.captured;
+    summary.refreshed += payload.refreshed;
     summary.skipped += payload.skipped;
     summary.failed += payload.failed.len();
 }
@@ -444,19 +515,28 @@ fn generate_pinned_tag(
     tag: &TagName,
     store: &SnapshotStore<Mutable>,
     dry_run: bool,
+    refresh_stale: bool,
 ) -> CliResult<DiscoverPayload> {
-    if store.has(&p.name, tag) {
+    let expected = expected_extractor_version_for_project(p);
+    let present = present_freshness(store, &p.name, tag, expected);
+    let Some(write_kind) = generate_action(present.as_ref(), refresh_stale).as_write() else {
         return Ok(DiscoverPayload::skipped_one(&p.name));
-    }
+    };
     let repo = open_project_repo(p)?;
     match build_snapshot(p, &repo, tag) {
         Ok(snapshot) => {
             if !dry_run {
+                if write_kind == WriteKind::Refresh {
+                    let _ = store.delete(&p.name, tag);
+                }
                 if let Err(e) = store.write(&snapshot) {
                     return Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string()));
                 }
             }
-            Ok(DiscoverPayload::captured_one(&p.name, tag))
+            match write_kind {
+                WriteKind::Build => Ok(DiscoverPayload::captured_one(&p.name, tag)),
+                WriteKind::Refresh => Ok(DiscoverPayload::refreshed_one(&p.name, tag)),
+            }
         }
         Err(e) => Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string())),
     }
@@ -564,10 +644,8 @@ pub(crate) fn build_snapshot_at_commit(
         apps_scanned,
         generated_by: format!("backhopper {}", crate_version!()),
         generated_at: OffsetDateTime::now_utc(),
-        extractor_version: match p.language {
-            Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION.to_owned(),
-            Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION.to_owned(),
-        },
+        extractor_version: expected_extractor_version_for_project(p).to_owned(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     };
     let (modules, headers) = extracted;
@@ -818,11 +896,21 @@ struct VerifyAllStale {
 }
 
 #[derive(Debug, Serialize)]
+struct VerifyAllUnversioned {
+    project: ProjectName,
+    tag: TagName,
+    format_version: u32,
+    expected: String,
+}
+
+#[derive(Debug, Serialize)]
 struct VerifyAllPayload {
     verified: usize,
     failed: Vec<TaggedFailure>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     stale_extractor: Vec<VerifyAllStale>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unversioned_extractor: Vec<VerifyAllUnversioned>,
 }
 
 fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
@@ -831,6 +919,7 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
     let mut verified = 0usize;
     let mut failed: Vec<TaggedFailure> = Vec::new();
     let mut stale_extractor: Vec<VerifyAllStale> = Vec::new();
+    let mut unversioned_extractor: Vec<VerifyAllUnversioned> = Vec::new();
     for project in projects {
         let tags = store.list_tags(&project)?;
         let expected = expected_extractor_version(cfg, &project);
@@ -838,14 +927,24 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
             match store.read(&project, &tag) {
                 Ok(snap) => {
                     verified += 1;
-                    let stored = snap.header().extractor_version.as_str();
-                    if !stored.is_empty() && stored != expected {
-                        stale_extractor.push(VerifyAllStale {
-                            project: project.to_string(),
-                            tag: tag.to_string(),
-                            stored: stored.to_owned(),
-                            expected: expected.to_owned(),
-                        });
+                    match extractor_freshness(snap.header(), expected) {
+                        ExtractorFreshness::Current => {}
+                        ExtractorFreshness::Stale { stored } => {
+                            stale_extractor.push(VerifyAllStale {
+                                project: project.to_string(),
+                                tag: tag.to_string(),
+                                stored,
+                                expected: expected.to_owned(),
+                            });
+                        }
+                        ExtractorFreshness::Unversioned { format_version } => {
+                            unversioned_extractor.push(VerifyAllUnversioned {
+                                project: project.clone(),
+                                tag: tag.clone(),
+                                format_version,
+                                expected: expected.to_owned(),
+                            });
+                        }
                     }
                 }
                 Err(e) => failed.push(TaggedFailure {
@@ -860,20 +959,23 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
         verified,
         failed,
         stale_extractor,
+        unversioned_extractor,
     };
     let exit = verify_all_exit_code(
         payload.verified,
         payload.failed.len(),
         payload.stale_extractor.len(),
+        payload.unversioned_extractor.len(),
     )?;
     let ctx = OutputContext::new(args.formatter, "snapshots verify");
     render_with_exit(&ctx, &payload, exit, |w| {
         writeln!(
             w,
-            "verified: {}, failed: {}, stale_extractor: {}",
+            "verified: {}, failed: {}, stale_extractor: {}, unversioned_extractor: {}",
             payload.verified,
             payload.failed.len(),
             payload.stale_extractor.len(),
+            payload.unversioned_extractor.len(),
         )?;
         for f in &payload.failed {
             writeln!(w, "  fail  {} {}: {}", f.project, f.tag, f.reason)?;
@@ -883,6 +985,17 @@ fn verify_all(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome> {
                 w,
                 "  stale {} {} (extractor {} != binary {}): run `snapshots rebuild`",
                 s.project, s.tag, s.stored, s.expected,
+            )?;
+        }
+        for u in &payload.unversioned_extractor {
+            writeln!(
+                w,
+                "  unversioned {} {} (format-version {}, expected extractor {}): run {}",
+                u.project,
+                u.tag,
+                u.format_version,
+                u.expected,
+                snapshot_refresh_command(&u.project, &u.tag)
             )?;
         }
         Ok(())
@@ -963,18 +1076,19 @@ fn verify_coverage(args: &GlobalArgs, cfg: &Config) -> CliResult<CommandOutcome>
     })
 }
 
-// 0 all loaded and current; 3 partial or stale; Err when zero loaded
+// 0 all loaded and current; 3 partial, stale, or unversioned; Err when zero loaded
 pub fn verify_all_exit_code(
     verified: usize,
     failed: usize,
     stale: usize,
+    unversioned: usize,
 ) -> CliResult<CommandOutcome> {
     if failed > 0 && verified == 0 {
         return Err(CliError::Other(format!(
             "snapshots verify --all: every snapshot failed to load ({failed} failure(s))"
         )));
     }
-    if failed > 0 || stale > 0 {
+    if failed > 0 || stale > 0 || unversioned > 0 {
         return Ok(CommandOutcome::PartialSuccess);
     }
     Ok(CommandOutcome::Success)
@@ -1606,13 +1720,13 @@ pub fn compute_diff(a: &Snapshot<state::Canonical>, b: &Snapshot<state::Canonica
     }
     let a_headers: BTreeSet<&RelativePath> = a.headers().iter().map(|h| &h.path).collect();
     let b_headers: BTreeSet<&RelativePath> = b.headers().iter().map(|h| &h.path).collect();
-    let headers_added: Vec<String> = b_headers
+    let headers_added: Vec<RelativePath> = b_headers
         .difference(&a_headers)
-        .map(|p| p.to_string())
+        .map(|p| (*p).clone())
         .collect();
-    let headers_removed: Vec<String> = a_headers
+    let headers_removed: Vec<RelativePath> = a_headers
         .difference(&b_headers)
-        .map(|p| p.to_string())
+        .map(|p| (*p).clone())
         .collect();
     let mut records_added = Vec::new();
     let mut records_removed = Vec::new();
@@ -1691,12 +1805,12 @@ fn diff_versioned_machine_version(
 fn wire_macros_by_name<'a>(
     snap: &'a Snapshot<state::Canonical>,
     name: &ModuleName,
-) -> BTreeMap<&'a str, &'a WireConstantBinding> {
+) -> BTreeMap<&'a MacroName, &'a WireConstantBinding> {
     snap.module_named(name)
         .map(|m| {
             m.wire_constants
                 .iter()
-                .map(|wc| (wc.macro_name.as_str(), wc))
+                .map(|wc| (&wc.macro_name, wc))
                 .collect()
         })
         .unwrap_or_default()
@@ -1713,21 +1827,21 @@ fn diff_wire_constants(
     if from_map.is_empty() && to_map.is_empty() {
         return;
     }
-    let mut missing_from: Vec<String> = Vec::new();
-    let mut missing_to: Vec<String> = Vec::new();
-    let keys: BTreeSet<&str> = from_map.keys().chain(to_map.keys()).copied().collect();
+    let mut missing_from: Vec<MacroName> = Vec::new();
+    let mut missing_to: Vec<MacroName> = Vec::new();
+    let keys: BTreeSet<&MacroName> = from_map.keys().chain(to_map.keys()).copied().collect();
     for k in &keys {
         match (from_map.get(k), to_map.get(k)) {
             (Some(x), Some(y)) if x.value != y.value => {
                 out.push(WireConstantChange::Drift {
                     module: name.clone(),
-                    macro_name: (*k).to_owned(),
+                    macro_name: (*k).clone(),
                     from: wire_value_text(&x.value),
                     to: wire_value_text(&y.value),
                 });
             }
-            (Some(_), None) => missing_to.push((*k).to_owned()),
-            (None, Some(_)) => missing_from.push((*k).to_owned()),
+            (Some(_), None) => missing_to.push((*k).clone()),
+            (None, Some(_)) => missing_from.push((*k).clone()),
             _ => {}
         }
     }

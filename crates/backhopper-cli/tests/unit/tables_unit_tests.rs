@@ -14,7 +14,7 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
-    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
+    FORMAT_VERSION, FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
 };
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
@@ -24,7 +24,7 @@ use time::OffsetDateTime;
 
 use bel7_cli::TableStyle;
 
-use backhopper_cli::tables::render_evaluation_table;
+use backhopper_cli::tables::{reason_md_label_known, render_evaluation_table};
 
 const ALL_TABLE_STYLES: &[TableStyle] = &[
     TableStyle::Modern,
@@ -47,6 +47,7 @@ fn header(project: &str) -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }
@@ -387,4 +388,59 @@ fn table_renders_the_bump_first_remedy_for_both_reason_families() {
         text.contains("/4 appears at 2.16.0: land the dep pin bump first"),
         "table: {text}"
     );
+}
+
+// `reason_md_label_known` falls back to the Debug form for a variant no
+// arm handles. This checks the fallback stays off for the variants this
+// suite already exercises elsewhere, so their labels cannot regress to
+// Debug text unnoticed. `Reason` is `#[non_exhaustive]`, so a check
+// against every variant cannot be written outside its own crate.
+#[test]
+fn reason_md_label_known_covers_the_reasons_this_suite_constructs() {
+    let sample = vec![
+        Reason::RecordFieldsChanged {
+            record: RecordName::new("user").unwrap(),
+            expected: vec![],
+            found: vec![],
+        },
+        Reason::FileAbsent {
+            path: PathBuf::from("src/a.erl"),
+        },
+        Reason::ClauseMismatch {
+            module: ModuleName::new("ra").unwrap(),
+            function: FunctionName::new("mode").unwrap(),
+            arity: Arity::new(1),
+            call_args: vec![],
+            pin_clauses: vec![],
+        },
+        Reason::UntrackedModuleMissing {
+            module: ModuleName::new("rabbit_mgmt_wm_user").unwrap(),
+        },
+        Reason::UnsupportedFileType {
+            path: PathBuf::from("lib/rabbitmq/cli/ctl/commands/status_command.ex"),
+        },
+        Reason::TargetPathAbsent {
+            path: RelativePath::new("deps/rabbit/src/rabbit_stream_super_stream_mgmt.erl").unwrap(),
+        },
+        Reason::MissingSymbol {
+            symbol: SymbolRef::function(Mfa::from_str("cow_http:ensure_token/1").unwrap()),
+            first_seen_at_tag: None,
+            needs_pin_at_least: None,
+            suggested_replacement: None,
+        },
+        Reason::ArityChanged {
+            module: ModuleName::new("cowboy_req").unwrap(),
+            function: FunctionName::new("match_qs").unwrap(),
+            expected: Arity::new(4),
+            found: vec![Arity::new(2)],
+            expected_available_at: None,
+            needs_pin_at_least: None,
+        },
+    ];
+    for r in &sample {
+        assert!(
+            reason_md_label_known(r).is_some(),
+            "{r:?} fell back to Debug"
+        );
+    }
 }

@@ -9,7 +9,9 @@ use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::state::Canonical;
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{
+    FORMAT_VERSION, FunArity, Module, Snapshot, SnapshotHeader,
+};
 
 fn header() -> SnapshotHeader {
     SnapshotHeader {
@@ -22,6 +24,7 @@ fn header() -> SnapshotHeader {
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }

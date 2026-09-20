@@ -572,6 +572,14 @@ impl<T: Ord> Surface<T> {
         self.unreadable.is_none()
     }
 
+    /// The entries this surface's source text actually lists: a
+    /// caller enumerating candidates (rather than asking about one
+    /// key) reads this instead of guessing the universe.
+    #[must_use]
+    pub fn listed(&self) -> &BTreeSet<T> {
+        &self.listed
+    }
+
     /// Combine two surfaces of the same module, as `patch_provided`
     /// does for a cross-file add: a merge with an unreadable side is
     /// unreadable on that side's ground. When both sides are

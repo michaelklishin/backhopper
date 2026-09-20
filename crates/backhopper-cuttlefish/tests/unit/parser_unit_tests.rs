@@ -277,3 +277,54 @@ fn a_maybe_block_inside_a_fun_body_keeps_the_located_end() {
     assert!(body.starts_with("maybe"), "body: {body}");
     assert!(body.ends_with("end"), "body: {body}");
 }
+
+#[test]
+fn mapping_captures_target_key_and_attribute_names() {
+    let frags = parse_schema(OAUTH2_FIXTURE, p()).unwrap();
+    let m = frags
+        .iter()
+        .find(|f| f.kind == FragmentKind::Mapping)
+        .unwrap();
+    assert_eq!(
+        m.mapping_target.as_deref(),
+        Some("rabbitmq_auth_backend_oauth2.preferred_username_claims")
+    );
+    assert_eq!(m.attr_names, vec!["datatype".to_owned()]);
+}
+
+#[test]
+fn translation_and_validator_have_no_mapping_target() {
+    let frags = parse_schema(OAUTH2_FIXTURE, p()).unwrap();
+    for f in &frags {
+        if f.kind != FragmentKind::Mapping {
+            assert!(f.mapping_target.is_none());
+            assert!(f.attr_names.is_empty());
+        }
+    }
+}
+
+#[test]
+fn alias_attribute_is_captured() {
+    let schema = "{mapping, \"old.name\", \"new.name\", [{alias, \"old.name\"}]}.\n";
+    let frags = parse_schema(schema, p()).unwrap();
+    assert_eq!(frags.len(), 1);
+    assert_eq!(frags[0].mapping_target.as_deref(), Some("new.name"));
+    assert_eq!(frags[0].attr_names, vec!["alias".to_owned()]);
+}
+
+#[test]
+fn non_string_third_element_yields_no_mapping_target() {
+    let schema = "{mapping, \"k\", ?SOME_MACRO, [{datatype, string}]}.\n";
+    let frags = parse_schema(schema, p()).unwrap();
+    assert_eq!(frags.len(), 1);
+    assert!(frags[0].mapping_target.is_none());
+}
+
+#[test]
+fn end_line_is_the_closing_brace_line() {
+    let schema = "{mapping,\n \"k\",\n \"t\",\n [{datatype, string}]}.\n";
+    let frags = parse_schema(schema, p()).unwrap();
+    assert_eq!(frags.len(), 1);
+    assert_eq!(frags[0].start_line, 1);
+    assert_eq!(frags[0].end_line, 4);
+}

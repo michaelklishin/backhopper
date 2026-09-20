@@ -24,6 +24,7 @@ fn header() -> SnapshotHeader {
         generated_by: "backhopper-driver test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: "3".into(),
+        format_version: FORMAT_VERSION,
         dep_pins: vec![VendoredDep {
             name: DependencyName::new("ra").unwrap(),
             version: DependencyVersion::new("3.1.6").unwrap(),

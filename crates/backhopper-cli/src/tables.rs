@@ -9,6 +9,7 @@ use bel7_cli::TableStyle;
 use tabled::{Table, Tabled};
 
 use backhopper_core::compat::arg_shape::ArgShape;
+use backhopper_core::model::names::ApplicationName;
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::symbol::SymbolKind;
 use backhopper_core::model::verdict::{
@@ -156,6 +157,12 @@ fn reason_kind(r: &Reason) -> &'static str {
         Reason::BehaviourCallbackDriftOnTarget { .. } => "BehaviourCallbackDriftOnTarget",
         Reason::VersionedMachineSnapshotMissing { .. } => "VersionedMachineSnapshotMissing",
         Reason::WireConstantBindingsMissing { .. } => "WireConstantBindingsMissing",
+        Reason::BehaviourCallbackUnknownOnPin { .. } => "BehaviourCallbackUnknownOnPin",
+        Reason::BehaviourCallbackMissingOnPin { .. } => "BehaviourCallbackMissingOnPin",
+        Reason::OptionKeyUnknownOnPin { .. } => "OptionKeyUnknownOnPin",
+        Reason::SuiteNotRegisteredForCt { .. } => "SuiteNotRegisteredForCt",
+        Reason::SchemaFeatureUnsupportedOnPin { .. } => "SchemaFeatureUnsupportedOnPin",
+        Reason::SchemaKeyReaderMissing { .. } => "SchemaKeyReaderMissing",
         _ => "UnknownReason",
     }
 }
@@ -491,6 +498,67 @@ pub(crate) fn reason_detail(r: &Reason) -> String {
                 names.join(", ")
             )
         }
+        Reason::BehaviourCallbackUnknownOnPin {
+            behaviour,
+            callback,
+            arity,
+            pin_arities,
+            implementer,
+            evidence,
+        } => {
+            let pins: Vec<String> = pin_arities.iter().map(ToString::to_string).collect();
+            format!(
+                "{implementer} exports {behaviour}:{callback}/{arity}; pin declares arities [{}] ({evidence:?})",
+                pins.join(", ")
+            )
+        }
+        Reason::BehaviourCallbackMissingOnPin {
+            behaviour,
+            callback,
+            arity,
+            implementer,
+        } => format!("{implementer} is missing {behaviour}:{callback}/{arity} the pin requires"),
+        Reason::OptionKeyUnknownOnPin {
+            project,
+            module,
+            type_name,
+            key,
+            pin_tag,
+        } => format!("{module}:{type_name} key {key} is unknown on {project}@{pin_tag}"),
+        Reason::SuiteNotRegisteredForCt {
+            suite_path,
+            makefile_path,
+        } => format!("{suite_path} not registered in {makefile_path}"),
+        Reason::SchemaFeatureUnsupportedOnPin {
+            schema_path,
+            conf_key,
+            feature,
+            required_version,
+            pinned_version,
+        } => {
+            let key = conf_key.as_deref().unwrap_or("?");
+            format!(
+                "{schema_path}: {key} uses {feature} (needs cuttlefish {required_version}, pin has {pinned_version})"
+            )
+        }
+        Reason::SchemaKeyReaderMissing {
+            schema_path,
+            target_key,
+            searched_apps,
+            absent_apps,
+        } => {
+            let apps: Vec<&str> = searched_apps.iter().map(ApplicationName::as_str).collect();
+            let base = format!(
+                "{schema_path}: {target_key} not read by any of [{}]",
+                apps.join(", ")
+            );
+            if absent_apps.is_empty() {
+                base
+            } else {
+                let missing: Vec<&str> = absent_apps.iter().map(ApplicationName::as_str).collect();
+                format!("{base}; app(s) not on target: [{}]", missing.join(", "))
+            }
+        }
         _ => format!("{r:?}"),
     }
 }
@@ -500,9 +568,10 @@ pub(crate) fn reason_md_label(r: &Reason) -> String {
 }
 
 /// `None` for a `Reason` variant no arm handles: the wrapper then falls
-/// back to the Debug form. A unit test asserts every current variant is
-/// `Some`, so a newly added variant cannot degrade to Debug unnoticed.
-fn reason_md_label_known(r: &Reason) -> Option<String> {
+/// back to the Debug form. `Reason` is `#[non_exhaustive]`, so this
+/// crate cannot match it exhaustively; `pub` so `tests/unit` can assert
+/// `Some` against the variants it constructs elsewhere.
+pub fn reason_md_label_known(r: &Reason) -> Option<String> {
     Some(match r {
         Reason::MissingSymbol { symbol, .. } => {
             format!("MissingSymbol {}", format_symbol(&symbol.kind))
@@ -727,6 +796,42 @@ fn reason_md_label_known(r: &Reason) -> Option<String> {
         } => format!(
             "BehaviourCallbackDriftOnTarget {behaviour}:{callback}/{arity} in {source_path}:{line}: source {source_signature:?} vs target {target_signature:?}"
         ),
+        Reason::BehaviourCallbackUnknownOnPin {
+            behaviour,
+            callback,
+            arity,
+            implementer,
+            ..
+        } => format!(
+            "BehaviourCallbackUnknownOnPin {implementer} exports {behaviour}:{callback}/{arity}"
+        ),
+        Reason::BehaviourCallbackMissingOnPin {
+            behaviour,
+            callback,
+            arity,
+            implementer,
+        } => format!(
+            "BehaviourCallbackMissingOnPin {implementer} lacks {behaviour}:{callback}/{arity}"
+        ),
+        Reason::OptionKeyUnknownOnPin {
+            module,
+            type_name,
+            key,
+            ..
+        } => format!("OptionKeyUnknownOnPin {module}:{type_name} key {key}"),
+        Reason::SuiteNotRegisteredForCt { suite_path, .. } => {
+            format!("SuiteNotRegisteredForCt {suite_path}")
+        }
+        Reason::SchemaFeatureUnsupportedOnPin {
+            schema_path,
+            feature,
+            ..
+        } => format!("SchemaFeatureUnsupportedOnPin {feature} in {schema_path}"),
+        Reason::SchemaKeyReaderMissing {
+            schema_path,
+            target_key,
+            ..
+        } => format!("SchemaKeyReaderMissing {target_key} in {schema_path}"),
         _ => return None,
     })
 }

@@ -11,7 +11,7 @@ use backhopper_core::model::names::{
     ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::{
-    Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
+    FORMAT_VERSION, Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
     VersionedMachineVersion, WireConstantBinding, WireValue,
 };
 use backhopper_core::snapshot::{format, parser};
@@ -27,6 +27,7 @@ fn empty_header() -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }

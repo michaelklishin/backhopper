@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use backhopper_core::model::names::{Mfa, ProjectName, TagName};
+use backhopper_core::model::snapshot::FORMAT_VERSION;
 use backhopper_core::snapshot::{format, parser};
 use backhopper_core::store::SnapshotStore;
 
@@ -69,6 +70,10 @@ fn store_lists_tags_for_each_project() {
 
 #[test]
 fn store_round_trips_every_snapshot() {
+    // A fixture written before extractor versioning existed carries
+    // an old `format-version` header. The writer always emits the
+    // running binary's format version, so a parse-write-reparse pass
+    // normalizes that one field: the text is stable, not the struct.
     let store = SnapshotStore::open(fixtures_root()).unwrap();
     for (project, _) in PROJECTS {
         let p = ProjectName::new(*project).unwrap();
@@ -77,7 +82,16 @@ fn store_round_trips_every_snapshot() {
             let serialized = format::to_string(&snap).unwrap();
             let reparsed = parser::parse(&serialized)
                 .unwrap_or_else(|e| panic!("re-parse failed for {project} {tag}: {e:?}"));
-            assert_eq!(snap, reparsed, "round-trip mismatch for {project} {tag}");
+            assert_eq!(
+                reparsed.header().format_version,
+                FORMAT_VERSION,
+                "format_version did not normalize for {project} {tag}"
+            );
+            let reserialized = format::to_string(&reparsed).unwrap();
+            assert_eq!(
+                serialized, reserialized,
+                "round-trip text mismatch for {project} {tag}"
+            );
         }
     }
 }

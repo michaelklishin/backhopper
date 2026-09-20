@@ -7,14 +7,17 @@
 //! Modeled here so the CLI emits and the driver parses one definition.
 //! The name-bearing fields carry the same serde-transparent newtypes the
 //! rest of core uses, so the serialized form is unchanged and a consumer
-//! stops re-validating identifiers it round-trips. `fun_arity` and
-//! `type_arity` travel through `FunArity` and `TypeArity`'s `Display`
-//! form (`serde_util::display_from_str`), so the wire still spells them
-//! `f/2`.
+//! stops re-validating identifiers it round-trips: headers through
+//! `RelativePath`, wire-constant macro names through `MacroName`.
+//! `fun_arity` and `type_arity` travel through `FunArity` and
+//! `TypeArity`'s `Display` form (`serde_util::display_from_str`), so the
+//! wire still spells them `f/2`.
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::names::{ModuleName, ProjectName, RecordName, RelativePath, SeriesName, TagName};
+use crate::model::names::{
+    MacroName, ModuleName, ProjectName, RecordName, RelativePath, SeriesName, TagName,
+};
 use crate::model::snapshot::{FunArity, TypeArity};
 
 /// API delta between two tags of one project, oriented `from -> to`:
@@ -35,8 +38,8 @@ pub struct DiffPayload {
     pub types_removed: Vec<QualifiedTypeArity>,
     pub callbacks_added: Vec<QualifiedFunArity>,
     pub callbacks_removed: Vec<QualifiedFunArity>,
-    pub headers_added: Vec<String>,
-    pub headers_removed: Vec<String>,
+    pub headers_added: Vec<RelativePath>,
+    pub headers_removed: Vec<RelativePath>,
     pub records_added: Vec<QualifiedRecord>,
     pub records_removed: Vec<QualifiedRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -99,11 +102,11 @@ pub enum WireConstantChange {
     Missing {
         module: ModuleName,
         side: String,
-        macros: Vec<String>,
+        macros: Vec<MacroName>,
     },
     Drift {
         module: ModuleName,
-        macro_name: String,
+        macro_name: MacroName,
         from: String,
         to: String,
     },

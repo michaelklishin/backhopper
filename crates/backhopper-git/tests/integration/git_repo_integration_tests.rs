@@ -60,6 +60,23 @@ fn missing_tag_yields_error() {
 }
 
 #[test]
+fn resolve_tag_accepts_a_self_pin_commit_sha_with_no_tag_ref() {
+    let repo = GitRepoFixture::new();
+    repo.write_file("README.md", "hi\n");
+    repo.commit("untagged");
+
+    let g = GitRepo::open(repo.dir.path()).unwrap();
+    let head = g.resolve_rev("HEAD").unwrap();
+    // A self-pin's synthetic "tag" is the resolved commit SHA itself
+    // (backhopper-cli::commands::self_snapshot), with no `refs/tags/*`
+    // ref behind it.
+    let via_tag = g
+        .resolve_tag(&TagName::new(head.as_str()).unwrap())
+        .unwrap();
+    assert_eq!(via_tag, head);
+}
+
+#[test]
 fn list_tag_refs_separates_parseable_tags_from_skipped_refs() {
     let repo = GitRepoFixture::new();
     repo.write_file("src/a.erl", "-module(a).\n");

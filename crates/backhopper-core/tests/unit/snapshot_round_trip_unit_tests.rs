@@ -28,6 +28,7 @@ fn header() -> SnapshotHeader {
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }
@@ -125,6 +126,39 @@ fn parser_rejects_wrong_format_version() {
 ";
     let r = parser::parse(bad);
     assert!(r.is_err());
+}
+
+#[test]
+fn parser_retains_the_declared_format_version() {
+    let text = "# backhopper snapshot
+# format-version: 1
+# project: ra
+# tag: v3.1.6
+# commit: 0000000000000000000000000000000000000000
+# scanned-paths: src
+# generated-by: backhopper 0.1.0
+# generated-at: 2023-11-14T22:13:20Z
+";
+    let snap = parser::parse(text).unwrap();
+    assert_eq!(snap.header().format_version, 1);
+    assert_eq!(snap.header().extractor_version, "");
+}
+
+#[test]
+fn parser_reads_format_version_alongside_an_extractor_version() {
+    let text = "# backhopper snapshot
+# format-version: 3
+# project: ra
+# tag: v3.1.6
+# commit: 0000000000000000000000000000000000000000
+# scanned-paths: src
+# generated-by: backhopper 0.1.0
+# generated-at: 2023-11-14T22:13:20Z
+# extractor-version: 5
+";
+    let snap = parser::parse(text).unwrap();
+    assert_eq!(snap.header().format_version, 3);
+    assert_eq!(snap.header().extractor_version, "5");
 }
 
 #[test]

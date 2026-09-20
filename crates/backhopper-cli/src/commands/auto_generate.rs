@@ -4,9 +4,10 @@
 
 use std::collections::BTreeMap;
 
-use backhopper_core::config::{Config, Language};
+use backhopper_core::config::{Config, Language, Project};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
+use backhopper_core::model::snapshot::SnapshotHeader;
 use backhopper_core::store::{Mutable, ReadOnly, SnapshotStore};
 use backhopper_core::versions::version_cmp;
 
@@ -82,6 +83,16 @@ pub fn snapshot_generate_command(project: &ProjectName, since: &TagName) -> Stri
     format!("backhopper snapshots generate --project {project} --since {since}")
 }
 
+/// The remedy for a stale or unversioned snapshot: the same command as
+/// a missing one, with the refresh flag that makes it rewrite an
+/// existing file rather than skip it.
+pub fn snapshot_refresh_command(project: &ProjectName, since: &TagName) -> String {
+    format!(
+        "{} --refresh-stale",
+        snapshot_generate_command(project, since)
+    )
+}
+
 // pick the version-oldest tag: version_cmp is reversed, so max_by returns the smallest version
 fn oldest_version<'a>(tags: &[&'a TagName]) -> Option<&'a TagName> {
     tags.iter()
@@ -102,7 +113,16 @@ pub struct PinCoverageRow {
 pub enum PinCoverageStatus {
     Present,
     Missing,
-    StaleExtractor { stored: String, expected: String },
+    StaleExtractor {
+        stored: String,
+        expected: String,
+    },
+    /// No `extractor-version` header line: a pre-0.31.0 snapshot,
+    /// carried as maximally stale rather than as a pass.
+    Unversioned {
+        format_version: u32,
+        expected: String,
+    },
 }
 
 /// Freshness of one pin's on-disk snapshot against the running
@@ -113,7 +133,40 @@ pub enum PinCoverageStatus {
 pub(crate) enum SnapshotFreshness {
     Present,
     Missing,
-    Stale { stored: String, expected: String },
+    Stale {
+        stored: String,
+        expected: String,
+    },
+    Unversioned {
+        format_version: u32,
+        expected: String,
+    },
+}
+
+/// How a snapshot's recorded extractor version compares to the running
+/// binary's, read straight from a parsed header. `Unversioned` covers a
+/// snapshot written before extractor versioning existed: it carries no
+/// evidence either way, so it is never treated as current.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtractorFreshness {
+    Current,
+    Unversioned { format_version: u32 },
+    Stale { stored: String },
+}
+
+pub fn extractor_freshness(header: &SnapshotHeader, expected: &str) -> ExtractorFreshness {
+    let stored = header.extractor_version.as_str();
+    if stored.is_empty() {
+        ExtractorFreshness::Unversioned {
+            format_version: header.format_version,
+        }
+    } else if stored != expected {
+        ExtractorFreshness::Stale {
+            stored: stored.to_owned(),
+        }
+    } else {
+        ExtractorFreshness::Current
+    }
 }
 
 pub(crate) fn classify_snapshot_freshness(
@@ -126,17 +179,17 @@ pub(crate) fn classify_snapshot_freshness(
     }
     let expected = expected_extractor_version(cfg, &pin.project);
     match store.read(&pin.project, &pin.tag) {
-        Ok(snap) => {
-            let stored = snap.header().extractor_version.as_str();
-            if !stored.is_empty() && stored != expected {
-                SnapshotFreshness::Stale {
-                    stored: stored.to_owned(),
-                    expected: expected.to_owned(),
-                }
-            } else {
-                SnapshotFreshness::Present
-            }
-        }
+        Ok(snap) => match extractor_freshness(snap.header(), expected) {
+            ExtractorFreshness::Current => SnapshotFreshness::Present,
+            ExtractorFreshness::Stale { stored } => SnapshotFreshness::Stale {
+                stored,
+                expected: expected.to_owned(),
+            },
+            ExtractorFreshness::Unversioned { format_version } => SnapshotFreshness::Unversioned {
+                format_version,
+                expected: expected.to_owned(),
+            },
+        },
         // a read failure of an on-disk file counts as missing for pre-flight: the user must regenerate
         Err(_) => SnapshotFreshness::Missing,
     }
@@ -158,6 +211,13 @@ pub fn coverage_report(
                 SnapshotFreshness::Stale { stored, expected } => {
                     PinCoverageStatus::StaleExtractor { stored, expected }
                 }
+                SnapshotFreshness::Unversioned {
+                    format_version,
+                    expected,
+                } => PinCoverageStatus::Unversioned {
+                    format_version,
+                    expected,
+                },
             };
             PinCoverageRow {
                 pin: pin.clone(),
@@ -167,11 +227,65 @@ pub fn coverage_report(
         .collect()
 }
 
+/// What `snapshots generate` should do for one tag, given whatever the
+/// store already holds and whether a refresh was requested. Pure
+/// decision, testable without a repo or a store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenerateAction {
+    Skip,
+    Build,
+    Refresh,
+}
+
+pub fn generate_action(
+    present: Option<&ExtractorFreshness>,
+    refresh_stale: bool,
+) -> GenerateAction {
+    match present {
+        None => GenerateAction::Build,
+        Some(ExtractorFreshness::Current) => GenerateAction::Skip,
+        Some(ExtractorFreshness::Stale { .. } | ExtractorFreshness::Unversioned { .. }) => {
+            if refresh_stale {
+                GenerateAction::Refresh
+            } else {
+                GenerateAction::Skip
+            }
+        }
+    }
+}
+
+/// `GenerateAction` once `Skip` has been ruled out: whether the write
+/// about to happen is a first capture or a rebuild of what was
+/// already there. Callers that already handled `Skip` match this
+/// instead, so the compiler rules out a redundant `Skip` arm rather
+/// than a runtime `unreachable!`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteKind {
+    Build,
+    Refresh,
+}
+
+impl GenerateAction {
+    pub fn as_write(self) -> Option<WriteKind> {
+        match self {
+            GenerateAction::Skip => None,
+            GenerateAction::Build => Some(WriteKind::Build),
+            GenerateAction::Refresh => Some(WriteKind::Refresh),
+        }
+    }
+}
+
 pub(crate) fn expected_extractor_version(cfg: &Config, project: &ProjectName) -> &'static str {
-    match cfg.project(project).map(|p| p.language) {
-        Ok(Language::Erlang) => backhopper_erlang::EXTRACTOR_VERSION,
-        Ok(Language::Elixir) => backhopper_elixir::EXTRACTOR_VERSION,
+    match cfg.project(project) {
+        Ok(p) => expected_extractor_version_for_project(p),
         Err(_) => backhopper_erlang::EXTRACTOR_VERSION,
+    }
+}
+
+pub(crate) fn expected_extractor_version_for_project(project: &Project) -> &'static str {
+    match project.language {
+        Language::Erlang => backhopper_erlang::EXTRACTOR_VERSION,
+        Language::Elixir => backhopper_elixir::EXTRACTOR_VERSION,
     }
 }
 
@@ -179,14 +293,29 @@ pub(crate) fn expected_extractor_version(cfg: &Config, project: &ProjectName) ->
 /// is older than the running binary. Pure observability: no errors.
 pub fn warn_on_stale_extractors(report: &[PinCoverageRow]) {
     for entry in report {
-        if let PinCoverageStatus::StaleExtractor { stored, expected } = &entry.status {
-            tracing::warn!(
-                project = %entry.pin.project,
-                tag = %entry.pin.tag,
-                stored = %stored,
-                expected = %expected,
-                "snapshot was generated by an older extractor; consider `backhopper snapshots generate`"
-            );
+        match &entry.status {
+            PinCoverageStatus::StaleExtractor { stored, expected } => {
+                tracing::warn!(
+                    project = %entry.pin.project,
+                    tag = %entry.pin.tag,
+                    stored = %stored,
+                    expected = %expected,
+                    "snapshot was generated by an older extractor; consider `backhopper snapshots generate --refresh-stale`"
+                );
+            }
+            PinCoverageStatus::Unversioned {
+                format_version,
+                expected,
+            } => {
+                tracing::warn!(
+                    project = %entry.pin.project,
+                    tag = %entry.pin.tag,
+                    format_version = %format_version,
+                    expected = %expected,
+                    "snapshot has no recorded extractor version; consider `backhopper snapshots generate --refresh-stale`"
+                );
+            }
+            PinCoverageStatus::Present | PinCoverageStatus::Missing => {}
         }
     }
 }

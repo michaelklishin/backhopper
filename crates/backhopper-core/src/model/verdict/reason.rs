@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 use super::InapplicableReason;
 use crate::compat::arg_shape::ArgShape;
 use crate::model::names::{
-    Arity, CommitSha, FieldName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
-    RecordName, RelativePath, TagName, TypeName, vocabulary,
+    ApplicationName, Arity, CommitSha, FieldName, FunctionName, GitRef, MacroName, MapKey,
+    ModuleName, ProjectName, RecordName, RelativePath, SchemaFeature, TagName, TypeName,
+    vocabulary,
 };
 use crate::model::resolver_coverage::ResolverClass;
 use crate::model::symbol::SymbolRef;
@@ -443,6 +444,85 @@ pub enum Reason {
         arity: Arity,
         line: u32,
     },
+    /// A touched implementer of a family-declared dependency behaviour
+    /// (`FamilyDefaults.dep_behaviours`) exports a callback the pinned
+    /// behaviour does not declare. The callback compiles but is never
+    /// invoked at this pin. Non-blocking: the operator judges whether
+    /// the backport still does anything useful without it.
+    BehaviourCallbackUnknownOnPin {
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        pin_arities: Vec<Arity>,
+        implementer: ModuleName,
+        evidence: DriftEvidence,
+    },
+    /// An added implementer of a family-declared dependency behaviour
+    /// lacks a callback the pinned behaviour requires. Blocking: the
+    /// missing callback crashes the first time the behaviour invokes it.
+    BehaviourCallbackMissingOnPin {
+        behaviour: ModuleName,
+        callback: FunctionName,
+        arity: Arity,
+        implementer: ModuleName,
+    },
+    /// An added line uses a map key that a family-declared option type
+    /// (`FamilyDefaults.option_types`) gained after the pinned version.
+    /// Non-blocking: an unrecognized key is typically ignored by the
+    /// older dependency rather than rejected.
+    OptionKeyUnknownOnPin {
+        project: ProjectName,
+        module: ModuleName,
+        type_name: TypeName,
+        key: MapKey,
+        pin_tag: TagName,
+    },
+    /// The patch adds a test suite to an app whose Makefile dispatches
+    /// suites by explicit registration (`FamilyDefaults.suite_registration`)
+    /// without registering it there. Non-blocking: the suite still
+    /// compiles, it just never runs under CI.
+    SuiteNotRegisteredForCt {
+        suite_path: RelativePath,
+        makefile_path: RelativePath,
+    },
+    /// An introduced cuttlefish schema mapping uses an attribute the
+    /// pinned cuttlefish version does not support. Blocking: the
+    /// corpus evidence for this shape is a boot failure.
+    SchemaFeatureUnsupportedOnPin {
+        schema_path: RelativePath,
+        conf_key: Option<String>,
+        feature: SchemaFeature,
+        required_version: String,
+        pinned_version: String,
+    },
+    /// An introduced cuttlefish schema mapping targets an application
+    /// environment key that nothing in the target tree's owning apps
+    /// reads. Non-blocking: the token search is deliberately crude, so
+    /// the operator reviews before trusting a positive.
+    SchemaKeyReaderMissing {
+        schema_path: RelativePath,
+        target_key: String,
+        searched_apps: Vec<ApplicationName>,
+        /// Apps the key names that do not exist on the target tree at
+        /// all: a stronger form of the same finding.
+        absent_apps: Vec<ApplicationName>,
+    },
+}
+
+/// How a dependency-behaviour drift finding was established. Wire-visible
+/// so consumers can weigh confidence: a set-difference finding is exact,
+/// a name-anchored one is heuristic.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DriftEvidence {
+    /// Present in the source pin's callback set, absent from the
+    /// target pin's.
+    SourceSideSetDifference,
+    /// Callback-name collision at an undeclared arity, with no source
+    /// pin to confirm it.
+    NameAnchored,
 }
 
 /// Which side of a snapshot comparison the data is missing from.
@@ -650,7 +730,13 @@ impl Reason {
             | Self::BehaviourCallbackAddedOnTarget { .. }
             | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
-            | Self::WireConstantBindingsMissing { .. } => None,
+            | Self::WireConstantBindingsMissing { .. }
+            | Self::BehaviourCallbackUnknownOnPin { .. }
+            | Self::BehaviourCallbackMissingOnPin { .. }
+            | Self::OptionKeyUnknownOnPin { .. }
+            | Self::SuiteNotRegisteredForCt { .. }
+            | Self::SchemaFeatureUnsupportedOnPin { .. }
+            | Self::SchemaKeyReaderMissing { .. } => None,
         }
     }
 
@@ -705,7 +791,13 @@ impl Reason {
             | Self::TargetPathAbsent { .. }
             | Self::TestModuleSymbolMissing { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
-            | Self::WireConstantBindingsMissing { .. } => None,
+            | Self::WireConstantBindingsMissing { .. }
+            | Self::BehaviourCallbackUnknownOnPin { .. }
+            | Self::BehaviourCallbackMissingOnPin { .. }
+            | Self::OptionKeyUnknownOnPin { .. }
+            | Self::SuiteNotRegisteredForCt { .. }
+            | Self::SchemaFeatureUnsupportedOnPin { .. }
+            | Self::SchemaKeyReaderMissing { .. } => None,
         }
     }
 
@@ -737,7 +829,9 @@ impl Reason {
             | Self::WireConstantChanged { .. }
             | Self::HistoricalImplementationMissing { .. }
             | Self::WireContractRegression { .. }
-            | Self::ReturnShapeMismatch { .. } => true,
+            | Self::ReturnShapeMismatch { .. }
+            | Self::BehaviourCallbackMissingOnPin { .. }
+            | Self::SchemaFeatureUnsupportedOnPin { .. } => true,
             Self::ContextDrift { .. }
             | Self::PreimageDrifted { .. }
             | Self::PreimageMissing { .. }
@@ -764,7 +858,11 @@ impl Reason {
             | Self::BehaviourCallbackAddedOnTarget { .. }
             | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
-            | Self::WireConstantBindingsMissing { .. } => false,
+            | Self::WireConstantBindingsMissing { .. }
+            | Self::BehaviourCallbackUnknownOnPin { .. }
+            | Self::OptionKeyUnknownOnPin { .. }
+            | Self::SuiteNotRegisteredForCt { .. }
+            | Self::SchemaKeyReaderMissing { .. } => false,
         }
     }
 
@@ -817,7 +915,13 @@ impl Reason {
             | Self::BehaviourCallbackAddedOnTarget { .. }
             | Self::BehaviourCallbackDriftOnTarget { .. }
             | Self::VersionedMachineSnapshotMissing { .. }
-            | Self::WireConstantBindingsMissing { .. } => false,
+            | Self::WireConstantBindingsMissing { .. }
+            | Self::BehaviourCallbackUnknownOnPin { .. }
+            | Self::BehaviourCallbackMissingOnPin { .. }
+            | Self::OptionKeyUnknownOnPin { .. }
+            | Self::SuiteNotRegisteredForCt { .. }
+            | Self::SchemaFeatureUnsupportedOnPin { .. }
+            | Self::SchemaKeyReaderMissing { .. } => false,
         }
     }
 }

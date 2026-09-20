@@ -25,10 +25,21 @@ fn write_config(dir: &Path, body: &str) -> std::path::PathBuf {
     cfg
 }
 
-fn write_snapshot(snapshot_dir: &Path, project: &str, tag: &str) {
+/// A pre-0.31.0 snapshot: `format-version: 1` and no `extractor-version`
+/// header line at all.
+fn write_unversioned_snapshot(snapshot_dir: &Path, project: &str, tag: &str) {
     let path = snapshot_dir.join(project).join(format!("{tag}.api.txt"));
     let body = format!(
         "# format-version: 1\n# project: {project}\n# tag: {tag}\n# commit: 0000000000000000000000000000000000000000\n# generated-by: test\n# generated-at: 2026-05-23T00:00:00Z\n\n"
+    );
+    write(&path, &body);
+}
+
+fn write_current_snapshot(snapshot_dir: &Path, project: &str, tag: &str) {
+    let path = snapshot_dir.join(project).join(format!("{tag}.api.txt"));
+    let body = format!(
+        "# format-version: 4\n# project: {project}\n# tag: {tag}\n# commit: 0000000000000000000000000000000000000000\n# generated-by: test\n# generated-at: 2026-05-23T00:00:00Z\n# extractor-version: {}\n\n",
+        backhopper_erlang::EXTRACTOR_VERSION,
     );
     write(&path, &body);
 }
@@ -69,13 +80,34 @@ fn doctor_reports_covered_when_snapshot_present() {
     let cfg = write_config(tmp.path(), MIN_CONFIG);
     let snapshots = tmp.path().join("snapshots");
     std::fs::create_dir_all(&snapshots).unwrap();
-    write_snapshot(&snapshots, "ra", "v2.16.13");
+    write_current_snapshot(&snapshots, "ra", "v2.16.13");
     let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
     let text = stdout(&a);
     a.success();
     assert!(text.contains("1/1 pin(s) present"), "stdout: {text}");
-    // The stale-extractor segment is omitted when the count is zero.
+    // The stale-extractor and unversioned-extractor segments are omitted when their counts are zero.
     assert!(!text.contains("stale-extractor"), "stdout: {text}");
+    assert!(!text.contains("unversioned-extractor"), "stdout: {text}");
+}
+
+#[test]
+fn doctor_flags_a_pre_versioning_snapshot_as_unversioned_with_partial_success_exit() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = write_config(tmp.path(), MIN_CONFIG);
+    let snapshots = tmp.path().join("snapshots");
+    std::fs::create_dir_all(&snapshots).unwrap();
+    write_unversioned_snapshot(&snapshots, "ra", "v2.16.13");
+    let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
+    let text = stdout(&a);
+    a.code(3);
+    assert!(text.contains("1/1 pin(s) present"), "stdout: {text}");
+    assert!(text.contains("1 unversioned-extractor"), "stdout: {text}");
+    assert!(text.contains("UNVERSIONED"), "stdout: {text}");
+    assert!(
+        text.contains("no extractor version recorded (format-version 1"),
+        "stdout: {text}"
+    );
+    assert!(text.contains("--refresh-stale"), "stdout: {text}");
 }
 
 #[test]

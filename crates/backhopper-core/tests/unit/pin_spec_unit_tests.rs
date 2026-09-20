@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 use backhopper_core::errors::ConfigError;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagGlob, TagName};
 use backhopper_core::model::pin::{self, PinSelect, PinSelector, PinSpec};
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 use tempfile::TempDir;
 
@@ -28,6 +28,7 @@ fn store_with_tags(project: &ProjectName, tags: &[&str]) -> (TempDir, SnapshotSt
             generated_by: "backhopper 0.0.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
@@ -113,6 +114,7 @@ fn pattern_matches_only_tags_for_this_project() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();

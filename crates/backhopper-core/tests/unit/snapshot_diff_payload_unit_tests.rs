@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use backhopper_core::model::names::{ModuleName, ProjectName, TagName};
-use backhopper_core::model::snapshot_diff::{DiffPayload, QualifiedFunArity};
+use backhopper_core::model::names::{MacroName, ModuleName, ProjectName, RelativePath, TagName};
+use backhopper_core::model::snapshot_diff::{DiffPayload, QualifiedFunArity, WireConstantChange};
 
 fn empty_diff() -> DiffPayload {
     DiffPayload {
@@ -65,6 +65,27 @@ fn name_newtypes_serialize_as_bare_strings() {
     assert!(json.contains("\"from\":\"v2.0.0\""), "{json}");
     assert!(json.contains("\"to\":\"v2.1.0\""), "{json}");
     assert!(json.contains("\"modules_added\":[\"ra_server\"]"), "{json}");
+}
+
+// `RelativePath` on headers and `MacroName` on wire-constant macros are
+// the same serde-transparent contract: adding them changes no byte on
+// the wire.
+#[test]
+fn header_and_macro_name_newtypes_serialize_as_bare_strings() {
+    let mut d = empty_diff();
+    d.headers_added
+        .push(RelativePath::new("include/ra.hrl").unwrap());
+    d.wire_constant_changes.push(WireConstantChange::Missing {
+        module: ModuleName::new("ra_log_segment").unwrap(),
+        side: "to".to_owned(),
+        macros: vec![MacroName::new("MAGIC").unwrap()],
+    });
+    let json = serde_json::to_string(&d).unwrap();
+    assert!(
+        json.contains("\"headers_added\":[\"include/ra.hrl\"]"),
+        "{json}"
+    );
+    assert!(json.contains("\"macros\":[\"MAGIC\"]"), "{json}");
 }
 
 #[test]

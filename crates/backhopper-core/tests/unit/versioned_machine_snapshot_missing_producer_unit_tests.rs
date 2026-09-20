@@ -86,6 +86,9 @@ fn rabbitmq_defaults() -> FamilyDefaults {
             allow_state_flag_gating: true,
         }],
         test_helper_search_paths: Vec::new(),
+        dep_behaviours: Vec::new(),
+        option_types: Vec::new(),
+        suite_registration: None,
     }
 }
 
@@ -101,6 +104,9 @@ fn ra_defaults() -> FamilyDefaults {
         versioned_machines: Vec::new(),
         versioned_machine_impls: Vec::new(),
         test_helper_search_paths: Vec::new(),
+        dep_behaviours: Vec::new(),
+        option_types: Vec::new(),
+        suite_registration: None,
     }
 }
 

@@ -594,6 +594,7 @@ impl Patch<Analyzed> {
                 local_call_shape_checks: ShapeCheckTally::default(),
                 macro_value_checks: MacroValueTally::default(),
                 indirect_call_checks: IndirectCallTally::default(),
+                dormant_detectors: Vec::new(),
             },
             patch_facts: classify_patch_facts(&self.files),
             touched_paths: collect_touched_paths(&self.files),

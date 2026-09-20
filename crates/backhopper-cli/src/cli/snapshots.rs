@@ -51,6 +51,11 @@ pub enum SnapshotsCmd {
         /// self-pins.
         #[arg(long, conflicts_with_all = ["project", "since"])]
         series: Option<SeriesName>,
+        /// Rebuild a tag whose snapshot is already on disk but is
+        /// stale or carries no recorded extractor version. Without
+        /// this flag a tag with a snapshot is always skipped.
+        #[arg(long)]
+        refresh_stale: bool,
     },
     /// List existing snapshots for a project.
     List {

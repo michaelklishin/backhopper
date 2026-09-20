@@ -8,7 +8,7 @@ use backhopper_core::config::{Config, ConfigFile, ProjectLayout, Series};
 use backhopper_core::errors::ConfigError;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
 use backhopper_core::store::SnapshotStore;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -265,6 +265,7 @@ fn series_resolve_pins_walks_specs_against_store() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: Vec::new(),
         };
         mut_store

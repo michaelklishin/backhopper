@@ -12,7 +12,7 @@ use backhopper_core::model::names::{
     ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::{
-    Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
+    FORMAT_VERSION, Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
     VersionedMachineVersion, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::snapshot::{format, parser};
@@ -121,6 +121,7 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: pins,
     })
 }
@@ -168,6 +169,7 @@ proptest! {
                 generated_by: "test".into(),
                 generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
                 extractor_version: String::new(),
+                format_version: FORMAT_VERSION,
                 dep_pins: Vec::new(),
             },
             vec![m.clone()],
@@ -194,6 +196,7 @@ proptest! {
             generated_by: "test".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: pins.clone(),
         };
         let snap = Snapshot::from_extracted(header, vec![], vec![]).into_canonical();

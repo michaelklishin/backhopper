@@ -163,6 +163,25 @@ fn doctor_accepts_check_remote_and_series_filter() {
 }
 
 #[test]
+fn snapshots_generate_accepts_refresh_stale() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let snapshots = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "snapshots")
+        .unwrap();
+    let generate = snapshots
+        .get_subcommands()
+        .find(|s| s.get_name() == "generate")
+        .unwrap();
+    let args: Vec<&str> = generate
+        .get_arguments()
+        .map(|a| a.get_id().as_str())
+        .collect();
+    assert!(args.contains(&"refresh_stale"));
+}
+
+#[test]
 fn init_accepts_rabbitmq_and_force() {
     let mut cmd = Cli::command();
     cmd.build();

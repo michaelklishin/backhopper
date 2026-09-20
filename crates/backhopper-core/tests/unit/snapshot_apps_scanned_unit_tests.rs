@@ -5,7 +5,7 @@
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{ApplicationName, CommitSha, ProjectName, TagName};
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
 use backhopper_core::snapshot::{format, parser};
 
 fn header_with_apps(apps: &[&str]) -> SnapshotHeader {
@@ -22,6 +22,7 @@ fn header_with_apps(apps: &[&str]) -> SnapshotHeader {
         generated_by: "backhopper".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }

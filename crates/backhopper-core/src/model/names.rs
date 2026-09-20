@@ -489,6 +489,28 @@ string_newtype!(DependencyVersion, |v: &str| {
     validate_dependency_version("dependency version", v, MAX_DEPENDENCY_VERSION_LEN)
 });
 
+const MAX_MAP_KEY_LEN: usize = 256;
+const MAX_SCHEMA_FEATURE_LEN: usize = 128;
+
+// A literal atom key found at the top level of a family-declared
+// option map, either bare or quoted.
+string_newtype!(MapKey, |v: &str| {
+    validate_erlang_name("map key", v, MAX_MAP_KEY_LEN)
+});
+
+// A cuttlefish mapping attribute name gated on a minimum schema
+// version (`alias`, and future floor-table entries).
+string_newtype!(SchemaFeature, |v: &str| {
+    validate_simple_name(
+        "schema feature",
+        v,
+        MAX_SCHEMA_FEATURE_LEN,
+        |c| c.is_ascii_lowercase(),
+        is_application_name_char,
+        "lowercase letter, then lowercase digits underscores",
+    )
+});
+
 fn validate_macro_name(kind: &'static str, value: &str, max_len: usize) -> Result<(), NameError> {
     validate_simple_name(
         kind,

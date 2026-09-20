@@ -19,6 +19,17 @@ pub struct CuttlefishFragment {
     pub body_start_line: usize,
     /// Optional key string (the 2nd tuple element, when it is a string literal).
     pub key: Option<String>,
+    /// Third tuple element of a `mapping` fragment: the target Erlang
+    /// key, e.g. `"rabbit.message_interceptors"`. `None` for
+    /// translations, validators, and mappings whose third element is
+    /// not a string literal.
+    pub mapping_target: Option<String>,
+    /// Names of the attributes in a mapping's fourth tuple element
+    /// (e.g. `"datatype"`, `"default"`, `"alias"`). Empty when absent.
+    pub attr_names: Vec<String>,
+    /// 1-based line of the closing `}` of the top-level tuple. Paired
+    /// with `start_line` to give the fragment's full span.
+    pub end_line: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

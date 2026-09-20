@@ -23,6 +23,9 @@ use serde::Serialize;
 use backhopper_core::app_src::{
     AppSrcSpec, SKIP_DIRS, application_of_path, parse as app_src_parse,
 };
+use backhopper_core::compat::cuttlefish_features::{
+    IntroducedMapping, check_schema_feature_unsupported,
+};
 use backhopper_core::compat::is_otp_module;
 use backhopper_core::compat::patch::{
     EvaluationContext, EvaluationFiles, Hunk, HunkLine, Patch, PatchedFile, SourceKind,
@@ -45,7 +48,7 @@ use backhopper_core::model::findings::TargetFindings;
 use backhopper_core::model::fingerprint::FINGERPRINT_VERSION;
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, CommitShaPrefix, DependencyName, ModuleName, ProjectName,
-    SeriesName,
+    RelativePath, SeriesName,
 };
 use backhopper_core::model::pin::{self, Pin, PinSelector, PinSpec};
 use backhopper_core::model::pr_commit::PrCommit;
@@ -54,14 +57,14 @@ use backhopper_core::model::snapshot::{Snapshot, state};
 use backhopper_core::model::summary::SummaryRow;
 use backhopper_core::model::symbol::{RefOrigin, SymbolKind, SymbolRef};
 use backhopper_core::model::verdict::{
-    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, Diagnostics, IndirectCallTally,
-    MacroValueTally, PinBump, PinVerdict, Reason, SeriesEvaluation, SeriesVerdict, ShapeCheckTally,
-    TargetAxis, TargetAxisSlot, TargetMatch, TargetMatchKind, TouchedKinds, Verdict,
-    non_self_tracked,
+    AlreadyPresentSkipped, BumpStatus, DepPinDivergence, DetectorName, Diagnostics,
+    DormantDetector, IndirectCallTally, MacroValueTally, MissingInput, PinBump, PinVerdict, Reason,
+    SeriesEvaluation, SeriesVerdict, ShapeCheckTally, TargetAxis, TargetAxisSlot, TargetMatch,
+    TargetMatchKind, TouchedKinds, Verdict, non_self_tracked,
 };
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 
-use backhopper_cuttlefish::{extract_references, parse_schema};
+use backhopper_cuttlefish::{FragmentKind, extract_references, parse_schema};
 use backhopper_git::{
     CandidateIdentity, GitError, GitRepo, MergePolicy, PrCommitPolicy, ResolvedPatchInput,
     TargetWalkIndex, analyzable_diff_path, cherry_pick_trailers, load_files_at,
@@ -798,6 +801,25 @@ fn apply_target_context(
             .diagnostics
             .indirect_call_checks
             .merge(indirect_elixir.tally);
+        // C5: takes the override-Inapplicable merge arm (doc 025 §7.2a) —
+        // a suite-only patch's prime case is a Makefile already promoted
+        // to `OnlyTestFixturesTouched`.
+        for marker in target_repo::collect_suite_registration_markers(cfg) {
+            let suite_reasons = session.suite_registration_findings(parsed.files(), &marker);
+            target_findings
+                .reasons
+                .extend(suite_reasons.iter().cloned());
+            target_repo::merge_reasons_overriding_inapplicable(suite_reasons, evaluation);
+        }
+        // C6.3: same override arm, for the schema-only prime case.
+        let mappings = collect_introduced_mappings(parsed.files(), &|p: &Path| {
+            source_repo_dir.and_then(|dir| fs::read_to_string(dir.join(p)).ok())
+        });
+        let reader_reasons = session.schema_key_reader_findings(&mappings);
+        target_findings
+            .reasons
+            .extend(reader_reasons.iter().cloned());
+        target_repo::merge_reasons_overriding_inapplicable(reader_reasons, evaluation);
         // the apply axis has its own row-level record: not collected here
         let apply_analysis = session.target_apply_analysis(parsed.files());
         target_repo::merge_reasons_into_evaluation(apply_analysis.reasons, evaluation);
@@ -1198,6 +1220,13 @@ fn run_check_patch(
                 }
             }
         }
+        populate_dormant_detectors(
+            cfg,
+            &pins,
+            &source_pins,
+            target_ctx.is_some(),
+            &mut evaluation,
+        );
         Ok(evaluation)
     };
     let mut evaluation = match session.lookup(key) {
@@ -1919,6 +1948,77 @@ fn cuttlefish_references(files: &[PatchedFile], source_files: &FileMap) -> Vec<S
     out
 }
 
+/// C6 foundation: mapping fragments whose span intersects an added
+/// region of the diff, reduced to the plain values
+/// `backhopper_core::compat::cuttlefish_features` compares. Span
+/// intersection rather than start-line membership, so adding
+/// `{alias, ...}` to an existing mapping whose opening line sits in
+/// context still counts as introduced.
+fn collect_introduced_mappings(
+    files: &[PatchedFile],
+    read_source: &dyn Fn(&Path) -> Option<String>,
+) -> Vec<IntroducedMapping> {
+    let mut out = Vec::new();
+    for file in files {
+        if file.language != SourceKind::CuttlefishSchema {
+            continue;
+        }
+        let Some(path) = file.new_path.as_deref() else {
+            continue;
+        };
+        let Some(content) = read_source(path) else {
+            continue;
+        };
+        let Ok(fragments) = parse_schema(&content, path) else {
+            continue;
+        };
+        let added = added_line_numbers(&file.hunks);
+        for fragment in fragments {
+            if fragment.kind != FragmentKind::Mapping {
+                continue;
+            }
+            if added
+                .range(fragment.start_line..=fragment.end_line)
+                .next()
+                .is_none()
+            {
+                continue;
+            }
+            let Some(schema_path) = path.to_str().and_then(|s| RelativePath::new(s).ok()) else {
+                continue;
+            };
+            out.push(IntroducedMapping {
+                schema_path,
+                conf_key: fragment.key,
+                mapping_target: fragment.mapping_target,
+                attr_names: fragment.attr_names,
+            });
+        }
+    }
+    out
+}
+
+/// Every new-file line number a hunk adds, dropping context and
+/// removed lines: the added regions a fragment's span must intersect
+/// to count as introduced.
+fn added_line_numbers(hunks: &[Hunk]) -> BTreeSet<usize> {
+    let mut set = BTreeSet::new();
+    for hunk in hunks {
+        let mut line = hunk.new_start;
+        for hunk_line in &hunk.lines {
+            match hunk_line {
+                HunkLine::Added(_) => {
+                    set.insert(line);
+                    line += 1;
+                }
+                HunkLine::Context(_) => line += 1,
+                HunkLine::Removed(_) => {}
+            }
+        }
+    }
+    set
+}
+
 /// Each new-file line a hunk adds or keeps as context, mapped to its
 /// origin. Removed lines consume no new-file line.
 fn touched_line_origins(hunks: &[Hunk]) -> BTreeMap<usize, RefOrigin> {
@@ -1968,6 +2068,9 @@ fn evaluate_one(
         }
     }
     let schema_refs = cuttlefish_references(patch.files(), source_files);
+    let mappings = collect_introduced_mappings(patch.files(), &|p: &Path| {
+        source_files.get(p).map(str::to_owned)
+    });
     let analyzed = patch
         .analyze_with_macros(&macros_by_path)
         .with_extra_references(schema_refs);
@@ -2021,7 +2124,77 @@ fn evaluate_one(
     eval.diagnostics.unattributed_paths =
         tally_unattributed_paths(&touched_paths, &sibling_projects);
     eval.diagnostics.pin_bumps = pin_bumps;
+    // C6.2: series-level, merges through the override-Inapplicable arm
+    // (doc 025 §7.2a) so a schema-only patch's finding is never swallowed.
+    let cuttlefish_pin_version = pins
+        .iter()
+        .find(|p| p.project.as_str() == "cuttlefish")
+        .map(|p| p.tag.as_str().to_owned());
+    let feature_reasons =
+        check_schema_feature_unsupported(&mappings, cuttlefish_pin_version.as_deref());
+    target_repo::merge_reasons_overriding_inapplicable(feature_reasons, &mut eval);
     Ok(eval)
+}
+
+/// Records which family-declared detectors this round could not run,
+/// and why: silence must be distinguishable from absence of findings
+/// (doc 025 §7.1b). Gated on the family actually declaring the
+/// relevant vocabulary, so a generic project's runs carry an empty
+/// list.
+fn populate_dormant_detectors(
+    cfg: &Config,
+    pins: &[Pin],
+    source_pins: &[Option<Pin>],
+    has_target_context: bool,
+    evaluation: &mut SeriesEvaluation,
+) {
+    let declares_option_types = pins.iter().any(|p| {
+        cfg.project(&p.project)
+            .is_ok_and(|proj| !proj.family.defaults().option_types.is_empty())
+    });
+    let declares_suite_registration = pins.iter().any(|p| {
+        cfg.project(&p.project)
+            .is_ok_and(|proj| proj.family.defaults().suite_registration.is_some())
+    });
+    let declares_schema_family = pins.iter().any(|p| {
+        cfg.project(&p.project)
+            .is_ok_and(|proj| proj.family == backhopper_core::config::ProjectFamily::Rabbitmq)
+    });
+    let has_source_pin = source_pins.iter().any(Option::is_some);
+    let has_cuttlefish_pin = pins.iter().any(|p| p.project.as_str() == "cuttlefish");
+
+    let mut dormant = Vec::new();
+    if declares_option_types && !has_source_pin {
+        dormant.push(DormantDetector {
+            detector: DetectorName::OptionKeyDrift,
+            missing_input: MissingInput::SourcePin,
+        });
+    }
+    if !has_target_context {
+        dormant.push(DormantDetector {
+            detector: DetectorName::MacroUndefinedOnTarget,
+            missing_input: MissingInput::TargetRepoDirPath,
+        });
+        if declares_suite_registration {
+            dormant.push(DormantDetector {
+                detector: DetectorName::SuiteNotRegisteredForCt,
+                missing_input: MissingInput::TargetRepoDirPath,
+            });
+        }
+        if declares_schema_family {
+            dormant.push(DormantDetector {
+                detector: DetectorName::SchemaKeyReaderMissing,
+                missing_input: MissingInput::TargetRepoDirPath,
+            });
+        }
+    }
+    if declares_schema_family && !has_cuttlefish_pin {
+        dormant.push(DormantDetector {
+            detector: DetectorName::SchemaFeatureUnsupportedOnPin,
+            missing_input: MissingInput::CuttlefishPin,
+        });
+    }
+    evaluation.diagnostics.dormant_detectors = dormant;
 }
 
 /// Touched paths no configured project owns, keyed by their first two
@@ -2392,6 +2565,13 @@ fn evaluate_batch(
                         probe.apply(&planned.sha, &mut evaluation);
                     }
                 }
+                populate_dormant_detectors(
+                    cfg,
+                    &series.pins,
+                    source_pins,
+                    target_ctx.is_some(),
+                    &mut evaluation,
+                );
                 Ok(evaluation)
             };
             // captured per outcome: a hit reads it from the entry, a miss computes it before storing

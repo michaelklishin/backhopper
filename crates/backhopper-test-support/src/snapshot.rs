@@ -11,7 +11,9 @@ use backhopper_core::model::names::{
     Arity, CommitSha, FunctionName, ModuleName, ProjectName, TagName,
 };
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{FunArity, Module, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{
+    FORMAT_VERSION, FunArity, Module, Snapshot, SnapshotHeader, state,
+};
 
 /// A `SnapshotHeader` with neutral defaults: no branch, an all-zero
 /// commit, a single `src` scan path, the unix epoch, and no dep pins.
@@ -26,6 +28,7 @@ pub fn snapshot_header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }

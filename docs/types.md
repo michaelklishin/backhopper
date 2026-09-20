@@ -101,7 +101,14 @@ variant, not beside a discriminant.
 `PinSpec::{Literal, Pattern, SelfRef}`; `ProjectSource::{External {
 git_url }, SelfRepo}`, so a self-project cannot carry a URL;
 `PinSelector::{Series, Pin}`, so a check is addressed one way or the
-other.
+other. `OptionKeySet::{Closed(keys), Open(keys), Unresolved}` for an
+option-map type's parsed key universe, so a firing rule that must
+consume only the closed form takes that arm and never has to check a
+flag first. `GenerateAction::{Skip, Build, Refresh}` for what
+`snapshots generate` does with one tag; its `as_write` narrows to
+`WriteKind::{Build, Refresh}` once `Skip` is ruled out, so the
+compiler drops the redundant `Skip` arm from every caller that already
+handled it instead of leaving an `unreachable!`.
 
 Use when two fields are set together, refused together, or mutually
 exclusive. Fields that vary independently are a plain struct.
@@ -113,7 +120,12 @@ so a reader cannot have the answer without its ground:
 `Verdict::{RequiresAdaptation { reasons }, Incompatible { reasons },
 Inapplicable { reason }}`. The same shape: `RoundClearance` with
 `ClearanceFacts` in every arm, `ModuleProvenance::FirstParty { path }`,
-`BuildOutcome::CompilationFailed { class }`.
+`BuildOutcome::CompilationFailed { class }`,
+`ExtractorFreshness::{Stale { stored }, Unversioned { format_version
+}}` and `doctor`'s `SnapshotStatus::{Stale { stored, expected },
+Unversioned { format_version, expected }}`, so an unrecorded extractor
+version carries the one fact it does have instead of collapsing into
+`Stale` with an empty `stored`.
 
 Not when the justification is about something else, such as the whole
 run. `AggregateVerdict` is a label beside its facts for that reason.
@@ -154,6 +166,10 @@ The schema table is one row per version in ascending order, with a
 `const` assertion on the length and on each row's position, so a
 missing, duplicated or misplaced row is a compile error. The snapshot
 format has `FORMAT_VERSION` and `SUPPORTED_FORMAT_VERSIONS`.
+`SnapshotHeader.format_version` retains the value the parser actually
+read, distinct from the constant a fresh write always emits: reading
+an old file and reading a value the current binary wrote are different
+facts, and only the second one is guaranteed to equal `FORMAT_VERSION`.
 
 ## Consumed token
 

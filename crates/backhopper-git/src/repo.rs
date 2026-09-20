@@ -245,6 +245,13 @@ impl GitRepo {
     }
 
     pub fn resolve_tag(&self, tag: &TagName) -> Result<CommitSha, GitError> {
+        // A self-pin snapshot's synthetic "tag" is the resolved commit SHA
+        // itself (see `backhopper_cli::commands::self_snapshot`), so it has
+        // no `refs/tags/*` ref to look up. Resolve it as a bare revision
+        // instead.
+        if let Ok(sha) = CommitSha::new(tag.as_str().to_owned()) {
+            return self.resolve_rev(sha.as_str());
+        }
         let spec = format!("refs/tags/{tag}^{{commit}}");
         let object = self
             .repo

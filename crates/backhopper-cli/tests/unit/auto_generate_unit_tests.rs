@@ -15,11 +15,12 @@ use bel7_cli::{ExitCode, ExitCodeProvider};
 
 use backhopper_cli::CliError;
 use backhopper_cli::commands::auto_generate::{
-    PinCoverageStatus, coverage_report, missing_pins, missing_snapshots_error,
+    ExtractorFreshness, GenerateAction, PinCoverageStatus, coverage_report, extractor_freshness,
+    generate_action, missing_pins, missing_snapshots_error,
 };
 use backhopper_core::config::Config;
 use backhopper_core::model::names::CommitSha;
-use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, state};
 use std::str::FromStr;
 use time::OffsetDateTime;
 
@@ -76,6 +77,7 @@ fn synthetic_header(project: &str, tag: &str, extractor_version: &str) -> Snapsh
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: extractor_version.to_owned(),
+        format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
     }
 }
@@ -142,14 +144,25 @@ fn coverage_report_flags_stale_extractor() {
 }
 
 #[test]
-fn coverage_report_treats_empty_extractor_version_as_present() {
-    // older snapshots may lack an extractor version: missing is not stale
+fn coverage_report_flags_an_empty_extractor_version_as_unversioned() {
+    // a snapshot with no extractor-version header predates versioning
+    // and is the most suspect file in the store, not the healthiest
     let tmp = TempDir::new().unwrap();
     write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "");
     let store = SnapshotStore::open(tmp.path()).unwrap();
     let pins = vec![pin("ra", "v3.1.7")];
     let report = coverage_report(&empty_config(tmp.path()), &store, &pins);
-    assert!(matches!(report[0].status, PinCoverageStatus::Present));
+    assert_eq!(report.len(), 1);
+    match &report[0].status {
+        PinCoverageStatus::Unversioned {
+            format_version,
+            expected,
+        } => {
+            assert_eq!(*format_version, FORMAT_VERSION);
+            assert_eq!(expected, backhopper_erlang::EXTRACTOR_VERSION);
+        }
+        other => panic!("expected Unversioned, got {other:?}"),
+    }
 }
 
 #[test]
@@ -203,4 +216,104 @@ fn missing_snapshots_error_variant_round_trips() {
         }
         other => panic!("expected MissingSnapshots, got {other:?}"),
     }
+}
+
+fn header_with(extractor_version: &str, format_version: u32) -> SnapshotHeader {
+    let mut header = synthetic_header("ra", "v3.1.7", extractor_version);
+    header.format_version = format_version;
+    header
+}
+
+#[test]
+fn extractor_freshness_is_current_on_a_match() {
+    let header = header_with("7", FORMAT_VERSION);
+    assert_eq!(
+        extractor_freshness(&header, "7"),
+        ExtractorFreshness::Current
+    );
+}
+
+#[test]
+fn extractor_freshness_is_stale_on_a_mismatch() {
+    let header = header_with("6", FORMAT_VERSION);
+    assert_eq!(
+        extractor_freshness(&header, "7"),
+        ExtractorFreshness::Stale {
+            stored: "6".to_owned()
+        }
+    );
+}
+
+#[test]
+fn extractor_freshness_is_unversioned_for_an_empty_stored_version() {
+    let header = header_with("", 1);
+    assert_eq!(
+        extractor_freshness(&header, "7"),
+        ExtractorFreshness::Unversioned { format_version: 1 }
+    );
+}
+
+#[test]
+fn generate_action_builds_when_nothing_is_present() {
+    assert_eq!(generate_action(None, false), GenerateAction::Build);
+    assert_eq!(generate_action(None, true), GenerateAction::Build);
+}
+
+#[test]
+fn generate_action_skips_a_current_snapshot_regardless_of_the_flag() {
+    assert_eq!(
+        generate_action(Some(&ExtractorFreshness::Current), false),
+        GenerateAction::Skip
+    );
+    assert_eq!(
+        generate_action(Some(&ExtractorFreshness::Current), true),
+        GenerateAction::Skip
+    );
+}
+
+#[test]
+fn generate_action_skips_a_stale_snapshot_without_the_flag() {
+    let stale = ExtractorFreshness::Stale {
+        stored: "6".to_owned(),
+    };
+    assert_eq!(generate_action(Some(&stale), false), GenerateAction::Skip);
+}
+
+#[test]
+fn generate_action_refreshes_a_stale_snapshot_with_the_flag() {
+    let stale = ExtractorFreshness::Stale {
+        stored: "6".to_owned(),
+    };
+    assert_eq!(generate_action(Some(&stale), true), GenerateAction::Refresh);
+}
+
+#[test]
+fn generate_action_skips_an_unversioned_snapshot_without_the_flag() {
+    let unversioned = ExtractorFreshness::Unversioned { format_version: 1 };
+    assert_eq!(
+        generate_action(Some(&unversioned), false),
+        GenerateAction::Skip
+    );
+}
+
+#[test]
+fn generate_action_refreshes_an_unversioned_snapshot_with_the_flag() {
+    let unversioned = ExtractorFreshness::Unversioned { format_version: 1 };
+    assert_eq!(
+        generate_action(Some(&unversioned), true),
+        GenerateAction::Refresh
+    );
+}
+
+#[test]
+fn as_write_drops_skip_and_keeps_build_and_refresh() {
+    assert_eq!(GenerateAction::Skip.as_write(), None);
+    assert_eq!(
+        GenerateAction::Build.as_write(),
+        Some(backhopper_cli::commands::auto_generate::WriteKind::Build)
+    );
+    assert_eq!(
+        GenerateAction::Refresh.as_write(),
+        Some(backhopper_cli::commands::auto_generate::WriteKind::Refresh)
+    );
 }

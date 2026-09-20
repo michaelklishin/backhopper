@@ -73,6 +73,10 @@ pub struct SnapshotHeader {
     /// Empty string when reading pre-extractor-versioning snapshots.
     #[serde(default)]
     pub extractor_version: String,
+    /// The file's `format-version` header, as parsed. Defaults to 0 when
+    /// deserializing an envelope written before this field existed.
+    #[serde(default)]
+    pub format_version: u32,
     /// Vendored dependency pins captured from the project's components file
     /// (e.g. `rabbitmq-components.mk`). Populated for projects whose family
     /// declares a components-file shape; empty otherwise. Format version 4
@@ -714,6 +718,7 @@ impl Default for Snapshot<state::Unsorted> {
                 generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
                 generated_at: OffsetDateTime::UNIX_EPOCH,
                 extractor_version: String::new(),
+                format_version: FORMAT_VERSION,
                 dep_pins: Vec::new(),
             },
             modules: Vec::new(),

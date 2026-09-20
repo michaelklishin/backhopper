@@ -10,8 +10,8 @@ use backhopper_core::model::names::{
     TagName, TypeName,
 };
 use backhopper_core::model::snapshot::{
-    CallbackSig, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot, SnapshotHeader,
-    SpecSig, TypeArity, TypeDecl, Visibility,
+    CallbackSig, FORMAT_VERSION, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot,
+    SnapshotHeader, SpecSig, TypeArity, TypeDecl, Visibility,
 };
 use backhopper_core::snapshot::{format, parser};
 
@@ -175,6 +175,7 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
             generated_by: "backhopper 0.4.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: Vec::new(),
         })
 }
@@ -190,6 +191,18 @@ proptest! {
         let text = format::to_string(&snap).unwrap();
         let back = parser::parse(&text).unwrap();
         prop_assert_eq!(snap, back);
+    }
+
+    #[test]
+    fn header_format_version_normalizes_to_current_after_round_trip(
+        mut header in arb_header(),
+        arbitrary_format_version in 0u32..20,
+    ) {
+        header.format_version = arbitrary_format_version;
+        let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
+        let text = format::to_string(&snap).unwrap();
+        let back = parser::parse(&text).unwrap();
+        prop_assert_eq!(back.header().format_version, FORMAT_VERSION);
     }
 
     #[test]
@@ -228,6 +241,7 @@ proptest! {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
+            format_version: FORMAT_VERSION,
             dep_pins: Vec::new(),
         };
         let snap = Snapshot::from_extracted(header, vec![], vec![hrl]).into_canonical();

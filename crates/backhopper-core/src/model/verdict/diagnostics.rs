@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::{AlreadyPresent, AlreadyPresentSkipped, DepPinDivergence, PinBump, Unanalyzed};
-use crate::model::names::{CommitSha, ModuleName, ProjectName, RecordName, RelativePath};
+use crate::model::names::{
+    CommitSha, ModuleName, ProjectName, RecordName, RelativePath, vocabulary,
+};
 
 /// Series-wide diagnostic envelope. Strictly separate from `Verdict`
 /// so untracked-call signals never leak into machine-readable verdicts.
@@ -80,6 +82,13 @@ pub struct Diagnostics {
     /// target module, or seen with an unreadable arity and withheld.
     #[serde(default, skip_serializing_if = "IndirectCallTally::is_empty")]
     pub indirect_call_checks: IndirectCallTally,
+    /// Family-declared detectors that did not run this evaluation,
+    /// with the input whose absence disabled each. Gated on the
+    /// family actually declaring the relevant vocabulary, so a
+    /// generic project's runs carry an empty list. Silence must be
+    /// distinguishable from absence of findings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dormant_detectors: Vec<DormantDetector>,
 }
 
 impl Diagnostics {
@@ -101,6 +110,7 @@ impl Diagnostics {
             local_call_shape_checks,
             macro_value_checks,
             indirect_call_checks,
+            dormant_detectors,
         } = self;
         untracked_calls.is_empty()
             && untracked_records.is_empty()
@@ -117,6 +127,7 @@ impl Diagnostics {
             && local_call_shape_checks.is_empty()
             && macro_value_checks.is_empty()
             && indirect_call_checks.is_empty()
+            && dormant_detectors.is_empty()
     }
 
     /// Record that `suite` references `helper`; bumps the call-site
@@ -276,6 +287,36 @@ impl IndirectCallTally {
         self.withheld_dynamic += other.withheld_dynamic;
     }
 }
+
+/// One family-declared detector that a run could not exercise, and
+/// which input's absence disabled it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct DormantDetector {
+    pub detector: DetectorName,
+    pub missing_input: MissingInput,
+}
+
+vocabulary!(
+    /// A family-declared detector this run's dormancy list can name.
+    pub enum DetectorName: "detector name" {
+        DepBehaviourConformance => "dep_behaviour_conformance",
+        OptionKeyDrift => "option_key_drift",
+        MacroUndefinedOnTarget => "macro_undefined_on_target",
+        SuiteNotRegisteredForCt => "suite_not_registered_for_ct",
+        SchemaFeatureUnsupportedOnPin => "schema_feature_unsupported_on_pin",
+        SchemaKeyReaderMissing => "schema_key_reader_missing",
+    }
+);
+
+vocabulary!(
+    /// The gating input whose absence left a detector dormant.
+    pub enum MissingInput: "missing input" {
+        TargetRepoDirPath => "target_repo_dir_path",
+        SourcePin => "source_pin",
+        CuttlefishPin => "cuttlefish_pin",
+    }
+);
 
 /// Per-file hunk counters for the content-presence check.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
