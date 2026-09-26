@@ -433,8 +433,9 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
 
 ## Target Rust Version
 
- * Recent stable Rust (`1.95`+). MSRV pinned via the workspace
-   `Cargo.toml` `rust-version` field and bumped deliberately
+ * The latest stable Rust, currently `1.98.1`. The workspace
+   `Cargo.toml` `rust-version` field names the same release as
+   `rust-toolchain.toml`, and the two move together
  * `rust-toolchain.toml` pins the exact toolchain for development
 
 ## Rust Code Style
