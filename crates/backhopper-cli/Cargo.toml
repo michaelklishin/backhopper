@@ -8,9 +8,13 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "Command-line interface for backhopper"
 
+[lib]
+test = false
+
 [[bin]]
 name = "backhopper"
 path = "src/main.rs"
+test = false
 
 [lints]
 workspace = true

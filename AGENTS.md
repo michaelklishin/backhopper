@@ -17,17 +17,28 @@ cargo build --workspace --all-features
 
 cargo fmt --all
 
-RUSTFLAGS="-D warnings" cargo nextest run --workspace --all-features
-RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features --tests
+cargo nextest run --workspace --all-features
+cargo clippy --workspace --all-features --tests -- -D warnings
 ```
+
+Pass `-D warnings` to Clippy after `--`, never through `RUSTFLAGS`:
+`RUSTFLAGS` is part of every compiled unit's hash, so setting it for
+one command and not another rebuilds every dependency into a second
+copy under `target/`.
 
 To filter tests with `cargo nextest`:
 
 ```bash
-cargo nextest run -E "test(test_name)"
+cargo nextest run --workspace --all-features -E "test(test_name)"
+cargo nextest run --workspace --all-features -E "package(backhopper-core)"
+cargo nextest run --workspace --all-features -E "rdeps(backhopper-core)"
 ```
 
-Coverage gate (Phase 1): `cargo llvm-cov --workspace --lib --tests`
+Prefer these filters to `-p`: with `-p`, features are unified for one
+package instead of the workspace, so the dependencies are built again
+in a different variant.
+
+Coverage gate (Phase 1): `cargo llvm-cov --workspace --all-features --tests`
 must report at least 90% line coverage on `backhopper-core`,
 `backhopper-erlang`, `backhopper-xref-graph`, `backhopper-xref-reader`,
 and `backhopper-xref`. The CLI crate is exempt because integration
@@ -442,13 +453,14 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
    declaration is the exception, not the rule
  * Add unit, integration, and property tests under
    `tests/{unit,integration,proptests}/`, never inline in
-   implementation files
+   implementation files. Library and binary targets set `test = false`,
+   so an inline `#[cfg(test)]` module would compile but never run
  * At the end of each task, run `cargo fmt --all`
- * At the end of each task, run `RUSTFLAGS="-D warnings" cargo clippy
-   --workspace --all-features --tests` and fix any warnings (CI lints
+ * At the end of each task, run `cargo clippy --workspace
+   --all-features --tests -- -D warnings` and fix any warnings (CI lints
    test code too, so `--tests` catches what a plain clippy run misses)
- * At the end of each task, run `RUSTFLAGS="-D warnings" cargo nextest
-   run --workspace --all-features` and ensure it is clean
+ * At the end of each task, run `cargo nextest run --workspace
+   --all-features` and ensure it is clean
 
 ## Types Over Comments
 
@@ -673,9 +685,9 @@ section at the top.
 Three workflows live under `.github/workflows/`:
 
  * `ci.yaml`: Clippy and `cargo fmt --check` on Ubuntu 22.04 and 24.04;
-   `cargo nextest run --cargo-profile ci --workspace --all-features`
-   on Ubuntu, macOS, and Windows against stable and beta Rust; `cargo
-   audit`; auto-merge for dependabot PRs
+   `cargo nextest run --workspace --all-features` on Ubuntu and macOS
+   with the toolchain pinned in `rust-toolchain.toml`; `cargo audit`;
+   auto-merge for dependabot PRs
  * `release.yml`: validates `CHANGELOG.md` and `Cargo.toml` against the
    `NEXT_RELEASE_VERSION` repo variable, publishes every publishable
    crate to crates.io via Trusted Publishing in dependency order,

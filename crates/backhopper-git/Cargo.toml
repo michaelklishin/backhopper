@@ -8,6 +8,9 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "gix-backed git access layer for backhopper: repository reads, patch resolution, PR-commit enumeration"
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 

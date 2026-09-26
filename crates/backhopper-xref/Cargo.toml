@@ -8,6 +8,9 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "Whole-program cross-reference analysis for Erlang projects: undefined-call detection, dead-export detection, reverse traversal, behaviour conformance, cross-tag diff"
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 

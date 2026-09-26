@@ -129,12 +129,11 @@ ignored_unit_patterns   = "allow"
 mismatching_type_param_order = "allow"
 duration_subsec         = "allow"
 
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto             = "thin"
 codegen-units   = 1
 strip           = true
 opt-level       = 3
-
-[profile.ci]
-inherits  = "release"
-opt-level = "s"

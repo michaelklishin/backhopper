@@ -8,9 +8,13 @@ license     = { workspace = true }
 publish     = false
 description = "Workspace helper tasks: schema generation, drift checks"
 
+[lib]
+test = false
+
 [[bin]]
 name = "xtask"
 path = "src/main.rs"
+test = false
 
 [lints]
 workspace = true

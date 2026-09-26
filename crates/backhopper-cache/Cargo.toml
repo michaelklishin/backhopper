@@ -8,6 +8,9 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "On-disk cache plumbing for backhopper: content-addressed entries, freshness keys, atomic writes"
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 

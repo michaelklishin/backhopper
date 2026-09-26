@@ -8,6 +8,9 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "Core types, snapshot I/O, store, and compatibility analysis for backhopper"
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 

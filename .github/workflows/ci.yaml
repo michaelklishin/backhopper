@@ -16,7 +16,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
   lint:
@@ -34,13 +33,11 @@ jobs:
       - name: Free up disk space
         run: .github/scripts/free_disk_space.sh
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
 
       - name: Lint (clippy)
-        run: cargo clippy --workspace --all-features --tests
+        run: cargo clippy --workspace --all-features --tests -- -D warnings
 
       - name: Lint (rustfmt)
         run: cargo fmt --all --check
@@ -55,9 +52,6 @@ jobs:
           - ubuntu-22.04
           - ubuntu-24.04
           - macos-latest
-        rust:
-          - stable
-          - beta
 
     runs-on: ${{ matrix.os }}
 
@@ -68,18 +62,13 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: .github/scripts/free_disk_space.sh
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
 
       - uses: taiki-e/install-action@nextest
 
-      - name: Build
-        run: cargo build --workspace --all-features --verbose
-
-      - name: Run tests
-        run: cargo nextest run --cargo-profile ci --workspace --all-features --no-fail-fast --no-tests=pass
+      - name: Build and run tests
+        run: cargo nextest run --workspace --all-features --no-fail-fast --no-tests=pass
         env:
           NEXTEST_RETRIES: 2
           RUST_BACKTRACE: 1

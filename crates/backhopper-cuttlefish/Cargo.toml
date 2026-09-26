@@ -12,6 +12,9 @@ description = "Cuttlefish .schema extractor for backhopper"
 keywords    = ["rabbitmq", "cuttlefish", "erlang", "parser"]
 categories  = ["parsing"]
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 

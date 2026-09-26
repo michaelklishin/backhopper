@@ -8,6 +8,9 @@ license     = { workspace = true }
 repository  = { workspace = true }
 description = "Erlang source to call-graph reader for backhopper-xref"
 
+[lib]
+test = false
+
 [lints]
 workspace = true
 
