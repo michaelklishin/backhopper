@@ -37,7 +37,7 @@ jobs:
         run: rustup toolchain install
 
       - name: Lint (clippy)
-        run: cargo clippy --workspace --all-features --tests -- -D warnings
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       - name: Lint (rustfmt)
         run: cargo fmt --all --check

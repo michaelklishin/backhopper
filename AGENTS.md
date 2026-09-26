@@ -18,7 +18,7 @@ cargo build --workspace --all-features
 cargo fmt --all
 
 cargo nextest run --workspace --all-features
-cargo clippy --workspace --all-features --tests -- -D warnings
+cargo clippy --workspace --all-features --all-targets -- -D warnings
 ```
 
 Pass `-D warnings` to Clippy after `--`, never through `RUSTFLAGS`:
@@ -454,11 +454,14 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
  * Add unit, integration, and property tests under
    `tests/{unit,integration,proptests}/`, never inline in
    implementation files. Library and binary targets set `test = false`,
-   so an inline `#[cfg(test)]` module would compile but never run
+   so an inline `#[cfg(test)]` module would not even be compiled, and
+   its tests would silently never run
  * At the end of each task, run `cargo fmt --all`
  * At the end of each task, run `cargo clippy --workspace
-   --all-features --tests -- -D warnings` and fix any warnings (CI lints
-   test code too, so `--tests` catches what a plain clippy run misses)
+   --all-features --all-targets -- -D warnings` and fix any warnings.
+   Use `--all-targets`, not `--tests`: with `test = false` on library
+   and binary targets, `--tests` selects only the test targets, so the
+   binaries and `xtask` would go unlinted
  * At the end of each task, run `cargo nextest run --workspace
    --all-features` and ensure it is clean
 
