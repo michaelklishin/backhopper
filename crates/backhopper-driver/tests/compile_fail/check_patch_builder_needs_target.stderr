@@ -4,5 +4,4 @@ error[E0599]: no method named `run` found for struct `CheckPatchBuilder<'_, Subp
 5 |     let _ = builder.run();
   |                     ^^^ method not found in `CheckPatchBuilder<'_, SubprocessBackend, NoTarget, WithInput>`
   |
-  = note: the method was found for
-          - `CheckPatchBuilder<'_, B, WithTarget, WithInput>`
+  = note: the method was found for `CheckPatchBuilder<'_, B, WithTarget, WithInput>`
