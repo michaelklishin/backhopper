@@ -245,7 +245,7 @@ diff --git a/src/ra_lib.erl b/src/ra_lib.erl
 ";
 
 #[test]
-fn compat_patch_flags_now_hidden_module() {
+fn compat_patch_does_not_flag_a_hidden_module_without_a_source_side() {
     let workdir = TempDir::new().unwrap();
     let repo = GitRepoFixture::new();
     repo.write_file("src/ra_lib.erl", ERL_OLD);
@@ -261,17 +261,61 @@ fn compat_patch_flags_now_hidden_module() {
     );
     generate_snapshot(&cfg);
     let patch_file = write_patch_to_temp(PATCH_REFERENCING_HIDDEN);
-    let assert = run_check_patch(&cfg, patch_file.path());
-    let output = assert.code(3).get_output().clone();
+    let output = run_check_patch(&cfg, patch_file.path())
+        .get_output()
+        .clone();
     let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("incompatible: 0"), "got: {stdout}");
     assert!(
-        stdout.contains("incompatible: 1") || stdout.contains("requires_adaptation: 1"),
-        "expected non-Compatible verdict, got: {stdout}"
+        !stdout.contains("NowHidden"),
+        "a module hidden with no source side to compare is not a transition, got: {stdout}"
     );
-    assert!(
-        stdout.contains("NowHidden"),
-        "expected NowHidden reason, got: {stdout}"
+}
+
+const ERL_MODULE_WITH_A_HIDDEN_TYPE: &str = r#"
+-module(ra_directory).
+-export([init/0]).
+-compile({nowarn_hidden_doc, [descriptor/0]}).
+-doc hidden.
+-type descriptor() :: tuple().
+init() -> ok.
+"#;
+
+#[test]
+fn a_doc_hidden_type_leaves_its_module_public_in_the_snapshot() {
+    let workdir = TempDir::new().unwrap();
+    let repo = GitRepoFixture::new();
+    repo.write_file("src/ra_directory.erl", ERL_MODULE_WITH_A_HIDDEN_TYPE);
+    repo.commit("first");
+    repo.tag("v1.0.0");
+    let cfg = write_config_with(
+        workdir.path(),
+        repo.dir.path(),
+        &workdir.path().join("snapshots"),
+        "",
     );
+    generate_snapshot(&cfg);
+    let output = Command::cargo_bin("backhopper")
+        .unwrap()
+        .args([
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "show",
+            "--project",
+            "demo",
+            "--tag",
+            "v1.0.0",
+            "--formatter",
+            "text",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("module ra_directory"), "{text}");
+    assert!(!text.contains("visibility hidden"), "{text}");
 }
 
 const ERL_MULTI_HUNK: &str = r#"-module(ra_lib).

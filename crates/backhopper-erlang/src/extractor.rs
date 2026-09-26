@@ -25,7 +25,7 @@ use crate::cond_compile::CondStack;
 use crate::deprecated::ParsedDeprecation;
 use crate::specs::ParsedSignature;
 use crate::tokenizer::iterate_attributes;
-use crate::visibility::detect_visibility_hints;
+use crate::visibility::module_header_hides;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ErlangExtractor {
@@ -74,11 +74,11 @@ impl ErlangExtractor {
 
     pub fn extract_module(&self, source: &str) -> Option<Module> {
         let blocks = iterate_attributes(source);
-        let hints = detect_visibility_hints(source);
         let mut module: Option<Module> = None;
         let mut cond = CondStack::new();
         let mut region_stack: Vec<Option<PendingVariantC>> = Vec::new();
         let mut hidden_via_attr = false;
+        let mut module_line = 0;
         let mut has_non_test_export = false;
         let mut has_only_test_exports = false;
         let mut test_only_exports: Vec<TestOnlyExport> = Vec::new();
@@ -101,6 +101,7 @@ impl ErlangExtractor {
             match parsed {
                 ParsedAttribute::Module(name) => {
                     module = Some(Module::new(name));
+                    module_line = block.line;
                 }
                 ParsedAttribute::IfDef(ident) => {
                     cond.push_ifdef(&ident);
@@ -138,7 +139,7 @@ impl ErlangExtractor {
                         });
                     }
                 }
-                ParsedAttribute::DocHidden => {
+                ParsedAttribute::ModuleDocHidden => {
                     hidden_via_attr = true;
                 }
                 _ => {
@@ -168,7 +169,7 @@ impl ErlangExtractor {
         let test_only = has_only_test_exports && !has_non_test_export;
         m.visibility = classify_visibility(
             &m.name,
-            hidden_via_attr || hints.hidden,
+            hidden_via_attr || module_header_hides(source, module_line),
             test_only,
             &self.public_modules,
             &self.internal_modules,

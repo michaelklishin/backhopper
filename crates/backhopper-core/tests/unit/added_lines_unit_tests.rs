@@ -9,7 +9,7 @@
 //! hunk.
 
 use backhopper_core::compat::added_lines::{
-    added_lines_with_context, added_lines_with_offsets, file_line,
+    LineContextSource, added_lines_with_context, added_lines_with_offsets, file_line,
 };
 use backhopper_core::compat::patch::{Hunk, HunkLine};
 use backhopper_core::model::symbol::{LineClass, RefContext};
@@ -95,7 +95,7 @@ fn a_continuation_line_classifies_against_its_context_opener() {
             ),
         ],
     );
-    let (blob, map, ctx) = added_lines_with_context(&[h]);
+    let (blob, map, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert_eq!(
         blob,
         "           Socket :: rabbit_net:socket() | rabbit_net:proxy_socket()) -> ok.\n"
@@ -114,7 +114,7 @@ fn a_body_continuation_after_a_context_call_opener_stays_body() {
             HunkLine::Added("    Q).".into()),
         ],
     );
-    let (_, _, ctx) = added_lines_with_context(&[h]);
+    let (_, _, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert_eq!(contexts(&ctx), vec![RefContext::Body]);
 }
 
@@ -122,7 +122,7 @@ fn a_body_continuation_after_a_context_call_opener_stays_body() {
 #[test]
 fn a_context_only_hunk_produces_an_empty_blob() {
     let h = hunk(1, vec![HunkLine::Context("-spec f() -> ok.".into())]);
-    let (blob, map, ctx) = added_lines_with_context(&[h]);
+    let (blob, map, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert!(blob.is_empty());
     assert!(map.is_empty());
     assert!(ctx.is_empty());
@@ -134,7 +134,7 @@ fn a_context_only_hunk_produces_an_empty_blob() {
 fn classification_persists_across_hunks_in_the_same_file() {
     let a = hunk(1, vec![HunkLine::Added("-spec f(X) -> ok when".into())]);
     let b = hunk(90, vec![HunkLine::Added("      X :: othermod:t().".into())]);
-    let (_, _, ctx) = added_lines_with_context(&[a, b]);
+    let (_, _, ctx) = added_lines_with_context(&[a, b], LineContextSource::HunksOnly);
     assert_eq!(
         contexts(&ctx),
         vec![RefContext::TypeAttribute, RefContext::TypeAttribute]
@@ -151,7 +151,7 @@ fn an_export_attribute_classifies_as_other_attribute() {
             HunkLine::Added("info(S) -> S.".into()),
         ],
     );
-    let (_, _, ctx) = added_lines_with_context(&[h]);
+    let (_, _, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert_eq!(
         contexts(&ctx),
         vec![
@@ -180,7 +180,7 @@ fn a_context_terminator_closes_a_region_an_added_opener_started() {
             HunkLine::Context("  when Vsn < 5 ->".into()),
         ],
     );
-    let (_, _, ctx) = added_lines_with_context(&[h]);
+    let (_, _, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert_eq!(
         contexts(&ctx),
         vec![RefContext::TypeAttribute, RefContext::Body]
@@ -202,7 +202,7 @@ fn added_prose_inside_an_unchanged_doc_block_classifies_as_attribute_string() {
             HunkLine::Added("tick() -> ra_machine:apply(1, 2, 3).".into()),
         ],
     );
-    let (_, _, ctx) = added_lines_with_context(&[h]);
+    let (_, _, ctx) = added_lines_with_context(&[h], LineContextSource::HunksOnly);
     assert_eq!(
         contexts(&ctx),
         vec![
@@ -211,4 +211,64 @@ fn added_prose_inside_an_unchanged_doc_block_classifies_as_attribute_string() {
             RefContext::Body,
         ]
     );
+}
+
+const CONNECTION_CONFIG: &str = r"-module(amqp10_client_connection).
+
+-type connection_config() ::
+    #{container_id => binary(),
+      hostname => binary(),
+      port => inet:port_number(),
+      tls_opts => {secure_port, [ssl:tls_option()]},
+      %% socket connect timeout
+      connect_timeout => timeout(),
+      ws_path => string(),
+      notify => pid() | none
+    }.
+";
+
+fn connection_config_hunk() -> Hunk {
+    hunk(
+        6,
+        vec![
+            HunkLine::Context("      port => inet:port_number(),".into()),
+            HunkLine::Context("      tls_opts => {secure_port, [ssl:tls_option()]},".into()),
+            HunkLine::Added("      %% socket connect timeout".into()),
+            HunkLine::Added("      connect_timeout => timeout(),".into()),
+            HunkLine::Context("      ws_path => string(),".into()),
+        ],
+    )
+}
+
+#[test]
+fn a_type_line_below_an_opener_outside_the_hunk_classifies_as_type_with_a_post_image() {
+    let (blob, map, ctx) = added_lines_with_context(
+        &[connection_config_hunk()],
+        LineContextSource::PostImage(CONNECTION_CONFIG),
+    );
+    assert_eq!(map, vec![8, 9]);
+    assert!(blob.contains("connect_timeout => timeout()"));
+    assert_eq!(
+        contexts(&ctx),
+        vec![RefContext::TypeAttribute, RefContext::TypeAttribute]
+    );
+}
+
+#[test]
+fn hunks_only_classifies_the_same_line_as_body() {
+    let (_, _, ctx) =
+        added_lines_with_context(&[connection_config_hunk()], LineContextSource::HunksOnly);
+    assert_eq!(contexts(&ctx), vec![RefContext::Body, RefContext::Body]);
+}
+
+#[test]
+fn a_post_image_that_disagrees_with_the_hunk_falls_back_to_the_hunk() {
+    let unrelated = "-module(other).\n\nf() -> ok.\n";
+    let with_mismatch = added_lines_with_context(
+        &[connection_config_hunk()],
+        LineContextSource::PostImage(unrelated),
+    );
+    let hunks_only =
+        added_lines_with_context(&[connection_config_hunk()], LineContextSource::HunksOnly);
+    assert_eq!(with_mismatch, hunks_only);
 }

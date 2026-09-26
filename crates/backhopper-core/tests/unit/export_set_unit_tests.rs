@@ -146,3 +146,51 @@ fn a_parse_transform_outranks_export_all_within_one_module() {
         Presence::Unknowable(Unreadable::ParseTransform)
     );
 }
+
+#[test]
+fn an_export_after_a_comment_line_is_read() {
+    let src = "-export([\n         init/1,\n         %% protocol helpers\n         make_enqueue/3,\n         make_checkout/3\n        ]).\n";
+    let surface = extract_exports(src);
+    assert!(surface.is_complete());
+    assert_eq!(surface.lookup(&fa("init", 1)), Presence::Present);
+    assert_eq!(surface.lookup(&fa("make_enqueue", 3)), Presence::Present);
+    assert_eq!(surface.lookup(&fa("make_checkout", 3)), Presence::Present);
+}
+
+#[test]
+fn an_export_after_a_single_percent_comment_is_read() {
+    let src = "-export([new/8,\n         % exclusive_owner\n         get_exclusive_owner/1,\n         % name (#resource)\n         get_name/1,\n         % pid\n         get_pid/1,\n         set_pid/2]).\n";
+    let surface = extract_exports(src);
+    for key in [
+        fa("get_exclusive_owner", 1),
+        fa("get_name", 1),
+        fa("get_pid", 1),
+        fa("set_pid", 2),
+    ] {
+        assert_eq!(surface.lookup(&key), Presence::Present, "{key:?}");
+    }
+}
+
+#[test]
+fn a_question_mark_in_an_export_list_comment_is_not_a_macro() {
+    let surface = extract_exports("-export([f/0, % see ?MODULE\n         g/1]).\n");
+    assert!(surface.is_complete());
+    assert_eq!(surface.lookup(&fa("g", 1)), Presence::Present);
+}
+
+#[test]
+fn a_closing_bracket_in_an_export_list_comment_does_not_end_the_list() {
+    let surface = extract_exports("-export([f/0, % [deprecated]\n         g/1, h/2]).\n");
+    assert_eq!(surface.lookup(&fa("g", 1)), Presence::Present);
+    assert_eq!(surface.lookup(&fa("h", 2)), Presence::Present);
+}
+
+#[test]
+fn a_real_macro_in_an_export_list_still_withholds() {
+    let surface = extract_exports("-export([f/0, % a note\n         ?EXPORTS]).\n");
+    assert_eq!(
+        surface.lookup(&fa("g", 1)),
+        Presence::Unknowable(Unreadable::MacroInExportList)
+    );
+    assert_eq!(surface.lookup(&fa("f", 0)), Presence::Present);
+}

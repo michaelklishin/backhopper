@@ -9,7 +9,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use backhopper_core::compat::added_lines::{AddedLinesSubject, added_lines_with_context};
+use backhopper_core::compat::added_lines::{
+    AddedLinesSubject, LineContextSource, added_lines_with_context,
+};
 use backhopper_core::compat::call_sites::line_context;
 use backhopper_core::compat::patch::{Hunk, HunkLine};
 use backhopper_core::compat::qualified_call_resolve::{
@@ -783,7 +785,7 @@ fn repro_e2e_line_attribution_through_the_gate() {
 // context. Both type refs on the continuation must classify as type context, not calls.
 fn analyse_from_hunks(hunks: &[Hunk], target: &[(&str, &str, &str)]) -> Vec<Reason> {
     let path = rp("deps/rabbitmq_mqtt/src/rabbit_mqtt_processor.erl");
-    let (added, line_map, ctx) = added_lines_with_context(hunks);
+    let (added, line_map, ctx) = added_lines_with_context(hunks, LineContextSource::HunksOnly);
     let subjects = [ContextAwareSubject {
         subject: AddedLinesSubject {
             source_path: &path,

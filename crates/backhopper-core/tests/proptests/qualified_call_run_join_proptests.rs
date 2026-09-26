@@ -11,7 +11,7 @@
 
 use proptest::prelude::*;
 
-use backhopper_core::compat::added_lines::added_lines_with_context;
+use backhopper_core::compat::added_lines::{LineContextSource, added_lines_with_context};
 use backhopper_core::compat::call_sites::extract_qualified_calls;
 use backhopper_core::compat::call_sites::extract_qualified_calls_with_context;
 use backhopper_core::compat::patch::{Hunk, HunkLine};
@@ -66,7 +66,7 @@ proptest! {
             new_count: 2,
             lines: vec![opener, continuation],
         };
-        let (added, line_map, ctx) = added_lines_with_context(std::slice::from_ref(&hunk));
+        let (added, line_map, ctx) = added_lines_with_context(std::slice::from_ref(&hunk), LineContextSource::HunksOnly);
         let calls = extract_qualified_calls_with_context(&added, &line_map, &ctx);
         for (i, c) in ctx.iter().enumerate() {
             if c.context == RefContext::TypeAttribute {

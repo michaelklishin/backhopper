@@ -109,6 +109,11 @@ flag first. `GenerateAction::{Skip, Build, Refresh}` for what
 `WriteKind::{Build, Refresh}` once `Skip` is ruled out, so the
 compiler drops the redundant `Skip` arm from every caller that already
 handled it instead of leaving an `unreachable!`.
+`LineContextSource::{PostImage(text), HunksOnly}` for what the
+attribute-region classifier reads, and the CLI's `PostImage::{AtCommit
+{ repo, sha }, Unavailable}` for where that text comes from, so a
+caller with a commit to read cannot pass nothing by accident and a
+patch with no commit says so by name.
 
 Use when two fields are set together, refused together, or mutually
 exclusive. Fields that vary independently are a plain struct.

@@ -37,7 +37,7 @@ pub enum ParsedAttribute {
     IncludeLib(String),
     Deprecated(Vec<ParsedDeprecation>),
     OnLoad(FunArity),
-    DocHidden,
+    ModuleDocHidden,
     IfDef(String),
     IfnDef(String),
     If(String),
@@ -90,12 +90,9 @@ pub fn classify(block: &AttributeBlock) -> Option<ParsedAttribute> {
             &block.body,
         ))),
         "on_load" => parse_single_fun_arity(body).map(ParsedAttribute::OnLoad),
-        "doc" => {
-            if body.trim() == "hidden" {
-                Some(ParsedAttribute::DocHidden)
-            } else {
-                Some(ParsedAttribute::Other(block.name.clone()))
-            }
+        // only `-moduledoc` hides a module: `-doc false.` documents the next function or type
+        "moduledoc" if matches!(body.trim(), "false" | "hidden") => {
+            Some(ParsedAttribute::ModuleDocHidden)
         }
         "ifdef" => Some(ParsedAttribute::IfDef(body.trim().to_owned())),
         "ifndef" => Some(ParsedAttribute::IfnDef(body.trim().to_owned())),

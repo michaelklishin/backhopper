@@ -72,9 +72,23 @@ fn classifies_optional_callbacks_and_on_load() {
 }
 
 #[test]
-fn classifies_doc_hidden() {
-    let d = classify_first("-doc(hidden).\n");
-    assert!(matches!(d, ParsedAttribute::DocHidden));
+fn classifies_moduledoc_false_and_hidden() {
+    for src in [
+        "-moduledoc false.\n",
+        "-moduledoc(false).\n",
+        "-moduledoc hidden.\n",
+    ] {
+        let d = classify_first(src);
+        assert!(matches!(d, ParsedAttribute::ModuleDocHidden), "{src}");
+    }
+}
+
+#[test]
+fn doc_hidden_and_doc_false_do_not_classify_as_module_hidden() {
+    for src in ["-doc(hidden).\n", "-doc hidden.\n", "-doc false.\n"] {
+        let d = classify_first(src);
+        assert!(!matches!(d, ParsedAttribute::ModuleDocHidden), "{src}");
+    }
 }
 
 #[test]

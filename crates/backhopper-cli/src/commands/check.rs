@@ -744,6 +744,7 @@ fn apply_target_context(
     bytes: &[u8],
     covered_modules: &BTreeSet<ModuleName>,
     source_repo_dir: Option<&Path>,
+    post_image: target_repo::PostImage<'_>,
     evaluation: &mut SeriesEvaluation,
 ) -> CliResult<()> {
     let parsed = Patch::parse(bytes)?;
@@ -771,7 +772,9 @@ fn apply_target_context(
     let mut target_findings = TargetFindings::default();
     let mut apply_forecast = ApplyForecast::default();
     // one target-repo handle drives every symbol axis and the apply pass
-    if let Some(session) = target_repo::TargetResolveSession::open(target_ctx, source_repo_dir) {
+    if let Some(session) =
+        target_repo::TargetResolveSession::open(target_ctx, source_repo_dir, post_image)
+    {
         let mut merge_symbol_reasons = |reasons: Vec<Reason>, evaluation: &mut SeriesEvaluation| {
             target_findings.reasons.extend(reasons.iter().cloned());
             target_repo::merge_reasons_into_evaluation(reasons, evaluation);
@@ -1180,6 +1183,10 @@ fn run_check_patch(
         .as_ref()
         .and_then(|k| k.fingerprint(&patch_hash_for_key(bytes)));
     let cache = SnapshotCache::new(&store);
+    // the post-image reader needs a commit: patch, pr, and range inputs have none
+    let source_repo = provenance
+        .as_ref()
+        .and_then(|_| GitRepo::open(repo_dir_path.to_path_buf()).ok());
     let evaluate_and_finish = |files: FileMap| -> CliResult<SeriesEvaluation> {
         let mut evaluation = evaluate_one(
             cfg,
@@ -1199,12 +1206,17 @@ fn run_check_patch(
         }
         if let Some(target_ctx) = &target_ctx {
             let covered = covered_module_set(&cache, &pins)?;
+            let post_image = match (&provenance, &source_repo) {
+                (Some(p), Some(repo)) => target_repo::PostImage::AtCommit { repo, sha: &p.sha },
+                _ => target_repo::PostImage::Unavailable,
+            };
             apply_target_context(
                 cfg,
                 target_ctx,
                 bytes,
                 &covered,
                 Some(repo_dir_path),
+                post_image,
                 &mut evaluation,
             )?;
             // Patch-shaped inputs have no commit identity to probe.
@@ -2556,6 +2568,10 @@ fn evaluate_batch(
                         &input.bytes,
                         covered,
                         Some(repo),
+                        target_repo::PostImage::AtCommit {
+                            repo: &git_repo,
+                            sha: &input.sha,
+                        },
                         &mut evaluation,
                     )?;
                     if let Some(probe) = &probe {

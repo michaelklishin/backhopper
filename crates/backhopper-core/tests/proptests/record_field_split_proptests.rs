@@ -10,7 +10,7 @@
 
 use proptest::prelude::*;
 
-use backhopper_core::compat::added_lines::added_lines_with_context;
+use backhopper_core::compat::added_lines::{LineContextSource, added_lines_with_context};
 use backhopper_core::compat::call_sites::{extract_qualified_calls_with_context, scan_hunk};
 use backhopper_core::compat::patch::{Hunk, HunkLine};
 use backhopper_core::erlang_macros::MacroTable;
@@ -62,7 +62,8 @@ fn scan_qualified_calls(line: &str) -> Vec<String> {
             HunkLine::Added(line.to_owned()),
         ],
     };
-    let (added, line_map, ctx) = added_lines_with_context(std::slice::from_ref(&hunk));
+    let (added, line_map, ctx) =
+        added_lines_with_context(std::slice::from_ref(&hunk), LineContextSource::HunksOnly);
     extract_qualified_calls_with_context(&added, &line_map, &ctx)
         .into_iter()
         .map(|c| c.mfa.to_string())

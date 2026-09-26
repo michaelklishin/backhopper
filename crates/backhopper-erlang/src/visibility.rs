@@ -2,25 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-//! Visibility heuristics.
-//!
-//! Scans Erlang source for the `%% @hidden` and `-doc(hidden)` markers. The
-//! classification itself is in `backhopper_core::extract::classify_visibility`.
+//! The edoc half of module visibility. `-moduledoc false.` is the other
+//! half and is read as an attribute; the classification itself is in
+//! `backhopper_core::extract::classify_visibility`.
 
-pub fn detect_visibility_hints(source: &str) -> VisibilityHints {
-    for line in source.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("%% @hidden")
-            || trimmed.starts_with("%%@hidden")
-            || trimmed.starts_with("-doc(hidden)")
-        {
-            return VisibilityHints { hidden: true };
-        }
-    }
-    VisibilityHints::default()
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct VisibilityHints {
-    pub hidden: bool,
+/// True when a `%` comment line before the `-module` attribute (at the
+/// 1-based `module_line`) carries edoc's `@hidden` tag. edoc reads
+/// module-level tags from that header only: an `@hidden` further down
+/// documents one function.
+pub fn module_header_hides(source: &str, module_line: usize) -> bool {
+    source
+        .lines()
+        .take(module_line.saturating_sub(1))
+        .filter_map(|line| line.trim_start().strip_prefix('%'))
+        .any(|comment| {
+            comment
+                .trim_start_matches('%')
+                .trim_start()
+                .starts_with("@hidden")
+        })
 }

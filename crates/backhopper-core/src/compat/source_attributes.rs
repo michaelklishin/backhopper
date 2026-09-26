@@ -24,9 +24,10 @@ use std::str;
 use std::str::FromStr;
 
 use backhopper_erlang_scan::{
-    arity_of_args, count_top_level_commas, dot_terminates, hash_inside_number, is_name_byte,
-    is_type_declaration_keyword, parse_callable_signature, quoted_atom_span,
-    skip_char_literal_span, string_span, take_balanced_parens,
+    ScannedList, arity_of_args, count_top_level_commas, dot_terminates, hash_inside_number,
+    is_name_byte, is_type_declaration_keyword, parse_callable_signature, quoted_atom_span,
+    remove_line_comments, scan_list_elements, skip_char_literal_span, string_span,
+    take_balanced_parens,
 };
 
 use crate::compat::target_tree_index::TargetTreeIndex;
@@ -445,18 +446,15 @@ pub struct ImportedFunction {
 pub fn extract_imports(src: &str) -> BTreeSet<ImportedFunction> {
     let mut out = BTreeSet::new();
     for hit in iter_attribute_bodies(src, &["import"]) {
-        let Some(open) = hit.body.find('[') else {
+        let Some(list) = AttributeList::read(hit.body) else {
             continue;
         };
-        let Some(close) = hit.body[open..].find(']') else {
-            continue;
-        };
-        let module_text = hit.body[..open].trim().trim_end_matches(',').trim();
+        let module_text = list.head.trim().trim_end_matches(',').trim();
         let Ok(module) = ModuleName::from_str(module_text) else {
             continue;
         };
-        for entry in hit.body[open + 1..open + close].split(',') {
-            if let Some((name, arity)) = parse_fun_arity(entry)
+        for entry in list.entries {
+            if let ListEntry::NameArity(name, arity) = entry
                 && let (Ok(function), Ok(arity)) =
                     (FunctionName::from_str(&name), Arity::try_from(arity))
             {
@@ -611,27 +609,20 @@ pub fn extract_exports(src: &str) -> ExportSurface {
         }
     }
     for hit in iter_attribute_bodies(src, &["export"]) {
-        let Some(open) = hit.body.find('[') else {
+        let Some(list) = AttributeList::read(hit.body) else {
             continue;
         };
-        let Some(close) = hit.body[open..].find(']') else {
-            continue;
-        };
-        for entry in hit.body[open + 1..open + close].split(',') {
-            let entry = entry.trim();
-            if entry.is_empty() {
-                continue;
-            }
-            // A macro in the export list hides which f/a it names.
-            if entry.contains('?') {
-                Unreadable::record(&mut ground, Unreadable::MacroInExportList);
-                continue;
-            }
-            if let Some((name, arity)) = parse_fun_arity(entry)
-                && let (Ok(function), Ok(arity)) =
-                    (FunctionName::from_str(&name), Arity::try_from(arity))
-            {
-                exports.insert((function, arity));
+        for entry in list.entries {
+            match entry {
+                ListEntry::NameArity(name, arity) => {
+                    if let (Ok(function), Ok(arity)) =
+                        (FunctionName::from_str(&name), Arity::try_from(arity))
+                    {
+                        exports.insert((function, arity));
+                    }
+                }
+                ListEntry::Macro => Unreadable::record(&mut ground, Unreadable::MacroInExportList),
+                ListEntry::Unparsed => {}
             }
         }
     }
@@ -673,30 +664,24 @@ pub fn extract_exported_types(src: &str) -> ExportedTypes {
     let mut types = Vec::new();
     let mut macro_in_list = false;
     for hit in iter_attribute_bodies(src, &["export_type"]) {
-        let Some(open) = hit.body.find('[') else {
+        let Some(list) = AttributeList::read(hit.body) else {
             continue;
         };
-        let Some(close) = hit.body[open..].find(']') else {
-            continue;
-        };
-        for entry in hit.body[open + 1..open + close].split(',') {
-            let entry = entry.trim();
-            if entry.is_empty() {
-                continue;
-            }
-            // A macro in the export list hides which type it names.
-            if entry.contains('?') {
-                macro_in_list = true;
-                continue;
-            }
-            if let Some((name, arity)) = parse_fun_arity(entry)
-                && let (Ok(name), Ok(arity)) = (TypeName::from_str(&name), Arity::try_from(arity))
-            {
-                types.push(ExportedType {
-                    name,
-                    arity,
-                    line: hit.line,
-                });
+        for entry in list.entries {
+            match entry {
+                ListEntry::NameArity(name, arity) => {
+                    if let (Ok(name), Ok(arity)) =
+                        (TypeName::from_str(&name), Arity::try_from(arity))
+                    {
+                        types.push(ExportedType {
+                            name,
+                            arity,
+                            line: hit.line,
+                        });
+                    }
+                }
+                ListEntry::Macro => macro_in_list = true,
+                ListEntry::Unparsed => {}
             }
         }
     }
@@ -830,14 +815,11 @@ pub fn extract_callbacks(src: &str) -> SpecTable {
 pub fn extract_optional_callbacks(src: &str) -> BTreeSet<(FunctionName, Arity)> {
     let mut out = BTreeSet::new();
     for hit in iter_attribute_bodies(src, &["optional_callbacks"]) {
-        let Some(open) = hit.body.find('[') else {
+        let Some(list) = AttributeList::read(hit.body) else {
             continue;
         };
-        let Some(close) = hit.body[open..].find(']') else {
-            continue;
-        };
-        for entry in hit.body[open + 1..open + close].split(',') {
-            if let Some((name, arity)) = parse_fun_arity(entry)
+        for entry in list.entries {
+            if let ListEntry::NameArity(name, arity) = entry
                 && let (Ok(function), Ok(arity)) =
                     (FunctionName::from_str(&name), Arity::try_from(arity))
             {
@@ -924,13 +906,60 @@ fn form_end(bytes: &[u8], start: usize) -> usize {
     i
 }
 
-fn parse_fun_arity(entry: &str) -> Option<(String, usize)> {
-    let (name, arity) = entry.trim().split_once('/')?;
-    let name = name.trim();
-    if name.is_empty() || !name.bytes().all(is_name_byte) {
-        return None;
+/// The list a list-valued attribute (`-export`, `-export_type`, `-import`,
+/// `-optional_callbacks`) carries, read with its comments removed, plus
+/// the text before the list's `[`.
+struct AttributeList {
+    head: String,
+    entries: Vec<ListEntry>,
+}
+
+/// One entry of an attribute's list, classified once for every reader.
+enum ListEntry {
+    NameArity(String, usize),
+    Macro,
+    Unparsed,
+}
+
+impl AttributeList {
+    /// `None` when the body holds no terminated proper list.
+    fn read(body: &str) -> Option<Self> {
+        let body = remove_line_comments(body);
+        let open = body.find('[')?;
+        let ScannedList::Terminated { elements, .. } = scan_list_elements(&body[open + 1..]) else {
+            return None;
+        };
+        let entries = elements
+            .into_iter()
+            .map(str::trim)
+            .filter(|element| !element.is_empty())
+            .map(ListEntry::classify)
+            .collect();
+        Some(Self {
+            head: body[..open].to_owned(),
+            entries,
+        })
     }
-    Some((name.to_owned(), arity.trim().parse().ok()?))
+}
+
+impl ListEntry {
+    fn classify(element: &str) -> Self {
+        // A macro hides which name and arity the entry stands for.
+        if element.contains('?') {
+            return Self::Macro;
+        }
+        let Some((name, arity)) = element.split_once('/') else {
+            return Self::Unparsed;
+        };
+        let name = name.trim();
+        if name.is_empty() || !name.bytes().all(is_name_byte) {
+            return Self::Unparsed;
+        }
+        match arity.trim().parse() {
+            Ok(arity) => Self::NameArity(name.to_owned(), arity),
+            Err(_) => Self::Unparsed,
+        }
+    }
 }
 
 fn is_reserved_word(name: &[u8]) -> bool {

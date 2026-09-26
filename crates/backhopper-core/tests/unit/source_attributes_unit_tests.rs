@@ -13,8 +13,8 @@ use backhopper_core::compat::source_attributes::{
     ExportedTypes, ImportedFunction, declares_parse_transform, extract_behaviours,
     extract_defined_macro_values, extract_defined_macros, extract_defined_records,
     extract_exported_types, extract_function_signatures, extract_function_signatures_with_context,
-    extract_imports, extract_includes, extract_macro_uses, extract_record_uses, extract_specs,
-    is_predefined_macro,
+    extract_imports, extract_includes, extract_macro_uses, extract_optional_callbacks,
+    extract_record_uses, extract_specs, is_predefined_macro,
 };
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName};
 use backhopper_core::model::spec_ast::SpecType;
@@ -629,4 +629,34 @@ fn wildcard_and_variable_record_uses_report_no_name() {
 fn a_conditional_match_produces_no_phantom_macro_use() {
     let uses = extract_macro_uses("go(Id) ->\n    maybe Pid ?= find(Id), Pid end.\n");
     assert!(uses.is_empty());
+}
+
+#[test]
+fn imports_and_optional_callbacks_are_read_past_comments() {
+    let imps = extract_imports(
+        "-import(lists, % from stdlib\n        [map/2,\n         % [folds]\n         foldl/3]).\n",
+    );
+    let names: Vec<_> = imps
+        .iter()
+        .map(|i| (i.module.as_str(), i.function.as_str(), i.arity.get()))
+        .collect();
+    assert_eq!(names, [("lists", "foldl", 3), ("lists", "map", 2)]);
+    let optional = extract_optional_callbacks(
+        "-optional_callbacks([% ?MODULE hooks\n    format_status/2,\n    code_change/3]).\n",
+    );
+    assert_eq!(
+        optional,
+        [
+            (
+                FunctionName::from_str("code_change").unwrap(),
+                Arity::new(3)
+            ),
+            (
+                FunctionName::from_str("format_status").unwrap(),
+                Arity::new(2)
+            ),
+        ]
+        .into_iter()
+        .collect()
+    );
 }

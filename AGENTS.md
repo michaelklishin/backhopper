@@ -238,7 +238,8 @@ Suites (`src/suites/`):
    `-export`-list string-concat)
  * `src/cond_compile.rs`: `-ifdef`, `-if`, `-elif`, `-else`
  * `src/deprecated.rs`: collapses the four real source forms into one
- * `src/visibility.rs`: `@hidden`, `-doc(hidden)`, `internal_modules`
+ * `src/visibility.rs`: the edoc `@hidden` tag in the module header.
+   Note that `-moduledoc false.` is handled in `attributes.rs`
 
 ### `backhopper-xref-graph`
 

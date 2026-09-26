@@ -43,8 +43,21 @@
    into that module as undefined on target: the export surface may
    cover the callee in a way the diff itself does not show, so the
    axis withholds instead of guessing from the small explicit list
+ * A module is now hidden only by a module-level marker:
+   `-moduledoc false.` (or `hidden`), or an edoc `@hidden` tag before
+   `-module`. A `-doc hidden.` or `-doc false.` on one type or function,
+   or an `@hidden` above one function, used to hide the whole module by
+   mistake, which particularly badly affected Erlang/OTP modules
+ * The export, `-export_type`, `-import` and `-optional_callbacks`
+   lists are now read with their comments stripped off
+ * With a commit to read (`check commit`, `check merge` and
+   `check batch`), the target-tree axes now classify an added line
+   against the whole file the commit leaves, not only one specific hunk
 
 ### Removals
+
+ * `backhopper_erlang::visibility::detect_visibility_hints` and
+   `VisibilityHints` are removed
 
  * `TargetWalkIndex.truncated` is removed; it had no reader
  * `WireConstantDecl::new` is removed; the family defaults are built

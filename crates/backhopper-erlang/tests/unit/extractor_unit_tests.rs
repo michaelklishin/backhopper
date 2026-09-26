@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use backhopper_core::model::names::RelativePath;
+use backhopper_core::model::names::{ModuleName, RelativePath};
 use backhopper_core::model::snapshot::{ArityMatch, Visibility};
 use backhopper_erlang::ErlangExtractor;
 
@@ -213,4 +213,68 @@ fn extract_header_file_collects_opaque_and_record() {
     );
     assert_eq!(h.opaques.len(), 1);
     assert_eq!(h.records.len(), 1);
+}
+
+const FILE_WITH_A_HIDDEN_TYPE: &str = r#"-module(file).
+-export([open/2]).
+-type file_info() :: tuple().
+-compile({nowarn_hidden_doc, [file_descriptor/0]}).
+-doc hidden.
+-type file_descriptor() :: tuple().
+open(_File, _Modes) -> ok.
+"#;
+
+#[test]
+fn a_doc_hidden_type_does_not_hide_its_module() {
+    let m = ErlangExtractor::default()
+        .extract_module(FILE_WITH_A_HIDDEN_TYPE)
+        .unwrap();
+    assert_eq!(m.visibility, Visibility::Public);
+}
+
+#[test]
+fn a_doc_false_function_does_not_hide_its_module() {
+    let src = "-module(peer).\n-export([start/1, supervision_child_spec/0]).\n\
+               start(O) -> O.\n-doc false.\nsupervision_child_spec() -> ok.\n";
+    let m = ErlangExtractor::default().extract_module(src).unwrap();
+    assert_eq!(m.visibility, Visibility::Public);
+}
+
+#[test]
+fn moduledoc_false_hides_the_module() {
+    for marker in [
+        "-moduledoc false.",
+        "-moduledoc(false).",
+        "-moduledoc hidden.",
+    ] {
+        let src =
+            format!("-module(ssl_cipher).\n{marker}\n-export([suites/1]).\nsuites(V) -> V.\n");
+        let m = ErlangExtractor::default().extract_module(&src).unwrap();
+        assert_eq!(m.visibility, Visibility::Hidden, "{marker}");
+    }
+}
+
+#[test]
+fn an_edoc_hidden_tag_after_module_does_not_hide_the_module() {
+    let src = "-module(xmerl_xpath).\n-export([string/2, write_node/1]).\n\
+               string(S, D) -> {S, D}.\n%% @hidden\nwrite_node(N) -> N.\n";
+    let m = ErlangExtractor::default().extract_module(src).unwrap();
+    assert_eq!(m.visibility, Visibility::Public);
+}
+
+#[test]
+fn an_edoc_hidden_tag_without_a_space_before_module_hides_the_module() {
+    let src = "%%@hidden\n-module(ra_internal).\n-export([f/1]).\nf(X) -> X.\n";
+    let m = ErlangExtractor::default().extract_module(src).unwrap();
+    assert_eq!(m.visibility, Visibility::Hidden);
+}
+
+#[test]
+fn public_modules_still_overrides_moduledoc_false() {
+    let ex = ErlangExtractor::new(vec![ModuleName::new("ssl_cipher").unwrap()], Vec::new());
+    let src = "-module(ssl_cipher).\n-moduledoc false.\n-export([suites/1]).\nsuites(V) -> V.\n";
+    assert_eq!(
+        ex.extract_module(src).unwrap().visibility,
+        Visibility::Public
+    );
 }

@@ -817,7 +817,6 @@ impl Reason {
             | Self::ArityChanged { .. }
             | Self::SignatureChanged { .. }
             | Self::FileAbsent { .. }
-            | Self::NowHidden { .. }
             | Self::RecordFieldsChanged { .. }
             | Self::UntrackedModuleMissing { .. }
             | Self::ClauseMismatch { .. }
@@ -832,7 +831,9 @@ impl Reason {
             | Self::ReturnShapeMismatch { .. }
             | Self::BehaviourCallbackMissingOnPin { .. }
             | Self::SchemaFeatureUnsupportedOnPin { .. } => true,
-            Self::ContextDrift { .. }
+            // a hidden module still loads and its exports still resolve
+            Self::NowHidden { .. }
+            | Self::ContextDrift { .. }
             | Self::PreimageDrifted { .. }
             | Self::PreimageMissing { .. }
             | Self::PostimageCollision { .. }

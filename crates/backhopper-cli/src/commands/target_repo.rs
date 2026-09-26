@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use backhopper_core::compat::added_file::{AddedFileFindings, analyse_added_files};
 use backhopper_core::compat::added_lines::{
-    AddedLinesSubject, added_lines_with_context, added_lines_with_offsets,
+    AddedLinesSubject, LineContextSource, added_lines_with_context, added_lines_with_offsets,
 };
 use backhopper_core::compat::behaviour_callback_resolve::analyse_behaviour_callbacks;
 use backhopper_core::compat::classify_hunks_against_target;
@@ -395,6 +395,7 @@ fn to_subjects(subjects_text: &[(RelativePath, String, Vec<u32>)]) -> Vec<AddedL
 /// indirect-call, and local-call axes consume the classification.
 fn erl_subject_context(
     files: &[PatchedFile],
+    post_image: PostImage<'_>,
 ) -> Vec<(RelativePath, String, Vec<u32>, Vec<LineClass>)> {
     let mut out = Vec::new();
     for file in files {
@@ -413,7 +414,11 @@ fn erl_subject_context(
         if !path.as_str().ends_with(".erl") {
             continue;
         }
-        let (added, line_map, ctx) = added_lines_with_context(&file.hunks);
+        let text = post_image.read(&path);
+        let source = text
+            .as_deref()
+            .map_or(LineContextSource::HunksOnly, LineContextSource::PostImage);
+        let (added, line_map, ctx) = added_lines_with_context(&file.hunks, source);
         if !added.is_empty() {
             out.push((path, added, line_map, ctx));
         }
@@ -454,12 +459,40 @@ pub(crate) struct TargetResolveSession<'a> {
     commit: CommitSha,
     ctx: &'a TargetContext,
     source_repo_dir: Option<&'a Path>,
+    post_image: PostImage<'a>,
+}
+
+/// Where a touched file's post-image comes from: the commit the diff's
+/// new side was taken at, or nowhere for a patch with no commit behind it.
+#[derive(Clone, Copy)]
+pub(crate) enum PostImage<'a> {
+    AtCommit {
+        repo: &'a GitRepo,
+        sha: &'a CommitSha,
+    },
+    Unavailable,
+}
+
+impl PostImage<'_> {
+    fn read(self, path: &RelativePath) -> Option<String> {
+        match self {
+            Self::AtCommit { repo, sha } => {
+                let bytes = repo.read_blob_at(sha, Path::new(path.as_str())).ok()??;
+                String::from_utf8(bytes).ok()
+            }
+            Self::Unavailable => None,
+        }
+    }
 }
 
 impl<'a> TargetResolveSession<'a> {
     /// `None` when the target repo cannot be opened, in which case
     /// every axis falls back to its empty default.
-    pub(crate) fn open(ctx: &'a TargetContext, source_repo_dir: Option<&'a Path>) -> Option<Self> {
+    pub(crate) fn open(
+        ctx: &'a TargetContext,
+        source_repo_dir: Option<&'a Path>,
+        post_image: PostImage<'a>,
+    ) -> Option<Self> {
         let repo = GitRepo::open(ctx.index.target_repo().to_path_buf()).ok()?;
         let commit = ctx.index.resolved_commit().clone();
         Some(Self {
@@ -467,6 +500,7 @@ impl<'a> TargetResolveSession<'a> {
             commit,
             ctx,
             source_repo_dir,
+            post_image,
         })
     }
 
@@ -519,7 +553,7 @@ impl<'a> TargetResolveSession<'a> {
         files: &[PatchedFile],
         covered_modules: &BTreeSet<ModuleName>,
     ) -> LocalCallAnalysis {
-        let subjects_ctx = erl_subject_context(files);
+        let subjects_ctx = erl_subject_context(files, self.post_image);
         if subjects_ctx.is_empty() {
             return LocalCallAnalysis::default();
         }
@@ -556,7 +590,7 @@ impl<'a> TargetResolveSession<'a> {
         files: &[PatchedFile],
         covered_modules: &BTreeSet<ModuleName>,
     ) -> QualifiedCallAnalysis {
-        let subjects_ctx = erl_subject_context(files);
+        let subjects_ctx = erl_subject_context(files, self.post_image);
         if subjects_ctx.is_empty() {
             return QualifiedCallAnalysis::default();
         }

@@ -47,39 +47,66 @@ pub fn added_lines_with_offsets(hunks: &[Hunk]) -> (String, Vec<u32>) {
     (blob, line_map)
 }
 
+/// What the attribute-region classifier reads to classify added lines.
+#[derive(Debug, Clone, Copy)]
+pub enum LineContextSource<'a> {
+    /// The file as the patch leaves it, so a multi-line `-spec`, `-type`,
+    /// or `-record` opened above the hunk still classifies its lines.
+    PostImage(&'a str),
+    /// The hunk lines alone, for a patch with no tree to read.
+    HunksOnly,
+}
+
 /// Added-line text and line map, like `added_lines_with_offsets`, plus
-/// each blob line's attribute-region classification. The classifier
-/// scans every hunk line, `Context` included, so a continuation line
-/// whose multi-line `-spec`, `-callback`, `-type`, or `-opaque` opener
-/// is unchanged (and so absent from the blob) still classifies against
-/// the region its unseen opener started. Only `Added` lines push into
-/// the blob, the line map, and the context vector; a `Context` line
-/// advances the classifier and contributes nothing else.
-pub fn added_lines_with_context(hunks: &[Hunk]) -> (String, Vec<u32>, Vec<LineClass>) {
-    let mut blob = String::new();
-    let mut line_map = Vec::new();
+/// each blob line's attribute-region classification. A post-image that
+/// disagrees with an added line is not the file the hunks came from, and
+/// the hunks are classified on their own instead.
+pub fn added_lines_with_context(
+    hunks: &[Hunk],
+    source: LineContextSource<'_>,
+) -> (String, Vec<u32>, Vec<LineClass>) {
+    let (blob, line_map) = added_lines_with_offsets(hunks);
+    let ctx = match source {
+        LineContextSource::PostImage(text) => post_image_classes(text, &blob, &line_map),
+        LineContextSource::HunksOnly => None,
+    }
+    .unwrap_or_else(|| hunk_classes(hunks));
+    (blob, line_map, ctx)
+}
+
+fn post_image_classes(text: &str, blob: &str, line_map: &[u32]) -> Option<Vec<LineClass>> {
+    let mut scanner = AttrCtxScanner::new();
+    let classified: Vec<(&str, LineClass)> = text
+        .lines()
+        .map(|line| (line, scanner.classify(strip_line_comment(line))))
+        .collect();
+    blob.lines()
+        .zip(line_map)
+        .map(|(added, &file_line)| {
+            let (line, class) = classified.get((file_line as usize).checked_sub(1)?)?;
+            (line.trim_end() == added.trim_end()).then(|| class.clone())
+        })
+        .collect()
+}
+
+/// The classifier walks every hunk line, `Context` included, so a
+/// continuation line whose opener is inside the hunk still classifies
+/// against it. Only `Added` lines produce a class.
+fn hunk_classes(hunks: &[Hunk]) -> Vec<LineClass> {
     let mut ctx = Vec::new();
     let mut scanner = AttrCtxScanner::new();
     for hunk in hunks {
-        let mut new_line = hunk.new_start as u32;
         for line in &hunk.lines {
             match line {
-                HunkLine::Added(s) => {
-                    ctx.push(scanner.classify(strip_line_comment(s)));
-                    blob.push_str(s);
-                    blob.push('\n');
-                    line_map.push(new_line);
-                    new_line += 1;
-                }
+                HunkLine::Added(s) => ctx.push(scanner.classify(strip_line_comment(s))),
                 HunkLine::Context(s) => {
                     scanner.classify(strip_line_comment(s));
-                    new_line += 1;
                 }
                 HunkLine::Removed(_) => {}
             }
         }
     }
-    (blob, line_map, ctx)
+    ctx
 }
 
 /// Translate a 1-based blob line to its file line. An empty or

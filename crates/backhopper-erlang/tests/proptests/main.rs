@@ -3,5 +3,6 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod extractor_does_not_panic_proptests;
+mod function_level_hidden_proptests;
 mod moduledoc_proptests;
 mod tokenizer_balance_proptests;

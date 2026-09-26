@@ -9,7 +9,7 @@
 //! annotation read as a call into the same name as the field, because
 //! the whole line scanned as body text.
 
-use backhopper_core::compat::added_lines::added_lines_with_context;
+use backhopper_core::compat::added_lines::{LineContextSource, added_lines_with_context};
 use backhopper_core::compat::call_sites::AttrCtxScanner;
 use backhopper_core::compat::patch::{Hunk, HunkLine};
 use backhopper_core::model::symbol::RefContext;
@@ -172,7 +172,8 @@ fn an_orphaned_record_continuation_with_a_context_opener_splits() {
             HunkLine::Context("}).".into()),
         ],
     };
-    let (added, line_map, ctx) = added_lines_with_context(std::slice::from_ref(&hunk));
+    let (added, line_map, ctx) =
+        added_lines_with_context(std::slice::from_ref(&hunk), LineContextSource::HunksOnly);
     assert_eq!(added, "    vhost :: rabbit_types:vhost(),\n");
     assert_eq!(line_map, vec![21]);
     assert_eq!(ctx.len(), 1);

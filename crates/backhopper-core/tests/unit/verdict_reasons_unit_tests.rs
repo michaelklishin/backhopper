@@ -22,9 +22,20 @@ fn snapshot_with(modules: Vec<Module>) -> Snapshot<state::Canonical> {
 }
 
 fn evaluate(diff: &str, snap: Snapshot<state::Canonical>) -> SeriesVerdict {
+    evaluate_with_source(diff, snap, None)
+}
+
+fn evaluate_with_source(
+    diff: &str,
+    snap: Snapshot<state::Canonical>,
+    source: Option<Snapshot<state::Canonical>>,
+) -> SeriesVerdict {
     let target = pin("ra", "v3.1.6");
     let scope = PinScope::from_snapshot(target.project.clone(), &snap, Vec::new());
-    let ctx = EvaluationContext::for_pin(target, snap).with_scope(scope);
+    let mut ctx = EvaluationContext::for_pin(target, snap).with_scope(scope);
+    if let Some(source) = source {
+        ctx = ctx.with_source_snapshot(source);
+    }
     Patch::parse(diff.as_bytes())
         .unwrap()
         .analyze()
@@ -32,14 +43,7 @@ fn evaluate(diff: &str, snap: Snapshot<state::Canonical>) -> SeriesVerdict {
         .verdict
 }
 
-#[test]
-fn reference_to_hidden_module_is_now_hidden() {
-    let snap = snapshot_with(vec![module(
-        "ra_internal",
-        Visibility::Hidden,
-        &[("init", 1)],
-    )]);
-    let diff = "\
+const CALLS_RA_INTERNAL_INIT_1: &str = "\
 diff --git a/ra_server.erl b/ra_server.erl
 --- a/ra_server.erl
 +++ b/ra_server.erl
@@ -47,18 +51,89 @@ diff --git a/ra_server.erl b/ra_server.erl
  -module(ra_server).
 +apply() -> ra_internal:init(1).
 ";
-    let v = evaluate(diff, snap);
-    let r0 = &v.results[0];
-    assert!(matches!(
-        r0.verdict,
-        Verdict::Incompatible { .. } | Verdict::RequiresAdaptation { .. }
-    ));
-    assert!(
-        r0.verdict
-            .reasons()
-            .iter()
-            .any(|r| matches!(r, Reason::NowHidden { module } if module.as_str() == "ra_internal"))
-    );
+
+const CALLS_RA_INTERNAL_INIT_WRAPPED: &str = "\
+diff --git a/ra_server.erl b/ra_server.erl
+--- a/ra_server.erl
++++ b/ra_server.erl
+@@ -1,1 +1,2 @@
+ -module(ra_server).
++apply(A) -> ra_internal:init(A,
+";
+
+fn ra_internal(visibility: Visibility, exports: &[(&str, u8)]) -> Snapshot<state::Canonical> {
+    snapshot_with(vec![module("ra_internal", visibility, exports)])
+}
+
+fn has_now_hidden(verdict: &Verdict) -> bool {
+    verdict
+        .reasons()
+        .iter()
+        .any(|r| matches!(r, Reason::NowHidden { module } if module.as_str() == "ra_internal"))
+}
+
+#[test]
+fn a_call_into_a_module_hidden_on_both_sides_has_no_now_hidden() {
+    for diff in [CALLS_RA_INTERNAL_INIT_1, CALLS_RA_INTERNAL_INIT_WRAPPED] {
+        let v = evaluate_with_source(
+            diff,
+            ra_internal(Visibility::Hidden, &[("init", 1)]),
+            Some(ra_internal(Visibility::Hidden, &[("init", 1)])),
+        );
+        assert!(
+            matches!(v.results[0].verdict, Verdict::Compatible),
+            "{diff}"
+        );
+    }
+}
+
+#[test]
+fn a_call_into_a_module_hidden_only_on_the_target_is_requires_adaptation() {
+    for diff in [CALLS_RA_INTERNAL_INIT_1, CALLS_RA_INTERNAL_INIT_WRAPPED] {
+        let v = evaluate_with_source(
+            diff,
+            ra_internal(Visibility::Hidden, &[("init", 1)]),
+            Some(ra_internal(Visibility::Public, &[("init", 1)])),
+        );
+        let verdict = &v.results[0].verdict;
+        assert!(
+            matches!(verdict, Verdict::RequiresAdaptation { .. }),
+            "{diff}"
+        );
+        assert!(has_now_hidden(verdict), "{diff}");
+    }
+}
+
+#[test]
+fn now_hidden_needs_a_source_snapshot() {
+    for diff in [CALLS_RA_INTERNAL_INIT_1, CALLS_RA_INTERNAL_INIT_WRAPPED] {
+        let v = evaluate(diff, ra_internal(Visibility::Hidden, &[("init", 1)]));
+        assert!(
+            matches!(v.results[0].verdict, Verdict::Compatible),
+            "{diff}"
+        );
+    }
+}
+
+#[test]
+fn a_missing_function_in_a_hidden_module_is_missing_symbol() {
+    for diff in [CALLS_RA_INTERNAL_INIT_1, CALLS_RA_INTERNAL_INIT_WRAPPED] {
+        let v = evaluate_with_source(
+            diff,
+            ra_internal(Visibility::Hidden, &[("start", 0)]),
+            Some(ra_internal(Visibility::Public, &[("init", 1)])),
+        );
+        let verdict = &v.results[0].verdict;
+        assert!(matches!(verdict, Verdict::Incompatible { .. }), "{diff}");
+        assert!(
+            verdict
+                .reasons()
+                .iter()
+                .any(|r| matches!(r, Reason::MissingSymbol { .. })),
+            "{diff}"
+        );
+        assert!(has_now_hidden(verdict), "{diff}");
+    }
 }
 
 #[test]

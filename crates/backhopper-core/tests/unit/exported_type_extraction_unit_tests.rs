@@ -113,3 +113,13 @@ fn a_type_declaration_without_the_double_colon_is_not_read() {
     let src = "-module(rabbit_net).\n-type socket().\n";
     assert!(extract_defined_types(src).is_empty());
 }
+
+#[test]
+fn an_exported_type_after_a_comment_line_is_read() {
+    let src = "-export_type([socket/0,\n              % [internal] ?not a macro\n              hostname/0]).\n";
+    let keys: Vec<_> = listed(src)
+        .iter()
+        .map(|t| (t.name.clone(), t.arity))
+        .collect();
+    assert_eq!(keys, vec![key("socket", 0), key("hostname", 0)]);
+}

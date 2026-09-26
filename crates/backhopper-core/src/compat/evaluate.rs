@@ -9,7 +9,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 
-use crate::compat::added_lines::{added_lines_with_context, added_lines_with_offsets};
+use crate::compat::added_lines::{
+    LineContextSource, added_lines_with_context, added_lines_with_offsets,
+};
 use crate::compat::arg_shape::{ArgShape, satisfies_any};
 use crate::compat::option_keys::{OptionKeySetCache, drifted_key_sets, scan_added_map_keys};
 use crate::compat::patch::{EvaluationFiles, Hunk, HunkLine, PatchedFile, SourceKind};
@@ -127,7 +129,14 @@ pub(crate) fn evaluate_pin(
                     continue;
                 }
                 tracked_refs.push(r.clone());
-                analyze_any_arity_reference(r, module, function, snapshot, &mut reasons);
+                analyze_any_arity_reference(
+                    r,
+                    module,
+                    function,
+                    snapshot,
+                    source_snapshot,
+                    &mut reasons,
+                );
             }
             SymbolKind::Record { name } => {
                 if let Some(s) = scope
@@ -269,6 +278,7 @@ fn analyze_any_arity_reference(
     module: &ModuleName,
     function: &FunctionName,
     snapshot: &Snapshot<state::Canonical>,
+    source_snapshot: Option<&Snapshot<state::Canonical>>,
     reasons: &mut Vec<Reason>,
 ) {
     let Some(m) = snapshot.module_named(module) else {
@@ -280,12 +290,7 @@ fn analyze_any_arity_reference(
         });
         return;
     };
-    if m.visibility == Visibility::Hidden {
-        reasons.push(Reason::NowHidden {
-            module: module.clone(),
-        });
-        return;
-    }
+    reasons.extend(hidden_transition(module, m, source_snapshot));
     if m.exports.iter().any(|fa| &fa.name == function) {
         return;
     }
@@ -899,7 +904,8 @@ fn check_option_key_drift(
         if path.extension().and_then(|s| s.to_str()) != Some("erl") {
             continue;
         }
-        let (added, _line_map, ctx) = added_lines_with_context(&file.hunks);
+        let (added, _line_map, ctx) =
+            added_lines_with_context(&file.hunks, LineContextSource::HunksOnly);
         if added.is_empty() {
             continue;
         }
@@ -1091,6 +1097,22 @@ fn added_lines_collide(hunk: &Hunk, target: &[&str]) -> bool {
     false
 }
 
+/// `NowHidden` when the module is hidden at the pin and public at the
+/// source pin. Without a source snapshot there is nothing to compare, and
+/// a module hidden on both sides is one the source branch already calls.
+fn hidden_transition(
+    name: &ModuleName,
+    target: &Module,
+    source_snapshot: Option<&Snapshot<state::Canonical>>,
+) -> Option<Reason> {
+    let source = source_snapshot?.module_named(name)?;
+    (target.visibility == Visibility::Hidden && source.visibility != Visibility::Hidden).then(
+        || Reason::NowHidden {
+            module: name.clone(),
+        },
+    )
+}
+
 fn analyze_function_reference(
     r: &SymbolRef,
     mfa: &Mfa,
@@ -1107,12 +1129,7 @@ fn analyze_function_reference(
         });
         return;
     };
-    if module.visibility == Visibility::Hidden {
-        reasons.push(Reason::NowHidden {
-            module: mfa.module.clone(),
-        });
-        return;
-    }
+    reasons.extend(hidden_transition(&mfa.module, module, source_snapshot));
     if let Some(dep) = deprecation_of(module, &mfa.function, mfa.arity) {
         // the replacement carries no module: it names a function in the same module as the deprecated call
         let replacement = dep.replacement.as_ref().map(|rep| {
