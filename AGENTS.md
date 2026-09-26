@@ -435,6 +435,7 @@ We deliberately do not take `tokio`, `tar`, `walkdir`, `unidiff`,
 
  * Recent stable Rust (`1.95`+). MSRV pinned via the workspace
    `Cargo.toml` `rust-version` field and bumped deliberately
+ * `rust-toolchain.toml` pins the exact toolchain for development
 
 ## Rust Code Style
 
