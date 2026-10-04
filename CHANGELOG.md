@@ -12,6 +12,10 @@
    `doctor` reports it as `Unversioned`, and `verify --all`
    then counts such ocurrences separately
 
+### Dependency Upgrades
+
+ * `gix` was upgraded from `0.87.1` to `0.88.0`
+
 ### Bug Fixes
 
  * A snapshot written before extractor versioning existed had no

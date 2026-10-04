@@ -13,6 +13,7 @@ use std::str;
 
 use gix::bstr::ByteSlice;
 use gix::object::tree::diff::Change;
+use gix::{Exn, ExnResult};
 use imara_diff::{Algorithm, Diff, Hunk, InternedInput};
 use time::OffsetDateTime;
 
@@ -404,14 +405,11 @@ impl GitRepo {
         }
         let a = oid_of(one)?;
         let b = oid_of(two)?;
-        match self.repo.merge_base(a, b) {
-            Ok(id) => {
-                let sha = CommitSha::new(id.to_string()).map_err(gix_err)?;
-                Ok(Some(sha))
-            }
-            Err(gix::repository::merge_base::Error::NotFound { .. }) => Ok(None),
-            Err(e) => Err(gix_err(e)),
-        }
+        let bases = self.repo.merge_bases_many(a, &[b]).map_err(gix_err)?;
+        bases
+            .first()
+            .map(|id| CommitSha::new(id.to_string()).map_err(gix_err))
+            .transpose()
     }
 
     /// Paths changed between two commits: a tree diff that never reads
@@ -429,7 +427,7 @@ impl GitRepo {
             .options(|opts| {
                 opts.track_rewrites(None);
             })
-            .for_each_to_obtain_tree(&to_tree, |change| -> Result<_, GitError> {
+            .for_each_to_obtain_tree(&to_tree, |change| -> ExnResult<_> {
                 match change {
                     Change::Addition {
                         location,
@@ -532,15 +530,17 @@ impl GitRepo {
         // as a full-tree map comparison
         let mut present: BTreeMap<PathBuf, (Vec<u8>, Vec<u8>)> = BTreeMap::new();
         let mut removed: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
-        let read_blob = |id: gix::Id<'_>| -> Result<Vec<u8>, GitError> {
-            Ok(id.object().map_err(gix_err)?.data.clone())
+        let read_blob = |id: gix::Id<'_>| -> ExnResult<Vec<u8>> {
+            id.object()
+                .map(|object| object.data.clone())
+                .map_err(|e| Exn::new(e).erased())
         };
         let mut platform = from_tree.changes().map_err(gix_err)?;
         platform
             .options(|opts| {
                 opts.track_rewrites(None);
             })
-            .for_each_to_obtain_tree(&to_tree, |change| -> Result<_, GitError> {
+            .for_each_to_obtain_tree(&to_tree, |change| -> ExnResult<_> {
                 match change {
                     Change::Addition {
                         location,

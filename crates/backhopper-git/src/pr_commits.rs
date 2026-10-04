@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 use std::sync::LazyLock;
 
+use gix::ExnResult;
 use gix::bstr::ByteSlice;
 use regex::RegexSet;
 use time::OffsetDateTime;
@@ -148,7 +149,7 @@ fn files_touched_relative_to_first_parent(
         .options(|opts| {
             opts.track_rewrites(None);
         })
-        .for_each_to_obtain_tree(&new_tree, |change| -> Result<_, GitError> {
+        .for_each_to_obtain_tree(&new_tree, |change| -> ExnResult<_> {
             if let Ok(rel) = RelativePath::from_bytes(change.location()) {
                 out.insert(rel);
             }
