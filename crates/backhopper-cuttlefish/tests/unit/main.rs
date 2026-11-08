@@ -4,3 +4,4 @@
 
 mod extract_unit_tests;
 mod parser_unit_tests;
+mod partial_unit_tests;

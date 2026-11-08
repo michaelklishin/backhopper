@@ -282,7 +282,7 @@ fn fragments_from_different_hunks_do_not_concatenate() {
     let gapped = [1u32, 2, 40];
     let out = extract_indirect_calls(src, &gapped);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 // Withholding and skipping.
@@ -294,7 +294,7 @@ fn a_variable_module_or_function_skips_without_counting() {
                rpc:call(Node, rabbit_maintenance, Fun, []).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn a_variable_argument_list_counts_as_withheld() {
     let src = "f(Node, Args) -> rpc:call(Node, rabbit_maintenance, drain, Args).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn a_cons_tail_counts_as_withheld() {
     let src = "f(Node, Rest) -> rpc:call(Node, rabbit_amqqueue, lookup, [q | Rest]).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 // An atom starting with fun is not a fun expression.
@@ -319,7 +319,7 @@ fn a_fun_prefixed_atom_is_not_read_as_a_fun() {
     let src = "s() -> meck:expect(rabbit_queue_type, drain, funny(1)).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
@@ -327,7 +327,7 @@ fn a_non_literal_meck_arity_counts_as_withheld() {
     let src = "s(N) -> meck:expect(rabbit_queue_type, drain, N, ok).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn an_appended_list_is_not_read_as_a_literal() {
     let src = "f(Node, More) -> rpc:call(Node, rabbit_amqqueue, lookup, [q] ++ More).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn an_unreadable_rpcd_meck_argument_list_counts_as_withheld() {
     let src = "t(N, Args) -> rpc:call(N, meck, expect, [rabbit_queue_type, drain]).\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
@@ -366,7 +366,7 @@ fn a_form_behind_a_line_comment_extracts_nothing() {
     let src = "f() -> ok. % meck:expect(rabbit_queue_type, drain, 1, ok)\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 // Conditional compilation is not evaluated: a form between -ifdef and -endif is still checked.
@@ -400,7 +400,7 @@ fn meck_new_and_other_arities_are_not_recognized() {
                rpc:call(N, rabbit_maintenance, drain).\n";
     let out = extract(src);
     assert_eq!(out.sites.len(), 0);
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn an_oversized_literal_list_counts_as_withheld() {
         format!("f(N) -> rpc:call(N, rabbit_misc, execute_mnesia_transaction, [{elements}]).\n");
     let out = extract(&src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 // The reason never blocks: meck can install a function the module never had, so absence proves drift.
@@ -630,4 +630,15 @@ fn extraction_withholds_flow_into_the_tally() {
     assert!(indirect_flags(&analysis.reasons).is_empty());
     assert_eq!(analysis.indirect_checks.withheld_dynamic, 1);
     assert_eq!(analysis.indirect_checks.checked, 0);
+}
+
+#[test]
+fn a_withheld_occurrence_carries_its_module_function_and_line() {
+    let src = "f(Node, Args) ->\n    ok,\n    rpc:call(Node, rabbit_maintenance, drain, Args).\n";
+    let out = extract(src);
+    assert_eq!(out.withheld_dynamic.len(), 1);
+    let withheld = &out.withheld_dynamic[0];
+    assert_eq!(withheld.module.as_str(), "rabbit_maintenance");
+    assert_eq!(withheld.function.as_str(), "drain");
+    assert_eq!(withheld.line, 3);
 }

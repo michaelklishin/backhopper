@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+ --> tests/compile_fail/evaluate_needs_loaded_plan.rs:6:22
+  |
+6 |     let _ = evaluate(plan, plugins, |_, _| Ok::<_, ()>(ReferenceSet::new()));
+  |             -------- ^^^^ expected `&LoadedPlan`, found `&JigsawPlan`
+  |             |
+  |             arguments to this function are incorrect
+  |
+  = note: expected reference `&LoadedPlan`
+             found reference `&JigsawPlan`
+note: function defined here
+ --> src/jigsaw/evaluate.rs
+  |
+  | pub fn evaluate<E>(
+  |        ^^^^^^^^

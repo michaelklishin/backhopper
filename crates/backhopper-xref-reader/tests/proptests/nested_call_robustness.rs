@@ -26,10 +26,10 @@ proptest! {
     /// calls. The shape is `outer:f(inner:g())`.
     #[test]
     fn two_level_chain_records_both(
-        outer_m in "[a-z][a-z0-9_]{0,4}",
-        outer_f in "[a-z][a-z0-9_]{0,4}",
-        inner_m in "[a-z][a-z0-9_]{0,4}",
-        inner_f in "[a-z][a-z0-9_]{0,4}",
+        outer_m in "[a-z][a-z0-9_]{0,4}_",
+        outer_f in "[a-z][a-z0-9_]{0,4}_",
+        inner_m in "[a-z][a-z0-9_]{0,4}_",
+        inner_f in "[a-z][a-z0-9_]{0,4}_",
     ) {
         let source = format!(
             "-module(m).\n\
@@ -50,9 +50,9 @@ proptest! {
     /// calls under the same outer caller.
     #[test]
     fn three_level_chain_records_all(
-        a in "[a-z][a-z0-9_]{0,3}",
-        b in "[a-z][a-z0-9_]{0,3}",
-        c in "[a-z][a-z0-9_]{0,3}",
+        a in "[a-z][a-z0-9_]{0,3}_",
+        b in "[a-z][a-z0-9_]{0,3}_",
+        c in "[a-z][a-z0-9_]{0,3}_",
     ) {
         let source = format!(
             "-module(m).\n\

@@ -7,6 +7,7 @@ mod clause_heads_unit_tests;
 mod cond_compile_unit_tests;
 mod deprecated_unit_tests;
 mod extractor_unit_tests;
+mod header_macro_unit_tests;
 mod moduledoc_unit_tests;
 mod nominal_unit_tests;
 mod realistic_module_unit_tests;

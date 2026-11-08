@@ -12,34 +12,47 @@ use std::io::{self, Write};
 use time::format_description::well_known::Rfc3339;
 
 use crate::errors::SnapshotError;
-use crate::model::names::ModuleName;
+use crate::model::app_manifest::{AppManifest, ManifestDeps, ManifestUnreadable};
+use crate::model::macro_decl::{MacroBody, MacroDecl};
+use crate::model::names::{ConfKey, ModuleName, ValidatorName};
+use crate::model::schema_files::{PartialFile, SchemaFile};
 use crate::model::snapshot::{
-    ArityMatch, Deprecation, FORMAT_VERSION, HrlFile, Module, Provenance, Snapshot, SnapshotHeader,
+    ArityMatch, Deprecation, HrlFile, Module, Provenance, RecordDecl, Snapshot, SnapshotHeader,
     VendoredDep, VersionedMachineVersion, Visibility, WireConstantBinding, WireValue, state,
 };
 
 pub const HEADER_PREFIX: &str = "# ";
 
+fn write_section<T, W: Write>(
+    w: &mut W,
+    first: &mut bool,
+    items: &[T],
+    mut write_item: impl FnMut(&T, &mut W) -> io::Result<()>,
+) -> io::Result<()> {
+    for item in items {
+        if !*first {
+            writeln!(w)?;
+        }
+        *first = false;
+        write_item(item, w)?;
+    }
+    Ok(())
+}
+
 pub fn write<W: Write>(
     snapshot: &Snapshot<state::Canonical>,
     w: &mut W,
 ) -> Result<(), SnapshotError> {
-    write_header(snapshot.header(), w)?;
+    if let Some(detail) = snapshot.unwritable_reason() {
+        return Err(SnapshotError::Unwritable { detail });
+    }
+    write_header(snapshot.header(), snapshot.written_format_version(), w)?;
     let mut first = true;
-    for module in snapshot.modules() {
-        if !first {
-            writeln!(w)?;
-        }
-        first = false;
-        write_module(module, w)?;
-    }
-    for hrl in snapshot.headers() {
-        if !first {
-            writeln!(w)?;
-        }
-        first = false;
-        write_hrl(hrl, w)?;
-    }
+    write_section(w, &mut first, snapshot.apps(), write_app)?;
+    write_section(w, &mut first, snapshot.modules(), write_module)?;
+    write_section(w, &mut first, snapshot.headers(), write_hrl)?;
+    write_section(w, &mut first, snapshot.schemas(), write_schema)?;
+    write_section(w, &mut first, snapshot.partials(), write_partial)?;
     Ok(())
 }
 
@@ -58,7 +71,7 @@ pub fn write_module_filtered<W: Write>(
     module: &ModuleName,
     w: &mut W,
 ) -> Result<bool, SnapshotError> {
-    write_header(snapshot.header(), w)?;
+    write_header(snapshot.header(), snapshot.written_format_version(), w)?;
     let Some(m) = snapshot.module_named(module) else {
         return Ok(false);
     };
@@ -66,9 +79,13 @@ pub fn write_module_filtered<W: Write>(
     Ok(true)
 }
 
-fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> {
+fn write_header<W: Write>(
+    header: &SnapshotHeader,
+    format_version: u32,
+    w: &mut W,
+) -> io::Result<()> {
     writeln!(w, "# backhopper snapshot")?;
-    writeln!(w, "# format-version: {FORMAT_VERSION}")?;
+    writeln!(w, "# format-version: {format_version}")?;
     writeln!(w, "# project: {}", header.project)?;
     writeln!(w, "# tag: {}", header.tag)?;
     if let Some(branch) = &header.branch {
@@ -89,8 +106,17 @@ fn write_header<W: Write>(header: &SnapshotHeader, w: &mut W) -> io::Result<()> 
     if !header.extractor_version.is_empty() {
         writeln!(w, "# extractor-version: {}", header.extractor_version)?;
     }
+    if let Some(digest) = &header.extraction_settings {
+        writeln!(w, "# extraction-settings: {digest}")?;
+    }
     for pin in &header.dep_pins {
         write_dep_pin(w, pin)?;
+    }
+    if let Some(host) = &header.host_facts {
+        for root in &host.release_roots {
+            writeln!(w, "# release-root: {root}")?;
+        }
+        writeln!(w, "# host-facts: {}", host.digest)?;
     }
     writeln!(w)?;
     Ok(())
@@ -157,14 +183,7 @@ fn write_module<W: Write>(m: &Module, w: &mut W) -> io::Result<()> {
         write_deprecation(d, w)?;
     }
     for r in &m.records {
-        writeln!(w, "  record {}", r.name)?;
-        for f in &r.fields {
-            if let Some(t) = &f.type_repr {
-                writeln!(w, "    field {} :: {}", f.name, t)?;
-            } else {
-                writeln!(w, "    field {}", f.name)?;
-            }
-        }
+        write_record(r, w)?;
     }
     for t in &m.test_only_exports {
         let variant = t.variant.as_label();
@@ -258,8 +277,29 @@ fn write_wire_constant<W: Write>(w: &mut W, wc: &WireConstantBinding) -> io::Res
     }
 }
 
+fn write_record<W: Write>(r: &RecordDecl, w: &mut W) -> io::Result<()> {
+    writeln!(w, "  record {}", r.name)?;
+    for f in &r.fields {
+        write!(w, "    field {}", f.name)?;
+        if let Some(t) = &f.type_repr {
+            write!(w, " :: {t}")?;
+        }
+        if let Some(d) = &f.default {
+            write!(w, " = {d}")?;
+        }
+        writeln!(w)?;
+    }
+    Ok(())
+}
+
 fn write_hrl<W: Write>(h: &HrlFile, w: &mut W) -> io::Result<()> {
     writeln!(w, "header {}", h.path)?;
+    if let Some(app) = &h.app {
+        writeln!(w, "  app {app}")?;
+    }
+    for i in &h.includes {
+        writeln!(w, "  include {} {}", i.app, i.app_path)?;
+    }
     for t in &h.types {
         let body = format!("{}/{} :: {}", t.name, t.arity, t.rhs);
         write_keyword_signature(w, "type", &body, "")?;
@@ -268,14 +308,66 @@ fn write_hrl<W: Write>(h: &HrlFile, w: &mut W) -> io::Result<()> {
         writeln!(w, "  opaque {}/{}", o.name, o.arity)?;
     }
     for r in &h.records {
-        writeln!(w, "  record {}", r.name)?;
-        for f in &r.fields {
-            if let Some(t) = &f.type_repr {
-                writeln!(w, "    field {} :: {}", f.name, t)?;
-            } else {
-                writeln!(w, "    field {}", f.name)?;
+        write_record(r, w)?;
+    }
+    for d in &h.defines {
+        write_define(d, w)?;
+    }
+    Ok(())
+}
+
+fn write_define<W: Write>(d: &MacroDecl, w: &mut W) -> io::Result<()> {
+    match &d.body {
+        MacroBody::Text(body) => writeln!(w, "  define {} {body}", d.key),
+        MacroBody::Conditional => writeln!(w, "  define {} ?", d.key),
+    }
+}
+
+fn write_app<W: Write>(a: &AppManifest, w: &mut W) -> io::Result<()> {
+    writeln!(w, "app {}", a.name)?;
+    writeln!(w, "  manifest {}", a.source)?;
+    match &a.requires {
+        ManifestDeps::Listed(apps) => {
+            for app in apps {
+                writeln!(w, "  requires {app}")?;
             }
+            Ok(())
         }
+        ManifestDeps::Unreadable(ManifestUnreadable::Missing) => {
+            writeln!(w, "  requires_unreadable missing")
+        }
+        ManifestDeps::Unreadable(ManifestUnreadable::UnexpandedVariable(name)) => {
+            writeln!(w, "  requires_unreadable unexpanded_variable {name}")
+        }
+        ManifestDeps::Unreadable(ManifestUnreadable::ParseFailed) => {
+            writeln!(w, "  requires_unreadable parse_failed")
+        }
+    }
+}
+
+fn write_schema<W: Write>(s: &SchemaFile, w: &mut W) -> io::Result<()> {
+    writeln!(w, "schema {}", s.path)?;
+    writeln!(w, "  app {}", s.app)?;
+    write_cuttlefish_keys(w, s.mappings.iter(), s.validators.iter())
+}
+
+fn write_partial<W: Write>(p: &PartialFile, w: &mut W) -> io::Result<()> {
+    writeln!(w, "partial {}", p.path)?;
+    writeln!(w, "  app {}", p.app)?;
+    writeln!(w, "  name {}", p.name)?;
+    write_cuttlefish_keys(w, p.mappings.iter(), p.validators.iter())
+}
+
+fn write_cuttlefish_keys<'a, W: Write>(
+    w: &mut W,
+    mappings: impl Iterator<Item = &'a ConfKey>,
+    validators: impl Iterator<Item = &'a ValidatorName>,
+) -> io::Result<()> {
+    for m in mappings {
+        writeln!(w, "  mapping {m}")?;
+    }
+    for v in validators {
+        writeln!(w, "  validator {v}")?;
     }
     Ok(())
 }

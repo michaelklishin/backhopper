@@ -18,6 +18,7 @@ pub mod check;
 pub mod config;
 pub mod doctor;
 pub mod init;
+pub mod jigsaw;
 pub mod projects;
 pub mod rev;
 pub mod schema;
@@ -35,6 +36,7 @@ pub use check::{CheckCmd, CheckFlags, PinSelectorArgs, SourcePinArgs};
 pub use config::ConfigCmd;
 pub use doctor::DoctorCmd;
 pub use init::InitCmd;
+pub use jigsaw::{CheckArgs, JigsawCmd, PlanArgs};
 pub use projects::ProjectsCmd;
 pub use rev::RevCmd;
 pub use schema::{SchemaCmd, SchemaDiffArgs, SchemaShowArgs};
@@ -233,6 +235,11 @@ pub enum Group {
     Tree {
         #[command(subcommand)]
         cmd: TreeCmd,
+    },
+    /// Tests compatibility of Erlang apps hosted as plugins in another Erlang environment that provides an internal API.
+    Jigsaw {
+        #[command(subcommand)]
+        cmd: JigsawCmd,
     },
     /// Print the `backhopper` version.
     Version,

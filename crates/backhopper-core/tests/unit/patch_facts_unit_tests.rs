@@ -8,12 +8,13 @@ use backhopper_core::compat::patch::{EvaluationContext, EvaluationFiles, Patch};
 use backhopper_core::compat::scope::PinScope;
 use backhopper_core::model::names::{CommitSha, ModuleName, ProjectName, RecordName, TagName};
 use backhopper_core::model::pin::Pin;
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Module, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Module, Snapshot, SnapshotHeader, state};
 use backhopper_core::model::verdict::LoggingStyle;
 use time::OffsetDateTime;
 
 fn snap(modules: Vec<Module>) -> Snapshot<state::Canonical> {
     let header = SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new("p").unwrap(),
         tag: TagName::new("v").unwrap(),
         branch: None,
@@ -23,8 +24,9 @@ fn snap(modules: Vec<Module>) -> Snapshot<state::Canonical> {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     };
     Snapshot::from_extracted(header, modules, Vec::new()).into_canonical()
 }

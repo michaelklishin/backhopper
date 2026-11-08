@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 
 use backhopper_core::model::names::{CommitSha, ProjectName, TagGlob, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::store::SnapshotStore;
 use proptest::prelude::*;
 use tempfile::TempDir;
@@ -18,6 +18,7 @@ fn write_tag(
 ) {
     let tag = TagName::new(tag.to_owned()).unwrap();
     let header = SnapshotHeader {
+        extraction_settings: None,
         project: project.clone(),
         tag: tag.clone(),
         branch: None,
@@ -27,8 +28,9 @@ fn write_tag(
         generated_by: "backhopper".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     };
     let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
     store.write(&snap).unwrap();

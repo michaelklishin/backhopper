@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
-use std::path::PathBuf;
-
-use backhopper_core::model::names::{ModuleName, RelativePath};
+use backhopper_core::extract::ScannedFile;
+use backhopper_core::model::names::{ApplicationName, ModuleName, RelativePath};
 use backhopper_core::model::snapshot::{ArityMatch, Visibility};
 use backhopper_erlang::ErlangExtractor;
+
+fn scanned(path: &str, bytes: &[u8]) -> ScannedFile {
+    ScannedFile {
+        path: RelativePath::new(path).unwrap(),
+        app: ApplicationName::new("ra").unwrap(),
+        bytes: bytes.to_vec(),
+    }
+}
 
 const SOURCE_RA: &str = r#"
 %% @hidden
@@ -88,7 +95,11 @@ helper() -> ok.
 #[test]
 fn header_extraction_yields_records_and_types() {
     let ex = ErlangExtractor::default();
-    let h = ex.extract_header_file(RelativePath::new("include/ra.hrl").unwrap(), HEADER);
+    let h = ex.extract_header_file(
+        RelativePath::new("include/ra.hrl").unwrap(),
+        ApplicationName::new("ra").unwrap(),
+        HEADER,
+    );
     assert_eq!(h.types.len(), 1);
     assert_eq!(h.records.len(), 1);
     assert_eq!(h.records[0].name.as_str(), "cfg");
@@ -99,11 +110,8 @@ fn header_extraction_yields_records_and_types() {
 fn extract_source_handles_mixed_files() {
     let ex = ErlangExtractor::default();
     let files = vec![
-        (
-            PathBuf::from("src/ra.erl"),
-            SOURCE_PUBLIC.as_bytes().to_vec(),
-        ),
-        (PathBuf::from("include/ra.hrl"), HEADER.as_bytes().to_vec()),
+        scanned("src/ra.erl", SOURCE_PUBLIC.as_bytes()),
+        scanned("include/ra.hrl", HEADER.as_bytes()),
     ];
     let result = ex.extract_source(files).unwrap();
     assert_eq!(result.modules.len(), 1);
@@ -140,15 +148,9 @@ fn gen_batch_server_callbacks_optional_and_opaque() {
 fn extract_source_skips_non_erl_and_module_less_files() {
     let ex = ErlangExtractor::default();
     let files = vec![
-        (
-            PathBuf::from("src/ra_helpers.erl"),
-            b"-export([noop/0]).\nnoop() -> ok.\n".to_vec(),
-        ),
-        (PathBuf::from("README.md"), b"# ra\n".to_vec()),
-        (
-            PathBuf::from("src/ra.erl"),
-            SOURCE_PUBLIC.as_bytes().to_vec(),
-        ),
+        scanned("src/ra_helpers.erl", b"-export([noop/0]).\nnoop() -> ok.\n"),
+        scanned("README.md", b"# ra\n"),
+        scanned("src/ra.erl", SOURCE_PUBLIC.as_bytes()),
     ];
     let result = ex.extract_source(files).unwrap();
     assert_eq!(result.modules.len(), 1);
@@ -209,6 +211,7 @@ fn extracts_module_with_if_conditional_block() {
 fn extract_header_file_collects_opaque_and_record() {
     let h = ErlangExtractor::default().extract_header_file(
         RelativePath::new("include/ra.hrl").unwrap(),
+        ApplicationName::new("ra").unwrap(),
         "-opaque ra_idxterm() :: term().\n-record(cfg, {id :: ra_server_id()}).\n",
     );
     assert_eq!(h.opaques.len(), 1);
@@ -277,4 +280,33 @@ fn public_modules_still_overrides_moduledoc_false() {
         ex.extract_module(src).unwrap().visibility,
         Visibility::Public
     );
+}
+
+#[test]
+fn extract_source_stamps_modules_and_headers_with_their_app_and_path() {
+    let ex = ErlangExtractor::default();
+    let result = ex
+        .extract_source(vec![
+            scanned("deps/ra/src/ra.erl", SOURCE_PUBLIC.as_bytes()),
+            scanned("deps/ra/include/ra.hrl", HEADER.as_bytes()),
+        ])
+        .unwrap();
+    let module = &result.modules[0];
+    assert_eq!(module.app, Some(ApplicationName::new("ra").unwrap()));
+    assert_eq!(
+        module.path,
+        Some(RelativePath::new("deps/ra/src/ra.erl").unwrap())
+    );
+    let header = &result.headers[0];
+    assert_eq!(header.app, Some(ApplicationName::new("ra").unwrap()));
+    assert_eq!(header.app_path().unwrap().as_str(), "include/ra.hrl");
+}
+
+#[test]
+fn extract_source_refuses_invalid_utf8_and_names_the_file() {
+    let ex = ErlangExtractor::default();
+    let error = ex
+        .extract_source(vec![scanned("src/ra.erl", &[0xff, 0xfe])])
+        .unwrap_err();
+    assert!(error.to_string().contains("src/ra.erl"), "{error}");
 }

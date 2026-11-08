@@ -10,8 +10,8 @@ use backhopper_core::model::names::{
     TagName, TypeName,
 };
 use backhopper_core::model::snapshot::{
-    CallbackSig, FORMAT_VERSION, FunArity, HrlFile, Module, RecordDecl, RecordField, Snapshot,
-    SnapshotHeader, SpecSig, TypeArity, TypeDecl, Visibility,
+    CallbackSig, FORMAT_VERSION, FunArity, HrlFile, LAST_MIGRATABLE_FORMAT_VERSION, Module,
+    RecordDecl, RecordField, Snapshot, SnapshotHeader, SpecSig, TypeArity, TypeDecl, Visibility,
 };
 use backhopper_core::snapshot::{format, parser};
 
@@ -62,8 +62,11 @@ fn arb_record_field_type() -> impl Strategy<Value = Option<String>> {
 }
 
 fn arb_record_field() -> impl Strategy<Value = RecordField> {
-    (arb_field_name(), arb_record_field_type())
-        .prop_map(|(name, type_repr)| RecordField { name, type_repr })
+    (arb_field_name(), arb_record_field_type()).prop_map(|(name, type_repr)| RecordField {
+        name,
+        type_repr,
+        default: None,
+    })
 }
 
 fn arb_record_decl() -> impl Strategy<Value = RecordDecl> {
@@ -152,9 +155,12 @@ fn arb_hrl() -> impl Strategy<Value = HrlFile> {
     )
         .prop_map(|(path, types, opaques, records)| HrlFile {
             path: RelativePath::new(path).unwrap(),
+            app: None,
+            includes: Vec::new(),
             types,
             opaques,
             records,
+            defines: Vec::new(),
         })
 }
 
@@ -166,6 +172,7 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
         "[0-9a-f]{40}",
     )
         .prop_map(|(project, tag, branch, commit)| SnapshotHeader {
+            extraction_settings: None,
             project: ProjectName::new(project).unwrap(),
             tag: TagName::new(tag).unwrap(),
             branch,
@@ -175,8 +182,9 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
             generated_by: "backhopper 0.4.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: Vec::new(),
+            host_facts: None,
         })
 }
 
@@ -194,7 +202,7 @@ proptest! {
     }
 
     #[test]
-    fn header_format_version_normalizes_to_current_after_round_trip(
+    fn header_format_version_is_clamped_to_the_writable_range_after_round_trip(
         mut header in arb_header(),
         arbitrary_format_version in 0u32..20,
     ) {
@@ -202,7 +210,10 @@ proptest! {
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
         let text = format::to_string(&snap).unwrap();
         let back = parser::parse(&text).unwrap();
-        prop_assert_eq!(back.header().format_version, FORMAT_VERSION);
+        prop_assert_eq!(
+            back.header().format_version,
+            arbitrary_format_version.clamp(LAST_MIGRATABLE_FORMAT_VERSION, FORMAT_VERSION)
+        );
     }
 
     #[test]
@@ -229,9 +240,11 @@ proptest! {
             fields: vec![RecordField {
                 name: FieldName::new("a").unwrap(),
                 type_repr: Some(multi),
+                default: None,
             }],
         });
         let header = SnapshotHeader {
+            extraction_settings: None,
             project: ProjectName::new("p").unwrap(),
             tag: TagName::new("v0.1.0").unwrap(),
             branch: None,
@@ -241,8 +254,9 @@ proptest! {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: Vec::new(),
+            host_facts: None,
         };
         let snap = Snapshot::from_extracted(header, vec![], vec![hrl]).into_canonical();
         let text = format::to_string(&snap).unwrap();

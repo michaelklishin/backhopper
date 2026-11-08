@@ -6,6 +6,7 @@
 //! so the global `--table-style` flag governs all tables uniformly.
 
 use bel7_cli::TableStyle;
+use tabled::builder::Builder;
 use tabled::{Table, Tabled};
 
 use backhopper_core::compat::arg_shape::ArgShape;
@@ -35,6 +36,14 @@ where
     R: Tabled,
 {
     let mut table = Table::new(rows);
+    style.apply(&mut table);
+    table
+}
+
+/// A table whose first row is the header and whose width is only known at
+/// run time.
+pub fn styled_grid(rows: Vec<Vec<String>>, style: TableStyle) -> Table {
+    let mut table = Builder::from(rows).build();
     style.apply(&mut table);
     table
 }

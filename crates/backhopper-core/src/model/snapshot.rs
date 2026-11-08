@@ -20,11 +20,17 @@ use time::OffsetDateTime;
 
 use crate::compat::arg_shape::ArgShape;
 use crate::errors::{NameError, SnapshotError};
+use crate::model::app_manifest::AppManifest;
+use crate::model::macro_decl::MacroDecl;
 use crate::model::names::{
-    ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, FieldName, FunctionName,
-    MacroName, ModuleName, ProjectName, RecordName, RelativePath, TagName, TypeName,
+    ApplicationName, Arity, CommitSha, DependencyName, DependencyVersion, ExtractionSettingsDigest,
+    FieldName, FunctionName, HostFactsDigest, MacroName, ModuleName, ProjectName, RecordName,
+    RelativePath, TagName, TypeName,
 };
-use crate::snapshot::sort::{canonicalize, out_of_order};
+use crate::model::non_empty::NonEmpty;
+use crate::model::normalised::NormalisedDefault;
+use crate::model::schema_files::{PartialFile, SchemaFile};
+use crate::snapshot::sort::{canonicalize_parts, missing_app, out_of_order};
 
 pub mod state {
     mod private {
@@ -47,12 +53,13 @@ pub mod state {
     impl SnapshotState for Canonical {}
 }
 
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 5;
 
-/// Older snapshot file versions the parser still accepts. New writers
-/// always emit `FORMAT_VERSION`. `snapshots migrate` regenerates each
-/// stored snapshot at the current version.
-pub const SUPPORTED_FORMAT_VERSIONS: &[u32] = &[1, 2, 3, 4];
+/// Format 5 adds facts a re-emitted older snapshot does not hold, so only
+/// regeneration writes it.
+pub const LAST_MIGRATABLE_FORMAT_VERSION: u32 = 4;
+
+pub const SUPPORTED_FORMAT_VERSIONS: &[u32] = &[1, 2, 3, 4, 5];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotHeader {
@@ -83,6 +90,21 @@ pub struct SnapshotHeader {
     /// and later.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dep_pins: Vec<VendoredDep>,
+    /// The release roots and configuration digest a host snapshot was
+    /// generated with. `None` for every other project. Format version 5
+    /// and later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_facts: Option<HostReleaseFacts>,
+    /// Digest of the project settings the snapshot was extracted with.
+    /// `None` for a file that records none. Format version 5 and later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_settings: Option<ExtractionSettingsDigest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostReleaseFacts {
+    pub release_roots: NonEmpty<ApplicationName>,
+    pub digest: HostFactsDigest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,6 +425,24 @@ impl Module {
         }
     }
 
+    /// Whether the module exports `function/arity`. The export list is
+    /// sorted in a canonical snapshot.
+    pub fn exports_function(&self, function: &FunctionName, arity: Arity) -> bool {
+        let key = FunArity {
+            name: function.clone(),
+            arity,
+        };
+        self.exports.binary_search(&key).is_ok()
+    }
+
+    /// Whether the module lists `name/arity` in `-export_type`.
+    pub fn exports_type(&self, name: &TypeName, arity: Arity) -> bool {
+        self.export_types.contains(&TypeArity {
+            name: name.clone(),
+            arity,
+        })
+    }
+
     /// Exports that have no matching clause head. An empty
     /// `clause_heads` (older snapshots without the field populated)
     /// returns an empty list so this never false-fires on legacy data.
@@ -418,22 +458,72 @@ impl Module {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HeaderRef {
+    pub app: ApplicationName,
+    pub app_path: RelativePath,
+}
+
+impl fmt::Display for HeaderRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.app, self.app_path)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HrlFile {
     pub path: RelativePath,
+    /// Application the header belongs to. `None` before format version 5.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<ApplicationName>,
+    /// The header's own `-include` and `-include_lib` lines. Format
+    /// version 5 and later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub includes: Vec<HeaderRef>,
     pub types: Vec<TypeDecl>,
     pub opaques: Vec<TypeArity>,
     pub records: Vec<RecordDecl>,
+    /// Macros the header defines outside `-ifdef(TEST)`. Format version 5
+    /// and later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub defines: Vec<MacroDecl>,
 }
 
 impl HrlFile {
     pub fn new(path: RelativePath) -> Self {
         Self {
             path,
+            app: None,
+            includes: Vec::new(),
             types: Vec::new(),
             opaques: Vec::new(),
             records: Vec::new(),
+            defines: Vec::new(),
         }
+    }
+
+    /// The part of `path` after the app root, which is the directory named
+    /// like the app: `deps/rabbit_common/include/rabbit.hrl` in
+    /// `rabbit_common` is `include/rabbit.hrl`. A path with no such
+    /// directory is already relative to the app. `None` without an app.
+    #[must_use]
+    pub fn app_path(&self) -> Option<RelativePath> {
+        let app = self.app.as_ref()?;
+        let segments: Vec<&str> = self.path.as_str().split('/').collect();
+        let (_file, dirs) = segments.split_last()?;
+        let rest = match dirs.iter().position(|d| *d == app.as_str()) {
+            Some(root) => segments[root + 1..].join("/"),
+            None => self.path.as_str().to_owned(),
+        };
+        RelativePath::new(rest).ok()
+    }
+
+    #[must_use]
+    pub fn header_ref(&self) -> Option<HeaderRef> {
+        Some(HeaderRef {
+            app: self.app.clone()?,
+            app_path: self.app_path()?,
+        })
     }
 }
 
@@ -529,6 +619,11 @@ pub struct RecordDecl {
 pub struct RecordField {
     pub name: FieldName,
     pub type_repr: Option<String>,
+    /// `None` means the source wrote no default, which Erlang reads as
+    /// `undefined`; a written `= undefined` is `Some`. Format version 5
+    /// and later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<NormalisedDefault>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -554,39 +649,41 @@ pub struct DeprecationReplacement {
     pub arity: Arity,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SnapshotParts {
+    pub(crate) header: SnapshotHeader,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) apps: Vec<AppManifest>,
+    pub(crate) modules: Vec<Module>,
+    pub(crate) headers: Vec<HrlFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) schemas: Vec<SchemaFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) partials: Vec<PartialFile>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(bound = "")]
 pub struct Snapshot<S: state::SnapshotState = state::Unsorted> {
-    header: SnapshotHeader,
-    modules: Vec<Module>,
-    headers: Vec<HrlFile>,
+    #[serde(flatten)]
+    parts: SnapshotParts,
     #[serde(skip)]
     _state: PhantomData<S>,
-}
-
-/// The three fields of [`Snapshot`], with no state attached: the shape
-/// `serde` deserializes before [`Snapshot<Canonical>`]'s `TryFrom` checks
-/// canonical order.
-#[derive(Deserialize)]
-struct SnapshotParts {
-    header: SnapshotHeader,
-    modules: Vec<Module>,
-    headers: Vec<HrlFile>,
 }
 
 impl TryFrom<SnapshotParts> for Snapshot<state::Canonical> {
     type Error = SnapshotError;
 
     fn try_from(parts: SnapshotParts) -> Result<Self, SnapshotError> {
-        if let Some(detail) = out_of_order(&parts.modules, &parts.headers) {
+        if let Some(detail) = out_of_order(&parts) {
             return Err(SnapshotError::NotCanonicalValue { detail });
         }
-        Ok(Self {
-            header: parts.header,
-            modules: parts.modules,
-            headers: parts.headers,
-            _state: PhantomData,
-        })
+        if parts.header.format_version >= 5
+            && let Some(detail) = missing_app(&parts)
+        {
+            return Err(SnapshotError::NotCanonicalValue { detail });
+        }
+        Ok(Self::from_canonical_parts(parts))
     }
 }
 
@@ -607,24 +704,36 @@ impl Snapshot<state::Unsorted> {
         headers: Vec<HrlFile>,
     ) -> Self {
         Self {
-            header,
-            modules,
-            headers,
+            parts: SnapshotParts {
+                header,
+                apps: Vec::new(),
+                modules,
+                headers,
+                schemas: Vec::new(),
+                partials: Vec::new(),
+            },
             _state: PhantomData,
         }
     }
 
     #[must_use]
+    pub fn with_apps(mut self, apps: Vec<AppManifest>) -> Self {
+        self.parts.apps = apps;
+        self
+    }
+
+    #[must_use]
+    pub fn with_cuttlefish(mut self, schemas: Vec<SchemaFile>, partials: Vec<PartialFile>) -> Self {
+        self.parts.schemas = schemas;
+        self.parts.partials = partials;
+        self
+    }
+
+    #[must_use]
     pub fn into_canonical(mut self) -> Snapshot<state::Canonical> {
-        canonicalize(&mut self.modules, &mut self.headers);
-        self.header.apps_scanned.sort();
-        self.header.apps_scanned.dedup();
-        self.header.dep_pins.sort_by(|a, b| a.name.cmp(&b.name));
-        self.header.dep_pins.dedup_by(|a, b| a.name == b.name);
+        canonicalize_parts(&mut self.parts);
         Snapshot {
-            header: self.header,
-            modules: self.modules,
-            headers: self.headers,
+            parts: self.parts,
             _state: PhantomData,
         }
     }
@@ -632,23 +741,36 @@ impl Snapshot<state::Unsorted> {
 
 impl<S: state::SnapshotState> Snapshot<S> {
     pub fn header(&self) -> &SnapshotHeader {
-        &self.header
+        &self.parts.header
     }
 
     pub fn modules(&self) -> &[Module] {
-        &self.modules
+        &self.parts.modules
     }
 
     pub fn headers(&self) -> &[HrlFile] {
-        &self.headers
+        &self.parts.headers
+    }
+
+    pub fn apps(&self) -> &[AppManifest] {
+        &self.parts.apps
+    }
+
+    pub fn schemas(&self) -> &[SchemaFile] {
+        &self.parts.schemas
+    }
+
+    pub fn partials(&self) -> &[PartialFile] {
+        &self.parts.partials
     }
 
     /// Records are declared in headers (.hrl) and inline in modules (.erl): both.
     pub fn records(&self) -> impl Iterator<Item = &RecordDecl> {
-        self.headers
+        self.parts
+            .headers
             .iter()
             .flat_map(|h| h.records.iter())
-            .chain(self.modules.iter().flat_map(|m| m.records.iter()))
+            .chain(self.parts.modules.iter().flat_map(|m| m.records.iter()))
     }
 }
 
@@ -661,23 +783,18 @@ impl Snapshot<state::Canonical> {
         function: &FunctionName,
         arity: Arity,
     ) -> bool {
-        let Some(m) = self.module_named(module) else {
-            return false;
-        };
-        let target = FunArity {
-            name: function.clone(),
-            arity,
-        };
-        m.exports.binary_search(&target).is_ok()
+        self.module_named(module)
+            .is_some_and(|m| m.exports_function(function, arity))
     }
 
     /// Look up a module by name in O(log n): canonical snapshots keep
     /// `modules` sorted by `name`.
     pub fn module_named(&self, name: &ModuleName) -> Option<&Module> {
-        self.modules
+        self.parts
+            .modules
             .binary_search_by(|m| m.name.cmp(name))
             .ok()
-            .map(|idx| &self.modules[idx])
+            .map(|idx| &self.parts.modules[idx])
     }
 
     /// Every module whose `-behaviour(B).` list contains `behaviour`.
@@ -685,30 +802,41 @@ impl Snapshot<state::Canonical> {
     /// linear scan over `self.modules`). Used by behaviour-conformance
     /// checks and the R7 suite-implementer sweep.
     pub fn implementers_of(&self, behaviour: &ModuleName) -> Vec<&Module> {
-        self.modules
+        self.parts
+            .modules
             .iter()
             .filter(|m| m.behaviours.contains(behaviour))
             .collect()
     }
 
-    pub(crate) fn from_canonical_parts(
-        header: SnapshotHeader,
-        modules: Vec<Module>,
-        headers: Vec<HrlFile>,
-    ) -> Self {
+    pub(crate) fn from_canonical_parts(parts: SnapshotParts) -> Self {
         Self {
-            header,
-            modules,
-            headers,
+            parts,
             _state: PhantomData,
         }
+    }
+
+    #[must_use]
+    pub fn written_format_version(&self) -> u32 {
+        self.parts
+            .header
+            .format_version
+            .clamp(LAST_MIGRATABLE_FORMAT_VERSION, FORMAT_VERSION)
+    }
+
+    #[must_use]
+    pub fn unwritable_reason(&self) -> Option<String> {
+        if self.written_format_version() < 5 {
+            return None;
+        }
+        missing_app(&self.parts)
     }
 }
 
 impl Default for Snapshot<state::Unsorted> {
     fn default() -> Self {
-        Self {
-            header: SnapshotHeader {
+        Self::from_extracted(
+            SnapshotHeader {
                 project: ProjectName::new("placeholder").expect("valid"),
                 tag: TagName::new("v0.0.0").expect("valid"),
                 branch: None,
@@ -720,10 +848,11 @@ impl Default for Snapshot<state::Unsorted> {
                 extractor_version: String::new(),
                 format_version: FORMAT_VERSION,
                 dep_pins: Vec::new(),
+                host_facts: None,
+                extraction_settings: None,
             },
-            modules: Vec::new(),
-            headers: Vec::new(),
-            _state: PhantomData,
-        }
+            Vec::new(),
+            Vec::new(),
+        )
     }
 }

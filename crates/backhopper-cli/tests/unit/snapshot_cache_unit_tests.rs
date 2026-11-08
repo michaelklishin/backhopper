@@ -9,11 +9,12 @@ use time::OffsetDateTime;
 
 use backhopper_cli::commands::snapshot_cache::SnapshotCache;
 use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, state};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader, state};
 use backhopper_core::store::SnapshotStore;
 
 fn header(project: &str, tag: &str) -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag).unwrap(),
         branch: None,
@@ -23,8 +24,9 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     }
 }
 

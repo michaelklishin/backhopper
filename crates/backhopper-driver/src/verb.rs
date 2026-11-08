@@ -85,6 +85,10 @@ pub enum Verb {
     CachePrune,
     /// `backhopper cache clear`.
     CacheClear,
+    /// `backhopper jigsaw plan`.
+    JigsawPlan,
+    /// `backhopper jigsaw check`.
+    JigsawCheck,
     /// `backhopper schema show`.
     SchemaShow,
     /// `backhopper schema diff`.
@@ -121,6 +125,7 @@ impl Verb {
                 | Self::CheckMerge
                 | Self::CheckBatch
                 | Self::SuitesPlan
+                | Self::JigsawPlan
         )
     }
 
@@ -167,6 +172,8 @@ impl Verb {
             Self::CacheEvict => &["cache", "evict"],
             Self::CachePrune => &["cache", "prune"],
             Self::CacheClear => &["cache", "clear"],
+            Self::JigsawPlan => &["jigsaw", "plan"],
+            Self::JigsawCheck => &["jigsaw", "check"],
             Self::SchemaShow => &["schema", "show"],
             Self::SchemaDiff => &["schema", "diff"],
         }
@@ -238,6 +245,8 @@ impl Verb {
         Self::CacheEvict,
         Self::CachePrune,
         Self::CacheClear,
+        Self::JigsawPlan,
+        Self::JigsawCheck,
         Self::SchemaShow,
         Self::SchemaDiff,
     ];

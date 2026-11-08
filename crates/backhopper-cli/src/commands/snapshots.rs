@@ -3,33 +3,34 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 use crate::outcome::CommandOutcome;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
 
 use clap::crate_version;
 use serde::Serialize;
 use time::OffsetDateTime;
 
 use backhopper_core::Snapshot;
-use backhopper_core::config::{Config, Language, Project, ProjectLayout};
+use backhopper_core::config::{Config, Language, Project};
 use backhopper_core::model::names::{
     ApplicationName, CommitSha, MacroName, Mfa, ModuleName, ProjectName, RecordName, RelativePath,
     SeriesName, TagName,
 };
 use backhopper_core::model::pin::PinSpec;
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, FunArity, Module, SnapshotHeader, TypeArity, Visibility, WireConstantBinding,
-    WireValue, state,
+    FORMAT_VERSION, FunArity, HostReleaseFacts, Module, SnapshotHeader, TypeArity, VendoredDep,
+    Visibility, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::model::snapshot_diff::{
     CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,
     VersionedMachineVersionChange, WireConstantChange,
 };
 use backhopper_core::snapshot::format;
+use backhopper_core::snapshot::freshness::{
+    ExpectedExtraction, StaleReason, extraction_settings_digest,
+};
 use backhopper_core::store::{Mutable, SnapshotStore, StoreMode};
 use backhopper_core::versions::version_cmp;
 use backhopper_elixir::ElixirExtractor;
@@ -38,12 +39,16 @@ use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, SnapshotsCmd};
 use crate::commands::auto_generate::{
-    ExtractorFreshness, WriteKind, expected_extractor_version,
+    ExtractorFreshness, Presence, WriteKind, expected_extraction, expected_extractor_version,
     expected_extractor_version_for_project, extractor_freshness, generate_action,
     snapshot_refresh_command,
 };
 use crate::commands::context::{load_config, open_project_repo, open_store_mut, open_store_read};
+use crate::commands::host_facts::HostFacts;
+use crate::commands::jigsaw::generate_from_plan;
+use crate::commands::parallel::{Jobs, run_in_parallel};
 use crate::commands::pin_coverage::{PinCoverage, classify_pin};
+use crate::commands::snapshot_scan::{FileRole, classify_scan_path, scan_tree};
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render, render_with_exit};
 
@@ -173,7 +178,28 @@ pub fn handle(args: &GlobalArgs, cmd: SnapshotsCmd) -> CliResult<CommandOutcome>
             since,
             series,
             refresh_stale,
-        } => generate(args, &cfg, project, dry_run, since, series, refresh_stale),
+            from_jigsaw_plan,
+            jobs,
+        } => {
+            let jobs = Jobs::or_available(jobs);
+            match from_jigsaw_plan {
+                Some(plan_path) => generate_from_plan(args, &cfg, &plan_path, dry_run, jobs),
+                None => generate(
+                    args,
+                    &cfg,
+                    GenerateScope {
+                        project,
+                        since,
+                        series,
+                    },
+                    GenerateMode {
+                        dry_run,
+                        refresh_stale,
+                        jobs,
+                    },
+                ),
+            }
+        }
         SnapshotsCmd::List { project } => list(args, &cfg, project),
         SnapshotsCmd::Show { pt, module } => show(args, &cfg, pt.project, pt.tag, module),
         SnapshotsCmd::Verify {
@@ -261,32 +287,36 @@ fn list_tags(
     Ok(CommandOutcome::Success)
 }
 
+struct GenerateScope {
+    project: Option<ProjectName>,
+    since: Option<TagName>,
+    series: Option<SeriesName>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GenerateMode {
+    dry_run: bool,
+    refresh_stale: bool,
+    jobs: Jobs,
+}
+
 fn generate(
     args: &GlobalArgs,
     cfg: &Config,
-    project: Option<ProjectName>,
-    dry_run: bool,
-    since: Option<TagName>,
-    series: Option<SeriesName>,
-    refresh_stale: bool,
+    scope: GenerateScope,
+    mode: GenerateMode,
 ) -> CliResult<CommandOutcome> {
-    if let Some(name) = series {
-        return generate_series(args, cfg, &name, dry_run, refresh_stale);
+    if let Some(name) = scope.series {
+        return generate_series(args, cfg, &name, mode);
     }
     let store = open_store_mut(args, cfg)?;
-    let projects: Vec<&Project> = match project {
+    let projects: Vec<&Project> = match scope.project {
         Some(p) => vec![cfg.project(&p)?],
         None => cfg.projects.iter().collect(),
     };
     let mut payloads = Vec::new();
     for p in projects {
-        payloads.push(generate_one(
-            p,
-            &store,
-            dry_run,
-            since.as_ref(),
-            refresh_stale,
-        )?);
+        payloads.push(generate_one(p, &store, scope.since.as_ref(), mode)?);
     }
     let ctx = OutputContext::new(args.formatter, "snapshots generate");
     render(&ctx, &payloads, |w| {
@@ -326,81 +356,112 @@ fn present_freshness(
     store: &SnapshotStore<Mutable>,
     project: &ProjectName,
     tag: &TagName,
-    expected: &str,
-) -> Option<ExtractorFreshness> {
+    expected: &ExpectedExtraction,
+) -> Option<Presence> {
     if !store.has(project, tag) {
         return None;
     }
     Some(
         store
             .read(project, tag)
-            .ok()
-            .map(|snap| extractor_freshness(snap.header(), expected))
-            .unwrap_or(ExtractorFreshness::Stale {
-                stored: String::new(),
+            .map_or(Presence::Outdated(StaleReason::Unreadable), |snap| {
+                Presence::of(snap.header(), expected)
             }),
     )
+}
+
+/// What happened to one tag of a project.
+enum TagOutcome {
+    Skipped,
+    Written(WriteKind),
+    Failed(String),
+}
+
+fn generate_tag(
+    p: &Project,
+    repo: &CliResult<GitRepo>,
+    store: &SnapshotStore<Mutable>,
+    expected: &ExpectedExtraction,
+    tag: &TagName,
+    mode: GenerateMode,
+) -> TagOutcome {
+    let present = present_freshness(store, &p.name, tag, expected);
+    let Some(write_kind) = generate_action(present.as_ref(), mode.refresh_stale).as_write() else {
+        return TagOutcome::Skipped;
+    };
+    let built = match repo {
+        Ok(repo) => build_snapshot(p, repo, tag),
+        Err(e) => return TagOutcome::Failed(e.to_string()),
+    };
+    let snapshot = match built {
+        Ok(snapshot) => snapshot,
+        Err(e) => return TagOutcome::Failed(e.to_string()),
+    };
+    if !mode.dry_run {
+        if write_kind == WriteKind::Refresh {
+            let _ = store.delete(&p.name, tag);
+        }
+        if let Err(e) = store.write(&snapshot) {
+            return TagOutcome::Failed(e.to_string());
+        }
+    }
+    TagOutcome::Written(write_kind)
 }
 
 fn generate_one(
     p: &Project,
     store: &SnapshotStore<Mutable>,
-    dry_run: bool,
     since: Option<&TagName>,
-    refresh_stale: bool,
+    mode: GenerateMode,
 ) -> CliResult<DiscoverPayload> {
-    let repo = open_project_repo(p)?;
-    let listing = repo.list_tag_refs()?;
+    let listing = open_project_repo(p)?.list_tag_refs()?;
     let tags = filter_tags_for_project(listing.tags, p, since);
-    let expected = expected_extractor_version_for_project(p);
-    let mut captured = 0usize;
-    let mut refreshed = 0usize;
-    let mut skipped = 0usize;
-    let mut failed: Vec<DiscoverFailure> = Vec::new();
-    let mut captured_tags = Vec::new();
-    for tag in tags {
-        let present = present_freshness(store, &p.name, &tag, expected);
-        let Some(write_kind) = generate_action(present.as_ref(), refresh_stale).as_write() else {
-            skipped += 1;
-            continue;
-        };
-        match build_snapshot(p, &repo, &tag) {
-            Ok(snapshot) => {
-                if !dry_run {
-                    if write_kind == WriteKind::Refresh {
-                        let _ = store.delete(&p.name, &tag);
-                    }
-                    if let Err(e) = store.write(&snapshot) {
-                        failed.push(DiscoverFailure {
-                            tag: tag.to_string(),
-                            reason: e.to_string(),
-                        });
-                        continue;
-                    }
+    let expected = expected_extraction(p)?;
+    let outcomes = run_in_parallel(
+        mode.jobs,
+        &tags,
+        || open_project_repo(p),
+        |repo, tag| generate_tag(p, repo, store, &expected, tag, mode),
+        |tag, outcome| log_outcome(&p.name, tag, outcome),
+    );
+    let mut payload = DiscoverPayload {
+        project: p.name.to_string(),
+        captured: 0,
+        skipped: 0,
+        refreshed: 0,
+        failed: Vec::new(),
+        tags: Vec::new(),
+        ignored_non_tag_refs: listing.skipped,
+    };
+    for (tag, outcome) in tags.iter().zip(outcomes) {
+        match outcome {
+            TagOutcome::Skipped => payload.skipped += 1,
+            TagOutcome::Written(kind) => {
+                match kind {
+                    WriteKind::Build => payload.captured += 1,
+                    WriteKind::Refresh => payload.refreshed += 1,
                 }
-                match write_kind {
-                    WriteKind::Build => captured += 1,
-                    WriteKind::Refresh => refreshed += 1,
-                }
-                captured_tags.push(tag.to_string());
+                payload.tags.push(tag.to_string());
             }
-            Err(e) => {
-                failed.push(DiscoverFailure {
-                    tag: tag.to_string(),
-                    reason: e.to_string(),
-                });
-            }
+            TagOutcome::Failed(reason) => payload.failed.push(DiscoverFailure {
+                tag: tag.to_string(),
+                reason,
+            }),
         }
     }
-    Ok(DiscoverPayload {
-        project: p.name.to_string(),
-        captured,
-        skipped,
-        refreshed,
-        failed,
-        tags: captured_tags,
-        ignored_non_tag_refs: listing.skipped,
-    })
+    Ok(payload)
+}
+
+fn log_outcome(project: &ProjectName, tag: &TagName, outcome: &TagOutcome) {
+    match outcome {
+        TagOutcome::Skipped => {}
+        TagOutcome::Written(kind) => {
+            tracing::info!(%project, %tag, kind = ?kind, "snapshot written");
+        }
+        TagOutcome::Failed(reason) => {
+            tracing::warn!(%project, %tag, %reason, "snapshot not written");
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -427,20 +488,26 @@ struct GenerateSeriesSummary {
     failed: usize,
 }
 
+/// A literal or resolved series pin that names a snapshot to generate.
+struct PinnedTag<'a> {
+    project: &'a Project,
+    tag: TagName,
+    duplicate: bool,
+}
+
 fn generate_series(
     args: &GlobalArgs,
     cfg: &Config,
     name: &SeriesName,
-    dry_run: bool,
-    refresh_stale: bool,
+    mode: GenerateMode,
 ) -> CliResult<CommandOutcome> {
     let series = cfg.series_by_name(name)?;
     let store = open_store_mut(args, cfg)?;
-    let mut payloads: Vec<DiscoverPayload> = Vec::with_capacity(series.pins.len());
     let mut self_pins_skipped: Vec<SelfPinSkip> = Vec::new();
-    let mut summary = GenerateSeriesSummary::default();
+    let mut pinned: Vec<PinnedTag<'_>> = Vec::with_capacity(series.pins.len());
+    let mut seen: BTreeSet<(ProjectName, TagName)> = BTreeSet::new();
     for spec in &series.pins {
-        match spec {
+        let (project, tag) = match spec {
             PinSpec::SelfRef {
                 project, git_ref, ..
             } => {
@@ -449,22 +516,37 @@ fn generate_series(
                     git_ref: git_ref.to_string(),
                     reason: "self snapshots are sourced from the working repo, not the store",
                 });
+                continue;
             }
-            PinSpec::Literal { project, tag } => {
-                let p = cfg.project(project)?;
-                let payload = generate_pinned_tag(p, tag, &store, dry_run, refresh_stale)?;
-                accumulate_summary(&mut summary, &payload);
-                payloads.push(payload);
+            PinSpec::Literal { project, tag } => (project, tag.clone()),
+            PinSpec::Pattern { project, .. } => (project, spec.resolve(&store)?.tag),
+        };
+        let duplicate = !seen.insert((project.clone(), tag.clone()));
+        pinned.push(PinnedTag {
+            project: cfg.project(project)?,
+            tag,
+            duplicate,
+        });
+    }
+    let built = run_in_parallel(
+        mode.jobs,
+        &pinned,
+        || (),
+        |(), pin| {
+            if pin.duplicate {
+                Ok(DiscoverPayload::skipped_one(&pin.project.name))
+            } else {
+                generate_pinned_tag(pin.project, &pin.tag, &store, mode)
             }
-            PinSpec::Pattern { project, .. } => {
-                let p = cfg.project(project)?;
-                let resolved = spec.resolve(&store)?;
-                let payload =
-                    generate_pinned_tag(p, &resolved.tag, &store, dry_run, refresh_stale)?;
-                accumulate_summary(&mut summary, &payload);
-                payloads.push(payload);
-            }
-        }
+        },
+        |_, _| {},
+    );
+    let mut summary = GenerateSeriesSummary::default();
+    let mut payloads: Vec<DiscoverPayload> = Vec::with_capacity(pinned.len());
+    for result in built {
+        let payload = result?;
+        accumulate_summary(&mut summary, &payload);
+        payloads.push(payload);
     }
     let payload = GenerateSeriesPayload {
         series: name.to_string(),
@@ -514,32 +596,17 @@ fn generate_pinned_tag(
     p: &Project,
     tag: &TagName,
     store: &SnapshotStore<Mutable>,
-    dry_run: bool,
-    refresh_stale: bool,
+    mode: GenerateMode,
 ) -> CliResult<DiscoverPayload> {
-    let expected = expected_extractor_version_for_project(p);
-    let present = present_freshness(store, &p.name, tag, expected);
-    let Some(write_kind) = generate_action(present.as_ref(), refresh_stale).as_write() else {
-        return Ok(DiscoverPayload::skipped_one(&p.name));
-    };
-    let repo = open_project_repo(p)?;
-    match build_snapshot(p, &repo, tag) {
-        Ok(snapshot) => {
-            if !dry_run {
-                if write_kind == WriteKind::Refresh {
-                    let _ = store.delete(&p.name, tag);
-                }
-                if let Err(e) = store.write(&snapshot) {
-                    return Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string()));
-                }
-            }
-            match write_kind {
-                WriteKind::Build => Ok(DiscoverPayload::captured_one(&p.name, tag)),
-                WriteKind::Refresh => Ok(DiscoverPayload::refreshed_one(&p.name, tag)),
-            }
-        }
-        Err(e) => Ok(DiscoverPayload::single_failure(&p.name, tag, e.to_string())),
-    }
+    let expected = expected_extraction(p)?;
+    let repo = open_project_repo(p);
+    let outcome = generate_tag(p, &repo, store, &expected, tag, mode);
+    Ok(match outcome {
+        TagOutcome::Skipped => DiscoverPayload::skipped_one(&p.name),
+        TagOutcome::Written(WriteKind::Build) => DiscoverPayload::captured_one(&p.name, tag),
+        TagOutcome::Written(WriteKind::Refresh) => DiscoverPayload::refreshed_one(&p.name, tag),
+        TagOutcome::Failed(reason) => DiscoverPayload::single_failure(&p.name, tag, reason),
+    })
 }
 
 pub fn filter_tags_since(tags: Vec<TagName>, since: Option<&TagName>) -> Vec<TagName> {
@@ -587,48 +654,52 @@ pub(crate) fn build_snapshot_at_commit(
     commit: &CommitSha,
     tag: &TagName,
 ) -> CliResult<Snapshot<state::Canonical>> {
-    let commit = commit.clone();
-    let (files, scanned_paths, apps_scanned) = match p.layout {
-        ProjectLayout::SingleApp => {
-            let scan_paths = p.scan_paths.clone();
-            let blobs =
-                repo.read_paths_at_commit(&commit, |path| matches_any(path, &scan_paths))?;
-            let files: Vec<(PathBuf, Vec<u8>)> =
-                blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
-            (files, scan_paths, Vec::new())
-        }
-        ProjectLayout::MultiApp | ProjectLayout::ErlangOtp => {
-            let apps_set: RefCell<BTreeSet<ApplicationName>> = RefCell::new(BTreeSet::new());
-            let blobs =
-                repo.read_paths_at_commit(&commit, |path| match multi_app_match(path, p) {
-                    Some(app) => {
-                        apps_set.borrow_mut().insert(app);
-                        true
-                    }
-                    None => false,
-                })?;
-            let files: Vec<(PathBuf, Vec<u8>)> =
-                blobs.into_iter().map(|b| (b.path, b.bytes)).collect();
-            let apps: Vec<ApplicationName> = apps_set.into_inner().into_iter().collect();
-            (files, p.app_roots.clone(), apps)
-        }
+    assemble_snapshot(p, repo, commit, tag, SnapshotFacts::default())
+}
+
+pub fn build_host_snapshot_at_commit(
+    p: &Project,
+    repo: &GitRepo,
+    commit: &CommitSha,
+    tag: &TagName,
+    host: &HostFacts,
+) -> CliResult<Snapshot<state::Canonical>> {
+    let facts = SnapshotFacts {
+        dep_pins: host.read_dep_pins(p, repo, commit, tag)?,
+        host_facts: Some(host.read_release_facts(repo, commit)?),
     };
+    assemble_snapshot(p, repo, commit, tag, facts)
+}
+
+#[derive(Default)]
+struct SnapshotFacts {
+    dep_pins: Vec<VendoredDep>,
+    host_facts: Option<HostReleaseFacts>,
+}
+
+fn assemble_snapshot(
+    p: &Project,
+    repo: &GitRepo,
+    commit: &CommitSha,
+    tag: &TagName,
+    facts: SnapshotFacts,
+) -> CliResult<Snapshot<state::Canonical>> {
+    let commit = commit.clone();
+    let tree = scan_tree(p, repo, &commit)?;
     let extracted = match p.language {
         Language::Erlang => {
             let extractor =
                 ErlangExtractor::new(p.public_modules.clone(), p.internal_modules.clone());
-            let r = extractor
-                .extract_source(files)
-                .map_err(|e| CliError::Other(e.to_string()))?;
-            (r.modules, r.headers)
+            extractor
+                .extract_source(tree.sources)
+                .map_err(|e| CliError::Other(e.to_string()))?
         }
         Language::Elixir => {
             let extractor =
                 ElixirExtractor::new(p.public_modules.clone(), p.internal_modules.clone());
-            let r = extractor
-                .extract_source(files)
-                .map_err(|e| CliError::Other(e.to_string()))?;
-            (r.modules, r.headers)
+            extractor
+                .extract_source(tree.sources)
+                .map_err(|e| CliError::Other(e.to_string()))?
         }
     };
     let branch = repo
@@ -640,110 +711,30 @@ pub(crate) fn build_snapshot_at_commit(
         tag: tag.clone(),
         branch,
         commit,
-        scanned_paths,
-        apps_scanned,
+        scanned_paths: tree.scanned_paths,
+        apps_scanned: tree.apps_scanned,
         generated_by: format!("backhopper {}", crate_version!()),
         generated_at: OffsetDateTime::now_utc(),
         extractor_version: expected_extractor_version_for_project(p).to_owned(),
         format_version: FORMAT_VERSION,
-        dep_pins: Vec::new(),
+        dep_pins: facts.dep_pins,
+        host_facts: facts.host_facts,
+        extraction_settings: Some(extraction_settings_digest(p)),
     };
-    let (modules, headers) = extracted;
-    let snapshot = Snapshot::from_extracted(header, modules, headers).into_canonical();
-    Ok(snapshot)
+    Ok(
+        Snapshot::from_extracted(header, extracted.modules, extracted.headers)
+            .with_apps(tree.apps)
+            .with_cuttlefish(tree.schemas, tree.partials)
+            .into_canonical(),
+    )
 }
 
 /// Decide whether `path` should be included in a `multi_app` or `erlang_otp`
 /// snapshot, and if so, which application owns it. Returns `None` to drop.
 pub fn multi_app_match(path: &str, project: &Project) -> Option<ApplicationName> {
-    if !(path.ends_with(".erl") || path.ends_with(".hrl")) {
-        return None;
-    }
-    let (app, within) = classify_app_path(path, &project.app_roots)?;
-    if project.exclude_apps.iter().any(|a| a == &app) {
-        return None;
-    }
-    if !project.include_apps.is_empty() && !project.include_apps.iter().any(|a| a == &app) {
-        return None;
-    }
-    for sub in &project.excluded_subdirs {
-        if let Some(rest) = within.strip_prefix(sub.as_str())
-            && (rest.is_empty() || rest.starts_with('/'))
-        {
-            return None;
-        }
-    }
-    Some(app)
-}
-
-/// Match `path` against `app_roots` and return `(app_name, path_within_app)`.
-///
-/// Two pattern shapes are supported:
-///  * `<dir>/*`: a wildcard. The path must be `{root}/{app}/{within}`, where
-///    the Erlang app name is `{app}`.
-///  * `<dir>`: a literal directory. The path must be `{root}/{within}`, where
-///    the Erlang app name is the last path segment of `{root}` (e.g.
-///    `erts/preloaded` produces app `preloaded`).
-fn classify_app_path<'a>(
-    path: &'a str,
-    app_roots: &[String],
-) -> Option<(ApplicationName, &'a str)> {
-    for pattern in app_roots {
-        if let Some(stripped_root) = pattern.strip_suffix("/*") {
-            if let Some(after_root) = path.strip_prefix(stripped_root)
-                && let Some(after_sep) = after_root.strip_prefix('/')
-                && let Some(slash) = after_sep.find('/')
-                && let Ok(app) = ApplicationName::new(&after_sep[..slash])
-            {
-                return Some((app, &after_sep[slash + 1..]));
-            }
-        } else if let Some(after_root) = path.strip_prefix(pattern.as_str())
-            && let Some(within) = after_root.strip_prefix('/')
-        {
-            let last = pattern.rsplit('/').next().unwrap_or(pattern);
-            if let Ok(app) = ApplicationName::new(last) {
-                return Some((app, within));
-            }
-        }
-    }
-    None
-}
-
-fn matches_any(path: &str, patterns: &[String]) -> bool {
-    for pat in patterns {
-        if glob_match(pat, path) {
-            return true;
-        }
-    }
-    false
-}
-
-fn glob_match(pattern: &str, path: &str) -> bool {
-    let path = path.trim_start_matches("./");
-    if let Some((dir, suffix)) = pattern.split_once("**/") {
-        if path.starts_with(dir.trim_end_matches('/')) || dir.is_empty() {
-            let rest = path
-                .strip_prefix(dir.trim_end_matches('/'))
-                .map(|s| s.trim_start_matches('/'))
-                .unwrap_or(path);
-            return suffix_match(suffix, rest);
-        }
-    }
-    if let Some((dir, suffix)) = pattern.split_once("/*") {
-        if path.starts_with(dir) {
-            let rest = path.strip_prefix(dir).unwrap_or(path);
-            let rest = rest.trim_start_matches('/');
-            return suffix_match(suffix.trim_start_matches('/'), rest);
-        }
-    }
-    pattern == path
-}
-
-fn suffix_match(suffix: &str, path: &str) -> bool {
-    if let Some(ext) = suffix.strip_prefix("*.") {
-        path.rsplit_once('.').is_some_and(|(_, e)| e == ext)
-    } else {
-        suffix.is_empty() || path.ends_with(suffix)
+    match classify_scan_path(path, project)? {
+        (app, FileRole::Source, _) => Some(app),
+        _ => None,
     }
 }
 
@@ -1130,12 +1121,23 @@ fn migrate(
                     let re_emitted = backhopper_core::snapshot::format::to_string(&snap)?;
                     if current_text == re_emitted {
                         already_current += 1;
-                        continue;
+                    } else {
+                        if let Some(mw) = &store_mut {
+                            mw.write(&snap)?;
+                        }
+                        migrated += 1;
                     }
-                    if let Some(mw) = &store_mut {
-                        mw.write(&snap)?;
+                    if snap.written_format_version() < FORMAT_VERSION {
+                        failed.push(TaggedFailure {
+                            project: project.to_string(),
+                            tag: tag.to_string(),
+                            reason: format!(
+                                "format {} cannot be migrated to format {FORMAT_VERSION}: \
+                                 run `backhopper snapshots generate --refresh-stale`",
+                                snap.written_format_version()
+                            ),
+                        });
                     }
-                    migrated += 1;
                 }
                 Err(e) => failed.push(TaggedFailure {
                     project: project.to_string(),

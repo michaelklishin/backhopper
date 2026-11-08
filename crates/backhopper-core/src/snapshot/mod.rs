@@ -3,6 +3,7 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 pub mod format;
+pub mod freshness;
 pub mod parser;
 pub mod sort;
 pub mod spec_normalize;

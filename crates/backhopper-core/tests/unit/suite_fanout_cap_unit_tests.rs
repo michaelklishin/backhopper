@@ -41,6 +41,7 @@ fn app(name: &str, root: &Path, modules: Vec<&str>) -> AppSrcSpec {
             .map(|m| ModuleName::new(m).unwrap())
             .collect(),
         applications: BTreeSet::new(),
+        included_applications: BTreeSet::new(),
     }
 }
 

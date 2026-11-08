@@ -4,18 +4,22 @@
 
 //! Top-level Erlang source extractor: tokens → typed `Module` and `HrlFile` records.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::{self, FromStr};
 
-pub use backhopper_core::extract::{ExtractError, ExtractedSource};
+pub use backhopper_core::extract::{ExtractError, ExtractedSource, ScannedFile};
 
 use backhopper_core::extract::classify_visibility;
+use backhopper_core::model::macro_decl::{MacroBody, MacroDecl, MacroKey};
 use backhopper_core::model::names::{
-    Arity, FieldName, FunctionName, ModuleName, RecordName, RelativePath, TypeName,
+    ApplicationName, Arity, FieldName, FunctionName, ModuleName, RecordName, RelativePath, TypeName,
 };
+use backhopper_core::model::normalised::{NormalisedDefault, NormalisedMacroBody};
 use backhopper_core::model::snapshot::{
-    ArityMatch, CallbackSig, Deprecation, HrlFile, IfdefGuardKind, IfdefMacro, Module, RecordDecl,
-    RecordField, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl, VariantCBlock,
+    ArityMatch, CallbackSig, Deprecation, HeaderRef, HrlFile, IfdefGuardKind, IfdefMacro, Module,
+    RecordDecl, RecordField, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl,
+    VariantCBlock,
 };
 use backhopper_core::snapshot::spec_normalize::normalize_signature;
 use tracing::warn;
@@ -24,7 +28,7 @@ use crate::attributes::{ParsedAttribute, classify};
 use crate::cond_compile::CondStack;
 use crate::deprecated::ParsedDeprecation;
 use crate::specs::ParsedSignature;
-use crate::tokenizer::iterate_attributes;
+use crate::tokenizer::{iterate_attributes, strip_outer_parens};
 use crate::visibility::module_header_hides;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -43,27 +47,29 @@ impl ErlangExtractor {
 
     pub fn extract_source<I>(&self, files: I) -> Result<ExtractedSource, ExtractError>
     where
-        I: IntoIterator<Item = (PathBuf, Vec<u8>)>,
+        I: IntoIterator<Item = ScannedFile>,
     {
         let mut modules: Vec<Module> = Vec::new();
         let mut headers: Vec<HrlFile> = Vec::new();
-        for (path, bytes) in files {
-            let text = str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
-                path: path.clone(),
+        for file in files {
+            let text = str::from_utf8(&file.bytes).map_err(|e| ExtractError::InvalidUtf8 {
+                path: file.path.clone(),
                 offset: e.valid_up_to(),
             })?;
-            let ext = path.extension().and_then(|e| e.to_str());
-            match ext {
+            match PathBuf::from(file.path.as_str())
+                .extension()
+                .and_then(|e| e.to_str())
+            {
                 Some("hrl") => {
-                    let relative = RelativePath::new(path.to_string_lossy().into_owned())
-                        .map_err(|source| ExtractError::InvalidPath { path, source })?;
-                    headers.push(self.extract_header_file(relative, text));
+                    headers.push(self.extract_header_file(file.path, file.app, text));
                 }
                 Some("erl") => {
-                    if let Some(m) = self.extract_module(text) {
+                    if let Some(mut m) = self.extract_module(text) {
+                        m.path = Some(file.path);
+                        m.app = Some(file.app);
                         modules.push(m);
                     } else {
-                        warn!("no -module attribute in {}", path.display());
+                        warn!("no -module attribute in {}", file.path);
                     }
                 }
                 _ => {}
@@ -181,14 +187,60 @@ impl ErlangExtractor {
         Some(m)
     }
 
-    pub fn extract_header_file(&self, path: RelativePath, source: &str) -> HrlFile {
+    pub fn extract_header_file(
+        &self,
+        path: RelativePath,
+        app: ApplicationName,
+        source: &str,
+    ) -> HrlFile {
         let blocks = iterate_attributes(source);
         let mut hrl = HrlFile::new(path);
+        hrl.app = Some(app);
+        let own_app_path = hrl.app_path();
+        let mut cond = CondStack::new();
+        let mut defines: BTreeMap<MacroKey, MacroDecl> = BTreeMap::new();
+        let mut guard_candidate: Option<String> = None;
         for block in &blocks {
+            let candidate = guard_candidate.take();
+            if block.name == "define" {
+                if let Some(guard) = candidate
+                    && parse_define_name(&block.body).as_deref() == Some(guard.as_str())
+                {
+                    cond.mark_include_guard();
+                }
+                if !cond.is_test_only()
+                    && let Some(decl) = header_define(&block.body, cond.under_non_test_condition())
+                {
+                    match defines.remove(&decl.key) {
+                        Some(earlier) => defines.insert(decl.key.clone(), earlier.merge(decl)),
+                        None => defines.insert(decl.key.clone(), decl),
+                    };
+                }
+                continue;
+            }
             let Some(parsed) = classify(block) else {
                 continue;
             };
             match parsed {
+                ParsedAttribute::IfDef(ident) => cond.push_ifdef(&ident),
+                ParsedAttribute::IfnDef(ident) => {
+                    cond.push_ifndef(&ident);
+                    guard_candidate = Some(ident);
+                }
+                ParsedAttribute::If(expr) => cond.push_if(&expr),
+                ParsedAttribute::Else => cond.flip_else(),
+                ParsedAttribute::EndIf => cond.pop_endif(),
+                ParsedAttribute::Include(text) if !cond.is_test_only() => {
+                    hrl.includes.extend(
+                        own_app_path
+                            .as_ref()
+                            .zip(hrl.app.as_ref())
+                            .and_then(|(own, app)| relative_include(app, own, &text)),
+                    );
+                }
+                ParsedAttribute::IncludeLib(text) if !cond.is_test_only() => {
+                    hrl.includes.extend(library_include(&text));
+                }
                 ParsedAttribute::Type {
                     name,
                     arity,
@@ -223,6 +275,10 @@ impl ErlangExtractor {
                         fields.push(RecordField {
                             name: fname,
                             type_repr: f.type_repr,
+                            default: f
+                                .default
+                                .as_deref()
+                                .and_then(NormalisedDefault::from_source),
                         });
                     }
                     hrl.records.push(RecordDecl { name, fields });
@@ -230,8 +286,61 @@ impl ErlangExtractor {
                 _ => {}
             }
         }
+        hrl.defines = defines.into_values().collect();
         hrl
     }
+}
+
+fn header_define(body: &str, conditional: bool) -> Option<MacroDecl> {
+    let (key, value) = MacroKey::parse_define(strip_outer_parens(body))?;
+    let body = if conditional {
+        MacroBody::Conditional
+    } else {
+        MacroBody::Text(NormalisedMacroBody::from_source(value))
+    };
+    Some(MacroDecl { key, body })
+}
+
+fn is_plain_path(text: &str) -> bool {
+    !text.is_empty() && !text.contains(['?', ' ', '\t', '\n'])
+}
+
+fn library_include(text: &str) -> Option<HeaderRef> {
+    if !is_plain_path(text) {
+        return None;
+    }
+    let (app, app_path) = text.split_once('/')?;
+    Some(HeaderRef {
+        app: ApplicationName::from_str(app).ok()?,
+        app_path: RelativePath::new(app_path).ok()?,
+    })
+}
+
+/// `-include("file.hrl")` is read relative to the including header's own
+/// directory. A path that climbs out of the app has no `(app, path)` form.
+fn relative_include(
+    app: &ApplicationName,
+    includer: &RelativePath,
+    text: &str,
+) -> Option<HeaderRef> {
+    if !is_plain_path(text) || text.starts_with('/') {
+        return None;
+    }
+    let mut segments: Vec<&str> = includer.as_str().split('/').collect();
+    segments.pop();
+    for segment in text.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            other => segments.push(other),
+        }
+    }
+    Some(HeaderRef {
+        app: app.clone(),
+        app_path: RelativePath::new(segments.join("/")).ok()?,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]

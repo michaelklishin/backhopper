@@ -12,13 +12,12 @@ use std::str;
 
 use serde::Serialize;
 
+use backhopper_core::erlang_mk::{DepPin, parse_components_mk};
 use backhopper_core::model::names::{ProjectName, SeriesName, TagName};
 use backhopper_git::GitRepo;
 
 use crate::cli::{GlobalArgs, InitCmd};
-use crate::commands::rabbitmq_components::{
-    DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
-};
+use crate::commands::rabbitmq_components::{dep_to_tag, series_name_for_branch};
 use crate::commands::series::resolve_branch;
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render_with_exit};
@@ -143,7 +142,7 @@ fn infer_from_rabbitmq(repo_dir: &Path, branches: &[String]) -> CliResult<Inferr
                 };
                 let mut pins: Vec<InferredPin> = Vec::new();
                 for dep in deps {
-                    let Ok(project_name) = ProjectName::new(dep.name.clone()) else {
+                    let Ok(project_name) = ProjectName::new(dep.name.as_str()) else {
                         workspace.skipped.push(SkippedBranch {
                             branch: branch.clone(),
                             reason: format!("dep {:?}: not a valid project name", dep.name),

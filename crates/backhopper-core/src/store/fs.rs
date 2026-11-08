@@ -5,13 +5,13 @@
 //! Filesystem-backed snapshot store with `ReadOnly`/`Mutable` type-state.
 
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 
 use crate::errors::StoreError;
 use crate::model::names::{ProjectName, TagName};
-use crate::model::snapshot::{Snapshot, state};
+use crate::model::snapshot::{Snapshot, SnapshotHeader, state};
 use crate::snapshot::{format, parser};
 
 mod private {
@@ -86,6 +86,22 @@ impl<M: StoreMode> SnapshotStore<M> {
         Ok(path)
     }
 
+    fn existing_snapshot_path(
+        &self,
+        project: &ProjectName,
+        tag: &TagName,
+    ) -> Result<PathBuf, StoreError> {
+        let path = self.snapshot_path(project, tag)?;
+        if path.exists() {
+            Ok(path)
+        } else {
+            Err(StoreError::SnapshotNotFound {
+                project: project.to_string(),
+                tag: tag.to_string(),
+            })
+        }
+    }
+
     pub fn list_tags(&self, project: &ProjectName) -> Result<Vec<TagName>, StoreError> {
         let dir = self.project_dir(project);
         if !dir.exists() {
@@ -117,16 +133,35 @@ impl<M: StoreMode> SnapshotStore<M> {
         project: &ProjectName,
         tag: &TagName,
     ) -> Result<Snapshot<state::Canonical>, StoreError> {
-        let path = self.snapshot_path(project, tag)?;
-        if !path.exists() {
-            return Err(StoreError::SnapshotNotFound {
-                project: project.to_string(),
-                tag: tag.to_string(),
-            });
-        }
-        let text = fs::read_to_string(&path)?;
+        let text = self.read_text(project, tag)?;
         let snapshot = parser::parse(&text).map_err(StoreError::Snapshot)?;
         Ok(snapshot)
+    }
+
+    /// The snapshot file as stored, so a caller can parse its header and
+    /// its body from one read.
+    pub fn read_text(&self, project: &ProjectName, tag: &TagName) -> Result<String, StoreError> {
+        let path = self.existing_snapshot_path(project, tag)?;
+        Ok(fs::read_to_string(&path)?)
+    }
+
+    /// Reads and parses only the header block of a snapshot file.
+    pub fn read_header(
+        &self,
+        project: &ProjectName,
+        tag: &TagName,
+    ) -> Result<SnapshotHeader, StoreError> {
+        let path = self.existing_snapshot_path(project, tag)?;
+        let mut header_text = String::new();
+        for line in BufReader::new(fs::File::open(&path)?).lines() {
+            let line = line?;
+            if !line.starts_with("# ") {
+                break;
+            }
+            header_text.push_str(&line);
+            header_text.push('\n');
+        }
+        parser::parse_header(&header_text).map_err(StoreError::Snapshot)
     }
 
     pub fn has(&self, project: &ProjectName, tag: &TagName) -> bool {
@@ -165,7 +200,7 @@ impl SnapshotStore<Mutable> {
             fs::create_dir_all(parent)?;
         }
         let temp = temp_sibling(&path);
-        let mut file = fs::File::create(&temp)?;
+        let mut file = BufWriter::new(fs::File::create(&temp)?);
         format::write(snapshot, &mut file).map_err(StoreError::Snapshot)?;
         file.flush()?;
         drop(file);

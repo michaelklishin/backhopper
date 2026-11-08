@@ -184,6 +184,16 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
+      - name: Publish backhopper-jigsaw
+        continue-on-error: true
+        uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+          package: backhopper-jigsaw
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
       - name: Wait for crates.io propagation
         run: sleep 30
 

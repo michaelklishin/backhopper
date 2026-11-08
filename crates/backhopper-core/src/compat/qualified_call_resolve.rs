@@ -448,7 +448,7 @@ fn resolve_extraction(
     reasons: &mut Vec<Reason>,
     tally: &mut IndirectCallTally,
 ) {
-    tally.withheld_dynamic += extraction.withheld_dynamic;
+    tally.withheld_dynamic += extraction.withheld_dynamic.len();
     let mut seen: BTreeSet<(ModuleName, FunctionName, Arity, IndirectCallForm)> = BTreeSet::new();
     for site in &extraction.sites {
         let (module, function, arity, via) = (

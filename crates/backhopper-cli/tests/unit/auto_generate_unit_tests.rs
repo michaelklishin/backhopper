@@ -15,12 +15,13 @@ use bel7_cli::{ExitCode, ExitCodeProvider};
 
 use backhopper_cli::CliError;
 use backhopper_cli::commands::auto_generate::{
-    ExtractorFreshness, GenerateAction, PinCoverageStatus, coverage_report, extractor_freshness,
-    generate_action, missing_pins, missing_snapshots_error,
+    ExtractorFreshness, GenerateAction, PinCoverageStatus, Presence, coverage_report,
+    extractor_freshness, generate_action, missing_pins, missing_snapshots_error,
 };
 use backhopper_core::config::Config;
-use backhopper_core::model::names::CommitSha;
+use backhopper_core::model::names::{ApplicationName, CommitSha, ExtractionSettingsDigest};
 use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, state};
+use backhopper_core::snapshot::freshness::{StaleReason, extraction_settings_digest};
 use std::str::FromStr;
 use time::OffsetDateTime;
 
@@ -66,8 +67,14 @@ fn missing_snapshots_error_groups_remediation_by_project() {
     assert!(hint.contains("v2.16.13"));
 }
 
-fn synthetic_header(project: &str, tag: &str, extractor_version: &str) -> SnapshotHeader {
+fn synthetic_header(
+    project: &str,
+    tag: &str,
+    extractor_version: &str,
+    extraction_settings: Option<ExtractionSettingsDigest>,
+) -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag).unwrap(),
         branch: None,
@@ -79,6 +86,7 @@ fn synthetic_header(project: &str, tag: &str, extractor_version: &str) -> Snapsh
         extractor_version: extractor_version.to_owned(),
         format_version: FORMAT_VERSION,
         dep_pins: Vec::new(),
+        host_facts: None,
     }
 }
 
@@ -87,10 +95,11 @@ fn write_synthetic_snapshot(
     project: &str,
     tag: &str,
     extractor_version: &str,
+    extraction_settings: Option<ExtractionSettingsDigest>,
 ) {
     let mut_store = SnapshotStore::open_mut(store_path).unwrap();
     let snap = Snapshot::<state::Unsorted>::from_extracted(
-        synthetic_header(project, tag, extractor_version),
+        synthetic_header(project, tag, extractor_version, extraction_settings),
         Vec::new(),
         Vec::new(),
     )
@@ -98,10 +107,18 @@ fn write_synthetic_snapshot(
     mut_store.write(&snap).unwrap();
 }
 
-fn empty_config(dir: &std::path::Path) -> Config {
+fn ra_config(dir: &std::path::Path) -> Config {
     let cfg_path = dir.join("backhopper.toml");
-    std::fs::write(&cfg_path, "").unwrap();
-    Config::load(&cfg_path).expect("trivial config parses")
+    std::fs::write(
+        &cfg_path,
+        "config_version = 1\n[[project]]\nname = \"ra\"\ngit_url = \"/nonexistent/ra.git\"\n",
+    )
+    .unwrap();
+    Config::load(&cfg_path).expect("a one-project config parses")
+}
+
+fn ra_settings(cfg: &Config) -> ExtractionSettingsDigest {
+    extraction_settings_digest(cfg.project(&ProjectName::new("ra").unwrap()).unwrap())
 }
 
 #[test]
@@ -109,7 +126,7 @@ fn coverage_report_marks_missing_pins() {
     let tmp = TempDir::new().unwrap();
     let store = SnapshotStore::open(tmp.path()).unwrap();
     let pins = vec![pin("ra", "v3.1.7")];
-    let report = coverage_report(&empty_config(tmp.path()), &store, &pins);
+    let report = coverage_report(&ra_config(tmp.path()), &store, &pins);
     assert_eq!(report.len(), 1);
     assert!(matches!(report[0].status, PinCoverageStatus::Missing));
 }
@@ -118,10 +135,17 @@ fn coverage_report_marks_missing_pins() {
 fn coverage_report_marks_present_pins() {
     let tmp = TempDir::new().unwrap();
     let extractor = backhopper_erlang::EXTRACTOR_VERSION;
-    write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", extractor);
+    let cfg = ra_config(tmp.path());
+    write_synthetic_snapshot(
+        tmp.path(),
+        "ra",
+        "v3.1.7",
+        extractor,
+        Some(ra_settings(&cfg)),
+    );
     let store = SnapshotStore::open(tmp.path()).unwrap();
     let pins = vec![pin("ra", "v3.1.7")];
-    let report = coverage_report(&empty_config(tmp.path()), &store, &pins);
+    let report = coverage_report(&cfg, &store, &pins);
     assert_eq!(report.len(), 1);
     assert!(matches!(report[0].status, PinCoverageStatus::Present));
 }
@@ -129,10 +153,10 @@ fn coverage_report_marks_present_pins() {
 #[test]
 fn coverage_report_flags_stale_extractor() {
     let tmp = TempDir::new().unwrap();
-    write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "stale-version");
+    write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "stale-version", None);
     let store = SnapshotStore::open(tmp.path()).unwrap();
     let pins = vec![pin("ra", "v3.1.7")];
-    let report = coverage_report(&empty_config(tmp.path()), &store, &pins);
+    let report = coverage_report(&ra_config(tmp.path()), &store, &pins);
     assert_eq!(report.len(), 1);
     match &report[0].status {
         PinCoverageStatus::StaleExtractor { stored, expected } => {
@@ -148,10 +172,10 @@ fn coverage_report_flags_an_empty_extractor_version_as_unversioned() {
     // a snapshot with no extractor-version header predates versioning
     // and is the most suspect file in the store, not the healthiest
     let tmp = TempDir::new().unwrap();
-    write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "");
+    write_synthetic_snapshot(tmp.path(), "ra", "v3.1.7", "", None);
     let store = SnapshotStore::open(tmp.path()).unwrap();
     let pins = vec![pin("ra", "v3.1.7")];
-    let report = coverage_report(&empty_config(tmp.path()), &store, &pins);
+    let report = coverage_report(&ra_config(tmp.path()), &store, &pins);
     assert_eq!(report.len(), 1);
     match &report[0].status {
         PinCoverageStatus::Unversioned {
@@ -219,7 +243,7 @@ fn missing_snapshots_error_variant_round_trips() {
 }
 
 fn header_with(extractor_version: &str, format_version: u32) -> SnapshotHeader {
-    let mut header = synthetic_header("ra", "v3.1.7", extractor_version);
+    let mut header = synthetic_header("ra", "v3.1.7", extractor_version, None);
     header.format_version = format_version;
     header
 }
@@ -262,45 +286,45 @@ fn generate_action_builds_when_nothing_is_present() {
 #[test]
 fn generate_action_skips_a_current_snapshot_regardless_of_the_flag() {
     assert_eq!(
-        generate_action(Some(&ExtractorFreshness::Current), false),
+        generate_action(Some(&Presence::Current), false),
         GenerateAction::Skip
     );
     assert_eq!(
-        generate_action(Some(&ExtractorFreshness::Current), true),
+        generate_action(Some(&Presence::Current), true),
         GenerateAction::Skip
     );
 }
 
 #[test]
 fn generate_action_skips_a_stale_snapshot_without_the_flag() {
-    let stale = ExtractorFreshness::Stale {
-        stored: "6".to_owned(),
-    };
+    let stale = Presence::Outdated(StaleReason::ExtractorVersion {
+        found: "6".to_owned(),
+    });
     assert_eq!(generate_action(Some(&stale), false), GenerateAction::Skip);
 }
 
 #[test]
 fn generate_action_refreshes_a_stale_snapshot_with_the_flag() {
-    let stale = ExtractorFreshness::Stale {
-        stored: "6".to_owned(),
-    };
+    let stale = Presence::Outdated(StaleReason::ExtractorVersion {
+        found: "6".to_owned(),
+    });
     assert_eq!(generate_action(Some(&stale), true), GenerateAction::Refresh);
 }
 
 #[test]
-fn generate_action_skips_an_unversioned_snapshot_without_the_flag() {
-    let unversioned = ExtractorFreshness::Unversioned { format_version: 1 };
+fn generate_action_skips_a_snapshot_with_other_settings_without_the_flag() {
+    let other_settings = Presence::Outdated(StaleReason::ExtractionSettings);
     assert_eq!(
-        generate_action(Some(&unversioned), false),
+        generate_action(Some(&other_settings), false),
         GenerateAction::Skip
     );
 }
 
 #[test]
-fn generate_action_refreshes_an_unversioned_snapshot_with_the_flag() {
-    let unversioned = ExtractorFreshness::Unversioned { format_version: 1 };
+fn generate_action_refreshes_a_snapshot_with_other_settings_with_the_flag() {
+    let other_settings = Presence::Outdated(StaleReason::ExtractionSettings);
     assert_eq!(
-        generate_action(Some(&unversioned), true),
+        generate_action(Some(&other_settings), true),
         GenerateAction::Refresh
     );
 }
@@ -315,5 +339,34 @@ fn as_write_drops_skip_and_keeps_build_and_refresh() {
     assert_eq!(
         GenerateAction::Refresh.as_write(),
         Some(backhopper_cli::commands::auto_generate::WriteKind::Refresh)
+    );
+}
+
+#[test]
+fn coverage_report_flags_a_snapshot_made_with_other_extraction_settings() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = ra_config(tmp.path());
+    let other = extraction_settings_digest(&{
+        let mut project = cfg
+            .project(&ProjectName::new("ra").unwrap())
+            .unwrap()
+            .clone();
+        project.exclude_apps = vec![ApplicationName::new("ra_machine").unwrap()];
+        project
+    });
+    write_synthetic_snapshot(
+        tmp.path(),
+        "ra",
+        "v3.1.7",
+        backhopper_erlang::EXTRACTOR_VERSION,
+        Some(other),
+    );
+    let store = SnapshotStore::open(tmp.path()).unwrap();
+    let report = coverage_report(&cfg, &store, &[pin("ra", "v3.1.7")]);
+    assert_eq!(
+        report[0].status,
+        PinCoverageStatus::Outdated {
+            reason: StaleReason::ExtractionSettings
+        }
     );
 }

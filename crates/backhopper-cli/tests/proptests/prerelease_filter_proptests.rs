@@ -30,6 +30,7 @@ fn project_with_markers(markers: Vec<String>) -> Project {
         tag_pattern: None,
         min_tag: None,
         exclude_tag_markers: markers,
+        manifest: Default::default(),
     }
 }
 

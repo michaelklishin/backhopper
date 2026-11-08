@@ -10,9 +10,8 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::snapshot::state::Canonical;
 use backhopper_core::model::snapshot::{
-    CallbackSig, FORMAT_VERSION, FunArity, HrlFile, Module, Provenance, RecordDecl, RecordField,
-    Snapshot, SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding,
-    WireValue,
+    CallbackSig, FunArity, HrlFile, Module, Provenance, RecordDecl, RecordField, Snapshot,
+    SnapshotHeader, TypeArity, TypeDecl, VersionedMachineVersion, WireConstantBinding, WireValue,
 };
 
 use backhopper_cli::commands::snapshots::{compute_diff, render_diff_text};
@@ -22,6 +21,7 @@ use backhopper_core::model::snapshot_diff::{
 
 fn header(project: &str, tag: &str) -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag).unwrap(),
         branch: None,
@@ -31,8 +31,9 @@ fn header(project: &str, tag: &str) -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     }
 }
 
@@ -205,6 +206,7 @@ fn records_added_and_removed_are_header_qualified() {
         fields: vec![RecordField {
             name: FieldName::new("f").unwrap(),
             type_repr: None,
+            default: None,
         }],
     });
     let mut b_hrl = HrlFile::new(RelativePath::new("include/x.hrl").unwrap());

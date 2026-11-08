@@ -13,6 +13,7 @@ use crate::model::wire_envelope::WireEnvelope;
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use crate::jigsaw::{JigsawCheckPayload, JigsawPlanPayload};
 use crate::model::batch::BatchPayload;
 use crate::model::cache::{
     CacheListPayload, CacheMutationPayload, CacheShowPayload, CacheStatsPayload,
@@ -66,6 +67,9 @@ const SCHEMA_V15_FROZEN: &str = include_str!("schema_v15_snapshot.json");
 /// `SchemaFeatureUnsupportedOnPin`, `SchemaKeyReaderMissing`) and
 /// `Diagnostics.dormant_detectors` to the live types.
 const SCHEMA_V16_FROZEN: &str = include_str!("schema_v16_snapshot.json");
+/// v17 froze when v18 registered the `jigsaw plan` and `jigsaw check`
+/// payloads in the live document.
+const SCHEMA_V17_FROZEN: &str = include_str!("schema_v17_snapshot.json");
 
 /// Errors that can come out of schema generation.
 #[derive(Debug, Error)]
@@ -111,7 +115,8 @@ const EMBEDDED: &[(u32, Embedded)] = &[
     (14, Embedded::Frozen(SCHEMA_V14_FROZEN)),
     (15, Embedded::Frozen(SCHEMA_V15_FROZEN)),
     (16, Embedded::Frozen(SCHEMA_V16_FROZEN)),
-    (17, Embedded::Derived(combined_v17)),
+    (17, Embedded::Frozen(SCHEMA_V17_FROZEN)),
+    (18, Embedded::Derived(combined_v18)),
 ];
 
 const _: () = {
@@ -187,14 +192,11 @@ fn combined_v6() -> Value {
     v5
 }
 
-fn combined_v17() -> Value {
+fn combined_v18() -> Value {
     combined_live(
-        17,
-        "v17 (doc 025, the six family specializations): six new `Reason` variants \
-         (`BehaviourCallbackUnknownOnPin`, `BehaviourCallbackMissingOnPin`, \
-         `OptionKeyUnknownOnPin`, `SuiteNotRegisteredForCt`, \
-         `SchemaFeatureUnsupportedOnPin`, `SchemaKeyReaderMissing`), the \
-         `DriftEvidence` enum one of them carries, and `Diagnostics.dormant_detectors`.",
+        18,
+        "v18: the `jigsaw plan` and `jigsaw check` payloads (`jigsaw_plan_payload`, \
+         `jigsaw_check_payload`). No existing payload changed.",
     )
 }
 
@@ -216,6 +218,10 @@ fn combined_live(version: u32, description: &str) -> Value {
         .expect("CacheMutationPayload schema serialises");
     let suite_plan_payload =
         serde_json::to_value(schema_for!(SuitePlan)).expect("SuitePlan schema serialises");
+    let jigsaw_plan_payload = serde_json::to_value(schema_for!(JigsawPlanPayload))
+        .expect("JigsawPlanPayload schema serialises");
+    let jigsaw_check_payload = serde_json::to_value(schema_for!(JigsawCheckPayload))
+        .expect("JigsawCheckPayload schema serialises");
     let Value::Object(mut obj) = series else {
         unreachable!("envelope_with_payload always returns a Value::Object")
     };
@@ -226,6 +232,8 @@ fn combined_live(version: u32, description: &str) -> Value {
     obj.insert("cache_show_payload".into(), cache_show_payload);
     obj.insert("cache_mutation_payload".into(), cache_mutation_payload);
     obj.insert("suite_plan_payload".into(), suite_plan_payload);
+    obj.insert("jigsaw_plan_payload".into(), jigsaw_plan_payload);
+    obj.insert("jigsaw_check_payload".into(), jigsaw_check_payload);
     obj.insert("schema_version".into(), json!(version));
     obj.insert(
         "title".into(),

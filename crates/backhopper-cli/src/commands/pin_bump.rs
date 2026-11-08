@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use backhopper_core::config::Config;
+use backhopper_core::erlang_mk::DepPin;
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::verdict::{BumpStatus, PinBump, SeriesEvaluation};
@@ -22,7 +23,7 @@ use backhopper_core::store::{ReadOnly, SnapshotStore};
 use crate::cli::GlobalArgs;
 use crate::commands::auto_generate::{generate_one_pin, snapshot_generate_command};
 use crate::commands::context::open_store_mut;
-use crate::commands::rabbitmq_components::{DepPin, dep_to_tag};
+use crate::commands::rabbitmq_components::dep_to_tag;
 
 /// Where a detected bump's `to` side leads.
 enum BumpTarget {
@@ -40,7 +41,7 @@ fn bump_target(cfg: &Config, bump: &PinBump) -> BumpTarget {
     let Ok(project) = cfg.project(&project_name) else {
         return BumpTarget::Untracked;
     };
-    let Some(pin) = DepPin::parse_display(bump.dep.as_str(), &bump.to) else {
+    let Some(pin) = DepPin::parse_display(&bump.dep, &bump.to) else {
         return BumpTarget::Unresolved;
     };
     match TagName::from_str(&dep_to_tag(&pin, &project.tag_prefix)) {

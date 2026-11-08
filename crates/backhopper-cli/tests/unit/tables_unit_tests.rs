@@ -14,7 +14,7 @@ use backhopper_core::model::names::{
 };
 use backhopper_core::model::pin::Pin;
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
+    FunArity, Module, Snapshot, SnapshotHeader, Visibility, state,
 };
 use backhopper_core::model::symbol::SymbolRef;
 use backhopper_core::model::verdict::{
@@ -38,6 +38,7 @@ const ALL_TABLE_STYLES: &[TableStyle] = &[
 
 fn header(project: &str) -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new("v1.0.0").unwrap(),
         branch: None,
@@ -47,8 +48,9 @@ fn header(project: &str) -> SnapshotHeader {
         generated_by: "test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     }
 }
 

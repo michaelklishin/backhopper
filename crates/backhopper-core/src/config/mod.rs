@@ -4,8 +4,13 @@
 
 //! `backhopper.toml` schema and loader.
 
+mod host;
 mod path_translation;
 
+pub use host::{
+    ERLANG_OTP_TAG_PREFIX, ErlangSupport, ErlangSupportRaw, Host, HostConfigError, HostPinsRaw,
+    HostRaw, MakefileVariableRaw, PinSource, PinSourceKind, ReleaseRootsRaw,
+};
 pub use path_translation::{
     PathTranslation, PathTranslations, TranslationDirection, TranslationOrigin,
 };
@@ -20,9 +25,10 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::errors::{ConfigError, NameError};
+use crate::model::app_manifest::ManifestSource;
 use crate::model::names::{
-    ApplicationName, BehaviourName, FunctionName, GitRef, MacroName, ModuleName, ProjectName,
-    SeriesName, TagGlob, TagName, TypeName, vocabulary,
+    ApplicationName, BehaviourName, FunctionName, GitRef, HostName, MacroName, ModuleName,
+    ProjectName, SeriesName, TagGlob, TagName, TypeName, vocabulary,
 };
 use crate::model::pin::{self, Pin, PinSelect, PinSpec};
 use crate::store::{SnapshotStore, StoreMode};
@@ -73,6 +79,9 @@ pub struct ConfigFile {
 
     #[serde(default, rename = "series")]
     pub series: Vec<SeriesRaw>,
+
+    #[serde(default, rename = "host")]
+    pub hosts: Vec<HostRaw>,
 
     #[serde(default, rename = "suite_rule")]
     pub suite_rules: Vec<SuiteRuleRaw>,
@@ -193,6 +202,7 @@ pub struct ProjectRaw {
     #[serde(alias = "oldest_tag")]
     pub min_tag: Option<String>,
     pub exclude_tag_markers: Option<Vec<String>>,
+    pub manifest: Option<String>,
 }
 
 vocabulary!(
@@ -599,6 +609,7 @@ impl ProjectLayout {
                     .collect(),
                 tag_pattern: Some(TagGlob::new(ERLANG_OTP_TAG_PATTERN).expect("static tag glob")),
                 min_tag: Some(TagName::new(ERLANG_OTP_MIN_TAG).expect("static tag")),
+                tag_prefix: Some(ERLANG_OTP_TAG_PREFIX.to_owned()),
             },
         }
     }
@@ -612,6 +623,7 @@ pub struct LayoutDefaults {
     pub excluded_subdirs: Vec<String>,
     pub tag_pattern: Option<TagGlob>,
     pub min_tag: Option<TagName>,
+    pub tag_prefix: Option<String>,
 }
 
 /// A project's snapshots come from cloning `git_url`, or from the working
@@ -666,6 +678,7 @@ pub struct Project {
     pub tag_pattern: Option<TagGlob>,
     pub min_tag: Option<TagName>,
     pub exclude_tag_markers: Vec<String>,
+    pub manifest: ManifestSource,
 }
 
 impl Project {
@@ -751,6 +764,7 @@ pub struct Config {
     pub cache: CacheSettings,
     pub projects: Vec<Project>,
     pub series: Vec<Series>,
+    pub hosts: Vec<Host>,
     pub suite_rules: Vec<ExtraRule>,
     pub path_translations: PathTranslations,
 }
@@ -846,6 +860,18 @@ impl Config {
                 target_ref: s.target_ref,
             });
         }
+        let config_dir = config_path.parent().unwrap_or(Path::new("."));
+        let mut hosts: Vec<Host> = Vec::with_capacity(raw.hosts.len());
+        for h in raw.hosts {
+            let host = Host::resolve(h, config_dir, &projects)?;
+            if hosts.iter().any(|existing| existing.name == host.name) {
+                return Err(HostConfigError::Duplicate {
+                    host: host.name.to_string(),
+                }
+                .into());
+            }
+            hosts.push(host);
+        }
         let mut suite_rules = Vec::with_capacity(raw.suite_rules.len());
         for (idx, r) in raw.suite_rules.into_iter().enumerate() {
             suite_rules.push(parse_suite_rule(idx, r)?);
@@ -857,6 +883,7 @@ impl Config {
             cache,
             projects,
             series,
+            hosts,
             suite_rules,
             path_translations,
         })
@@ -867,6 +894,13 @@ impl Config {
             .iter()
             .find(|p| &p.name == name)
             .ok_or_else(|| ConfigError::UnknownProject(name.to_string()))
+    }
+
+    pub fn host(&self, name: &HostName) -> Result<&Host, ConfigError> {
+        self.hosts
+            .iter()
+            .find(|h| &h.name == name)
+            .ok_or_else(|| ConfigError::UnknownHost(name.to_string()))
     }
 
     pub fn series_by_name(&self, name: &SeriesName) -> Result<&Series, ConfigError> {
@@ -1056,6 +1090,12 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
             .map(|s| (*s).to_owned())
             .collect()
     });
+    let manifest = p
+        .manifest
+        .as_deref()
+        .map(ManifestSource::from_str)
+        .transpose()?
+        .unwrap_or_default();
     let name = ProjectName::new(p.name).map_err(ConfigError::Name)?;
     if matches!(layout, ProjectLayout::MultiApp | ProjectLayout::ErlangOtp) && app_roots.is_empty()
     {
@@ -1093,7 +1133,10 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         source,
         family,
         language,
-        tag_prefix: p.tag_prefix.unwrap_or_else(|| String::from("v")),
+        tag_prefix: p
+            .tag_prefix
+            .or(layout_defaults.tag_prefix)
+            .unwrap_or_else(|| String::from("v")),
         public_modules: module_names(p.public_modules)?,
         internal_modules: module_names(p.internal_modules)?,
         layout,
@@ -1105,6 +1148,7 @@ fn parse_project(p: ProjectRaw, defaults: &Defaults) -> Result<Project, ConfigEr
         tag_pattern,
         min_tag,
         exclude_tag_markers,
+        manifest,
     })
 }
 

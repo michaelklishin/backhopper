@@ -9,15 +9,16 @@
 
 use proptest::prelude::*;
 
-use backhopper_cli::commands::auto_generate::{
-    ExtractorFreshness, GenerateAction, generate_action,
-};
+use backhopper_cli::commands::auto_generate::{GenerateAction, Presence, generate_action};
+use backhopper_core::snapshot::freshness::StaleReason;
 
-fn arb_freshness() -> impl Strategy<Value = ExtractorFreshness> {
+fn arb_freshness() -> impl Strategy<Value = Presence> {
     prop_oneof![
-        Just(ExtractorFreshness::Current),
-        "[a-z0-9]{0,6}".prop_map(|stored| ExtractorFreshness::Stale { stored }),
-        (0u32..10).prop_map(|format_version| ExtractorFreshness::Unversioned { format_version }),
+        Just(Presence::Current),
+        "[a-z0-9]{0,6}"
+            .prop_map(|found| Presence::Outdated(StaleReason::ExtractorVersion { found })),
+        (0u32..10).prop_map(|found| Presence::Outdated(StaleReason::FormatVersion { found })),
+        Just(Presence::Outdated(StaleReason::ExtractionSettings)),
     ]
 }
 
@@ -36,14 +37,14 @@ proptest! {
     ) {
         let action = generate_action(Some(&freshness), refresh_stale);
         prop_assert_ne!(action, GenerateAction::Build);
-        prop_assert_eq!(action == GenerateAction::Refresh, refresh_stale && freshness != ExtractorFreshness::Current);
+        prop_assert_eq!(action == GenerateAction::Refresh, refresh_stale && freshness != Presence::Current);
     }
 
     #[test]
     fn current_never_refreshes(
         refresh_stale in any::<bool>(),
     ) {
-        let action = generate_action(Some(&ExtractorFreshness::Current), refresh_stale);
+        let action = generate_action(Some(&Presence::Current), refresh_stale);
         prop_assert_eq!(action, GenerateAction::Skip);
     }
 }

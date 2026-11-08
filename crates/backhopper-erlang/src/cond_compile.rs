@@ -15,6 +15,7 @@ pub struct CondStack {
 
 #[derive(Debug, Clone)]
 struct Frame {
+    include_guard: bool,
     is_test_only: bool,
     // -else toggles the test-only tag only for -ifdef(TEST) and -ifndef(TEST); other idents leave it unchanged
     else_flips_test_only: bool,
@@ -29,9 +30,26 @@ impl CondStack {
         self.frames.iter().any(|f| f.is_test_only)
     }
 
+    pub fn under_non_test_condition(&self) -> bool {
+        self.frames
+            .iter()
+            .any(|f| !f.else_flips_test_only && !f.include_guard)
+    }
+
+    /// Marks the innermost region as an include guard: an
+    /// `-ifndef(NAME)` whose first form defines `NAME`. Its contents are
+    /// live the first time the header is included, so they are not
+    /// conditional.
+    pub fn mark_include_guard(&mut self) {
+        if let Some(f) = self.frames.last_mut() {
+            f.include_guard = true;
+        }
+    }
+
     pub fn push_ifdef(&mut self, ident: &str) {
         let is_test = ident == "TEST";
         self.frames.push(Frame {
+            include_guard: false,
             is_test_only: is_test,
             else_flips_test_only: is_test,
         });
@@ -40,6 +58,7 @@ impl CondStack {
     pub fn push_ifndef(&mut self, ident: &str) {
         let is_test = ident == "TEST";
         self.frames.push(Frame {
+            include_guard: false,
             is_test_only: false,
             else_flips_test_only: is_test,
         });
@@ -47,6 +66,7 @@ impl CondStack {
 
     pub fn push_if(&mut self, _expr: &str) {
         self.frames.push(Frame {
+            include_guard: false,
             is_test_only: false,
             else_flips_test_only: false,
         });

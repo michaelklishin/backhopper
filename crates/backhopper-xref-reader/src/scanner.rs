@@ -286,9 +286,32 @@ pub fn walk_paren_group(
     sc.advance();
     let mut depth = 1i32;
     let mut commas: u32 = 0;
+    let mut blocks = 0u32;
     let mut had_content = false;
     let mut closed = false;
+    let mut in_word = false;
     while let Some(byte) = sc.peek() {
+        let at_word_start = !in_word;
+        in_word = byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'@');
+        if at_word_start && byte.is_ascii_lowercase() {
+            match block_effect(sc) {
+                BlockEffect::Open(len) => {
+                    blocks += 1;
+                    had_content = true;
+                    advance_by(sc, len);
+                    in_word = false;
+                    continue;
+                }
+                BlockEffect::Close(len) => {
+                    blocks = blocks.saturating_sub(1);
+                    had_content = true;
+                    advance_by(sc, len);
+                    in_word = false;
+                    continue;
+                }
+                BlockEffect::None => {}
+            }
+        }
         match byte {
             b'(' => {
                 depth += 1;
@@ -324,7 +347,7 @@ pub fn walk_paren_group(
                 sc.advance();
                 sc.advance();
             }
-            b',' if depth == 1 => {
+            b',' if depth == 1 && blocks == 0 => {
                 commas += 1;
                 sc.advance();
             }
@@ -359,6 +382,54 @@ pub fn walk_paren_group(
         commas,
         had_content,
         closed,
+    }
+}
+
+enum BlockEffect {
+    Open(usize),
+    Close(usize),
+    None,
+}
+
+const BLOCK_OPENERS: &[&str] = &["case", "if", "receive", "try", "begin", "maybe"];
+
+/// Classifies the word at the cursor: a keyword that opens an `end`-closed
+/// block (a `fun` only when it is a fun expression, not `fun m:f/a`), the
+/// `end` that closes one, or neither. Commas inside a block are statement
+/// separators, not arguments.
+fn block_effect(sc: &mut Scanner<'_>) -> BlockEffect {
+    let start = sc.pos();
+    let word = sc.consume_identifier();
+    let len = word.len();
+    let effect = if word == "end" {
+        BlockEffect::Close(len)
+    } else if BLOCK_OPENERS.contains(&word) || (word == "fun" && opens_fun_expression(sc)) {
+        BlockEffect::Open(len)
+    } else {
+        BlockEffect::None
+    };
+    sc.set_pos(start);
+    effect
+}
+
+/// After `fun`: `(` starts a fun expression, and so does a name followed by
+/// `(` (a named fun); `m:f/a` and `f/a` do not.
+fn opens_fun_expression(sc: &mut Scanner<'_>) -> bool {
+    sc.skip_trivia();
+    if sc.peek() == Some(b'(') {
+        return true;
+    }
+    let name = sc.consume_identifier();
+    if name.is_empty() {
+        return false;
+    }
+    sc.skip_trivia();
+    sc.peek() == Some(b'(')
+}
+
+fn advance_by(sc: &mut Scanner<'_>, len: usize) {
+    for _ in 0..len {
+        sc.advance();
     }
 }
 

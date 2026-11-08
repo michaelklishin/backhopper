@@ -10,7 +10,10 @@ use std::path::Path;
 use tempfile::TempDir;
 
 use crate::helpers::cli::{run, stdout};
+use backhopper_core::config::Config;
+use backhopper_core::model::names::ProjectName;
 use backhopper_core::schema::CURRENT_SCHEMA_VERSION;
+use backhopper_core::snapshot::freshness::extraction_settings_digest;
 
 fn write(p: &Path, body: &str) {
     if let Some(parent) = p.parent() {
@@ -35,10 +38,13 @@ fn write_unversioned_snapshot(snapshot_dir: &Path, project: &str, tag: &str) {
     write(&path, &body);
 }
 
-fn write_current_snapshot(snapshot_dir: &Path, project: &str, tag: &str) {
+fn write_current_snapshot(cfg: &Path, snapshot_dir: &Path, project: &str, tag: &str) {
+    let cfg = Config::load(cfg).unwrap();
+    let settings =
+        extraction_settings_digest(cfg.project(&ProjectName::new(project).unwrap()).unwrap());
     let path = snapshot_dir.join(project).join(format!("{tag}.api.txt"));
     let body = format!(
-        "# format-version: 4\n# project: {project}\n# tag: {tag}\n# commit: 0000000000000000000000000000000000000000\n# generated-by: test\n# generated-at: 2026-05-23T00:00:00Z\n# extractor-version: {}\n\n",
+        "# format-version: 5\n# project: {project}\n# tag: {tag}\n# commit: 0000000000000000000000000000000000000000\n# generated-by: test\n# generated-at: 2026-05-23T00:00:00Z\n# extractor-version: {}\n# extraction-settings: {settings}\n\n",
         backhopper_erlang::EXTRACTOR_VERSION,
     );
     write(&path, &body);
@@ -80,7 +86,7 @@ fn doctor_reports_covered_when_snapshot_present() {
     let cfg = write_config(tmp.path(), MIN_CONFIG);
     let snapshots = tmp.path().join("snapshots");
     std::fs::create_dir_all(&snapshots).unwrap();
-    write_current_snapshot(&snapshots, "ra", "v2.16.13");
+    write_current_snapshot(&cfg, &snapshots, "ra", "v2.16.13");
     let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
     let text = stdout(&a);
     a.success();
@@ -186,4 +192,25 @@ pins = [{ project = "ra", tag = "v2.0.0" }]
         text.contains("not pinned by any series: khepri"),
         "stdout: {text}"
     );
+}
+
+#[test]
+fn doctor_flags_a_snapshot_made_with_other_extraction_settings_as_outdated() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = write_config(tmp.path(), MIN_CONFIG);
+    let snapshots = tmp.path().join("snapshots");
+    write_current_snapshot(&cfg, &snapshots, "ra", "v2.16.13");
+    let changed = MIN_CONFIG.replace(
+        "git_url = \"/nonexistent/ra.git\"",
+        "git_url = \"/nonexistent/ra.git\"\nmanifest = \"erlang_mk\"",
+    );
+    write_config(tmp.path(), &changed);
+    let a = run(["--config-file-path", cfg.to_str().unwrap(), "doctor"]);
+    let text = stdout(&a);
+    a.code(3);
+    assert!(text.contains("1/1 pin(s) present"), "stdout: {text}");
+    assert!(text.contains("1 outdated"), "stdout: {text}");
+    assert!(text.contains("OUTDATED"), "stdout: {text}");
+    assert!(text.contains("other extraction settings"), "stdout: {text}");
+    assert!(text.contains("--refresh-stale"), "stdout: {text}");
 }

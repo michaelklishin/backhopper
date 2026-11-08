@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand};
 
 use backhopper_core::model::names::{Mfa, ModuleName, ProjectName, SeriesName, TagName};
+
+use crate::commands::parallel::Jobs;
 
 /// The required `--project` and `--tag` pair, shared by the snapshot
 /// verbs that read a single snapshot.
@@ -56,6 +60,14 @@ pub enum SnapshotsCmd {
         /// this flag a tag with a snapshot is always skipped.
         #[arg(long)]
         refresh_stale: bool,
+        /// Build what a `jigsaw plan` file lists as missing, stale or at a
+        /// different commit.
+        #[arg(long, conflicts_with_all = ["project", "since", "series"])]
+        from_jigsaw_plan: Option<PathBuf>,
+        /// How many snapshots to build at once. Defaults to the number of
+        /// cores, up to 32.
+        #[arg(long)]
+        jobs: Option<Jobs>,
     },
     /// List existing snapshots for a project.
     List {

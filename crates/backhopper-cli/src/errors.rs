@@ -12,9 +12,14 @@ use thiserror::Error;
 
 use backhopper_core::Error as CoreError;
 use backhopper_core::errors::{ConfigError, NameError, PatchError, SnapshotError, StoreError};
+use backhopper_core::jigsaw::plugin_set::PluginSetError;
+use backhopper_core::jigsaw::{PlanError, UnstockedPlan};
 use backhopper_core::model::names::SeriesName;
 use backhopper_core::model::pin::Pin;
 use backhopper_git::{GitError, PatchInputError};
+use backhopper_jigsaw::CollectError;
+
+use crate::commands::plugin_tree::PluginTreeError;
 
 pub type CliResult<T> = Result<T, CliError>;
 
@@ -51,6 +56,21 @@ pub enum CliError {
         root: PathBuf,
     },
 
+    #[error(transparent)]
+    Plan(#[from] PlanError),
+
+    #[error("the plan is not stocked: {} snapshot(s) are missing, stale or at another commit", .0.gaps().len())]
+    UnstockedPlan(UnstockedPlan),
+
+    #[error("reading the plugin directories: {0}")]
+    PluginTree(#[from] PluginTreeError),
+
+    #[error("the plugin set is not checkable: {0}")]
+    PluginSet(#[from] PluginSetError),
+
+    #[error("reading the plugin set: {0}")]
+    Collect(#[from] CollectError),
+
     #[error("series {series} has no self-pin to derive the target branch from")]
     SeriesHasNoSelfPin { series: SeriesName },
 
@@ -75,6 +95,10 @@ impl ExitCodeProvider for CliError {
     fn exit_code(&self) -> ExitCode {
         match self {
             Self::Core(e) => map_core(e),
+            Self::Plan(e) => map_plan(e),
+            Self::UnstockedPlan(_) | Self::PluginSet(_) | Self::Collect(_) => codes::DATA_ERR,
+            Self::PluginTree(PluginTreeError::Io { .. }) => codes::IO_ERR,
+            Self::PluginTree(_) => codes::DATA_ERR,
             Self::Git(_) => codes::IO_ERR,
             Self::Io(_) => codes::IO_ERR,
             Self::ConfigNotFound { .. } => codes::NO_INPUT,
@@ -128,6 +152,9 @@ impl CliError {
                 "ensure the input is a unified diff (e.g. `git format-patch -1 --stdout`)".into(),
             ),
             Self::MissingSnapshots { remediation, .. } => Some(remediation.clone()),
+            Self::UnstockedPlan(_) => Some(
+                "run `backhopper snapshots generate --from-jigsaw-plan <plan file>` with the plan from `jigsaw plan`, or restore the snapshot cache, then retry".into(),
+            ),
             Self::SeriesHasNoSelfPin { .. } => Some(
                 "pass `--target-branch <REF>`, or add a self-pin (`branch = \"...\"`) to the series"
                     .into(),
@@ -151,6 +178,14 @@ impl CliError {
                 let mut out = String::from("missing:\n");
                 for pin in missing {
                     out.push_str(&format!("  {} @ {}\n", pin.project, pin.tag));
+                }
+                out.pop();
+                Some(out)
+            }
+            Self::UnstockedPlan(unstocked) => {
+                let mut out = String::from("snapshots to generate:\n");
+                for (pin, gap) in unstocked.gaps() {
+                    out.push_str(&format!("  {gap} {} @ {}\n", pin.project, pin.tag));
                 }
                 out.pop();
                 Some(out)
@@ -245,6 +280,23 @@ fn tried_display(paths: &[PathBuf]) -> String {
         .join(", ")
 }
 
+fn map_plan(e: &PlanError) -> ExitCode {
+    match e {
+        PlanError::Config(c) => map_config(c),
+        PlanError::ReleaseUnreadable { .. } | PlanError::Wire { .. } => codes::DATA_ERR,
+        PlanError::Store(_) => codes::IO_ERR,
+        _ => codes::CONFIG,
+    }
+}
+
+fn map_config(e: &ConfigError) -> ExitCode {
+    match e {
+        ConfigError::NotFound(_) => codes::NO_INPUT,
+        ConfigError::UnknownHost(_) | ConfigError::Host(_) => codes::CONFIG,
+        _ => codes::DATA_ERR,
+    }
+}
+
 fn map_core(e: &CoreError) -> ExitCode {
     match e {
         CoreError::Snapshot(_) => codes::DATA_ERR,
@@ -252,10 +304,7 @@ fn map_core(e: &CoreError) -> ExitCode {
             StoreError::SnapshotNotFound { .. } | StoreError::RootMissing(_) => codes::NO_INPUT,
             _ => codes::IO_ERR,
         },
-        CoreError::Config(c) => match c {
-            ConfigError::NotFound(_) => codes::NO_INPUT,
-            _ => codes::DATA_ERR,
-        },
+        CoreError::Config(c) => map_config(c),
         CoreError::Io(_) => codes::IO_ERR,
         CoreError::Patch(_) => codes::DATA_ERR,
         CoreError::Name(_) => codes::USAGE,

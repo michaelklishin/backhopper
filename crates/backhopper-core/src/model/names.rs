@@ -13,6 +13,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::NameError;
+use crate::model::release_version::HostSeries;
 
 const MAX_PROJECT_NAME_LEN: usize = 64;
 const MAX_SERIES_NAME_LEN: usize = 64;
@@ -520,6 +521,275 @@ fn validate_macro_name(kind: &'static str, value: &str, max_len: usize) -> Resul
         |c| c.is_ascii_alphanumeric() || c == '_',
         "letter or underscore, then letters digits underscores",
     )
+}
+
+const MAX_CONF_KEY_LEN: usize = 256;
+const MAX_VALIDATOR_NAME_LEN: usize = 128;
+const MAX_PARTIAL_NAME_LEN: usize = 128;
+const MAX_MAKE_VARIABLE_NAME_LEN: usize = 128;
+
+string_newtype!(ConfKey, |v: &str| {
+    validate_simple_name(
+        "configuration key",
+        v,
+        MAX_CONF_KEY_LEN,
+        |c| c.is_ascii_alphanumeric() || c == '_' || c == '$',
+        |c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '.' | '-' | '@' | '*'),
+        "letters digits and _ $ . - @ *, not starting with a separator",
+    )
+});
+
+string_newtype!(ValidatorName, |v: &str| {
+    validate_simple_name(
+        "validator name",
+        v,
+        MAX_VALIDATOR_NAME_LEN,
+        |c| c.is_ascii_alphanumeric() || c == '_',
+        |c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '@'),
+        "letters digits and _ . - @, not starting with a separator",
+    )
+});
+
+// `cuttlefish_partial` resolves `{App, Name}` to `<Name>.partial`, so a name has no path separator or extension.
+string_newtype!(PartialName, |v: &str| {
+    validate_simple_name(
+        "partial name",
+        v,
+        MAX_PARTIAL_NAME_LEN,
+        |c| c.is_ascii_alphanumeric() || c == '_',
+        |c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'),
+        "letters digits _ -, without '/' or '.'",
+    )
+});
+
+string_newtype!(MakeVariableName, |v: &str| {
+    validate_simple_name(
+        "make variable name",
+        v,
+        MAX_MAKE_VARIABLE_NAME_LEN,
+        |c| c.is_ascii_alphabetic() || c == '_',
+        |c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'),
+        "letter or underscore, then letters digits _ . -",
+    )
+});
+
+string_newtype!(HostFactsDigest, |v: &str| {
+    validate_lower_hex(
+        "host facts digest",
+        v,
+        BLAKE3_HEX_LEN,
+        "expected 64 lowercase hex characters",
+    )
+});
+
+string_newtype!(ExtractionSettingsDigest, |v: &str| {
+    validate_lower_hex(
+        "extraction settings digest",
+        v,
+        BLAKE3_HEX_LEN,
+        "expected 64 lowercase hex characters",
+    )
+});
+
+string_newtype!(StoreDigest, |v: &str| {
+    validate_lower_hex(
+        "store digest",
+        v,
+        BLAKE3_HEX_LEN,
+        "expected 64 lowercase hex characters",
+    )
+});
+
+// The text of a `-spec` as a snapshot records it.
+string_newtype!(SpecText, |v: &str| {
+    if v.trim().is_empty() {
+        return Err(NameError::Empty { kind: "spec text" });
+    }
+    Ok(())
+});
+
+const BLAKE3_HEX_LEN: usize = 64;
+
+fn validate_lower_hex(
+    kind: &'static str,
+    value: &str,
+    len: usize,
+    reason: &'static str,
+) -> Result<(), NameError> {
+    if value.len() != len || !value.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+        return Err(NameError::Invalid {
+            kind,
+            value: value.to_owned(),
+            reason,
+        });
+    }
+    Ok(())
+}
+
+impl HostFactsDigest {
+    #[must_use]
+    pub fn from_digest(digest: [u8; 32]) -> Self {
+        Self(Arc::from(lower_hex(&digest)))
+    }
+}
+
+impl ExtractionSettingsDigest {
+    #[must_use]
+    pub fn from_digest(digest: [u8; 32]) -> Self {
+        Self(Arc::from(lower_hex(&digest)))
+    }
+}
+
+impl StoreDigest {
+    #[must_use]
+    pub fn from_digest(digest: [u8; 32]) -> Self {
+        Self(Arc::from(lower_hex(&digest)))
+    }
+}
+
+fn lower_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        hex.push(HEX[usize::from(byte >> 4)] as char);
+        hex.push(HEX[usize::from(byte & 0x0f)] as char);
+    }
+    hex
+}
+
+string_newtype!(HostName, |v: &str| {
+    validate_simple_name(
+        "host name",
+        v,
+        MAX_PROJECT_NAME_LEN,
+        |c| c.is_ascii_lowercase(),
+        is_project_name_char,
+        PROJECT_PATTERN,
+    )
+});
+
+const MAX_EXTRACTOR_VERSION_LEN: usize = 16;
+
+string_newtype!(ExtractorVersion, |v: &str| {
+    if v.is_empty() {
+        return Err(NameError::Empty {
+            kind: "extractor version",
+        });
+    }
+    if v.len() > MAX_EXTRACTOR_VERSION_LEN {
+        return Err(NameError::TooLong {
+            kind: "extractor version",
+            len: v.len(),
+            max: MAX_EXTRACTOR_VERSION_LEN,
+        });
+    }
+    match v
+        .chars()
+        .find(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_')))
+    {
+        Some(ch) => Err(NameError::InvalidCharacter {
+            kind: "extractor version",
+            ch,
+            value: v.to_owned(),
+        }),
+        None => Ok(()),
+    }
+});
+
+const SERIES_PLACEHOLDER: &str = "{series}";
+
+string_newtype!(SeriesTagPattern, validate_series_tag_pattern);
+
+fn validate_series_tag_pattern(value: &str) -> Result<(), NameError> {
+    let invalid = |reason: &'static str| NameError::Invalid {
+        kind: "series tag pattern",
+        value: value.to_owned(),
+        reason,
+    };
+    if value.matches(SERIES_PLACEHOLDER).count() != 1 {
+        return Err(invalid("expected exactly one {series} placeholder"));
+    }
+    let without = value.replacen(SERIES_PLACEHOLDER, "", 1);
+    if without.contains(['{', '}']) {
+        return Err(invalid(
+            "braces are only allowed in the {series} placeholder",
+        ));
+    }
+    validate_tag_glob(&value.replacen(SERIES_PLACEHOLDER, "0.0", 1))
+}
+
+impl SeriesTagPattern {
+    #[must_use]
+    pub fn for_series(&self, series: HostSeries) -> TagGlob {
+        let glob = self.0.replacen(SERIES_PLACEHOLDER, &series.to_string(), 1);
+        TagGlob(Arc::from(glob))
+    }
+}
+
+const PLAN_CACHE_KEY_PREFIX: &str = "jigsaw-";
+const PLAN_DIGEST_BYTES: usize = 8;
+const PLAN_DIGEST_HEX_LEN: usize = PLAN_DIGEST_BYTES * 2;
+const MAX_PLAN_CACHE_KEY_LEN: usize = 256;
+
+string_newtype!(PlanCacheKey, validate_plan_cache_key);
+
+fn validate_plan_cache_key(value: &str) -> Result<(), NameError> {
+    let invalid = |reason: &'static str| NameError::Invalid {
+        kind: "plan cache key",
+        value: value.to_owned(),
+        reason,
+    };
+    if value.len() > MAX_PLAN_CACHE_KEY_LEN {
+        return Err(NameError::TooLong {
+            kind: "plan cache key",
+            len: value.len(),
+            max: MAX_PLAN_CACHE_KEY_LEN,
+        });
+    }
+    if !value.starts_with(PLAN_CACHE_KEY_PREFIX) {
+        return Err(invalid("expected the jigsaw- prefix"));
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.' | '_'))
+    {
+        return Err(invalid("expected lowercase letters, digits and - . _"));
+    }
+    let Some(split) = value.len().checked_sub(PLAN_DIGEST_HEX_LEN) else {
+        return Err(invalid("expected a 16 character digest suffix"));
+    };
+    let (head, digest) = value.split_at(split);
+    if !head.ends_with('-') || !digest.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+        return Err(invalid(
+            "expected a dash and 16 lowercase hex characters at the end",
+        ));
+    }
+    Ok(())
+}
+
+impl PlanCacheKey {
+    /// `jigsaw-<host>-<series>-f<format>-e<extractor>-<digest>`
+    #[must_use]
+    pub fn compose(
+        host: &HostName,
+        series: HostSeries,
+        format_version: u32,
+        extractor: &ExtractorVersion,
+        digest: [u8; PLAN_DIGEST_BYTES],
+    ) -> Self {
+        let key = format!(
+            "{PLAN_CACHE_KEY_PREFIX}{host}-{series}-f{format_version}-e{extractor}-{}",
+            lower_hex(&digest)
+        );
+        Self(Arc::from(key))
+    }
+
+    /// The key up to and including the dash before the digest, for
+    /// `actions/cache` restore keys.
+    #[must_use]
+    pub fn restore_prefix(&self) -> &str {
+        &self.0[..self.0.len() - PLAN_DIGEST_HEX_LEN]
+    }
 }
 
 fn validate_dependency_name(

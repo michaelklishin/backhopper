@@ -147,21 +147,21 @@ fn a_wrapped_multi_line_form_recovers_exact_arity() {
 fn a_bare_identifier_in_a_module_position_skips_without_counting() {
     let out = extract(":rabbit_misc.rpc_call(node, rabbit_plugins, :list, [])\n");
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 #[test]
 fn a_variable_argument_list_counts_as_withheld() {
     let out = extract(":rabbit_misc.rpc_call(node, :rabbit_plugins, :list, args)\n");
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 #[test]
 fn a_cons_tail_counts_as_withheld() {
     let out = extract(":rpc.call(node, :rabbit_amqqueue, :lookup, [q | rest])\n");
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 // No Elixir fun grammar: an anonymous-function meck expectation is counted, not guessed.
@@ -169,7 +169,7 @@ fn a_cons_tail_counts_as_withheld() {
 fn an_elixir_fun_arity_counts_as_withheld() {
     let out = extract(":meck.expect(:rabbit_khepri, :is_enabled, fn -> true end)\n");
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 1);
+    assert_eq!(out.withheld_dynamic.len(), 1);
 }
 
 // Piping shifts arguments left by one, so the table position lands on a non-atom and skips.
@@ -185,7 +185,7 @@ fn a_hash_comment_on_the_line_does_not_reach_the_matcher() {
     let src = "# :rabbit_misc.rpc_call(node, :rabbit_plugins, :list, [])\n";
     let out = extract(src);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn fragments_from_different_hunks_do_not_concatenate() {
     let line_map = [10u32, 40];
     let out = extract_indirect_calls_elixir(src, &line_map);
     assert!(out.sites.is_empty());
-    assert_eq!(out.withheld_dynamic, 0);
+    assert_eq!(out.withheld_dynamic.len(), 0);
 }
 
 // Resolution through analyse_indirect_elixir_calls.

@@ -5,10 +5,18 @@
 use backhopper_xref_reader::scanner::{Scanner, arity_from_commas, walk_paren_group};
 use proptest::prelude::*;
 
+const RESERVED: &[&str] = &[
+    "if", "of", "end", "fun", "try", "case", "begin", "maybe", "receive",
+];
+
+fn atom() -> impl Strategy<Value = String> {
+    "[a-z]{1,4}".prop_filter("reserved word", |word| !RESERVED.contains(&word.as_str()))
+}
+
 proptest! {
     #[test]
     fn arity_equals_top_level_argument_count(
-        args in prop::collection::vec("[a-z][a-z0-9_]{0,5}", 0..8),
+        args in prop::collection::vec(atom(), 0..8),
     ) {
         let src = format!("({})", args.join(", "));
         let mut sc = Scanner::new(&src);
@@ -23,7 +31,7 @@ proptest! {
         groups in prop::collection::vec(
             (
                 prop::sample::select(vec!['[', '{']),
-                prop::collection::vec("[a-z]{1,4}", 1..4),
+                prop::collection::vec(atom(), 1..4),
             ),
             1..5,
         ),

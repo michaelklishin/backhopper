@@ -41,8 +41,9 @@ in a different variant.
 Coverage gate (Phase 1): `cargo llvm-cov --workspace --all-features --tests`
 must report at least 90% line coverage on `backhopper-core`,
 `backhopper-erlang`, `backhopper-xref-graph`, `backhopper-xref-reader`,
-and `backhopper-xref`. The CLI crate is exempt because integration
-tests cover it through the process boundary.
+`backhopper-xref`, `backhopper-jigsaw` and `backhopper-cuttlefish`. The
+CLI crate is exempt because integration tests cover it through the
+process boundary.
 
 ## Repository Layout
 
@@ -72,9 +73,17 @@ The repo is a Cargo workspace with multiple crates:
    tokenizer, an attribute parser, and a spec normalizer
  * `crates/backhopper-elixir/`: Elixir extractor (Phase 4; minimal stub
    in earlier phases)
- * `crates/backhopper-cuttlefish/`: Cuttlefish `.schema` parser that
-   locates the embedded `fun(...) -> Body end` bodies and feeds them
-   through the Erlang extractor
+ * `crates/backhopper-cuttlefish/`: Cuttlefish `.schema` and `.partial`
+   parser that locates the embedded `fun(...) -> Body end` bodies and
+   feeds them through the Erlang extractor, and reports the mappings,
+   validators and `include_partial` terms a file holds
+ * `crates/backhopper-jigsaw/`: reads a plugin set (Erlang sources and
+   Cuttlefish files already in memory) into the `ReferenceSet` that
+   `jigsaw check` compares. It is a crate of its own because the call
+   reader and the Cuttlefish parser depend on `backhopper-core`, so
+   `backhopper-core` cannot call them. Depends on `backhopper-core`,
+   `backhopper-cuttlefish`, `backhopper-erlang`, `backhopper-xref-reader`
+   and `backhopper-xref-graph`; nothing depends on it except the CLI
  * `crates/backhopper-xref-graph/`: whole-program call-graph primitives
    (vertices, relations, set algebra, transitive closure). No Erlang
    knowledge
@@ -104,6 +113,8 @@ depends only on its own crate.
 ### `backhopper-core`
 
  * `src/lib.rs`: crate root, re-exports
+ * `src/digest.rs`: `DigestWriter`, the length-prefixed BLAKE3 writer
+   behind the host facts and extraction settings digests
  * `src/errors.rs`: top-level error enum
  * `src/app_src.rs`: `.app.src` and `.app` parsing (application
    resource metadata)
@@ -114,13 +125,38 @@ depends only on its own crate.
  * `src/schema.rs` (feature `schemars`), `src/schema_diff.rs`: snapshot
    JSON-schema generation and cross-version diffing
  * `src/versions.rs`: `version_cmp` tag ordering
+ * `src/erlang_mk.rs`: reader for erlang.mk variable lines in a
+   `Makefile` (`MakeVariables`, `ErlangMkManifest`); reports a
+   `$(...)` reference as unexpanded instead of evaluating it. Also the
+   `dep_NAME = hex|git|git_rmq ...` pin lines (`parse_components_mk`,
+   `scan_components_mk`, `DepPin`) and `dep_to_tag`
+ * `src/config/host.rs`: `[[host]]`: `Host`, `PinSource`,
+   `ErlangSupport`, and the raw structs
+ * `src/extract.rs`: the extractor-facing surface (`ScannedFile`,
+   `ExtractedSource`, `ExtractError`)
 
 Model (`src/model/`):
 
  * `names.rs`: newtypes (`ProjectName`, `TagName`, `Mfa`, `Arity`,
    `CommitSha`, etc.): every domain primitive is its own type
  * `snapshot.rs`: `Snapshot<S>` with type-state (`Unsorted` and
-   `Canonical`); `snapshot_diff.rs`: snapshot-to-snapshot diff
+   `Canonical`), `HrlFile`, `HeaderRef`, `RecordField` and
+   `HostReleaseFacts`; `snapshot_diff.rs`: snapshot-to-snapshot diff
+ * `app_manifest.rs`: `AppManifest`, `ManifestSource`, `ManifestDeps`
+   and `ManifestUnreadable` (what an app needs at run time, and why a
+   list may be unavailable)
+ * `macro_decl.rs`: `MacroKey`, `MacroDecl` and `MacroBody` (a header's
+   `-define`, with `Conditional` for a macro no environment here can
+   decide)
+ * `normalised.rs`: `NormalisedMacroBody` and `NormalisedDefault`, the
+   one normaliser (comments stripped, whitespace collapsed) behind
+   macro bodies and record field defaults
+ * `schema_files.rs`: `SchemaFile` and `PartialFile` (Cuttlefish files
+   under an app's `priv/schema/`)
+ * `release_roots.rs`: `ReleaseRoots` and `MakefileVariable` (the apps a
+   host release is rooted at, read from literals, a variable, or both)
+ * `non_empty.rs`, `release_version.rs`: `NonEmpty<T>`, and the host and
+   OTP release version types
  * `verdict.rs`: `Verdict { Compatible | RequiresAdaptation |
    Incompatible | Inapplicable }` and `Reason` enums
  * `pin.rs`: `Pin`, `PinSelect`, `PinSpec` (the config-vs-resolved
@@ -142,6 +178,12 @@ Snapshot I/O and store (`src/snapshot/`, `src/store/`):
  * `snapshot/format.rs`: canonical writer; `snapshot/parser.rs`:
    canonical reader (rejects non-canonical input)
  * `snapshot/sort.rs`: canonicalization
+ * `snapshot/freshness.rs`: `StaleReason`, `ExpectedExtraction`,
+   `extraction_settings_digest` (the digest of the project settings that
+   change what extraction reads, recorded in the snapshot header as
+   `extraction-settings`) and `extraction_freshness`, the one comparison
+   of a header against the configuration that `doctor`, `snapshots
+   generate` and `jigsaw plan` share
  * `snapshot/spec_normalize.rs`: `-spec` and `-callback` pretty-printer
  * `store/fs.rs`: `SnapshotStore<M>` (`ReadOnly` and `Mutable`)
 
@@ -183,6 +225,47 @@ Compatibility pipeline (`src/compat/`):
    inapplicable pin verdicts
  * `added_lines.rs`: `AddedLinesSubject`, the per-file added-lines blob
    and its map back to file lines, shared by every target-tree axis
+
+Jigsaw (`src/jigsaw/`), the plan for checking apps hosted as plugins
+against every patch release of one host series:
+
+ * `plan.rs`: `JigsawPlan` (built only by `draft_plan` or `from_wire`,
+   through one private `assemble`), `HostRelease`, `PlanError`
+ * `series_plan.rs`: `plan_series` and `plan_series_from_store`, the
+   two tag sources behind one drafting function; `tags.rs`:
+   `select_series_tags`, `select_otp_lines`, `OtpLine`; `releases.rs`:
+   `SeriesReleases`
+ * `loaded.rs`: `JigsawPlan::store_status` and `load` (one definition of
+   a usable snapshot header, reads on scoped threads), `LoadedPlan`
+   (built only by `load`, which also hands out `surfaces()`),
+   `UnstockedPlan`
+ * `wire.rs`: `JigsawPlanPayload` and `from_wire`; `digest.rs`:
+   `host_facts_digest`; `check_wire.rs`: `JigsawCheckPayload`, its row,
+   finding, warning, site, range and tally structs, `From<&JigsawReport>`
+   (the one writer of `clean` and `cells`), and the fixed `LIMITS`
+ * `plugin_set.rs`: `PluginSources` (plain data from the CLI's directory
+   walk), `PluginSet::new` (refuses duplicate app and module names),
+   `AppRole`
+ * `references.rs`: `Reference`, `ReferenceSite`, `CallForm`, `UncheckedSite`
+   and `UncheckedSymbol` (the sites behind the listed `NotChecked` reasons),
+   `ReferenceSet` and the `NotChecked` vocabulary. `Reference` here is
+   not `model::symbol::Reference`; name it through `jigsaw::references`
+ * `surface.rs`: `ReleaseSurface` and `OtpSurface` (borrowing views of the
+   loaded snapshots, built by `LoadedPlan::surfaces`), `ShippedApps` and
+   `AppPresence`, `PinApps` (the one place an entry's app is read)
+ * `anchor.rs`: `anchor` splits a `ReferenceSet` into host anchors, OTP
+   anchors and apps nothing provides, from the build patch's view;
+   `check.rs`: `check_host` and `check_otp`, one anchor at one target
+ * `findings.rs`: `Finding` and `Warning` (no severity, never one list),
+   `Checked`, `WithheldSymbol` (a comparison that was not made, and what it
+   was about), `Stop` (why a closure over manifests could not tell), and the
+   `WithheldReason`, `JigsawFindingKind` and `JigsawWarningKind`
+   vocabularies; `report.rs`: `JigsawReport`, `TargetAxes` with `HostIdx`
+   and `OtpIdx`, `FindingSpan`, `RangedWithheld`, `Tallies`
+ * `evaluate.rs`: `evaluate`, which takes a `LoadedPlan`, a `PluginSet`
+   and the function that reads the plugin set against the build patch
+   (`backhopper_jigsaw::collect`), and runs one pass per host release and
+   one per OTP tag
 
 Suites (`src/suites/`):
 
@@ -228,15 +311,17 @@ Suites (`src/suites/`):
  * `src/tokenizer.rs`: line-oriented state machine, balances
    `()` `[]` `{}` `''` `""`
  * `src/extractor.rs`: top-level assembly that drives the other modules
-   into the public-API surface
+   into the public-API surface, including a header's `-define` macros
+   and `-include` lines
  * `src/attributes.rs`: `-module`, `-export`, `-behaviour`, and friends
  * `src/clause_heads.rs`: function-clause head parsing for arity and
    argument shapes
  * `src/specs.rs`: `-spec`, `-type`, and `-callback` normalizer
- * `src/records.rs`
+ * `src/records.rs`: `-record` fields, with their type and default
  * `src/macros.rs`: narrow allowlist (`?MODULE`, `?LINE`,
    `-export`-list string-concat)
- * `src/cond_compile.rs`: `-ifdef`, `-if`, `-elif`, `-else`
+ * `src/cond_compile.rs`: `-ifdef`, `-if`, `-elif`, `-else`; tracks
+   `TEST` regions and include guards, and nothing else
  * `src/deprecated.rs`: collapses the four real source forms into one
  * `src/visibility.rs`: the edoc `@hidden` tag in the module header.
    Note that `-moduledoc false.` is handled in `attributes.rs`
@@ -290,19 +375,33 @@ Suites (`src/suites/`):
    counters, and the one-line summary. `src/commands/macro_env.rs`
    mirrors `FileMap`'s include resolution over gix to hash the
    patch-reachable macro slice for the content key
- * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,tree_source}.rs`:
+ * `src/cli/{projects,series,snapshots,check,config,shell,xref,suites,jigsaw,tree_source}.rs`:
    per-group argument shapes. Multi-word verbs render in snake_case via
    per-variant `#[command(name = "...")]` (see the snake_case rule under
    Style Guide for the enum-level pitfall)
  * `src/commands/*.rs`: one handler module per group (`projects`,
    `series`, `snapshots`, `check`, `cache`, `config`, `shell`, `xref`,
-   `suites`, `bisect`, `rev`, `schema`, `doctor`, `init`,
+   `suites`, `bisect`, `rev`, `schema`, `doctor`, `init`, `jigsaw`,
    `version`) plus feature-specific helpers (`batch_plan`, `summary`,
    `availability`, `suggest`, `auto_generate`, `self_snapshot`,
    `pin_bump`, `sha_prefix`, `snapshot_cache`, `context`,
    `target_repo`, `xref_backport_applicability`). `rabbitmq_components`
-   is the RabbitMQ `rabbitmq-components.mk` parser (CLI-local, never in
-   `backhopper-core`)
+   holds RabbitMQ's branch-name and backport conventions around
+   `rabbitmq-components.mk`; the pin line parser itself is in
+   `backhopper-core::erlang_mk`
+ * `src/commands/snapshot_scan.rs`: reads a commit's files for a
+   snapshot and assigns each its app and role (source, manifest, schema
+   or partial); `src/commands/host_facts.rs`: `HostFacts`, the
+   configuration a host snapshot's release roots and dep pins are read
+   with (`build_host_snapshot_at_commit` requires it);
+   `src/commands/jigsaw.rs`: `jigsaw plan`, `jigsaw check` and the
+   `snapshots generate --from-jigsaw-plan` path;
+   `src/commands/jigsaw_render.rs`: the text (matrix with merged
+   columns, under `--table-style`) and Markdown renderings of the two
+   `jigsaw` payloads;
+   `src/commands/plugin_tree.rs`: the plugin directory walk (`std::fs`,
+   no git; reads only `src/`, `include/` and `priv/schema/` of each app
+   and leaves out `deps/` apps the build patch provides)
  * `src/commands/mod.rs`: dispatcher (matches `Group::*` to handlers)
  * `src/output.rs`: text and JSON formatter dispatch. JSON envelope is
    `{schema_version, command, data, exit_code}` for every command
@@ -318,10 +417,13 @@ Suites (`src/suites/`):
  * `src/subprocess.rs`: `SubprocessBackend`, which owns the child
    process and argv assembly
  * `src/mock.rs`: `MockBackend` family (`MockMatcher`, `MockResponse`,
-   `RecordedInvocation`) for testing without a binary
+   `RecordedInvocation`) for testing without a binary, with canned
+   `jigsaw plan` and `jigsaw check` envelopes
  * `src/builder/`: type-state builders (`state.rs` markers `NoTarget`,
-   `WithTarget`; per-verb `check.rs`, `snapshots.rs`,
-   `suites.rs`) so "required argument missing" is a compile-time error
+   `WithTarget`, and for `jigsaw` `NoHost`, `NoSeries`, `NoPlugins` with
+   their `With*` forms, where `WithPlugins` holds a `NonEmpty<PathBuf>`;
+   per-verb `check.rs`, `snapshots.rs`, `suites.rs`, `jigsaw.rs`) so
+   "required argument missing" is a compile-time error
  * `src/envelope.rs`: JSON envelope parsing (`Envelope<T>`,
    `SchemaVersion`, `EnvelopeWarning`)
  * `src/selector.rs`: `PinSelector`; `src/options.rs`: global options;
@@ -365,7 +467,8 @@ Markdown, or summary format is requested.
    * `list_tags`: tags with no snapshot yet; `list`: existing
      snapshots; `show`: canonical text (optionally one module)
    * `generate`: build missing snapshots (`--from-series` fans out
-     across a series' pins); `rebuild`: regenerate from source;
+     across a series' pins; `--from-jigsaw-plan` builds what a plan
+     lists); `rebuild`: regenerate from source;
      `migrate`: re-emit every snapshot at the current `format-version`
    * `verify`: check canonical-form invariants
    * `lookup`: MFAs against one snapshot; `introduced`: first and last
@@ -385,6 +488,14 @@ Markdown, or summary format is requested.
    the tag where it flips to `Incompatible`
  * `cache`: `stats`, `list`, `show`, `evict`, `prune`, `clear` over the
    two workspace caches
+ * `jigsaw`: `plan` (which snapshots one host series needs for every
+   patch release and Erlang line, which of them the store lacks, and
+   the cache key; exits `0` when nothing is missing and the partial
+   success code when something is), `check` (plugin directories against
+   the stocked store, from a plan file or from `--host` and `--series`
+   with tags listed from the store; never opens a git repository; exits
+   `0` when no finding, the partial success code when there is one, and
+   the data error code `65` when the plan is not stocked)
  * `config`: `path`, `show` (canonical TOML), `validate`
  * `shell completions`: print a completion script (shell auto-detected)
  * `xref` (call-graph queries): `list_callers`, `list_callees`,
@@ -409,8 +520,9 @@ Markdown, or summary format is requested.
  * `clap` (`derive`, `env`): CLI parsing. Newtypes implement `FromStr`
    so command arguments parse directly into the right type
  * `serde`, `serde_json`, `toml`: serialization, config
- * `blake3`: content hashing for cache keys (`backhopper-cache`) and
-   patch identity (`backhopper-git::walk::patch_id`)
+ * `blake3`: content hashing for cache keys (`backhopper-cache`), patch
+   identity (`backhopper-git::walk::patch_id`), and the host facts,
+   store and plan digests (`backhopper-core::jigsaw`)
  * `thiserror`: error enums in library crates; `anyhow` only at
    `backhopper-cli`'s `main` boundary
  * `tracing`, `tracing-subscriber` (`env-filter`): logging. ANSI is
@@ -542,7 +654,7 @@ not introduce a delta-merge mode.
 
 ## Snapshot Format Invariants
 
-The on-disk snapshot grammar is described in design doc §6. Two rules
+The on-disk snapshot grammar is described in design doc §6. Three rules
 matter most:
 
  * The writer must emit canonical order (modules then headers
@@ -552,10 +664,27 @@ matter most:
  * Specs and callbacks are run through the pretty-printer in
    `snapshot/spec_normalize.rs`. Reformatting the source must not
    produce a snapshot diff. Add proptests when changing the printer
+ * Format 5 sections come in the order `app`, `module`, `header`,
+   `schema`, `partial`, each sorted by name or path. Every module,
+   header, schema and partial names its `app`, and the parser refuses
+   a format 5 file where one does not, and any format 5 line in an
+   older file. A header's entries are `app`, `include`, `type`,
+   `opaque`, `record`, `define`; a `define` body is normalised text,
+   `?` for a macro defined under a conditional other than `TEST` or an
+   include guard, and `%empty%` for an empty body. A record field's
+   default is `= <text>` after its type, and `field x = <text>` when
+   it has no type
 
 The snapshot file's `# format-version: N` header is the wire-format
 version. Bump it only when the on-disk grammar changes; readers reject
-unknown values; bumps ship with a `snapshots migrate` command.
+unknown values. A snapshot is written at its own format version, never
+below `LAST_MIGRATABLE_FORMAT_VERSION` (`4`): `snapshots migrate`
+re-emits what it parsed and cannot add the facts format 5 holds, so it
+reports a snapshot below the current format and names
+`snapshots generate --refresh-stale`, and only regeneration writes
+format 5. A bump that a re-emit can reach ships with a
+`snapshots migrate` path; one that cannot ships with an extractor
+version bump, which marks stored snapshots `Stale`.
 
 ## Git Access
 

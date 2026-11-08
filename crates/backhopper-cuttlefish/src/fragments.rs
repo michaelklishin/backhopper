@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
+
+use backhopper_core::model::names::{ApplicationName, ConfKey, PartialName, ValidatorName};
 
 /// One Cuttlefish top-level tuple located in a `.schema` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +33,18 @@ pub struct CuttlefishFragment {
     /// 1-based line of the closing `}` of the top-level tuple. Paired
     /// with `start_line` to give the fragment's full span.
     pub end_line: usize,
+    pub partial_include: Option<PartialInclude>,
+    pub referenced_validators: Vec<ValidatorName>,
+}
+
+/// An `{include_partial, {App, Name}, Opts}` term: the partial it pulls
+/// in and the bare keys its `exclude` and `overrides` options name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialInclude {
+    pub app: ApplicationName,
+    pub name: PartialName,
+    pub exclude: BTreeSet<ConfKey>,
+    pub overrides: BTreeSet<ConfKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +52,7 @@ pub enum FragmentKind {
     Translation,
     Validator,
     Mapping,
+    IncludePartial,
 }
 
 impl FragmentKind {
@@ -45,6 +61,7 @@ impl FragmentKind {
             Self::Translation => "translation",
             Self::Validator => "validator",
             Self::Mapping => "mapping",
+            Self::IncludePartial => "include_partial",
         }
     }
 }

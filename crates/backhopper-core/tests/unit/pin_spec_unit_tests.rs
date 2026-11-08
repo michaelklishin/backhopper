@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 use backhopper_core::errors::ConfigError;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagGlob, TagName};
 use backhopper_core::model::pin::{self, PinSelect, PinSelector, PinSpec};
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::store::{ReadOnly, SnapshotStore};
 use tempfile::TempDir;
 
@@ -19,6 +19,7 @@ fn store_with_tags(project: &ProjectName, tags: &[&str]) -> (TempDir, SnapshotSt
     for tag_str in tags {
         let tag = TagName::new(*tag_str).unwrap();
         let header = SnapshotHeader {
+            extraction_settings: None,
             project: project.clone(),
             tag: tag.clone(),
             branch: None,
@@ -28,8 +29,9 @@ fn store_with_tags(project: &ProjectName, tags: &[&str]) -> (TempDir, SnapshotSt
             generated_by: "backhopper 0.0.0".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: Vec::new(),
+            host_facts: None,
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
         mut_store.write(&snap).unwrap();
@@ -105,6 +107,7 @@ fn pattern_matches_only_tags_for_this_project() {
     for (proj, tag_str) in [(&p, "OTP-26.0"), (&other, "OTP-26.99")] {
         let tag = TagName::new(tag_str).unwrap();
         let header = SnapshotHeader {
+            extraction_settings: None,
             project: proj.clone(),
             tag: tag.clone(),
             branch: None,
@@ -114,8 +117,9 @@ fn pattern_matches_only_tags_for_this_project() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: Vec::new(),
+            host_facts: None,
         };
         let snap = Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical();
         mut_store.write(&snap).unwrap();

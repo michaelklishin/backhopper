@@ -3,4 +3,5 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 mod compile_fail_tests;
+mod jigsaw_driver_tests;
 mod subprocess_backend_integration_tests;

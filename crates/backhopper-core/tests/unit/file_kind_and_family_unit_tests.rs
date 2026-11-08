@@ -283,6 +283,7 @@ fn project_family_defaults_to_generic() {
         tag_pattern: None,
         min_tag: None,
         exclude_tag_markers: None,
+        manifest: None,
     };
     assert!(raw.family.is_none(), "raw config carries None by default");
     assert_eq!(ProjectFamily::default(), ProjectFamily::Generic);

@@ -98,15 +98,11 @@ where
     Ok(outcome)
 }
 
-fn write_json_envelope<T, W>(
-    stdout: &mut W,
-    out: &OutputContext,
-    payload: &T,
-    exit_code: i32,
-) -> CliResult<()>
+/// The envelope as pretty JSON with a trailing newline, the text a
+/// command prints and the text it may also write to a file.
+pub fn envelope_json<T>(out: &OutputContext, payload: &T, exit_code: i32) -> CliResult<String>
 where
     T: Serialize,
-    W: Write,
 {
     let envelope = WireEnvelope {
         schema_version: out.schema_version,
@@ -117,9 +113,23 @@ where
     };
     // through a Value so the keys serialize sorted, the shape the driver parses and schema show documents
     let body = serde_json::to_value(&envelope).map_err(|e| CliError::OutputError(e.to_string()))?;
-    serde_json::to_writer_pretty(&mut *stdout, &body)
-        .map_err(|e| CliError::OutputError(e.to_string()))?;
-    writeln!(stdout)?;
+    let mut text =
+        serde_json::to_string_pretty(&body).map_err(|e| CliError::OutputError(e.to_string()))?;
+    text.push('\n');
+    Ok(text)
+}
+
+fn write_json_envelope<T, W>(
+    stdout: &mut W,
+    out: &OutputContext,
+    payload: &T,
+    exit_code: i32,
+) -> CliResult<()>
+where
+    T: Serialize,
+    W: Write,
+{
+    stdout.write_all(envelope_json(out, payload, exit_code)?.as_bytes())?;
     Ok(())
 }
 

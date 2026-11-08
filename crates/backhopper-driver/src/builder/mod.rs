@@ -5,6 +5,7 @@
 //! Type-state builders for the verbs the driver wraps.
 
 pub mod check;
+pub mod jigsaw;
 pub(crate) mod list_input;
 pub mod snapshots;
 pub mod state;
@@ -15,5 +16,6 @@ pub use check::{
     CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind, PatchSource, PositionalKind,
     RangeKind,
 };
+pub use jigsaw::{CheckTarget, Jigsaw, JigsawCheckBuilder, JigsawPlanBuilder, PlanArguments};
 pub use snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
 pub use suites::{Suites, SuitesPlanBuilder};

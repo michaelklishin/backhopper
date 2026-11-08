@@ -3,3 +3,4 @@
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
 pub(crate) mod cli;
+pub(crate) mod jigsaw;

@@ -5,8 +5,9 @@
 //! Canonicalization: total ordering over modules, headers, and entries.
 
 use std::cmp::Ordering;
+use std::fmt::Display;
 
-use crate::model::snapshot::{ArityMatch, Deprecation, HrlFile, Module};
+use crate::model::snapshot::{ArityMatch, Deprecation, HeaderRef, HrlFile, Module, SnapshotParts};
 
 /// Sort by `key`, then drop entries with an equal key (keeping the
 /// first). One helper for the repeated sort-then-dedup pairs; the sort
@@ -14,6 +15,20 @@ use crate::model::snapshot::{ArityMatch, Deprecation, HrlFile, Module};
 fn sort_dedup_by<T, K: Ord>(v: &mut Vec<T>, mut key: impl FnMut(&T) -> K) {
     v.sort_by_key(&mut key);
     v.dedup_by(|a, b| key(a) == key(b));
+}
+
+pub(crate) fn canonicalize_parts(parts: &mut SnapshotParts) {
+    sort_dedup_by(&mut parts.apps, |a| a.name.clone());
+    sort_dedup_by(&mut parts.schemas, |s| s.path.clone());
+    sort_dedup_by(&mut parts.partials, |p| p.path.clone());
+    canonicalize(&mut parts.modules, &mut parts.headers);
+    parts.header.apps_scanned.sort();
+    parts.header.apps_scanned.dedup();
+    parts.header.dep_pins.sort_by(|a, b| a.name.cmp(&b.name));
+    parts.header.dep_pins.dedup_by(|a, b| a.name == b.name);
+    if let Some(host) = parts.header.host_facts.as_mut() {
+        host.release_roots.sort_dedup();
+    }
 }
 
 pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
@@ -41,9 +56,11 @@ pub fn canonicalize(modules: &mut Vec<Module>, headers: &mut Vec<HrlFile>) {
             .dedup_by(|a, b| a.function == b.function && arity_match_cmp(a, b).is_eq());
     }
     for h in headers.iter_mut() {
+        sort_dedup_by(&mut h.includes, HeaderRef::clone);
         sort_dedup_by(&mut h.types, |x| (x.name.clone(), x.arity));
         sort_dedup_by(&mut h.opaques, |x| (x.name.clone(), x.arity));
         sort_dedup_by(&mut h.records, |x| x.name.clone());
+        sort_dedup_by(&mut h.defines, |x| x.key.clone());
     }
 }
 
@@ -53,22 +70,35 @@ pub fn breaks_order<K: Ord>(prev: Option<&K>, next: &K) -> bool {
     prev.is_some_and(|p| next <= p)
 }
 
-/// Walks a complete module and header list pairwise, the same comparison
-/// the streaming parser makes as it reads each entry, and names the first
+/// Walks every top-level section list pairwise, the same comparison the
+/// streaming parser makes as it reads each entry, and names the first
 /// entry out of place. For readers (such as JSON deserialization) that
 /// have no source line to report.
-pub fn out_of_order(modules: &[Module], headers: &[HrlFile]) -> Option<String> {
-    for pair in modules.windows(2) {
-        if breaks_order(Some(&pair[0].name), &pair[1].name) {
-            return Some(format!("modules out of order at {}", pair[1].name));
-        }
-    }
-    for pair in headers.windows(2) {
-        if breaks_order(Some(&pair[0].path), &pair[1].path) {
-            return Some(format!("headers out of order at {}", pair[1].path));
-        }
-    }
-    None
+pub(crate) fn out_of_order(parts: &SnapshotParts) -> Option<String> {
+    first_out_of_order("apps", &parts.apps, |a| &a.name)
+        .or_else(|| first_out_of_order("modules", &parts.modules, |m| &m.name))
+        .or_else(|| first_out_of_order("headers", &parts.headers, |h| &h.path))
+        .or_else(|| first_out_of_order("schemas", &parts.schemas, |s| &s.path))
+        .or_else(|| first_out_of_order("partials", &parts.partials, |p| &p.path))
+}
+
+fn first_out_of_order<T, K: Ord + Display>(
+    label: &str,
+    items: &[T],
+    key: impl Fn(&T) -> &K,
+) -> Option<String> {
+    items
+        .windows(2)
+        .find(|pair| breaks_order(Some(key(&pair[0])), key(&pair[1])))
+        .map(|pair| format!("{label} out of order at {}", key(&pair[1])))
+}
+
+pub(crate) fn missing_app(parts: &SnapshotParts) -> Option<String> {
+    let module = parts.modules.iter().find(|m| m.app.is_none());
+    let header = parts.headers.iter().find(|h| h.app.is_none());
+    module
+        .map(|m| format!("module {} has no app", m.name))
+        .or_else(|| header.map(|h| format!("header {} has no app", h.path)))
 }
 
 fn arity_match_cmp(a: &Deprecation, b: &Deprecation) -> Ordering {

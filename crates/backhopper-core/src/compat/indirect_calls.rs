@@ -73,13 +73,31 @@ pub struct IndirectCallSite {
     pub line: u32,
 }
 
-/// Extraction result: the readable sites plus the count of occurrences
-/// whose module and function were literal atoms but whose arity source
-/// was not readable.
+/// An occurrence whose module and function were literal atoms but whose
+/// arity source was not readable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithheldIndirectCall {
+    pub module: ModuleName,
+    pub function: FunctionName,
+    pub line: u32,
+}
+
+/// Extraction result: the readable sites plus the occurrences whose arity
+/// source was not readable.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct IndirectExtraction {
     pub sites: Vec<IndirectCallSite>,
-    pub withheld_dynamic: usize,
+    pub withheld_dynamic: Vec<WithheldIndirectCall>,
+}
+
+impl IndirectExtraction {
+    fn withhold(&mut self, module: ModuleName, function: FunctionName, line: u32) {
+        self.withheld_dynamic.push(WithheldIndirectCall {
+            module,
+            function,
+            line,
+        });
+    }
 }
 
 /// Where a recognized form carries its module, function, and arity.
@@ -253,7 +271,7 @@ fn read_reference(
                         let elements: Vec<&str> = elements.iter().map(String::as_str).collect();
                         read_reference(&inner, &elements, line, syntax, out);
                     } else {
-                        out.withheld_dynamic += 1;
+                        out.withhold(module, function, line);
                     }
                     return;
                 }
@@ -268,7 +286,7 @@ fn read_reference(
             via: spec.via,
             line,
         }),
-        None => out.withheld_dynamic += 1,
+        None => out.withhold(module, function, line),
     }
 }
 

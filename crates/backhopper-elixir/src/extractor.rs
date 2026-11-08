@@ -5,11 +5,10 @@
 //! Top-level Elixir source extractor: text → typed `Module` records.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 use std::str::{self, FromStr};
 use std::sync::OnceLock;
 
-pub use backhopper_core::extract::{ExtractError, ExtractedSource};
+pub use backhopper_core::extract::{ExtractError, ExtractedSource, ScannedFile};
 
 use backhopper_core::extract::classify_visibility;
 use backhopper_core::model::names::{Arity, FunctionName, ModuleName, TypeName};
@@ -36,22 +35,23 @@ impl ElixirExtractor {
 
     pub fn extract_source<I>(&self, files: I) -> Result<ExtractedSource, ExtractError>
     where
-        I: IntoIterator<Item = (PathBuf, Vec<u8>)>,
+        I: IntoIterator<Item = ScannedFile>,
     {
         let mut modules: Vec<Module> = Vec::new();
-        for (path, bytes) in files {
-            let path_string = path.to_string_lossy().to_string();
+        for file in files {
             if !ELIXIR_FILE_EXTS
                 .iter()
-                .any(|ext| path_string.ends_with(ext))
+                .any(|ext| file.path.as_str().ends_with(ext))
             {
                 continue;
             }
-            let text = str::from_utf8(&bytes).map_err(|e| ExtractError::InvalidUtf8 {
-                path: path.clone(),
+            let text = str::from_utf8(&file.bytes).map_err(|e| ExtractError::InvalidUtf8 {
+                path: file.path.clone(),
                 offset: e.valid_up_to(),
             })?;
-            for m in self.extract_modules(text) {
+            for mut m in self.extract_modules(text) {
+                m.path = Some(file.path.clone());
+                m.app = Some(file.app.clone());
                 modules.push(m);
             }
         }

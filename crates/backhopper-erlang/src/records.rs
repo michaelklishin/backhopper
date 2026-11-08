@@ -20,6 +20,7 @@ pub struct ParsedRecord {
 pub struct ParsedRecordField {
     pub name: String,
     pub type_repr: Option<String>,
+    pub default: Option<String>,
 }
 
 pub fn parse_record(body: &str) -> Option<ParsedRecord> {
@@ -64,6 +65,7 @@ fn parse_record_field(s: &str) -> Option<ParsedRecordField> {
         return Some(ParsedRecordField {
             name,
             type_repr: None,
+            default: None,
         });
     }
     let (eq, cc) = top_level_marks(rest);
@@ -76,7 +78,18 @@ fn parse_record_field(s: &str) -> Option<ParsedRecordField> {
         (_, None) => None,
     };
     let type_repr = type_repr.filter(|t| !t.is_empty());
-    Some(ParsedRecordField { name, type_repr })
+    let default = match (eq, cc) {
+        // f = Default :: Type
+        (Some(e), Some(c)) if e < c => Some(rest[e + 1..c].trim()),
+        (Some(e), _) => Some(rest[e + 1..].trim()),
+        (None, _) => None,
+    };
+    let default = default.filter(|d| !d.is_empty()).map(str::to_owned);
+    Some(ParsedRecordField {
+        name,
+        type_repr,
+        default,
+    })
 }
 
 /// Byte offsets of the first top-level default `=` and the first

@@ -13,10 +13,15 @@ pub mod check;
 pub mod config;
 pub mod context;
 pub mod doctor;
+pub mod host_facts;
 pub mod init;
+pub mod jigsaw;
+pub mod jigsaw_render;
 pub mod macro_env;
+pub mod parallel;
 pub mod pin_bump;
 pub mod pin_coverage;
+pub mod plugin_tree;
 pub mod projects;
 pub mod rabbitmq_components;
 pub mod rev;
@@ -26,6 +31,7 @@ pub mod series;
 pub mod sha_prefix;
 pub mod shell;
 pub mod snapshot_cache;
+pub mod snapshot_scan;
 pub mod snapshots;
 pub mod suggest;
 pub mod suites;
@@ -59,6 +65,7 @@ pub fn dispatch(cli: Cli) -> CliResult<CommandOutcome> {
         Group::Schema { cmd } => schema::handle(&cli.global, cmd),
         Group::Rev { cmd } => rev::handle(&cli.global, cmd),
         Group::Tree { cmd } => tree::handle(&cli.global, cmd),
+        Group::Jigsaw { cmd } => jigsaw::handle(&cli.global, cmd),
         Group::Version => version::handle(&cli.global),
     }
 }

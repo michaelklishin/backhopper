@@ -74,6 +74,9 @@ pub struct Totals {
     /// because there is no recorded version to compare against
     /// `expected`, only a `format_version` to report
     pub unversioned_extractor: usize,
+    /// Present with the current extractor but built with another format
+    /// or other extraction settings than the configured ones
+    pub outdated: usize,
 }
 
 impl Totals {
@@ -88,6 +91,10 @@ impl Totals {
             SnapshotStatus::Unversioned { .. } => {
                 self.present += 1;
                 self.unversioned_extractor += 1;
+            }
+            SnapshotStatus::Outdated { .. } => {
+                self.present += 1;
+                self.outdated += 1;
             }
             SnapshotStatus::Missing => self.missing += 1,
         }
@@ -111,6 +118,9 @@ pub enum SnapshotStatus {
     Unversioned {
         format_version: u32,
         expected: String,
+    },
+    Outdated {
+        reason: String,
     },
     Missing,
 }
@@ -165,7 +175,10 @@ pub fn handle(args: &GlobalArgs, cmd: DoctorCmd) -> CliResult<CommandOutcome> {
 // Success when every pin is present and current; PartialSuccess when any is missing, stale, or unversioned
 pub fn doctor_exit_code(totals: &Totals) -> CommandOutcome {
     CommandOutcome::from_success(
-        !(totals.missing > 0 || totals.stale_extractor > 0 || totals.unversioned_extractor > 0),
+        !(totals.missing > 0
+            || totals.stale_extractor > 0
+            || totals.unversioned_extractor > 0
+            || totals.outdated > 0),
     )
 }
 
@@ -291,6 +304,9 @@ fn snapshot_status(
             format_version,
             expected,
         },
+        SnapshotFreshness::Outdated(reason) => SnapshotStatus::Outdated {
+            reason: reason.to_string(),
+        },
     }
 }
 
@@ -309,6 +325,10 @@ fn extractor_stale_note(status: &SnapshotStatus, resolved: Option<&Pin>) -> Opti
             expected,
         } => Some(format!(
             "no extractor version recorded (format-version {format_version}, expected {expected}): run {}",
+            snapshot_refresh_command(&pin.project, &pin.tag)
+        )),
+        SnapshotStatus::Outdated { reason } => Some(format!(
+            "{reason}: run {}",
             snapshot_refresh_command(&pin.project, &pin.tag)
         )),
         SnapshotStatus::Current | SnapshotStatus::Missing => None,
@@ -474,6 +494,9 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
             payload.totals.unversioned_extractor
         ));
     }
+    if payload.totals.outdated > 0 {
+        summary.push_str(&format!(", {} outdated", payload.totals.outdated));
+    }
     writeln!(w, "{summary}")?;
     writeln!(
         w,
@@ -526,6 +549,7 @@ fn render_text(w: &mut dyn Write, payload: &DoctorPayload, style: TableStyle) ->
     if payload.totals.missing > 0
         || payload.totals.stale_extractor > 0
         || payload.totals.unversioned_extractor > 0
+        || payload.totals.outdated > 0
     {
         writeln!(w)?;
         writeln!(
@@ -581,6 +605,7 @@ pub fn snapshot_cell(status: &SnapshotStatus) -> &'static str {
         SnapshotStatus::Current => "ok",
         SnapshotStatus::Stale { .. } => "STALE",
         SnapshotStatus::Unversioned { .. } => "UNVERSIONED",
+        SnapshotStatus::Outdated { .. } => "OUTDATED",
         SnapshotStatus::Missing => "MISSING",
     }
 }

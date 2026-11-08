@@ -7,10 +7,13 @@
 pub mod app_src;
 pub mod compat;
 pub mod config;
+mod digest;
 pub mod envelope_version;
 pub mod erlang_macros;
+pub mod erlang_mk;
 pub mod errors;
 pub mod extract;
+pub mod jigsaw;
 pub mod model;
 #[cfg(feature = "schemars")]
 pub mod schema;
@@ -21,7 +24,7 @@ pub mod suites;
 pub mod versions;
 
 pub use errors::{Error, Result};
-pub use extract::{ExtractError, ExtractedSource, classify_visibility};
+pub use extract::{ExtractError, ExtractedSource, ScannedFile, classify_visibility};
 pub use model::apply::{ApplyForecast, ApplySummary, PathApplyOutcome, UnassessedReason};
 pub use model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 pub use model::findings::TargetFindings;

@@ -13,12 +13,14 @@
 //! Applied to the `.schema`, `.snippets`, and `.partial` files a patch
 //! touches; the extracted references are folded into the evaluated patch.
 
+pub mod elements;
 pub mod extract;
 pub mod fragments;
 pub mod parser;
 
+pub use elements::SchemaElements;
 pub use extract::extract_references;
-pub use fragments::{CuttlefishFragment, FragmentKind};
+pub use fragments::{CuttlefishFragment, FragmentKind, PartialInclude};
 pub use parser::{ParseError, parse_schema};
 
 /// Version of the cuttlefish extractor's output shape. Bumped when the

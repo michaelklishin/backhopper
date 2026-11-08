@@ -1,0 +1,57 @@
+---
+source: crates/backhopper-cli/tests/unit/jigsaw_render_unit_tests.rs
+expression: text(&broken_payload())
+---
+jigsaw check: rabbitmq 4.3, built against v4.3.2
+targets: 3 host releases (v4.3.0 .. v4.3.2) x 2 OTP tags (OTP-27.3 .. OTP-27.3.1)
+
++-----------------------+------------------+--------+
+| app                   | v4.3.0 .. v4.3.1 | v4.3.2 |
++-----------------------+------------------+--------+
+| rabbitmq_shovel_extra | broken           | clean  |
++-----------------------+------------------+--------+
+| amqp10_client         | clean            | clean  |
++-----------------------+------------------+--------+
+
+2 findings
+
+partial_missing  {rabbit, "ssl_options"}
+  host releases: v4.3.0 .. v4.3.1  (all OTP tags)
+  rabbitmq_shovel_extra  priv/schema/rabbitmq_shovel_extra.schema:41
+
+function_missing  rabbit_amqqueue:lookup_many/2  (target has /1)
+  host releases: v4.3.0  (all OTP tags)
+  rabbitmq_shovel_extra  src/rabbit_shovel_extra_worker.erl:118
+
+1,214 distinct references to the host and OTP, checked at every target
+not checked:
+  call sites resolved inside the plugin set: 3,870
+  dynamic calls: 2
+  not resolved at v4.3.2: 1
+  calls into Elixir modules: 0
+  references into untracked dependencies: 0
+  files with an OTP header the reader didn't see: 0
+  references used only under a version conditional: 0
+withheld:
+  conditional macros: 2
+  unknown specs: 0
+  unreadable manifests: 0
+  apps of untracked dependencies: 0
+  OTP apps the snapshot excludes: 0
+
+dynamic calls:
+  rabbitmq_shovel_extra/src/rabbit_shovel_extra_worker.erl:57  _:other_missing_helper/0
+  rabbitmq_shovel_extra/src/rabbit_shovel_extra_worker.erl:92  rabbit_maintenance:drain/?
+
+not resolved at v4.3.2:
+  rabbitmq_shovel_extra/src/rabbit_shovel_extra_worker.erl:40  rabbit_misc:no_such_helper/1
+
+comparisons withheld:
+
+conditional_macro  ?DEFAULT_CONSUMER_TIMEOUT in include/rabbit.hrl
+  host releases: v4.3.1  (all OTP tags)
+  rabbitmq_shovel_extra  src/rabbit_shovel_extra_worker.erl:13
+
+host apps found in plugin deps/ and left out: rabbit, rabbit_common, ra
+
+limits: OTP header records and macros are not compared; calls inside OTP header macros are not checked; dependencies are checked at the exact versions each host release pins, not over a range

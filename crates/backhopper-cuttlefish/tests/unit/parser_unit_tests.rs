@@ -328,3 +328,78 @@ fn end_line_is_the_closing_brace_line() {
     assert_eq!(frags[0].start_line, 1);
     assert_eq!(frags[0].end_line, 4);
 }
+
+#[test]
+fn a_parse_error_displays_its_message() {
+    let err = parse_schema("}", p()).unwrap_err();
+    assert_eq!(err.to_string(), err.message);
+}
+
+#[test]
+fn commas_in_comments_atoms_and_char_literals_do_not_split_mapping_elements() {
+    let src = "{mapping, \"queue.limit\",\n\
+               \"queue_app.limit\" % a, comment, with, commas\n\
+               ,\n\
+               [{datatype, integer}, {'weird,atom', $,}]}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    assert_eq!(frags.len(), 1);
+    assert_eq!(frags[0].mapping_target.as_deref(), Some("queue_app.limit"));
+    assert_eq!(frags[0].attr_names, vec!["datatype".to_owned()]);
+}
+
+#[test]
+fn a_mapping_with_a_missing_closing_brace_has_no_target() {
+    let frags = parse_schema("{mapping, \"queue.limit\"", p()).unwrap();
+    assert!(frags.iter().all(|f| f.mapping_target.is_none()));
+}
+
+#[test]
+fn fun_keyword_in_a_comment_atom_or_char_literal_does_not_anchor_the_outer_fun() {
+    let src = "{translation, \"queue.limit\",\n\
+               % fun(X) -> X end mentioned in a comment\n\
+               fun(Conf) ->\n\
+                   'fun'(Conf), $f, queue_app:limit(Conf)\n\
+               end}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    let body = frags[0].erlang_body.as_ref().expect("body present");
+    assert!(body.contains("queue_app:limit"), "{body}");
+}
+
+#[test]
+fn an_arrow_in_an_atom_comment_or_char_literal_does_not_end_the_fun_head() {
+    let src = "{translation, \"queue.limit\",\n\
+               fun(%% -> in a comment\n\
+                   Conf, 'a->b', $-) -> queue_app:limit(Conf) end}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    let body = frags[0].erlang_body.as_ref().expect("body present");
+    assert!(body.contains("queue_app:limit"), "{body}");
+}
+
+#[test]
+fn block_keywords_in_strings_atoms_comments_and_char_literals_do_not_end_the_fun() {
+    let src = "{validator, \"queue_limit\", \"must be positive\",\n\
+               fun(V) ->\n\
+                   _ = \"end\",\n\
+                   _ = 'end',\n\
+                   % end\n\
+                   _ = $e,\n\
+                   queue_app:positive(V)\n\
+               end}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    let body = frags[0].erlang_body.as_ref().expect("body present");
+    assert!(body.contains("queue_app:positive"), "{body}");
+}
+
+#[test]
+fn an_include_partial_with_a_comment_and_bare_and_tuple_keys_is_read() {
+    let src = "{include_partial, {rabbit, ssl_options},\n\
+               [{exclude, [\"ssl.depth\", \"ssl.versions\"]} % one per line, as listed\n\
+                ,{overrides, [{\"ssl.cacertfile\", []}, \"ssl.certfile\"]}]}.\n";
+    let frags = parse_schema(src, p()).unwrap();
+    let include = frags[0].partial_include.as_ref().expect("an include");
+    assert_eq!(include.name.as_str(), "ssl_options");
+    let exclude: Vec<_> = include.exclude.iter().map(|k| k.to_string()).collect();
+    assert_eq!(exclude, ["ssl.depth", "ssl.versions"]);
+    let overrides: Vec<_> = include.overrides.iter().map(|k| k.to_string()).collect();
+    assert_eq!(overrides, ["ssl.cacertfile", "ssl.certfile"]);
+}

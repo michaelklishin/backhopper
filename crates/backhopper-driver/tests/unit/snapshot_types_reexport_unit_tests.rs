@@ -15,6 +15,7 @@ use backhopper_driver::types::{
 
 fn header() -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new("rabbitmq-server").unwrap(),
         tag: TagName::new("v4.0.5").unwrap(),
         branch: None,
@@ -24,12 +25,13 @@ fn header() -> SnapshotHeader {
         generated_by: "backhopper-driver test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: "3".into(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: vec![VendoredDep {
             name: DependencyName::new("ra").unwrap(),
             version: DependencyVersion::new("3.1.6").unwrap(),
             source: VendoredDepSource::Hex,
         }],
+        host_facts: None,
     }
 }
 
@@ -54,7 +56,7 @@ fn rabbit_fifo() -> Module {
 
 #[test]
 fn driver_re_exports_format_version_constants() {
-    assert_eq!(FORMAT_VERSION, 4);
+    assert_eq!(FORMAT_VERSION, 5);
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&1));
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&4));
 }

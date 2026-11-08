@@ -9,13 +9,17 @@
 //! but speak this common vocabulary: the decode error, the extracted-source
 //! bag, and the visibility classifier.
 
-use std::path::PathBuf;
-
 use thiserror::Error;
 
-use crate::errors::NameError;
-use crate::model::names::ModuleName;
+use crate::model::names::{ApplicationName, ModuleName, RelativePath};
 use crate::model::snapshot::{HrlFile, Module, Visibility};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScannedFile {
+    pub path: RelativePath,
+    pub app: ApplicationName,
+    pub bytes: Vec<u8>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractedSource {
@@ -25,11 +29,8 @@ pub struct ExtractedSource {
 
 #[derive(Debug, Error)]
 pub enum ExtractError {
-    #[error("invalid utf-8 in {path:?} at byte offset {offset}")]
-    InvalidUtf8 { path: PathBuf, offset: usize },
-
-    #[error("{path:?} is not a repo-relative path: {source}")]
-    InvalidPath { path: PathBuf, source: NameError },
+    #[error("invalid utf-8 in {path} at byte offset {offset}")]
+    InvalidUtf8 { path: RelativePath, offset: usize },
 }
 
 /// Resolves a module's [`Visibility`] from its name, the config's public and

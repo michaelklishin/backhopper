@@ -9,8 +9,8 @@ use backhopper_core::model::names::{
     MacroName, ModuleName, ProjectName, RecordName, RelativePath, TagName, TypeName,
 };
 use backhopper_core::model::snapshot::{
-    ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FORMAT_VERSION, FunArity,
-    HrlFile, IfdefGuardKind, IfdefMacro, Module, Provenance, RecordDecl, RecordField, Snapshot,
+    ArityMatch, CallbackSig, Deprecation, DeprecationReplacement, FunArity, HrlFile,
+    IfdefGuardKind, IfdefMacro, Module, Provenance, RecordDecl, RecordField, Snapshot,
     SnapshotHeader, SpecSig, TestExportVariant, TestOnlyExport, TypeArity, TypeDecl, VariantCBlock,
     VendoredDep, VendoredDepSource, VersionedMachineVersion, Visibility, WireConstantBinding,
     WireValue,
@@ -19,6 +19,7 @@ use backhopper_core::snapshot::{format, parser};
 
 fn header() -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new("ra").unwrap(),
         tag: TagName::new("v3.1.6").unwrap(),
         branch: Some("main".into()),
@@ -28,8 +29,9 @@ fn header() -> SnapshotHeader {
         generated_by: format!("backhopper {}", env!("CARGO_PKG_VERSION")),
         generated_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     }
 }
 
@@ -69,10 +71,12 @@ fn ra_header() -> HrlFile {
             RecordField {
                 name: FieldName::new("id").unwrap(),
                 type_repr: Some("ra_server_id()".into()),
+                default: None,
             },
             RecordField {
                 name: FieldName::new("uid").unwrap(),
                 type_repr: Some("ra_uid()".into()),
+                default: None,
             },
         ],
     });
@@ -93,7 +97,7 @@ fn header_block_starts_canonical_text() {
     let snap = Snapshot::from_extracted(header(), vec![ra_module()], vec![]).into_canonical();
     let text = format::to_string(&snap).unwrap();
     assert!(text.starts_with("# backhopper snapshot\n"));
-    assert!(text.contains(&format!("# format-version: {FORMAT_VERSION}\n")));
+    assert!(text.contains("# format-version: 4\n"));
     assert!(text.contains("# project: ra\n"));
 }
 

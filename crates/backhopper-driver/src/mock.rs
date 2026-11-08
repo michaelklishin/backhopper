@@ -16,7 +16,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+use serde::Serialize;
 use serde_json::{Value, json};
+
+use backhopper_core::envelope_version::CURRENT_SCHEMA_VERSION;
+use backhopper_core::jigsaw::{JigsawCheckPayload, JigsawPlanPayload};
 
 use crate::backend::{Backend, Invocation, RawOutcome, assemble_argv};
 use crate::envelope::{EnvelopeWarning, SchemaVersion};
@@ -146,6 +150,34 @@ impl MockResponse {
             payload,
             exit_code: code,
             schema_version: SchemaVersion::new(1),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Build the envelope `jigsaw plan` answers with: exit code `0` when
+    /// nothing is missing and `3` otherwise, at the current schema version.
+    #[must_use]
+    pub fn jigsaw_plan(payload: &JigsawPlanPayload) -> Self {
+        let exit_code = if payload.missing_snapshots.is_empty() {
+            0
+        } else {
+            3
+        };
+        Self::current_json(payload, exit_code)
+    }
+
+    /// Build the envelope `jigsaw check` answers with: exit code `0` when
+    /// the report is clean and `3` otherwise, at the current schema version.
+    #[must_use]
+    pub fn jigsaw_check(payload: &JigsawCheckPayload) -> Self {
+        Self::current_json(payload, if payload.clean { 0 } else { 3 })
+    }
+
+    fn current_json(payload: &impl Serialize, exit_code: i32) -> Self {
+        Self::Json {
+            payload: serde_json::to_value(payload).expect("a wire payload serialises"),
+            exit_code,
+            schema_version: SchemaVersion::new(CURRENT_SCHEMA_VERSION),
             warnings: Vec::new(),
         }
     }

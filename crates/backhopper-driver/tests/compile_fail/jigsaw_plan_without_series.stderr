@@ -1,0 +1,7 @@
+error[E0599]: no method named `run` found for struct `JigsawPlanBuilder<'_, SubprocessBackend, WithHost, NoSeries>` in the current scope
+ --> tests/compile_fail/jigsaw_plan_without_series.rs:6:21
+  |
+6 |     let _ = builder.run();
+  |                     ^^^ method not found in `JigsawPlanBuilder<'_, SubprocessBackend, WithHost, NoSeries>`
+  |
+  = note: the method was found for `JigsawPlanBuilder<'_, B, WithHost, WithSeries>`

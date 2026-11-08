@@ -27,6 +27,11 @@ pub mod verb;
 pub mod mock;
 
 pub use backend::{Backend, Invocation, OutputChannel, OutputPolicy, RawOutcome};
+pub use backhopper_core::jigsaw::{
+    JigsawAppRowPayload, JigsawCheckPayload, JigsawFindingPayload, JigsawPlanPayload,
+    JigsawRangePayload, JigsawSitePayload, JigsawTalliesPayload, JigsawUncheckedPayload,
+    JigsawWarningPayload, MissingSnapshotPayload, PlanOtpLinePayload, PlanReleasePayload,
+};
 pub use backhopper_core::model::batch::PinPayload;
 pub use backhopper_core::model::check_payload::{CheckPayload, ProjectSuggestion, QueriedAgainst};
 pub use backhopper_core::model::evaluation::{
@@ -40,8 +45,15 @@ pub use builder::check::{
     CheckPatchBuilder, CheckPositionalBuilder, CheckRangeBuilder, CommitKind, MergeKind,
     PatchSource, PositionalKind, RangeKind,
 };
+pub use builder::jigsaw::{
+    CheckTarget, Jigsaw, JigsawCheckBuilder, JigsawPlanBuilder, PlanArguments,
+};
 pub use builder::snapshots::{ProjectDiffBuilder, SeriesDiffBuilder, Snapshots};
-pub use builder::state::{InputState, NoInput, NoTarget, TargetState, WithInput, WithTarget};
+pub use builder::state::{
+    HostState, InputState, NoHost, NoInput, NoPlugins, NoSeries, NoTarget, PluginsState,
+    SeriesState, TargetState, WithCheckTarget, WithHost, WithInput, WithPlugins, WithSeries,
+    WithTarget,
+};
 pub use builder::suites::{Suites, SuitesPlanBuilder};
 pub use cancellation::{Aborter, CancellationToken};
 pub use driver::{Backhopper, Compatibility, VersionInfo};

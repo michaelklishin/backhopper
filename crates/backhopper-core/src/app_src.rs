@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::model::app_manifest::{AppManifest, ManifestDeps, ManifestSource};
 use crate::model::names::{ApplicationName, ModuleName};
 
 /// Parsed contents of one `.app.src` file.
@@ -25,6 +26,23 @@ pub struct AppSrcSpec {
     pub vsn: Option<String>,
     pub modules: BTreeSet<ModuleName>,
     pub applications: BTreeSet<ApplicationName>,
+    pub included_applications: BTreeSet<ApplicationName>,
+}
+
+impl AppSrcSpec {
+    #[must_use]
+    pub fn into_manifest(self, name: ApplicationName) -> AppManifest {
+        let requires = self
+            .applications
+            .into_iter()
+            .chain(self.included_applications)
+            .collect();
+        AppManifest {
+            name,
+            source: ManifestSource::AppSrc,
+            requires: ManifestDeps::Listed(requires),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +191,7 @@ pub fn parse(path: &Path, text: &str) -> Result<AppSrcSpec, String> {
     let mut vsn: Option<String> = None;
     let mut modules: BTreeSet<ModuleName> = BTreeSet::new();
     let mut applications: BTreeSet<ApplicationName> = BTreeSet::new();
+    let mut included_applications: BTreeSet<ApplicationName> = BTreeSet::new();
     loop {
         p.skip_ws();
         if p.peek() == Some(']') {
@@ -215,18 +234,8 @@ pub fn parse(path: &Path, text: &str) -> Result<AppSrcSpec, String> {
                     p.skip_value()?;
                 }
             }
-            "applications" => {
-                if p.peek() == Some('[') {
-                    let atoms = p.atom_list()?;
-                    for a in atoms {
-                        if let Ok(app) = ApplicationName::new(&a) {
-                            applications.insert(app);
-                        }
-                    }
-                } else {
-                    p.skip_value()?;
-                }
-            }
+            "applications" => p.collect_applications(&mut applications)?,
+            "included_applications" => p.collect_applications(&mut included_applications)?,
             _ => {
                 p.skip_value()?;
             }
@@ -242,6 +251,7 @@ pub fn parse(path: &Path, text: &str) -> Result<AppSrcSpec, String> {
         vsn,
         modules,
         applications,
+        included_applications,
     })
 }
 
@@ -402,6 +412,18 @@ impl<'a> Parser<'a> {
             self.advance();
         }
         None
+    }
+
+    fn collect_applications(&mut self, into: &mut BTreeSet<ApplicationName>) -> Result<(), String> {
+        if self.peek() != Some('[') {
+            return self.skip_value();
+        }
+        into.extend(
+            self.atom_list()?
+                .iter()
+                .filter_map(|a| ApplicationName::new(a).ok()),
+        );
+        Ok(())
     }
 
     fn atom_list(&mut self) -> Result<Vec<String>, String> {

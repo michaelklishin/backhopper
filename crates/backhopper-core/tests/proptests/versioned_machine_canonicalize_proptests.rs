@@ -12,7 +12,7 @@ use backhopper_core::model::names::{
     ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
+    Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
     VersionedMachineVersion, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::snapshot::{format, parser};
@@ -112,6 +112,7 @@ fn arb_module() -> impl Strategy<Value = Module> {
 
 fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
     prop::collection::vec(arb_dep_pin(), 0..4).prop_map(|pins| SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new("p").unwrap(),
         tag: TagName::new("v0.1.0").unwrap(),
         branch: None,
@@ -121,8 +122,9 @@ fn arb_header() -> impl Strategy<Value = SnapshotHeader> {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: pins,
+        host_facts: None,
     })
 }
 
@@ -160,6 +162,7 @@ proptest! {
         m.wire_constants = wcs.clone();
         let snap1 = Snapshot::from_extracted(
             SnapshotHeader {
+                extraction_settings: None,
                 project: ProjectName::new("p").unwrap(),
                 tag: TagName::new("v0.1.0").unwrap(),
                 branch: None,
@@ -169,8 +172,9 @@ proptest! {
                 generated_by: "test".into(),
                 generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
                 extractor_version: String::new(),
-                format_version: FORMAT_VERSION,
+                format_version: 4,
                 dep_pins: Vec::new(),
+                host_facts: None,
             },
             vec![m.clone()],
             vec![],
@@ -187,6 +191,7 @@ proptest! {
         pins in prop::collection::vec(arb_dep_pin(), 0..6)
     ) {
         let header = SnapshotHeader {
+            extraction_settings: None,
             project: ProjectName::new("p").unwrap(),
             tag: TagName::new("v0.1.0").unwrap(),
             branch: None,
@@ -196,8 +201,9 @@ proptest! {
             generated_by: "test".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: pins.clone(),
+            host_facts: None,
         };
         let snap = Snapshot::from_extracted(header, vec![], vec![]).into_canonical();
         let kept = &snap.header().dep_pins;

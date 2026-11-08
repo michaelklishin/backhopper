@@ -159,3 +159,46 @@ fn nested_calls_all_carry_the_outer_caller() {
         assert!(matches!(c.kind, CallKind::Direct));
     }
 }
+
+#[test]
+fn statement_commas_in_a_fun_body_are_not_arguments() {
+    let m = read(
+        "-module(rabbit_standby_replication_promotion).\n\
+         recover(Names, Cutoffs) ->\n\
+         lists:foreach(\n\
+         fun({_, Bin}) ->\n\
+         Msg = mc_amqp:init_from_stream(Bin, #{}),\n\
+         XName = mc:exchange(Msg),\n\
+         case rabbit_exchange:lookup(XName) of\n\
+         {ok, X} -> rabbit_exchange:route(X, Msg);\n\
+         _ -> skip\n\
+         end\n\
+         end, Names).\n",
+    );
+    let names = external_names(&m);
+    assert!(names.contains(&"lists:foreach/2".to_owned()), "{names:?}");
+}
+
+#[test]
+fn a_fun_reference_does_not_open_a_block() {
+    let m = read(
+        "-module(rabbit_misc_user).\n\
+         run(L) -> lists:map(fun lists:reverse/1, L), lists:foldl(fun erlang:max/2, 0, L).\n",
+    );
+    let names = external_names(&m);
+    assert!(names.contains(&"lists:map/2".to_owned()), "{names:?}");
+    assert!(names.contains(&"lists:foldl/3".to_owned()), "{names:?}");
+}
+
+#[test]
+fn a_catch_class_pattern_is_not_a_call() {
+    let m = read(
+        "-module(rabbit_standby_replication_worker_common).\n\
+         stop(Pid) ->\n\
+         try gen_server:stop(Pid)\n\
+         catch _:noproc -> ok;\n\
+         error:badarg -> ok\n\
+         end.\n",
+    );
+    assert_eq!(external_names(&m), vec!["gen_server:stop/1".to_owned()]);
+}

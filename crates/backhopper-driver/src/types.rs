@@ -9,6 +9,14 @@
 //! defined in `backhopper_core::model` flows through unchanged so
 //! callers can match on the same enums the CLI itself produces.
 
+pub use backhopper_core::jigsaw::findings::{JigsawFindingKind, JigsawWarningKind, WithheldReason};
+pub use backhopper_core::jigsaw::plugin_set::AppRole;
+pub use backhopper_core::jigsaw::references::NotChecked;
+pub use backhopper_core::jigsaw::report::JigsawCell;
+pub use backhopper_core::jigsaw::{SnapshotGap, TagSourceKind};
+pub use backhopper_core::model::app_manifest::{
+    AppManifest, ManifestDeps, ManifestSource, ManifestUnreadable,
+};
 pub use backhopper_core::model::apply::{
     ApplyForecast, ApplySummary, PathApplyOutcome, UnassessedReason,
 };
@@ -27,18 +35,24 @@ pub use backhopper_core::model::eval::{
 pub use backhopper_core::model::evaluation::AggregateVerdict;
 pub use backhopper_core::model::findings::TargetFindings;
 pub use backhopper_core::model::fingerprint::{FINGERPRINT_VERSION, VerdictFingerprint};
+pub use backhopper_core::model::macro_decl::{MacroBody, MacroDecl, MacroKey};
 pub use backhopper_core::model::names::{
-    ApplicationName, Arity, BehaviourName, CommitSha, CommitShaPrefix, DependencyName,
-    DependencyVersion, FieldName, FunctionName, GitRef, MacroName, Mfa, ModuleName, ProjectName,
-    RecordName, SeriesName, TagGlob, TagName, TypeName,
+    ApplicationName, Arity, BehaviourName, CommitSha, CommitShaPrefix, ConfKey, DependencyName,
+    DependencyVersion, FieldName, FunctionName, GitRef, HostFactsDigest, HostName, MacroName,
+    MakeVariableName, Mfa, ModuleName, PartialName, ProjectName, RecordName, RelativePath,
+    SeriesName, TagGlob, TagName, TypeName, ValidatorName,
 };
+pub use backhopper_core::model::normalised::{NormalisedDefault, NormalisedMacroBody};
 pub use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 pub use backhopper_core::model::pr_commit::{PrCommit, PrCommitKind};
+pub use backhopper_core::model::release_version::{ErlangMajor, HostSeries};
 pub use backhopper_core::model::resolver_coverage::{ResolverClass, ResolverCoverage};
+pub use backhopper_core::model::schema_files::{PartialFile, SchemaFile};
 pub use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, HrlFile, Module, Provenance, SUPPORTED_FORMAT_VERSIONS, Snapshot,
-    SnapshotHeader, VendoredDep, VendoredDepSource, VersionedMachineVersion, WireConstantBinding,
-    WireValue, state as snapshot_state,
+    FORMAT_VERSION, HeaderRef, HostReleaseFacts, HrlFile, Module, Provenance, RecordDecl,
+    RecordField, SUPPORTED_FORMAT_VERSIONS, Snapshot, SnapshotHeader, VendoredDep,
+    VendoredDepSource, VersionedMachineVersion, WireConstantBinding, WireValue,
+    state as snapshot_state,
 };
 pub use backhopper_core::model::snapshot_diff::{
     CrossSeriesDiffPayload, DiffPayload, QualifiedFunArity, QualifiedRecord, QualifiedTypeArity,

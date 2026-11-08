@@ -32,6 +32,7 @@ fn project(name: &str, scan_paths: Vec<String>, app_roots: Vec<String>) -> Proje
         tag_pattern: None,
         min_tag: None,
         exclude_tag_markers: Vec::new(),
+        manifest: Default::default(),
     }
 }
 

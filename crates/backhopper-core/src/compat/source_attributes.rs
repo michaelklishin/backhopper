@@ -32,7 +32,9 @@ use backhopper_erlang_scan::{
 
 use crate::compat::target_tree_index::TargetTreeIndex;
 use crate::compat::test_suite::module_resolves;
-use crate::model::names::{Arity, FunctionName, ModuleName, RelativePath, TypeName};
+use crate::model::macro_decl::MacroKey;
+use crate::model::names::{Arity, FunctionName, MacroName, ModuleName, RelativePath, TypeName};
+use crate::model::normalised::NormalisedMacroBody;
 use crate::model::symbol::LineClass;
 use crate::model::verdict::IncludeDirective;
 use crate::snapshot::spec_normalize::normalize_signature;
@@ -72,118 +74,28 @@ pub fn extract_defined_macros(src: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// One `-define(NAME, ...)` or `-define(NAME(Args), ...)` form:
-/// `params` is `None` for the object-like form, and `body` is the
-/// definition text with comments stripped and whitespace collapsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacroDef {
-    pub params: Option<usize>,
-    pub body: String,
+    pub key: MacroKey,
+    pub body: NormalisedMacroBody,
 }
 
 /// Every `-define` in `src` with its normalized body, keyed by name.
 /// A name defined more than once (`-ifdef` branches, or coexisting
 /// object-like and function-like forms) keeps every definition, so the
 /// caller can withhold instead of guessing which one is live.
-pub fn extract_defined_macro_values(src: &str) -> BTreeMap<String, Vec<MacroDef>> {
-    let mut out: BTreeMap<String, Vec<MacroDef>> = BTreeMap::new();
+pub fn extract_defined_macro_values(src: &str) -> BTreeMap<MacroName, Vec<MacroDef>> {
+    let mut out: BTreeMap<MacroName, Vec<MacroDef>> = BTreeMap::new();
     for hit in iter_attribute_bodies(src, &["define"]) {
-        let Some((name, params, value)) = parse_macro_define(hit.body) else {
+        let Some((key, value)) = MacroKey::parse_define(hit.body) else {
             continue;
         };
-        out.entry(name).or_default().push(MacroDef {
-            params,
-            body: normalize_macro_body(value),
+        out.entry(key.name.clone()).or_default().push(MacroDef {
+            key,
+            body: NormalisedMacroBody::from_source(value),
         });
     }
     out
-}
-
-/// Splits a `-define` body into name, parameter count, and value text.
-fn parse_macro_define(body: &str) -> Option<(String, Option<usize>, &str)> {
-    let trimmed = body.trim_start();
-    let name_end = trimmed
-        .char_indices()
-        .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '_' || *c == '@'))
-        .map(|(i, _)| i)
-        .unwrap_or(trimmed.len());
-    if name_end == 0 {
-        return None;
-    }
-    let name = trimmed[..name_end].to_owned();
-    let rest = trimmed[name_end..].trim_start();
-    let (params, after) = if rest.starts_with('(') {
-        let (args, after_args) = take_balanced_parens(rest)?;
-        let count = if args.trim().is_empty() {
-            0
-        } else {
-            count_top_level_commas(args) + 1
-        };
-        (Some(count), after_args.trim_start())
-    } else {
-        (None, rest)
-    };
-    let value = after.strip_prefix(',')?;
-    Some((name, params, value))
-}
-
-/// Comments stripped, whitespace runs collapsed to one space, ends
-/// trimmed: enough to equate reformatting without equating bodies that
-/// differ.
-fn normalize_macro_body(body: &str) -> String {
-    let mut out = String::with_capacity(body.len());
-    let mut chars = body.chars();
-    let mut in_string = false;
-    let mut in_atom = false;
-    while let Some(c) = chars.next() {
-        if in_string || in_atom {
-            out.push(c);
-            match c {
-                '\\' => {
-                    if let Some(next) = chars.next() {
-                        out.push(next);
-                    }
-                }
-                '"' if in_string => in_string = false,
-                '\'' if in_atom => in_atom = false,
-                _ => {}
-            }
-            continue;
-        }
-        match c {
-            '%' => {
-                for next in chars.by_ref() {
-                    if next == '\n' {
-                        break;
-                    }
-                }
-                if !out.ends_with(' ') {
-                    out.push(' ');
-                }
-            }
-            '"' => {
-                in_string = true;
-                out.push(c);
-            }
-            '\'' => {
-                in_atom = true;
-                out.push(c);
-            }
-            '$' => {
-                out.push(c);
-                if let Some(next) = chars.next() {
-                    out.push(next);
-                }
-            }
-            c if c.is_whitespace() => {
-                if !out.ends_with(' ') {
-                    out.push(' ');
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.trim().to_owned()
 }
 
 /// Every `?MACRO` reference in `src`, comments and strings skipped.

@@ -12,13 +12,14 @@ use backhopper_core::model::names::{
     ProjectName, TagName,
 };
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
+    Module, Provenance, Snapshot, SnapshotHeader, VendoredDep, VendoredDepSource,
     VersionedMachineVersion, WireConstantBinding, WireValue, state,
 };
 use backhopper_core::store::SnapshotStore;
 
 fn header_with_dep_pins() -> SnapshotHeader {
     SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new("rabbitmq-server").unwrap(),
         tag: TagName::new("v4.0.5").unwrap(),
         branch: None,
@@ -28,7 +29,7 @@ fn header_with_dep_pins() -> SnapshotHeader {
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: String::new(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: vec![
             VendoredDep {
                 name: DependencyName::new("ra").unwrap(),
@@ -41,6 +42,7 @@ fn header_with_dep_pins() -> SnapshotHeader {
                 source: VendoredDepSource::GitRmq,
             },
         ],
+        host_facts: None,
     }
 }
 

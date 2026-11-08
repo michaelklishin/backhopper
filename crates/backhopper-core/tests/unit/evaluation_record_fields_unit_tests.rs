@@ -25,6 +25,7 @@ fn snapshot_with_record_fields(
             .map(|n| RecordField {
                 name: FieldName::new(n).unwrap(),
                 type_repr: None,
+                default: None,
             })
             .collect(),
     });
@@ -46,6 +47,7 @@ fn snapshot_with_inline_record_fields(
             .map(|n| RecordField {
                 name: FieldName::new(n).unwrap(),
                 type_repr: None,
+                default: None,
             })
             .collect(),
     });

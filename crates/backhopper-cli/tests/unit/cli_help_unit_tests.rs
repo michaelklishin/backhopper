@@ -367,3 +367,190 @@ fn verbose_flag_is_counted() {
         verbose.get_action()
     );
 }
+
+#[test]
+fn jigsaw_group_has_the_plan_and_check_verbs() {
+    let mut cmd = Cli::command();
+    cmd.build();
+    let group = cmd
+        .get_subcommands()
+        .find(|s| s.get_name() == "jigsaw")
+        .unwrap();
+    let names: Vec<&str> = group
+        .get_subcommands()
+        .map(|c| c.get_name())
+        .filter(|n| *n != "help")
+        .collect();
+    assert_eq!(names, ["plan", "check"]);
+}
+
+#[test]
+fn jigsaw_plan_requires_a_host_and_a_series() {
+    assert!(Cli::try_parse_from(["backhopper", "jigsaw", "plan"]).is_err());
+    assert!(Cli::try_parse_from(["backhopper", "jigsaw", "plan", "--host", "rabbitmq"]).is_err());
+    assert!(
+        Cli::try_parse_from([
+            "backhopper",
+            "jigsaw",
+            "plan",
+            "--host",
+            "rabbitmq",
+            "--series",
+            "4.2"
+        ])
+        .is_ok()
+    );
+}
+
+#[test]
+fn jigsaw_plan_takes_repeated_erlang_majors_and_refuses_a_bad_series() {
+    let ok = Cli::try_parse_from([
+        "backhopper",
+        "jigsaw",
+        "plan",
+        "--host",
+        "rabbitmq",
+        "--series",
+        "4.2",
+        "--erlang-major",
+        "27",
+        "--erlang-major",
+        "28",
+    ]);
+    assert!(ok.is_ok());
+    let bad = Cli::try_parse_from([
+        "backhopper",
+        "jigsaw",
+        "plan",
+        "--host",
+        "rabbitmq",
+        "--series",
+        "4",
+    ]);
+    assert!(bad.is_err());
+}
+
+const CHECK: [&str; 3] = ["backhopper", "jigsaw", "check"];
+
+fn check_args(extra: &[&str]) -> Vec<String> {
+    CHECK
+        .iter()
+        .chain(extra)
+        .map(|arg| (*arg).to_owned())
+        .collect()
+}
+
+#[test]
+fn jigsaw_check_needs_a_plan_source_and_a_plugin_directory() {
+    assert!(Cli::try_parse_from(check_args(&[])).is_err());
+    assert!(Cli::try_parse_from(check_args(&["--plan-file-path", "plan.json"])).is_err());
+    assert!(
+        Cli::try_parse_from(check_args(&[
+            "--plan-file-path",
+            "plan.json",
+            "--plugin-dir-path",
+            "plugins"
+        ]))
+        .is_ok()
+    );
+}
+
+#[test]
+fn jigsaw_check_takes_the_plan_arguments_instead_of_a_plan_file() {
+    assert!(
+        Cli::try_parse_from(check_args(&[
+            "--host",
+            "rabbitmq",
+            "--series",
+            "4.2",
+            "--up-to",
+            "v4.2.8",
+            "--erlang-major",
+            "27",
+            "--plugin-dir-path",
+            "plugins",
+            "--plugin-dir-path",
+            "vendor"
+        ]))
+        .is_ok()
+    );
+    assert!(
+        Cli::try_parse_from(check_args(&[
+            "--host",
+            "rabbitmq",
+            "--plugin-dir-path",
+            "plugins"
+        ]))
+        .is_err(),
+        "a host without a series"
+    );
+}
+
+#[test]
+fn jigsaw_check_refuses_a_plan_file_together_with_plan_arguments() {
+    assert!(
+        Cli::try_parse_from(check_args(&[
+            "--plan-file-path",
+            "plan.json",
+            "--host",
+            "rabbitmq",
+            "--series",
+            "4.2",
+            "--plugin-dir-path",
+            "plugins"
+        ]))
+        .is_err()
+    );
+    assert!(
+        Cli::try_parse_from(check_args(&[
+            "--plan-file-path",
+            "plan.json",
+            "--erlang-major",
+            "27",
+            "--plugin-dir-path",
+            "plugins"
+        ]))
+        .is_err()
+    );
+}
+
+#[test]
+fn the_jigsaw_group_and_its_verb_accept_abbreviations() {
+    let abbreviated = Cli::try_parse_from([
+        "backhopper",
+        "jig",
+        "pl",
+        "--host",
+        "rabbitmq",
+        "--series",
+        "4.2",
+    ]);
+    assert!(abbreviated.is_ok());
+}
+
+#[test]
+fn snapshots_generate_accepts_from_jigsaw_plan_alone() {
+    let alone = Cli::try_parse_from([
+        "backhopper",
+        "snapshots",
+        "generate",
+        "--from-jigsaw-plan",
+        "plan.json",
+    ]);
+    assert!(alone.is_ok());
+    for conflicting in [
+        ["--project", "ra"],
+        ["--since", "v1.0.0"],
+        ["--series", "rabbitmq-4.2"],
+    ] {
+        let mut argv = vec![
+            "backhopper",
+            "snapshots",
+            "generate",
+            "--from-jigsaw-plan",
+            "plan.json",
+        ];
+        argv.extend(conflicting);
+        assert!(Cli::try_parse_from(argv).is_err(), "{conflicting:?}");
+    }
+}

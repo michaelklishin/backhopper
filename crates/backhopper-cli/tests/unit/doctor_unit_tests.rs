@@ -15,9 +15,12 @@ use tempfile::TempDir;
 use time::OffsetDateTime;
 
 use backhopper_core::config::Config;
-use backhopper_core::model::names::{CommitSha, GitRef, ProjectName, TagGlob, TagName};
+use backhopper_core::model::names::{
+    CommitSha, ExtractionSettingsDigest, GitRef, ProjectName, TagGlob, TagName,
+};
 use backhopper_core::model::pin::{Pin, PinSelect, PinSpec};
 use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader, state};
+use backhopper_core::snapshot::freshness::extraction_settings_digest;
 use backhopper_core::store::SnapshotStore;
 
 use backhopper_cli::CommandOutcome;
@@ -39,9 +42,34 @@ fn project(name: &str) -> ProjectName {
 }
 
 fn write_snapshot_with_version(store_root: &Path, project: &str, tag_name: &str, version: &str) {
+    write_snapshot(store_root, project, tag_name, version, 4, None);
+}
+
+fn write_current_snapshot(store_root: &Path, cfg: &Config, project: &str, tag_name: &str) {
+    let settings =
+        extraction_settings_digest(cfg.project(&ProjectName::new(project).unwrap()).unwrap());
+    write_snapshot(
+        store_root,
+        project,
+        tag_name,
+        backhopper_erlang::EXTRACTOR_VERSION,
+        FORMAT_VERSION,
+        Some(settings),
+    );
+}
+
+fn write_snapshot(
+    store_root: &Path,
+    project: &str,
+    tag_name: &str,
+    version: &str,
+    format_version: u32,
+    extraction_settings: Option<ExtractionSettingsDigest>,
+) {
     fs::create_dir_all(store_root).unwrap();
     let store = SnapshotStore::open_mut(store_root).unwrap();
     let header = SnapshotHeader {
+        extraction_settings,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag_name).unwrap(),
         branch: None,
@@ -51,8 +79,9 @@ fn write_snapshot_with_version(store_root: &Path, project: &str, tag_name: &str,
         generated_by: "test".into(),
         generated_at: OffsetDateTime::UNIX_EPOCH,
         extractor_version: version.to_owned(),
-        format_version: FORMAT_VERSION,
+        format_version,
         dep_pins: Vec::new(),
+        host_facts: None,
     };
     let snap = Snapshot::<state::Unsorted>::from_extracted(header, Vec::new(), Vec::new())
         .into_canonical();
@@ -187,13 +216,8 @@ fn stale_extractor_pin_is_flagged_with_remedy_and_nonzero_exit() {
 fn present_current_pin_reports_ok_and_zero_exit() {
     let tmp = TempDir::new().unwrap();
     let store_root = tmp.path().join("snapshots");
-    write_snapshot_with_version(
-        &store_root,
-        "gen_batch_server",
-        "v0.8.8",
-        backhopper_erlang::EXTRACTOR_VERSION,
-    );
     let cfg = load_cfg(tmp.path());
+    write_current_snapshot(&store_root, &cfg, "gen_batch_server", "v0.8.8");
     let store = SnapshotStore::open(&store_root).unwrap();
     let spec = PinSpec::literal(project("gen_batch_server"), tag("v0.8.8"));
     let row = build_pin_row(&cfg, &store, &spec, false, &mut BTreeMap::new()).unwrap();
@@ -228,6 +252,32 @@ fn unversioned_pin_is_flagged_with_remedy_and_nonzero_exit() {
     totals.record(row.snapshot());
     assert_eq!(totals.present, 1);
     assert_eq!(totals.unversioned_extractor, 1);
+    assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
+}
+
+#[test]
+fn a_pin_made_with_other_extraction_settings_is_flagged_with_the_reason_and_remedy() {
+    let tmp = TempDir::new().unwrap();
+    let store_root = tmp.path().join("snapshots");
+    let cfg = load_cfg(tmp.path());
+    write_snapshot(
+        &store_root,
+        "gen_batch_server",
+        "v0.8.8",
+        backhopper_erlang::EXTRACTOR_VERSION,
+        FORMAT_VERSION,
+        Some(ExtractionSettingsDigest::new("0".repeat(64)).unwrap()),
+    );
+    let store = SnapshotStore::open(&store_root).unwrap();
+    let spec = PinSpec::literal(project("gen_batch_server"), tag("v0.8.8"));
+    let row = build_pin_row(&cfg, &store, &spec, false, &mut BTreeMap::new()).unwrap();
+    assert_eq!(snapshot_cell(row.snapshot()), "OUTDATED");
+    let note = row.note().expect("an outdated pin carries a note");
+    assert!(note.contains("other extraction settings"), "{note}");
+    assert!(note.contains("--refresh-stale"), "{note}");
+    let mut totals = Totals::default();
+    totals.record(row.snapshot());
+    assert_eq!((totals.present, totals.outdated), (1, 1));
     assert_ne!(doctor_exit_code(&totals), CommandOutcome::Success);
 }
 

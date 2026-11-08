@@ -8,7 +8,12 @@ use std::path::Path;
 
 use backhopper_erlang_scan::{BlockDepth, quoted_atom_span, skip_char_literal_span, string_span};
 
-use crate::fragments::{CuttlefishFragment, FragmentKind};
+use std::collections::BTreeSet;
+use std::str::FromStr;
+
+use backhopper_core::model::names::{ApplicationName, ConfKey, PartialName, ValidatorName};
+
+use crate::fragments::{CuttlefishFragment, FragmentKind, PartialInclude};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -23,8 +28,9 @@ impl fmt::Display for ParseError {
 
 impl Error for ParseError {}
 
-/// Parse a Cuttlefish `.schema` source into the list of top-level
-/// translation, validator, and mapping tuples it contains. Comments
+/// Parse a Cuttlefish `.schema` or `.partial` source into the list of
+/// top-level translation (including `partial_translation`), validator,
+/// mapping, and `include_partial` tuples it contains. Comments
 /// (`%`), strings, and chars are balanced past correctly; nested `{`
 /// and `}` inside strings or chars do not affect the brace stack.
 pub fn parse_schema(
@@ -92,16 +98,17 @@ fn classify_top_level(
 ) -> Option<CuttlefishFragment> {
     let head = leading_atom(span);
     let kind = match head.as_deref() {
-        Some("translation") => FragmentKind::Translation,
+        Some("translation" | "partial_translation") => FragmentKind::Translation,
         Some("validator") => FragmentKind::Validator,
         Some("mapping") => FragmentKind::Mapping,
+        Some("include_partial") => FragmentKind::IncludePartial,
         _ => return None,
     };
     let key = leading_string_after_atom(span);
     let start_line = line_of_byte(full_source, open_byte);
     let end_line = line_of_byte(full_source, end_byte);
     let (erlang_body, body_start_line) = match kind {
-        FragmentKind::Mapping => (None, start_line),
+        FragmentKind::Mapping | FragmentKind::IncludePartial => (None, start_line),
         FragmentKind::Translation | FragmentKind::Validator => match locate_fun_body(span) {
             Some((body, body_offset_in_span)) => {
                 let line = line_of_byte(full_source, open_byte + body_offset_in_span);
@@ -112,7 +119,17 @@ fn classify_top_level(
     };
     let (mapping_target, attr_names) = match kind {
         FragmentKind::Mapping => mapping_target_and_attrs(span),
-        FragmentKind::Translation | FragmentKind::Validator => (None, Vec::new()),
+        FragmentKind::Translation | FragmentKind::Validator | FragmentKind::IncludePartial => {
+            (None, Vec::new())
+        }
+    };
+    let partial_include = match kind {
+        FragmentKind::IncludePartial => parse_partial_include(span),
+        _ => None,
+    };
+    let referenced_validators = match kind {
+        FragmentKind::Mapping => mapping_referenced_validators(span),
+        _ => Vec::new(),
     };
     Some(CuttlefishFragment {
         kind,
@@ -124,7 +141,114 @@ fn classify_top_level(
         mapping_target,
         attr_names,
         end_line,
+        partial_include,
+        referenced_validators,
     })
+}
+
+fn tuple_elements(span: &str) -> Vec<String> {
+    let (Some(open), Some(close)) = (span.find('{'), span.rfind('}')) else {
+        return Vec::new();
+    };
+    if close <= open {
+        return Vec::new();
+    }
+    split_top_level(&span[open + 1..close])
+}
+
+/// `{include_partial, {App, "name"}, [{exclude, [...]}, {overrides, [...]}]}`.
+/// The partial name is a string or an atom; `overrides` entries are
+/// `{"key", Options}` tuples or bare key strings.
+fn parse_partial_include(span: &str) -> Option<PartialInclude> {
+    let elements = tuple_elements(span);
+    let target = tuple_elements(elements.get(1)?);
+    let app = ApplicationName::from_str(target.first()?.trim()).ok()?;
+    let name_text = target.get(1)?;
+    let name = string_literal(name_text).or_else(|| leading_atom(name_text.trim()))?;
+    let options = elements.get(2).map(String::as_str).unwrap_or_default();
+    let mut exclude = BTreeSet::new();
+    let mut overrides = BTreeSet::new();
+    for option in list_items(options) {
+        let parts = tuple_elements(&option);
+        let keys = parts
+            .get(1)
+            .map(|list| list_items(list))
+            .unwrap_or_default();
+        let into = match leading_atom(option.trim()).as_deref() {
+            Some("exclude") => &mut exclude,
+            Some("overrides") => &mut overrides,
+            _ => continue,
+        };
+        into.extend(keys.iter().filter_map(|k| conf_key_of(k)));
+    }
+    Some(PartialInclude {
+        app,
+        name: PartialName::from_str(&name).ok()?,
+        exclude,
+        overrides,
+    })
+}
+
+fn conf_key_of(item: &str) -> Option<ConfKey> {
+    let text = item.trim();
+    let literal = if text.starts_with('{') {
+        string_literal(tuple_elements(text).first()?)?
+    } else {
+        string_literal(text)?
+    };
+    ConfKey::from_str(&literal).ok()
+}
+
+fn list_items(elem: &str) -> Vec<String> {
+    let t = elem.trim();
+    let (Some(open), Some(close)) = (t.find('['), t.rfind(']')) else {
+        return Vec::new();
+    };
+    if close <= open {
+        return Vec::new();
+    }
+    split_top_level(&t[open + 1..close])
+        .into_iter()
+        .filter(|item| !item.trim().is_empty())
+        .collect()
+}
+
+/// Validator names a mapping's fourth element refers to: its
+/// `{validators, [...]}` list, and any `{validator, Name}` inside a
+/// `datatype` option.
+fn mapping_referenced_validators(span: &str) -> Vec<ValidatorName> {
+    let elements = tuple_elements(span);
+    let mut out = Vec::new();
+    for option in elements.get(3).map(|e| list_items(e)).unwrap_or_default() {
+        let parts = tuple_elements(&option);
+        let Some(value) = parts.get(1) else { continue };
+        match leading_atom(option.trim()).as_deref() {
+            Some("validators") => out.extend(
+                list_items(value)
+                    .iter()
+                    .filter_map(|v| string_literal(v))
+                    .filter_map(|v| ValidatorName::from_str(&v).ok()),
+            ),
+            Some("datatype") => out.extend(inline_validators(value)),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn inline_validators(text: &str) -> Vec<ValidatorName> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("{validator") {
+        let tail = &rest[at + "{validator".len()..];
+        rest = tail;
+        let Some(after_comma) = tail.trim_start().strip_prefix(',') else {
+            continue;
+        };
+        let name = string_literal(after_comma).or_else(|| leading_atom(after_comma.trim_start()));
+        out.extend(name.and_then(|n| ValidatorName::from_str(&n).ok()));
+    }
+    out
 }
 
 /// A mapping tuple's third element (the target Erlang key, when a

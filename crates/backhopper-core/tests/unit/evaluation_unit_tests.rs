@@ -27,6 +27,7 @@ fn snapshot_with_record(project: &str, record: &str) -> Snapshot<state::Canonica
         fields: vec![RecordField {
             name: FieldName::new("id").unwrap(),
             type_repr: None,
+            default: None,
         }],
     });
     Snapshot::from_extracted(snapshot_header(project, "v1.0.0"), vec![], vec![hrl]).into_canonical()

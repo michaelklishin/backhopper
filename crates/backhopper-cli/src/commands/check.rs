@@ -37,6 +37,7 @@ use backhopper_core::compat::scope::PinScope;
 use backhopper_core::compat::source_macros::{FileMap, build_macro_table};
 use backhopper_core::config::{Config, Project};
 use backhopper_core::erlang_macros::MacroTable;
+use backhopper_core::erlang_mk::{DepPin, parse_components_mk};
 use backhopper_core::model::apply::ApplyForecast;
 use backhopper_core::model::batch::{BatchPayload, BatchQuery, BatchResult, PinPayload};
 use backhopper_core::model::check_payload::{CheckPayload, QueriedAgainst};
@@ -83,9 +84,7 @@ use crate::commands::context::{
 };
 use crate::commands::macro_env::macro_environment_hash;
 use crate::commands::pin_bump::{BumpSnapshotGenerator, PinBumpAssessor};
-use crate::commands::rabbitmq_components::{
-    COMPONENTS_MK_PATH, DepPin, detect_pin_bumps, parse_components_mk,
-};
+use crate::commands::rabbitmq_components::{COMPONENTS_MK_PATH, detect_pin_bumps};
 use crate::commands::self_snapshot::{ensure_self_snapshot_present, resolve_self_pin};
 use crate::commands::sha_prefix::expand_prefix_enriched;
 use crate::commands::snapshot_cache::SnapshotCache;
@@ -987,7 +986,7 @@ impl AlreadyPresentProbe {
 /// multi-series batch evaluates the same commit once per series.
 struct DepPinProbe {
     source: GitRepo,
-    target_pins: BTreeMap<String, DepPin>,
+    target_pins: BTreeMap<DependencyName, DepPin>,
     by_commit: RefCell<BTreeMap<CommitSha, Vec<DepPinDivergence>>>,
 }
 
@@ -1048,11 +1047,8 @@ impl DepPinProbe {
             if pin.version == target_pin.version && pin.source == target_pin.source {
                 continue;
             }
-            let Ok(dep) = DependencyName::new(pin.name.clone()) else {
-                continue;
-            };
             divergent.push(DepPinDivergence {
-                dep,
+                dep: pin.name.clone(),
                 source: pin.display(),
                 target: target_pin.display(),
             });

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use backhopper_core::app_src::{AppSrcSpec, parse};
+use backhopper_core::model::app_manifest::{ManifestDeps, ManifestSource};
 use backhopper_core::model::names::{ApplicationName, ModuleName};
 
 fn parse_ok(text: &str) -> AppSrcSpec {
@@ -155,4 +157,46 @@ fn vsn_with_embedded_quotes_is_skipped_gracefully() {
     let spec = parse_ok(text);
     assert_eq!(spec.vsn.as_deref(), Some("1.0\\\"-pre"));
     assert!(spec.modules.contains(&ModuleName::new("a").unwrap()));
+}
+
+#[test]
+fn reads_included_applications() {
+    let text = "\
+{application, rabbitmq_management,
+ [{description, \"RabbitMQ Management Console\"},
+  {applications, [kernel, stdlib, rabbit_common, rabbit]},
+  {included_applications, [rabbitmq_management_agent, cowboy]}
+ ]}.
+";
+    let spec = parse_ok(text);
+    assert_eq!(spec.included_applications.len(), 2);
+    assert!(
+        spec.included_applications
+            .contains(&ApplicationName::new("cowboy").unwrap())
+    );
+    assert_eq!(spec.applications.len(), 4);
+}
+
+#[test]
+fn a_manifest_unions_applications_and_included_applications() {
+    let text = "\
+{application, rabbitmq_management,
+ [{applications, [kernel, stdlib, rabbit]},
+  {included_applications, [rabbit, cowboy]}
+ ]}.
+";
+    let manifest =
+        parse_ok(text).into_manifest(ApplicationName::new("rabbitmq_management").unwrap());
+    assert_eq!(manifest.source, ManifestSource::AppSrc);
+    let expected: BTreeSet<ApplicationName> = ["cowboy", "kernel", "rabbit", "stdlib"]
+        .iter()
+        .map(|n| ApplicationName::new(*n).unwrap())
+        .collect();
+    assert_eq!(manifest.requires, ManifestDeps::Listed(expected));
+}
+
+#[test]
+fn a_non_list_included_applications_value_is_skipped() {
+    let spec = parse_ok("{application, demo, [{included_applications, undefined}]}.");
+    assert!(spec.included_applications.is_empty());
 }

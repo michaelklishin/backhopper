@@ -32,6 +32,7 @@ fn otp_project() -> Project {
         tag_pattern: None,
         min_tag: None,
         exclude_tag_markers: Vec::new(),
+        manifest: Default::default(),
     }
 }
 

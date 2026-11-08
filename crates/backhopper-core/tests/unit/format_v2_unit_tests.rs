@@ -6,14 +6,15 @@ use backhopper_core::model::names::{
     ApplicationName, FieldName, ModuleName, RecordName, RelativePath,
 };
 use backhopper_core::model::snapshot::{
-    FORMAT_VERSION, Module, RecordDecl, RecordField, SUPPORTED_FORMAT_VERSIONS,
+    FORMAT_VERSION, LAST_MIGRATABLE_FORMAT_VERSION, Module, RecordDecl, RecordField,
+    SUPPORTED_FORMAT_VERSIONS,
 };
 use backhopper_core::snapshot::{format, parser};
 use backhopper_test_support::{canonical_snapshot, snapshot_header};
 
 #[test]
 fn format_version_constant_is_four() {
-    assert_eq!(FORMAT_VERSION, 4);
+    assert_eq!(FORMAT_VERSION, 5);
 }
 
 #[test]
@@ -22,6 +23,7 @@ fn supported_versions_include_v1_through_v4() {
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&2));
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&3));
     assert!(SUPPORTED_FORMAT_VERSIONS.contains(&4));
+    assert!(SUPPORTED_FORMAT_VERSIONS.contains(&5));
 }
 
 fn v1_text(body: &str) -> String {
@@ -65,13 +67,13 @@ fn parser_rejects_unknown_format_version() {
 }
 
 #[test]
-fn writer_emits_current_format_header() {
+fn writer_emits_the_snapshots_own_format_header() {
     let snap = canonical_snapshot(
         snapshot_header("p", "v1"),
         vec![Module::new(ModuleName::new("alpha").unwrap())],
     );
     let text = format::to_string(&snap).expect("write");
-    let expected = format!("# format-version: {FORMAT_VERSION}");
+    let expected = format!("# format-version: {LAST_MIGRATABLE_FORMAT_VERSION}");
     assert!(text.contains(&expected), "text was:\n{text}");
 }
 
@@ -102,10 +104,12 @@ fn module_records_round_trip_through_format() {
             RecordField {
                 name: FieldName::new("a").unwrap(),
                 type_repr: None,
+                default: None,
             },
             RecordField {
                 name: FieldName::new("b").unwrap(),
                 type_repr: Some("integer()".into()),
+                default: None,
             },
         ],
     });

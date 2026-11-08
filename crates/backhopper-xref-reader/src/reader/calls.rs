@@ -126,8 +126,8 @@ pub(super) fn try_call_site(
                     record_fun_ref_external(b, caller, head, f, arity, pos, sc.pos());
                     return true;
                 }
-                record_fun_ref_external(b, caller, head, f, 0, pos, sc.pos());
-                return true;
+                sc.set_pos(save);
+                return false;
             }
             if matches!(next, Some(b'A'..=b'Z')) {
                 sc.advance();

@@ -19,6 +19,7 @@ fn spec(name: &str, deps: &[&str]) -> AppSrcSpec {
             .iter()
             .map(|d| ApplicationName::new(*d).unwrap())
             .collect(),
+        included_applications: BTreeSet::new(),
     }
 }
 

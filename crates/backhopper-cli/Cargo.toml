@@ -24,6 +24,7 @@ backhopper-cache       = { workspace = true }
 backhopper-core        = { workspace = true, features = ["schemars"] }
 backhopper-cuttlefish  = { workspace = true }
 backhopper-git         = { workspace = true }
+backhopper-jigsaw      = { workspace = true }
 backhopper-erlang      = { workspace = true }
 backhopper-elixir      = { workspace = true }
 backhopper-xref        = { workspace = true }
@@ -46,6 +47,7 @@ tracing-subscriber     = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
+insta      = { workspace = true }
 backhopper-driver = { workspace = true }
 backhopper-test-support = { path = "../backhopper-test-support" }
 predicates = { workspace = true }

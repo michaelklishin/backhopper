@@ -25,6 +25,7 @@ fn snapshot_with_record_field(type_repr: Option<String>) -> Snapshot<Canonical> 
         fields: vec![RecordField {
             name: FieldName::new("count").unwrap(),
             type_repr,
+            default: None,
         }],
     });
     Snapshot::from_extracted(minimal_header(), vec![], vec![hrl]).into_canonical()
@@ -157,14 +158,17 @@ fn multi_field_record_with_one_multiline_round_trips() {
             RecordField {
                 name: FieldName::new("first_index").unwrap(),
                 type_repr: Some("integer()".into()),
+                default: None,
             },
             RecordField {
                 name: FieldName::new("comparison").unwrap(),
                 type_repr: Some("ra:index() |\n      ra:idxterm()".into()),
+                default: None,
             },
             RecordField {
                 name: FieldName::new("state").unwrap(),
                 type_repr: Some("term()".into()),
+                default: None,
             },
         ],
     });
@@ -207,6 +211,7 @@ fn two_records_with_multiline_fields_round_trip() {
         fields: vec![RecordField {
             name: FieldName::new("root").unwrap(),
             type_repr: Some("khepri:node_id() |\n      khepri_path:pattern()".into()),
+            default: None,
         }],
     });
     hrl.records.push(RecordDecl {
@@ -216,6 +221,7 @@ fn two_records_with_multiline_fields_round_trip() {
             type_repr: Some(
                 "khepri:node_id() |\n      khepri:payload() |\n      khepri:props()".into(),
             ),
+            default: None,
         }],
     });
     let snap = Snapshot::from_extracted(minimal_header(), vec![], vec![hrl]).into_canonical();

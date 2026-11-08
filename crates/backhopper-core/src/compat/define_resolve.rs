@@ -320,7 +320,10 @@ pub fn analyse_macro_values(
                 analysis.checks.withheld_no_source += 1;
                 continue;
             };
-            match (target_values.get(&u.name), source_values.get(&u.name)) {
+            match (
+                target_values.get(u.name.as_str()),
+                source_values.get(u.name.as_str()),
+            ) {
                 (Some(target_defs), Some(source_defs)) => {
                     let (Some(target_def), Some(source_def)) =
                         (single(target_defs), single(source_defs))
@@ -356,8 +359,8 @@ fn single(defs: &[MacroDef]) -> Option<&MacroDef> {
 /// A function-like define renders with its parameter count, so a
 /// form-only difference still shows two distinguishable values.
 fn rendered(def: &MacroDef) -> String {
-    match def.params {
+    match def.key.arity {
         Some(n) => format!("({n} args) {}", def.body),
-        None => def.body.clone(),
+        None => def.body.to_string(),
     }
 }

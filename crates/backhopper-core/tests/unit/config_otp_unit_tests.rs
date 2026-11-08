@@ -8,7 +8,7 @@ use backhopper_core::config::{Config, ConfigFile, ProjectLayout, Series};
 use backhopper_core::errors::ConfigError;
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::store::SnapshotStore;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -42,6 +42,37 @@ layout = "erlang_otp"
     );
     assert_eq!(p.tag_pattern.as_ref().unwrap().as_str(), "OTP-*");
     assert_eq!(p.min_tag.as_ref().unwrap().as_str(), "OTP-26.0");
+    assert_eq!(p.tag_prefix, "OTP-");
+}
+
+#[test]
+fn other_layouts_keep_the_v_tag_prefix() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "ra"
+git_url = "/path/to/ra.git"
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.projects[0].tag_prefix, "v");
+}
+
+#[test]
+fn an_erlang_otp_project_may_state_its_own_tag_prefix_when_no_host_uses_it() {
+    let cfg = parse(
+        r#"
+config_version = 1
+[[project]]
+name = "otp"
+git_url = "/path/to/otp.git"
+layout = "erlang_otp"
+tag_prefix = "otp-"
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.projects[0].tag_prefix, "otp-");
 }
 
 #[test]
@@ -256,6 +287,7 @@ fn series_resolve_pins_walks_specs_against_store() {
     let mut_store = SnapshotStore::open_mut(tmp.path()).unwrap();
     for tag_str in ["v2.16.13", "v2.17.0"] {
         let header = SnapshotHeader {
+            extraction_settings: None,
             project: project.clone(),
             tag: TagName::new(tag_str).unwrap(),
             branch: None,
@@ -265,8 +297,9 @@ fn series_resolve_pins_walks_specs_against_store() {
             generated_by: "backhopper".into(),
             generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
             extractor_version: String::new(),
-            format_version: FORMAT_VERSION,
+            format_version: 4,
             dep_pins: Vec::new(),
+            host_facts: None,
         };
         mut_store
             .write(&Snapshot::from_extracted(header, Vec::new(), Vec::new()).into_canonical())

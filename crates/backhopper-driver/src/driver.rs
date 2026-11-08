@@ -24,6 +24,7 @@ use backhopper_core::model::check_payload::CheckPayload;
 use backhopper_core::model::wire_envelope::WireEnvelope;
 
 use crate::builder::check::Check;
+use crate::builder::jigsaw::Jigsaw;
 use crate::builder::snapshots::Snapshots;
 use crate::builder::suites::Suites;
 use crate::envelope::{Envelope, ExecutedInvocation, SchemaVersion};
@@ -150,6 +151,11 @@ impl<B: Backend> Backhopper<B> {
     /// Access the `check` verb group.
     pub fn check(&self) -> Check<'_, B> {
         Check { driver: self }
+    }
+
+    /// Access the `jigsaw` verb group.
+    pub fn jigsaw(&self) -> Jigsaw<'_, B> {
+        Jigsaw { driver: self }
     }
 
     /// Access the `suites` verb group.

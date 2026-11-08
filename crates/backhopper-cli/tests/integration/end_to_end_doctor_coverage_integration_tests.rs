@@ -15,7 +15,7 @@ use tempfile::TempDir;
 use time::OffsetDateTime;
 
 use backhopper_core::model::names::{CommitSha, ProjectName, TagName};
-use backhopper_core::model::snapshot::{FORMAT_VERSION, Snapshot, SnapshotHeader};
+use backhopper_core::model::snapshot::{Snapshot, SnapshotHeader};
 use backhopper_core::snapshot::format;
 
 use crate::helpers::cli::{run, stdout};
@@ -33,6 +33,7 @@ fn write_snapshot_with_extractor_version(
     extractor_version: &str,
 ) {
     let header = SnapshotHeader {
+        extraction_settings: None,
         project: ProjectName::new(project).unwrap(),
         tag: TagName::new(tag).unwrap(),
         branch: None,
@@ -42,8 +43,9 @@ fn write_snapshot_with_extractor_version(
         generated_by: "backhopper test".into(),
         generated_at: OffsetDateTime::from_unix_timestamp(0).unwrap(),
         extractor_version: extractor_version.to_owned(),
-        format_version: FORMAT_VERSION,
+        format_version: 4,
         dep_pins: Vec::new(),
+        host_facts: None,
     };
     let snap = Snapshot::from_extracted(header, vec![], vec![]).into_canonical();
     let dir = snapshot_dir.join(project);

@@ -415,18 +415,18 @@ fn macro_values_capture_object_and_function_forms() {
     let values = extract_defined_macro_values(src);
     let interval = &values["SNAPSHOT_INTERVAL"];
     assert_eq!(interval.len(), 1);
-    assert_eq!(interval[0].params, None);
-    assert_eq!(interval[0].body, "4096");
+    assert_eq!(interval[0].key.arity, None);
+    assert_eq!(interval[0].body.as_str(), "4096");
     let incr = &values["incr"];
-    assert_eq!(incr[0].params, Some(1));
-    assert_eq!(incr[0].body, "X + 1");
+    assert_eq!(incr[0].key.arity, Some(Arity::new(1)));
+    assert_eq!(incr[0].body.as_str(), "X + 1");
 }
 
 #[test]
 fn macro_values_normalize_whitespace_and_comments() {
     let src = "-define(LIMITS(X), #{max => X,\n    %% cap\n    min => 0}).\n";
     let values = extract_defined_macro_values(src);
-    assert_eq!(values["LIMITS"][0].body, "#{max => X, min => 0}");
+    assert_eq!(values["LIMITS"][0].body.as_str(), "#{max => X, min => 0}");
 }
 
 #[test]
@@ -441,7 +441,7 @@ fn macro_values_keep_every_definition_of_a_name() {
 fn macro_values_keep_commas_inside_the_body() {
     let src = "-define(PAIR, {a, b}).\n";
     let values = extract_defined_macro_values(src);
-    assert_eq!(values["PAIR"][0].body, "{a, b}");
+    assert_eq!(values["PAIR"][0].body.as_str(), "{a, b}");
 }
 
 // A multi-line attribute body must not undercount the lines of following attributes.

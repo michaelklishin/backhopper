@@ -17,5 +17,6 @@ workspace = true
 
 [dependencies]
 backhopper-core = { workspace = true }
+toml            = { workspace = true }
 tempfile        = { workspace = true }
 time            = { workspace = true }

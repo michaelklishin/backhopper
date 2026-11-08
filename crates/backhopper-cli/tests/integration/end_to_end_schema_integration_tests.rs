@@ -251,3 +251,26 @@ fn supported_envelope_versions_text_format_includes_each_field_label() {
     assert!(body.contains("supported_envelope_versions:"), "{body}");
     assert!(body.contains("backhopper_version:"), "{body}");
 }
+
+#[test]
+fn show_18_defines_both_jigsaw_payloads() {
+    let a = run_succeeds(["--formatter", "json", "schema", "show", "18"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&a)).expect("valid json envelope");
+    let schema = &v["data"]["schema"];
+    assert!(schema["jigsaw_plan_payload"]["properties"]["cache_key"].is_object());
+    let check = &schema["jigsaw_check_payload"];
+    assert!(check["properties"]["limits"].is_object());
+    assert!(check["properties"]["clean"].is_object());
+    assert!(check["$defs"]["JigsawAppRowPayload"]["properties"]["cells"].is_object());
+}
+
+#[test]
+fn show_17_is_the_frozen_file() {
+    let frozen = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../backhopper-core/src/schema_v17_snapshot.json"
+    ))
+    .expect("frozen v17 snapshot");
+    let a = run_succeeds(["schema", "show", "17"]);
+    assert_eq!(stdout(&a), frozen);
+}

@@ -29,6 +29,7 @@ fn project_with(tag_pattern: Option<&str>, min_tag: Option<&str>) -> Project {
         tag_pattern: tag_pattern.map(|s| TagGlob::new(s).unwrap()),
         min_tag: min_tag.map(|s| TagName::new(s).unwrap()),
         exclude_tag_markers: Vec::new(),
+        manifest: Default::default(),
     }
 }
 

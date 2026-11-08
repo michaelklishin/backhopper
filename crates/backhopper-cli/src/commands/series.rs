@@ -14,6 +14,7 @@ use serde::Serialize;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value, value};
 
 use backhopper_core::config::{Config, Project};
+use backhopper_core::erlang_mk::{DepPin, parse_components_mk, scan_components_mk};
 use backhopper_core::model::names::{CommitSha, ProjectName, SeriesName, TagName};
 use backhopper_core::model::pin::{PinSelect, PinSpec};
 use backhopper_git::{GitRepo, unified_diff_body};
@@ -22,7 +23,7 @@ use crate::cli::series::default_branches;
 use crate::cli::{GlobalArgs, PinsArgs, PreviewArgs, SeriesCmd, SyncCmd, SyncCommon};
 use crate::commands::context::load_config;
 use crate::commands::rabbitmq_components::{
-    COMPONENTS_MK_PATH, DepPin, dep_to_tag, parse_components_mk, series_name_for_branch,
+    COMPONENTS_MK_PATH, dep_to_tag, series_name_for_branch,
 };
 use crate::errors::{CliError, CliResult};
 use crate::output::{OutputContext, render};
@@ -118,29 +119,28 @@ pub fn build_sync_output_for_branch(
     projects: &[Project],
     branch: Option<&str>,
 ) -> SyncOutput {
-    let pins = parse_components_mk(components_mk);
+    let scan = scan_components_mk(components_mk);
     let configured: BTreeMap<&str, &Project> =
         projects.iter().map(|p| (p.name.as_str(), p)).collect();
     let mut kept: Vec<PinPayload> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
     let mut skipped: Vec<SkippedPin> = Vec::new();
-    for pin in &pins {
-        if ProjectName::new(pin.name.as_str()).is_err() {
-            skipped.push(SkippedPin {
-                name: pin.name.clone(),
-                reason: "name not a valid project identifier".into(),
-            });
-            continue;
-        }
+    for name in scan.refused_names {
+        skipped.push(SkippedPin {
+            name,
+            reason: "name not a valid project identifier".into(),
+        });
+    }
+    for pin in &scan.pins {
         match configured.get(pin.name.as_str()) {
             Some(project) => match pin_payload_for(pin, project) {
                 Ok(payload) => kept.push(payload),
                 Err(reason) => skipped.push(SkippedPin {
-                    name: pin.name.clone(),
+                    name: pin.name.to_string(),
                     reason,
                 }),
             },
-            None => dropped.push(pin.name.clone()),
+            None => dropped.push(pin.name.to_string()),
         }
     }
     kept.sort_by(|a, b| a.project.cmp(&b.project));
@@ -238,9 +238,9 @@ struct DepPinPayload {
 impl DepPinPayload {
     fn from_pin(pin: &DepPin) -> Self {
         Self {
-            name: pin.name.clone(),
-            source: pin.source.label().to_owned(),
-            version: pin.version.clone(),
+            name: pin.name.to_string(),
+            source: pin.source.as_label().to_owned(),
+            version: pin.version.to_string(),
         }
     }
 }

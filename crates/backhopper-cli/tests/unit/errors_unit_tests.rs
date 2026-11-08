@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // See LICENSE-APACHE and LICENSE-MIT for details.
 
+use backhopper_core::config::HostConfigError;
+use backhopper_core::errors::ConfigError;
+use backhopper_core::jigsaw::plugin_set::PluginSetError;
+use backhopper_core::jigsaw::{PlanError, UnstockedPlan};
 use backhopper_core::model::names::{ProjectName, TagName};
 use backhopper_core::model::pin::Pin;
+use backhopper_core::model::release_version::{ErlangMajor, HostSeries};
 use backhopper_git::GitError;
 use std::path::PathBuf;
 
@@ -117,4 +122,70 @@ fn missing_snapshots_detail_lists_pins() {
     };
     let detail = e.detail().unwrap();
     assert!(detail.contains("ra @ v2.0.0"));
+}
+
+#[test]
+fn plan_errors_about_the_request_map_to_the_config_exit_code() {
+    let series: HostSeries = "4.2".parse().unwrap();
+    let major = ErlangMajor::try_from(29).unwrap();
+    for error in [
+        PlanError::EmptySeries { series },
+        PlanError::NoOtpTags { major },
+        PlanError::ErlangMajorUnsupported {
+            failures: Vec::new(),
+        },
+    ] {
+        assert_eq!(CliError::Plan(error).exit_code(), ExitCode::Config);
+    }
+}
+
+#[test]
+fn plan_errors_about_unreadable_input_map_to_the_data_exit_code() {
+    let tag = TagName::new("v4.2.0").unwrap();
+    let unreadable = PlanError::ReleaseUnreadable {
+        tag,
+        detail: "no pin file".into(),
+    };
+    assert_eq!(CliError::Plan(unreadable).exit_code(), ExitCode::DataErr);
+    let wire = PlanError::Wire {
+        field: "series",
+        detail: "x".into(),
+    };
+    assert_eq!(CliError::Plan(wire).exit_code(), ExitCode::DataErr);
+}
+
+#[test]
+fn an_unstocked_plan_and_an_unreadable_plugin_set_map_to_the_data_exit_code() {
+    let unstocked = CliError::UnstockedPlan(UnstockedPlan::default());
+    assert_eq!(unstocked.exit_code(), ExitCode::DataErr);
+    let duplicate = CliError::PluginSet(PluginSetError::DuplicateApp {
+        app: "rabbitmq_shovel_extra".parse().unwrap(),
+        first: PathBuf::from("/plugins/a"),
+        second: PathBuf::from("/plugins/b"),
+    });
+    assert_eq!(duplicate.exit_code(), ExitCode::DataErr);
+}
+
+#[test]
+fn an_unstocked_plan_lists_the_gaps_and_names_the_way_to_fill_them() {
+    let mut unstocked = UnstockedPlan::default();
+    unstocked.missing.push(Pin::new(
+        "ra".parse().unwrap(),
+        TagName::new("v2.17.3").unwrap(),
+    ));
+    let error = CliError::UnstockedPlan(unstocked);
+    assert!(error.detail().unwrap().contains("missing ra @ v2.17.3"));
+    assert!(error.hint().unwrap().contains("--from-jigsaw-plan"));
+}
+
+#[test]
+fn an_unknown_host_and_a_bad_host_block_map_to_the_config_exit_code() {
+    let unknown = CliError::from(ConfigError::UnknownHost("zeromq".into()));
+    assert_eq!(unknown.exit_code(), ExitCode::Config);
+    let bad = CliError::from(ConfigError::Host(HostConfigError::NoErlangMajors {
+        host: "rabbitmq".into(),
+    }));
+    assert_eq!(bad.exit_code(), ExitCode::Config);
+    let other = CliError::from(ConfigError::UnknownProject("ra".into()));
+    assert_eq!(other.exit_code(), ExitCode::DataErr);
 }

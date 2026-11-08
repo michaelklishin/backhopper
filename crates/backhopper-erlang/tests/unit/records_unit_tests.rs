@@ -109,3 +109,52 @@ fn record_fields_below_comment_lines_all_survive() {
     assert_eq!(names, vec!["id", "leader", "voted_for"]);
     assert_eq!(record.fields[0].type_repr.as_deref(), Some("integer()"));
 }
+
+#[test]
+fn a_default_after_the_type_is_captured() {
+    let r = parse_record("(amqqueue, {durable :: boolean() = false})").unwrap();
+    assert_eq!(r.fields[0].type_repr.as_deref(), Some("boolean()"));
+    assert_eq!(r.fields[0].default.as_deref(), Some("false"));
+}
+
+#[test]
+fn a_default_before_the_type_is_captured() {
+    let r = parse_record("(amqqueue, {durable = false :: boolean()})").unwrap();
+    assert_eq!(r.fields[0].type_repr.as_deref(), Some("boolean()"));
+    assert_eq!(r.fields[0].default.as_deref(), Some("false"));
+}
+
+#[test]
+fn an_untyped_default_is_captured() {
+    let r = parse_record("(amqqueue, {arguments = [], vhost})").unwrap();
+    assert_eq!(r.fields[0].default.as_deref(), Some("[]"));
+    assert_eq!(r.fields[1].default, None);
+}
+
+#[test]
+fn a_field_without_a_default_has_none() {
+    let r = parse_record("(amqqueue, {name :: rabbit_types:r(queue)})").unwrap();
+    assert_eq!(r.fields[0].default, None);
+}
+
+#[test]
+fn a_default_with_nested_commas_is_one_default() {
+    let r = parse_record("(cfg, {limits = #{max => 10, min => 0} :: map()})").unwrap();
+    assert_eq!(
+        r.fields[0].default.as_deref(),
+        Some("#{max => 10, min => 0}")
+    );
+}
+
+#[test]
+fn an_explicit_undefined_default_is_not_the_same_as_none() {
+    let r = parse_record("(cfg, {a = undefined, b})").unwrap();
+    assert_eq!(r.fields[0].default.as_deref(), Some("undefined"));
+    assert_eq!(r.fields[1].default, None);
+}
+
+#[test]
+fn a_match_operator_inside_a_type_is_not_a_default() {
+    let r = parse_record("(cfg, {m :: #{a := integer()}})").unwrap();
+    assert_eq!(r.fields[0].default, None);
+}

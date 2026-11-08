@@ -289,3 +289,108 @@ fn series_generate_rejects_unknown_series_name() {
         "expected error referencing series/ghost, got: {err}"
     );
 }
+
+fn make_multi_tag_repo(tags: usize) -> GitRepoFixture {
+    let repo = GitRepoFixture::new();
+    for n in 0..tags {
+        let exports: Vec<String> = (0..=n).map(|i| format!("f{i}/0")).collect();
+        let functions = (0..=n)
+            .map(|i| format!("f{i}() -> ok."))
+            .collect::<Vec<_>>()
+            .join("\n");
+        repo.write_file(
+            "src/demo.erl",
+            &format!(
+                "-module(demo).\n-export([{}]).\n{functions}\n",
+                exports.join(", ")
+            ),
+        );
+        repo.commit(&format!("release {n}"));
+        repo.tag(&format!("v1.{n}.0"));
+    }
+    repo
+}
+
+fn stored_without_timestamps(
+    snapshot_dir: &std::path::Path,
+) -> std::collections::BTreeMap<String, String> {
+    let mut files = std::collections::BTreeMap::new();
+    for project in fs::read_dir(snapshot_dir).unwrap() {
+        for entry in fs::read_dir(project.unwrap().path()).unwrap() {
+            let path = entry.unwrap().path();
+            let text = fs::read_to_string(&path).unwrap();
+            let kept: Vec<&str> = text
+                .lines()
+                .filter(|line| !line.starts_with("# generated-at:"))
+                .collect();
+            files.insert(
+                path.file_name().unwrap().to_string_lossy().into_owned(),
+                kept.join("\n"),
+            );
+        }
+    }
+    files
+}
+
+#[test]
+fn project_generate_writes_the_same_snapshots_for_any_worker_count() {
+    let repo = make_multi_tag_repo(8);
+    let mut stores = Vec::new();
+    for jobs in ["1", "5"] {
+        let workdir = TempDir::new().unwrap();
+        let snapshot_dir = workdir.path().join("snapshots");
+        let cfg = write_series_config(&workdir, &repo, &snapshot_dir);
+        let generated = run([
+            "--formatter",
+            "json",
+            "--config-file-path",
+            cfg.to_str().unwrap(),
+            "snapshots",
+            "generate",
+            "--project",
+            "demo",
+            "--jobs",
+            jobs,
+        ]);
+        let env: Value = serde_json::from_str(&stdout(&generated)).expect("envelope parses");
+        assert_eq!(env["data"][0]["captured"], 8, "{env}");
+        assert!(env["data"][0]["failed"].as_array().unwrap().is_empty());
+        stores.push((workdir, stored_without_timestamps(&snapshot_dir)));
+    }
+    assert_eq!(stores[0].1.len(), 8);
+    assert_eq!(stores[0].1, stores[1].1);
+}
+
+#[test]
+fn a_series_that_names_a_pin_twice_builds_it_once() {
+    let workdir = TempDir::new().unwrap();
+    let snapshot_dir = workdir.path().join("snapshots");
+    let repo = make_demo_repo();
+    let cfg = write_series_config(&workdir, &repo, &snapshot_dir);
+    let text = fs::read_to_string(&cfg).unwrap();
+    fs::write(
+        &cfg,
+        text.replace(
+            "    { project = \"demo\", tag = \"v1.0.0\" },\n",
+            "    { project = \"demo\", tag = \"v1.0.0\" },\n    { project = \"demo\", tag = \"v1.0.0\" },\n",
+        ),
+    )
+    .unwrap();
+    let generated = run([
+        "--formatter",
+        "json",
+        "--config-file-path",
+        cfg.to_str().unwrap(),
+        "snapshots",
+        "generate",
+        "--series",
+        "demo-1",
+        "--jobs",
+        "4",
+    ]);
+    let env: Value = serde_json::from_str(&stdout(&generated)).expect("envelope parses");
+    let summary = &env["data"]["summary"];
+    assert_eq!(summary["discovered"], 1, "{env}");
+    assert_eq!(summary["skipped"], 1, "{env}");
+    assert_eq!(summary["failed"], 0, "{env}");
+}

@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::config::HostConfigError;
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Error)]
@@ -120,6 +122,9 @@ pub enum SnapshotError {
     #[error("non-canonical snapshot: {detail}")]
     NotCanonicalValue { detail: String },
 
+    #[error("snapshot cannot be written: {detail}")]
+    Unwritable { detail: String },
+
     #[error("invalid utf-8 at byte offset {offset}")]
     InvalidUtf8 { offset: usize },
 
@@ -195,6 +200,12 @@ pub enum ConfigError {
 
     #[error("series {0:?} referenced but not configured")]
     UnknownSeries(String),
+
+    #[error("host {0:?} referenced but not configured")]
+    UnknownHost(String),
+
+    #[error(transparent)]
+    Host(#[from] HostConfigError),
 
     #[error("series {series:?} pins unknown project {project:?}")]
     SeriesPinsUnknownProject { series: String, project: String },

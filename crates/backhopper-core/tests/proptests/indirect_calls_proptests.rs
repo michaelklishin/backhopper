@@ -126,7 +126,7 @@ proptest! {
             out_flat.sites.iter().map(|s| (s.mfa.clone(), s.via)).collect::<Vec<_>>(),
             out_wrapped.sites.iter().map(|s| (s.mfa.clone(), s.via)).collect::<Vec<_>>()
         );
-        prop_assert_eq!(out_flat.withheld_dynamic, out_wrapped.withheld_dynamic);
+        prop_assert_eq!(out_flat.withheld_dynamic.len(), out_wrapped.withheld_dynamic.len());
     }
 
     // Every generated occurrence has a literal module and function, so each lands in sites or withheld_dynamic.
@@ -135,7 +135,7 @@ proptest! {
         let body: Vec<String> = occs.iter().map(|o| format!("    {o},")).collect();
         let src = format!("t(Node) ->\n{}\n    ok.\n", body.join("\n"));
         let out = extract_indirect_calls(&src, &identity_line_map(&src));
-        prop_assert_eq!(out.sites.len() + out.withheld_dynamic, occs.len());
+        prop_assert_eq!(out.sites.len() + out.withheld_dynamic.len(), occs.len());
     }
 
     #[test]

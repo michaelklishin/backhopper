@@ -8,7 +8,8 @@
 //! vendored dependency names and versions.
 
 use backhopper_core::model::names::{
-    DependencyName, DependencyVersion, FunctionName, GitRef, MacroName, TagGlob, TagName, TypeName,
+    ConfKey, DependencyName, DependencyVersion, FunctionName, GitRef, HostFactsDigest, MacroName,
+    MakeVariableName, PartialName, TagGlob, TagName, TypeName, ValidatorName,
 };
 
 #[test]
@@ -84,4 +85,52 @@ fn names_reject_values_over_the_length_cap() {
     assert!(TagName::new(huge.clone()).is_err());
     assert!(TypeName::new(huge.clone()).is_err());
     assert!(MacroName::new(huge).is_err());
+}
+
+#[test]
+fn conf_key_admits_cuttlefish_segments() {
+    assert!(ConfKey::new("ssl_options.cacertfile").is_ok());
+    assert!(ConfKey::new("listeners.ssl.$name.port").is_ok());
+    assert!(ConfKey::new("cacertfile").is_ok());
+    assert!(ConfKey::new("").is_err());
+    assert!(ConfKey::new(".leading").is_err());
+    assert!(ConfKey::new("has space").is_err());
+    assert!(ConfKey::new("new\nline").is_err());
+}
+
+#[test]
+fn validator_name_admits_the_names_rabbit_schemas_use() {
+    assert!(ValidatorName::new("file_accessible").is_ok());
+    assert!(ValidatorName::new("port").is_ok());
+    assert!(ValidatorName::new("ssl_versions").is_ok());
+    assert!(ValidatorName::new("").is_err());
+    assert!(ValidatorName::new("has space").is_err());
+}
+
+#[test]
+fn partial_name_is_a_file_stem() {
+    assert!(PartialName::new("ssl_options").is_ok());
+    assert!(PartialName::new("tcp_listen_options").is_ok());
+    assert!(PartialName::new("ssl/options").is_err());
+    assert!(PartialName::new("ssl.options").is_err());
+    assert!(PartialName::new("..").is_err());
+    assert!(PartialName::new("").is_err());
+}
+
+#[test]
+fn make_variable_name_admits_erlang_mk_variables() {
+    assert!(MakeVariableName::new("PLUGINS").is_ok());
+    assert!(MakeVariableName::new("LOCAL_DEPS").is_ok());
+    assert!(MakeVariableName::new("dep_ra").is_ok());
+    assert!(MakeVariableName::new("").is_err());
+    assert!(MakeVariableName::new("$(PLUGINS)").is_err());
+    assert!(MakeVariableName::new("1PLUGINS").is_err());
+}
+
+#[test]
+fn host_facts_digest_is_64_lowercase_hex_characters() {
+    assert!(HostFactsDigest::new("0".repeat(64)).is_ok());
+    assert!(HostFactsDigest::new("A".repeat(64)).is_err());
+    assert!(HostFactsDigest::new("0".repeat(63)).is_err());
+    assert!(HostFactsDigest::new("g".repeat(64)).is_err());
 }
