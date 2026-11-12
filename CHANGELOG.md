@@ -5,59 +5,26 @@
 ### Enhancements
 
  * New `jigsaw` command group: checks Erlang apps that are hosted as
-   plugins in another Erlang environment (RabbitMQ, for example) against
-   every patch release of one host series
-   * `jigsaw plan --host <name> --series <MAJOR.MINOR>` lists the releases
-     of the series, the Erlang lines to test, the snapshots those need
-     and which of them the store lacks. It exits with the partial
-     success code when snapshots are missing
-   * `jigsaw check --plugin-dir-path <dir>` checks the apps under the
-     given directories, and the apps they bundle, against every patch
-     release and every OTP tag of the plan's Erlang lines. It reads the
-     snapshot store only and never opens a git repository
-   * `snapshots generate --from-jigsaw-plan <file>` builds the snapshots a
-     plan lists as missing or stale, and nothing else
-   * A new `[[host]]` block in `backhopper.toml` names the host project,
-     the OTP project, the series tag pattern, the Erlang majors, where
-     release pins come from, the release roots and the supported Erlang
-     range per release. `[[project]]` gains `manifest` (`app_src` or
-     `erlang_mk`)
- * `jigsaw check` treats a reference that the newest release satisfies and
-   another release does not as a finding. A bundled app that a release
-   also ships, a changed record default and a macro that is only a string
-   literal (`macro_text_changed`) are warnings and never fail a run
- * `jigsaw check` lists what it did not compare: the sites behind the
-   `unresolved_at_build` and `dynamic` counts (`app/path:line  symbol`),
-   and a `withheld` list of conditional macros, unknown specs and OTP apps
-   a snapshot excludes. It also warns, per app, when a manifest cannot be
-   read (`manifest_unreadable`) or a dependency has no `[[project]]`
-   (`app_not_tracked`)
- * `jigsaw plan` and `jigsaw check` render a matrix as text and, with
-   `--formatter markdown`, a summary for a CI job. `docs/jigsaw.md` covers
-   what a finding and a clean report do and do not mean, and a two-job
-   GitHub Actions layout
- * A snapshot records a digest of the extraction settings it was made
-   with. A snapshot made with other settings is stale: `jigsaw plan` lists
-   it with the reason, `doctor` shows it as `OUTDATED` and exits non-zero,
-   and `snapshots generate --refresh-stale` rebuilds it
+   plugins (RabbitMQ plugins, for example) against every patch release of
+   one host series and of the Erlang/OTP lines it supports
+ * `jigsaw plan` lists the releases, the snapshots they need and which
+   of them the store lacks
+ * `jigsaw check` compares what the plugin directories reference against
+   the snapshots `jigsaw plan` lists. It reads the snapshot store only and
+   never opens a git repository
+ * `snapshots generate --from-jigsaw-plan` builds the snapshots a `jigsaw`
+   plan lists as missing or stale
+ * A new `[[host]]` block in `backhopper.toml` describes the `jigsaw` host,
+   and `[[project]]` gains `manifest`
+ * See `docs/jigsaw.md` for how `jigsaw plan` and `jigsaw check` work
+ * A snapshot records the extraction settings it was made with. A snapshot
+   made with other settings is stale: `doctor` shows it as `OUTDATED`, and
+   `snapshots generate --refresh-stale` rebuilds it
  * `snapshots generate` builds snapshots on several threads: `--jobs N`,
-   by default the number of cores, up to 32. The 67 OTP snapshots from
-   `OTP-27.0` to `OTP-29.1.1` took 11.9 s on one worker and 1.0 s on 28
- * Writing a snapshot is now buffered. A cold store of 60 tags took 5.9 s
-   before and 1.1 s after, on one worker
- * Snapshot format 5 and Erlang extractor version 9 record more of what
-   `jigsaw check` compares: the `app` of every module
-   and header, header `include` lines and `-define` macros, record field
-   defaults, the apps a snapshot scanned and what each needs at run time,
-   Cuttlefish schema and partial sections, and for a host snapshot its
-   release roots and dependency pins
- * `snapshots migrate` never writes format 5: it reports an older snapshot
-   and names `snapshots generate --refresh-stale`
+   by default the number of cores, up to 32
  * `backhopper-driver` gains `jigsaw().plan()` and `jigsaw().check()`
-   builders, which do not compile without a host and a series, or a plan
-   source and a plugin directory
- * New crate `backhopper-jigsaw`; `backhopper-cuttlefish` now reads
-   `include_partial` terms and the validators a mapping names
+   builders
+ * New crate `backhopper-jigsaw`
 
 ### Breaking Changes
 
