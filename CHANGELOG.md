@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.38.0 (in development)
+
+No changes yet.
+
 ## v0.37.0 (November 12, 2026)
 
 ### Enhancements

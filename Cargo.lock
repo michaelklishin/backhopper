@@ -111,7 +111,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "backhopper-cache"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "blake3",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cli"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-core"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-erlang-scan",
  "backhopper-test-support",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-cuttlefish"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-driver"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-elixir"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -217,7 +217,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -230,14 +230,14 @@ dependencies = [
 
 [[package]]
 name = "backhopper-erlang-scan"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "backhopper-git"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-test-support",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-jigsaw"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-cuttlefish",
@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-test-support"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "tempfile",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-xref-graph",
@@ -293,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-graph"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "proptest",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "backhopper-xref-reader"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "backhopper-core",
  "backhopper-erlang-scan",
@@ -3123,7 +3123,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "backhopper-core",
