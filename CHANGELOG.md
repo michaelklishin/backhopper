@@ -22,6 +22,13 @@
    `snapshots generate --refresh-stale` rebuilds it
  * `snapshots generate` builds snapshots on several threads: `--jobs N`,
    by default the number of cores, up to 32
+ * Assorted domain types improvements, see `docs/types.md`
+ * `snapshots generate --refresh-stale` rebuilds a snapshot that is on
+   disk but stale or has no extractor version
+ * `doctor` and `snapshots verify --all` now treat a snapshot with no
+   `extractor-version` header (written before `0.31.0`) as stale rather
+   than passing. `doctor` reports it as `Unversioned`, and `verify --all`
+   counts such occurrences separately
  * `backhopper-driver` gains `jigsaw().plan()` and `jigsaw().check()`
    builders
  * New crate `backhopper-jigsaw`
@@ -37,8 +44,15 @@
    from the CLI to `backhopper_core::erlang_mk`. A `dep_` line with a name
    that `DependencyName` refuses is no longer a pin, and `series sync`
    lists it as skipped
- * `SnapshotHeader`, `HrlFile`, `RecordField` and `Snapshot` gain fields for
-   format 5, and the extractors' `extract_source` take `ScannedFile`s
+ * `SnapshotHeader`, `HrlFile`, `RecordField` and `Snapshot` gain fields,
+   and the extractors' `extract_source` take `ScannedFile`s
+
+### Dependency Upgrades
+
+ * `gix` was upgraded from `0.86.0` to `0.89.0`
+ * `bel7-cli` was upgraded from `0.14.0` to `0.15.0`
+ * `tabled` was upgraded from `0.21.0` to `0.22.0`
+ * The minimum Rust version is now `1.98.1`
 
 ### Bug Fixes
 
@@ -48,40 +62,18 @@
    `lists:foreach/2` and not `lists:foreach/3`
  * The call reader no longer reads a catch pattern such as
    `error:badarg ->` as a call
-
-## v0.36.0 (in development)
-
-### Enhancements
-
- * Assorted domain types improvements, see `docs/types.md`
- * `snapshots generate` gains `--refresh-stale`, which rebuilds a tag
-   whose snapshot happens to already be on disk but stale or missing the extractor version
- * `doctor` and `snapshots verify --all` now treat a snapshot with no
-   `extractor-version` header (written before `0.31.0`) as stale rather than passing.
-   `doctor` reports it as `Unversioned`, and `verify --all`
-   then counts such ocurrences separately
-
-### Dependency Upgrades
-
- * `gix` was upgraded from `0.87.1` to `0.88.0`
-
-### Bug Fixes
-
  * A snapshot written before extractor versioning existed had no
    `extractor-version` header, and the staleness check read that
    empty value as current instead of as the most suspect file in the
    store. This let a stale pre-`0.31.0` snapshot pass `doctor` and
    produce an incorrect `Incompatible` verdict on a correct pick
-
  * `Module.clause_heads` is a `BTreeMap<FunArity, ...>`; serialising a
    module with a populated map failed with `key must be a string`,
    because `serde_json` refuses a non-string map key. The map now
    serialises its key through `FunArity`'s `Display`
-
  * `config show --formatter json` spelled a self-project's `kind` as
    `self_repo`; every other surface already said `self`. It now says
    `self` everywhere
-
  * A record field's `::` type annotation (`vhost :: rabbit_types:vhost()`)
    is now read as a type reference and not as a call. Field defaults
    are still scanned for calls
@@ -111,7 +103,6 @@
 
  * `backhopper_erlang::visibility::detect_visibility_hints` and
    `VisibilityHints` are removed
-
  * `TargetWalkIndex.truncated` is removed; it had no reader
  * `WireConstantDecl::new` is removed; the family defaults are built
    from one `const` table per family, and the struct literal is the
