@@ -11,6 +11,7 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::str;
 
+use gix::Result as GixResult;
 use gix::bstr::ByteSlice;
 use gix::object::tree::diff::Change;
 use gix::{Exn, ExnResult};
@@ -89,7 +90,7 @@ impl GitRepo {
     }
 
     pub fn is_shallow(&self) -> bool {
-        self.repo.is_shallow()
+        self.repo.is_shallow().unwrap_or(false)
     }
 
     pub fn resolve_sha_prefix(&self, prefix: &CommitShaPrefix) -> Result<ResolvedSha, GitError> {
@@ -427,7 +428,7 @@ impl GitRepo {
             .options(|opts| {
                 opts.track_rewrites(None);
             })
-            .for_each_to_obtain_tree(&to_tree, |change| -> ExnResult<_> {
+            .for_each_to_obtain_tree(&to_tree, |change| -> GixResult<_> {
                 match change {
                     Change::Addition {
                         location,
@@ -540,7 +541,7 @@ impl GitRepo {
             .options(|opts| {
                 opts.track_rewrites(None);
             })
-            .for_each_to_obtain_tree(&to_tree, |change| -> ExnResult<_> {
+            .for_each_to_obtain_tree(&to_tree, |change| -> GixResult<_> {
                 match change {
                     Change::Addition {
                         location,
